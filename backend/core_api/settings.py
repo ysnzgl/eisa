@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
+    "drf_spectacular",
     # Yerel uygulamalar
     "apps.users",
     "apps.pharmacies",
@@ -118,6 +119,7 @@ REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": (
         "rest_framework.renderers.JSONRenderer",
     ),
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_THROTTLE_CLASSES": (
         "rest_framework.throttling.AnonRateThrottle",
         "rest_framework.throttling.UserRateThrottle",
@@ -179,3 +181,41 @@ STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# ─── API Dokümantasyonu (yalnızca geliştirme ortamında) ─────────────────────
+if DEBUG:
+    SPECTACULAR_SETTINGS = {
+        "TITLE": "E-İSA Merkezi API",
+        "DESCRIPTION": (
+            "E-İSA panel API'si — yönetici ve eczacı panelleri için JWT korumalı endpoint'ler. "
+            "Kiosk kimlik doğrulaması App-Key başlığı (X-App-Key + X-Kiosk-Mac) ile yapılır."
+        ),
+        "VERSION": "1.0.0",
+        "SERVE_INCLUDE_SCHEMA": False,
+        "COMPONENT_SPLIT_REQUEST": True,
+        "SECURITY": [{"jwtAuth": []}],
+        "APPEND_COMPONENTS": {
+            "securitySchemes": {
+                "jwtAuth": {
+                    "type": "http",
+                    "scheme": "bearer",
+                    "bearerFormat": "JWT",
+                },
+                "kioskAppKey": {
+                    "type": "apiKey",
+                    "in": "header",
+                    "name": "X-App-Key",
+                },
+            }
+        },
+        "TAGS": [
+            {"name": "auth", "description": "JWT token alma ve yenileme"},
+            {"name": "users", "description": "Kullanıcı profili"},
+            {"name": "pharmacies", "description": "Eczane yönetimi"},
+            {"name": "kiosks", "description": "Kiosk yönetimi"},
+            {"name": "products", "description": "Ürün kataloğu"},
+            {"name": "analytics", "description": "Anket ve gösterim analitiği"},
+            {"name": "campaigns", "description": "Kampanya yönetimi"},
+        ],
+    }
+

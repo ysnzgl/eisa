@@ -50,7 +50,26 @@ async def lifespan(app: FastAPI):
         stop_scheduler()
 
 
-app = FastAPI(title="E-ISA Kiosk Local API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(
+    title="E-ISA Kiosk Local API",
+    version="0.1.0",
+    description=(
+        "E-İSA kiosk lokal API'si — Svelte UI ile localhost üzerinden haberleşir. "
+        "İnternet bağlantısından bağımsız Offline-First çalışır.\n\n"
+        "**Yetkilendirme**: `/api/session/{qr_code}` endpoint'i `Authorization: Bearer <LOCAL_SECRET>` başlığı gerektirir."
+    ),
+    openapi_tags=[
+        {"name": "health", "description": "Servis sağlık kontrolü"},
+        {"name": "categories", "description": "Aktif kategoriler ve sorular"},
+        {"name": "session", "description": "Anket oturumu kayıt ve sorgulama"},
+        {"name": "campaigns", "description": "Aktif kampanyalar (idle modu)"},
+        {"name": "ad-impression", "description": "Reklam gösterim loglama"},
+    ],
+    docs_url="/docs" if settings.dev_mode else None,
+    redoc_url="/redoc" if settings.dev_mode else None,
+    openapi_url="/openapi.json" if settings.dev_mode else None,
+    lifespan=lifespan,
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -130,12 +149,12 @@ def require_local_secret(authorization: str | None = Header(default=None)) -> No
 
 # ─── Endpoints ──────────────────────────────────────────────────────────────
 
-@app.get("/health")
+@app.get("/health", tags=["health"])
 async def health() -> dict:
     return {"status": "ok"}
 
 
-@app.get("/api/categories")
+@app.get("/api/categories", tags=["categories"])
 async def list_categories(db: AsyncSession = Depends(get_session)) -> list[dict]:
     """Aktif kategorileri döndürür."""
     result = await db.execute(
@@ -154,7 +173,7 @@ async def list_categories(db: AsyncSession = Depends(get_session)) -> list[dict]
     ]
 
 
-@app.get("/api/categories/{slug}/questions")
+@app.get("/api/categories/{slug}/questions", tags=["categories"])
 async def list_questions(slug: str, db: AsyncSession = Depends(get_session)) -> list[dict]:
     """Kategorinin sorularını seed_id, match_rules ile döndürür."""
     cat_result = await db.execute(select(Category).where(Category.slug == slug))
@@ -180,7 +199,7 @@ async def list_questions(slug: str, db: AsyncSession = Depends(get_session)) -> 
     ]
 
 
-@app.post("/api/session/submit")
+@app.post("/api/session/submit", tags=["session"])
 async def submit_session(
     body: SessionSubmitRequest,
     db: AsyncSession = Depends(get_session),
@@ -206,7 +225,7 @@ async def submit_session(
     return {"qr_code": qr, "status": "saved"}
 
 
-@app.get("/api/session/{qr_code:path}")
+@app.get("/api/session/{qr_code:path}", tags=["session"])
 async def get_session_by_qr(
     qr_code: str,
     db: AsyncSession = Depends(get_session),
@@ -230,7 +249,7 @@ async def get_session_by_qr(
     return {"found": True, "session": log.payload}
 
 
-@app.get("/api/campaigns/active")
+@app.get("/api/campaigns/active", tags=["campaigns"])
 async def active_campaigns(db: AsyncSession = Depends(get_session)) -> list[dict]:
     """Aktif kampanyaları döndürür."""
     now = datetime.now(timezone.utc)
@@ -251,7 +270,7 @@ async def active_campaigns(db: AsyncSession = Depends(get_session)) -> list[dict
     return active
 
 
-@app.post("/api/ad-impression", status_code=201)
+@app.post("/api/ad-impression", status_code=201, tags=["ad-impression"])
 async def log_ad_impression(
     body: AdImpressionRequest,
     db: AsyncSession = Depends(get_session),

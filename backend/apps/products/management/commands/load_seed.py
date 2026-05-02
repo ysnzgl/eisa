@@ -61,7 +61,12 @@ class Command(BaseCommand):
             # ── Kategori upsert ───────────────────────────────────────────────
             cat, created = Category.objects.update_or_create(
                 slug=slug,
-                defaults={"name": name, "is_sensitive": is_sensitive, "is_active": True},
+                defaults={
+                    "name": name,
+                    "icon": entry.get("icon", "fa-circle"),
+                    "is_sensitive": is_sensitive,
+                    "is_active": True,
+                },
             )
             if created:
                 categories_created += 1
@@ -78,7 +83,11 @@ class Command(BaseCommand):
                 q, q_created = Question.objects.update_or_create(
                     category=cat,
                     order=q_order,
-                    defaults={"text": q_text},
+                    defaults={
+                        "seed_id": q_data.get("id"),
+                        "text": q_text,
+                        "match_rules": q_data.get("match_rules", []),
+                    },
                 )
                 if q_created:
                     questions_created += 1

@@ -7,6 +7,7 @@ class Category(models.Model):
 
     name = models.CharField(max_length=128, unique=True)
     slug = models.SlugField(unique=True)
+    icon = models.CharField(max_length=64, default="fa-circle")
     is_sensitive = models.BooleanField(
         default=False, help_text="Sessiz triyaj akışı (Akış B) için işaretle."
     )
@@ -18,8 +19,10 @@ class Category(models.Model):
 
 class Question(models.Model):
     category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name="questions")
+    seed_id = models.CharField(max_length=32, unique=True, null=True, blank=True)
     text = models.TextField()
     order = models.PositiveSmallIntegerField(default=0)
+    match_rules = models.JSONField(default=list, blank=True)
 
     class Meta:
         db_table = "questions"

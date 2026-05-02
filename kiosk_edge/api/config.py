@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     # Üretimde sertifika doğrulamasını zorla; sadece geliştirme için False yapılabilir
     verify_tls: bool = True
 
+    # Geliştirme modu: Swagger UI ve ReDoc'u açar (canlıda kapalı tutun)
+    dev_mode: bool = False
+
     model_config = SettingsConfigDict(env_file=".env", env_prefix="EISA_")
 
     @model_validator(mode="after")

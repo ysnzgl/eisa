@@ -1,4 +1,5 @@
 """Merkezi URL yönlendirmesi."""
+from django.conf import settings
 from django.contrib import admin
 from django.urls import include, path
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
@@ -25,3 +26,18 @@ urlpatterns = [
     path("api/analytics/", include("apps.analytics.urls")),
     path("api/campaigns/", include("apps.campaigns.urls")),
 ]
+
+# Swagger / ReDoc yalnızca geliştirme ortamında
+if settings.DEBUG:
+    from drf_spectacular.views import (
+        SpectacularAPIView,
+        SpectacularRedocView,
+        SpectacularSwaggerView,
+    )
+
+    urlpatterns += [
+        path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
+        path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
+        path("api/redoc/", SpectacularRedocView.as_view(url_name="schema"), name="redoc"),
+    ]
+
