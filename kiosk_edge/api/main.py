@@ -260,13 +260,22 @@ async def active_campaigns(db: AsyncSession = Depends(get_session)) -> list[dict
     for c in all_campaigns:
         starts = c.starts_at.replace(tzinfo=timezone.utc) if c.starts_at.tzinfo is None else c.starts_at
         ends = c.ends_at.replace(tzinfo=timezone.utc) if c.ends_at.tzinfo is None else c.ends_at
-        if starts <= now <= ends:
-            active.append({
-                "id": c.id,
-                "name": c.name,
-                "media_local_path": c.media_local_path,
-                "targeting": c.targeting,
-            })
+        if not (starts <= now <= ends):
+            continue
+        # Saat aralığı filtresi (targeting.hours_start / hours_end)
+        targeting = c.targeting or {}
+        hours_start = targeting.get("hours_start")
+        hours_end = targeting.get("hours_end")
+        if hours_start is not None and hours_end is not None:
+            current_hour = now.hour
+            if not (hours_start <= current_hour < hours_end):
+                continue
+        active.append({
+            "id": c.id,
+            "name": c.name,
+            "media_local_path": c.media_local_path,
+            "targeting": c.targeting,
+        })
     return active
 
 

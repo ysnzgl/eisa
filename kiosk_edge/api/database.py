@@ -23,9 +23,10 @@ async def init_db() -> None:
         await conn.run_sync(Base.metadata.create_all)
 
     # Tablolar boşsa master_seed.json'dan yükle
-    from .seed_loader import seed_if_empty
+    from .seed_loader import seed_if_empty, seed_campaigns_if_empty
     async with SessionLocal() as session:
         await seed_if_empty(session)
+        await seed_campaigns_if_empty(session)
 
 
 async def get_session() -> AsyncSession:

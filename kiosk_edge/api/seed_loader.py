@@ -6,11 +6,12 @@ from __future__ import annotations
 
 import json
 import pathlib
+from datetime import datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .models_local import Category, Question
+from .models_local import Campaign, Category, Question
 
 # master_seed.json, monorepo'nun bir üst dizinindedir:
 # e-isa-monorepo/../master_seed.json
@@ -50,5 +51,49 @@ async def seed_if_empty(session: AsyncSession) -> None:
                 match_rules=q_data.get("match_rules", []),
             )
             session.add(question)
+
+    await session.commit()
+
+
+# Demo kampanya görselleri — üretimde media_local_path dosya yolu olur;
+# geliştirme ortamında Unsplash placeholder URL'leri kullanıyoruz.
+_DEMO_CAMPAIGNS = [
+    {
+        "name": "Kış Bağışıklık Paketi",
+        "media_local_path": "https://images.unsplash.com/photo-1607619056574-7b8d3ee536b2?w=794&h=900&fit=crop",
+        "targeting": {"hours_start": 8, "hours_end": 22},
+    },
+    {
+        "name": "Omega-3 & Beyin Sağlığı",
+        "media_local_path": "https://images.unsplash.com/photo-1628771065518-0d82f1938462?w=794&h=900&fit=crop",
+        "targeting": {"hours_start": 8, "hours_end": 22},
+    },
+    {
+        "name": "Probiyotik — Bağırsak Dostunuz",
+        "media_local_path": "https://images.unsplash.com/photo-1543362906-acfc16c67564?w=794&h=900&fit=crop",
+        "targeting": {"hours_start": 8, "hours_end": 22},
+    },
+]
+
+
+async def seed_campaigns_if_empty(session: AsyncSession) -> None:
+    """Kampanya tablosu boşsa demo kampanyaları yükler."""
+    result = await session.execute(select(Campaign).limit(1))
+    if result.scalar_one_or_none() is not None:
+        return
+
+    now = datetime.utcnow()
+    far_future = now + timedelta(days=365)
+
+    for c in _DEMO_CAMPAIGNS:
+        campaign = Campaign(
+            name=c["name"],
+            media_local_path=c["media_local_path"],
+            starts_at=now,
+            ends_at=far_future,
+            targeting=c.get("targeting", {}),
+            is_active=True,
+        )
+        session.add(campaign)
 
     await session.commit()
