@@ -1,0 +1,36 @@
+# Dev override: Traefik kaldırıldı, portlar doğrudan expose edildi.
+# Kullanım: docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+
+services:
+  traefik:
+    # Dev'de Traefik'e gerek yok
+    profiles: [production]
+
+  postgres:
+    ports:
+      - "5432:5432"
+
+  backend:
+    # runserver ile ayağa kalk, önce migrate + superuser oluştur
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             python manage.py createsuperuser --noinput --skip-checks 2>/dev/null || true &&
+             python manage.py runserver 0.0.0.0:8000"
+    user: root
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    labels: []
+    networks: [edge, internal]
+
+  panels:
+    ports:
+      - "8080:80"
+    labels: []
+    networks: [edge]
+
+networks:
+  edge:
+  internal:
+    internal: true

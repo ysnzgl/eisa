@@ -1,0 +1,38 @@
+[Unit]
+Description=E-ISA Kiosk Local API (FastAPI)
+After=network.target
+
+[Service]
+Type=simple
+User=eisa
+Group=eisa
+WorkingDirectory=/opt/eisa/api
+EnvironmentFile=/etc/eisa/kiosk.env
+ExecStart=/opt/eisa/api/eisa_api.bin
+Restart=always
+RestartSec=3
+
+# Yalnızca localhost'a bind — eczacı/Svelte UI lokalden gelir
+# (uvicorn host'u config ile 127.0.0.1 olmalı)
+
+# Sistemd hardening
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+ReadWritePaths=/var/lib/eisa
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

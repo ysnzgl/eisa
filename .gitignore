@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+dist/
+.vite/
+.svelte-kit/
+build/
+
+# Django
+*.sqlite3
+staticfiles/
+media/
+
+# Nuitka
+*.build/
+*.dist/
+*.bin
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/

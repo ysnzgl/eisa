@@ -1,0 +1,388 @@
+[
+  {
+    "category_slug": "enerji",
+    "title": "Enerji & Halsizlik",
+    "icon": "fa-battery-quarter",
+    "questions": [
+      {
+        "id": "en_q1",
+        "priority": 1,
+        "text": "Sabahları uykunuzu almış olsanız bile yorgun mu uyanıyorsunuz?",
+        "match_rules": [
+          { "gender": ["F"], "age_min": 18, "age_max": 49, "primary": "Demir (Ferritin ölçümü önerisiyle)", "supportive": "C Vitamini" },
+          { "gender": ["M"], "age_min": 18, "age_max": 49, "primary": "B-Kompleks Vitamini", "supportive": "C Vitamini" },
+          { "gender": ["M", "F"], "age_min": 50, "age_max": 120, "primary": "Koenzim Q10", "supportive": "B12 Vitamini" }
+        ]
+      },
+      {
+        "id": "en_q2",
+        "priority": 2,
+        "text": "Gün içinde (özellikle öğleden sonraları) enerjiniz aniden düşüyor mu?",
+        "match_rules": [
+          { "gender": ["M", "F"], "age_min": 18, "age_max": 120, "primary": "Magnezyum Malat", "supportive": "B12 (Metilkobalamin)" }
+        ]
+      },
+      {
+        "id": "en_q3",
+        "priority": 3,
+        "text": "Fiziksel bir efor sarf etmediğiniz halde kendinizi bitkin hissediyor musunuz?",
+        "match_rules": [
+          { "gender": ["M", "F"], "age_min": 18, "age_max": 49, "primary": "Ginseng Ekstresi", "supportive": "L-Karnitin" },
+          { "gender": ["M", "F"], "age_min": 50, "age_max": 120, "primary": "Koenzim Q10", "supportive": "Ginseng Ekstresi" }
+        ]
+      }
+    ]
+  },
+  {
+    "category_slug": "bagisiklik",
+    "title": "Bağışıklık Sistemi",
+    "icon": "fa-shield-halved",
+    "questions": [
+      {
+        "id": "ba_q1",
+        "priority": 1,
+        "text": "Sık sık soğuk algınlığı, nezle veya enfeksiyon geçirir misiniz?",
+        "match_rules": [
+          { "gender": ["M", "F"], "age_min": 18, "age_max": 120, "primary": "C Vitamini (1000mg)", "supportive": "Çinko" }
+        ]
+      },
+      {
+        "id": "ba_q2",
+        "priority": 2,
+        "text": "Mevsim geçişlerinde vücudunuzda genel bir kırgınlık ve halsizlik olur mu?",
+        "match_rules": [
+          { "gender": ["M", "F"], "age_min": 18, "age_max": 49, "primary": "Kara Mürver (Sambucus Nigra)", "supportive": "Pelargonium (Umca)" },
+          { "gender": ["M", "F"], "age_min": 50, "age_max": 120, "primary": "Beta Glukan", "supportive": "D3+K2 Vitamini" }
+        ]
+      },
+      {
+        "id": "ba_q3",
+        "priority": 3,
+        "text": "Kapalı, kalabalık ve havalandırması az olan ortamlarda uzun süre vakit geçiriyor musunuz?",
+        "match_rules": [
+          { "gender": ["M", "F"], "age_min": 18, "age_max": 120, "primary": "D3+K2 Vitamini", "supportive": "Propolis Ekstresi" }
+        ]
+      }
+    ]
+  },
+  {
+    "category_slug": "uyku",
+    "title": "Uyku Problemleri",
+    "icon": "fa-moon",
+    "questions": [
+      {
+        "id": "uy_q1",
+        "priority": 1,
+        "text": "Yatağa yattıktan sonra uykuya dalmanız 30 dakikadan uzun sürüyor mu?",
+        "match_rules": [
+          { "gender": ["M", "F"], "age_min": 18, "age_max": 120, "primary": "Melatonin", "supportive": "Kediotu Kökü (Valerian)" }
+        ]
+      },
+      {
+        "id": "uy_q2",
+        "priority": 2,
+        "text": "Geceleri sık sık uyanıp tekrar uykuya dalmakta zorlanıyor musunuz?",
+        "match_rules": [
+          { "gender": ["M", "F"], "age_min": 18, "age_max": 49, "primary": "Passiflora (Çarkıfelek)", "supportive": "5-HTP" },
+          { "gender": ["M", "F"], "age_min": 50, "age_max": 120, "primary": "Melatonin (Yavaş Salınımlı)", "supportive": "Magnezyum" }
+        ]
+      },
+      {
+        "id": "uy_q3",
+        "priority": 3,
+        "text": "Sabahları yataktan kasılmış, dişlerinizi sıkmış veya dinlenmemiş olarak mı kalkıyorsunuz?",
+        "match_rules": [
+          { "gender": ["M", "F"], "age_min": 18, "age_max": 120, "primary": "Magnezyum Bisglisinat", "supportive": "Papatya / Melisa Ekstresi" }
+        ]
+      }
+    ]
+  },
+  {
+    "category_slug": "stres",
+    "title": "Stres & Anksiyete",
+    "icon": "fa-brain",
+    "questions": [
+      {
+        "id": "st_q1",
+        "priority": 1,
+        "text": "Gün içinde kendinizi sürekli gergin, aceleci veya huzursuz hissediyor musunuz?",
+        "match_rules": [
+          { "gender": ["F"], "age_min": 18, "age_max": 50, "primary": "Ashwagandha (Kortizol dengeleyici)", "supportive": "B6 Vitamini" },
+          { "gender": ["M"], "age_min": 18, "age_max": 50, "primary": "L-Teanin", "supportive": "Magnezyum Bisglisinat" },
+          { "gender": ["M", "F"], "age_min": 51, "age_max": 120, "primary": "Passiflora", "supportive": "B-Kompleks" }
+        ]
+      },
+      {
+        "id": "st_q2",
+        "priority": 2,
+        "text": "Stres veya heyecan durumlarında mide/bağırsak sorunları (kramp, gaz) yaşıyor musunuz?",
+        "match_rules": [
+          { "gender": ["M", "F"], "age_min": 18, "age_max": 120, "primary": "Probiyotik (Stres spesifik suşlar)", "supportive": "Nane Yağı Kapsülü" }
+        ]
+      },
+      {
+        "id": "st_q3",
+        "priority": 3,
+        "text": "Rahatlamak, sakinleşmek ve kafanızdaki düşünceleri susturmakta zorlanıyor musunuz?",
+        "match_rules": [
+          { "gender": ["M", "F"], "age_min": 18, "age_max": 120, "primary": "Rhodiola Rosea", "supportive": "Magnezyum" }
+        ]
+      }
+    ]
+  },
+  {
+    "category_slug": "sindirim",
+    "title": "Sindirim & Bağırsak",
+    "icon": "fa-stomach",
+    "questions": [
+      {
+        "id": "si_q1",
+        "priority": 1,
+        "text": "Yemeklerden sonra rahatsız edici düzeyde şişkinlik veya gaz sorunu yaşıyor musunuz?",
+        "match_rules": [
+          { "gender": ["M", "F"], "age_min": 18, "age_max": 49, "primary": "Sindirim Enzimleri (Bromelain/Papain)", "supportive": "Rezene Ekstresi" },
+          { "gender": ["M", "F"], "age_min": 50, "age_max": 120, "primary": "Betain HCL (Mide Asidi Desteği)", "supportive": "Sindirim Enzimleri" }
+        ]
+      },
+      {
+        "id": "si_q2",
+        "priority": 2,
+        "text": "Düzensiz tuvalet alışkanlığınız (sık sık kabızlık veya ishal döngüsü) var mı?",
+        "match_rules": [
+          { "gender": ["M", "F"], "age_min": 18, "age_max": 120, "primary": "Geniş Spektrumlu Probiyotik", "supportive": "Prebiyotik Lif (İnülin)" }
+        ]
+      },
+      {
+        "id": "si_q3",
+        "priority": 3,
+        "text": "Son 6 ay içinde hiç antibiyotik kullandınız mı?",
+        "match_rules": [
+          { "gender": ["M", "F"], "age_min": 18, "age_max": 120, "primary": "Yüksek Milyarlı Probiyotik", "supportive": "Saccharomyces Boulardii" }
+        ]
+      }
+    ]
+  },
+  {
+    "category_slug": "eklem",
+    "title": "Eklem, Kemik & Kas",
+    "icon": "fa-bone",
+    "questions": [
+      {
+        "id": "ek_q1",
+        "priority": 1,
+        "text": "Merdiven inip çıkarken veya çömelirken dizlerinizde ağrı veya ses (çıtırdama) oluyor mu?",
+        "match_rules": [
+          { "gender": ["M", "F"], "age_min": 18, "age_max": 39, "primary": "Tip-2 Kolajen", "supportive": "Hyalüronik Asit" },
+          { "gender": ["M", "F"], "age_min": 40, "age_max": 120, "primary": "Glukozamin & Kondroitin & MSM", "supportive": "Tip-2 Kolajen" }
+        ]
+      },
+      {
+        "id": "ek_q2",
+        "priority": 2,
+        "text": "Sabah uyandığınızda eklemlerinizde (eller, dizler) tutukluk ve sertlik yaşıyor musunuz?",
+        "match_rules": [
+          { "gender": ["M", "F"], "age_min": 18, "age_max": 120, "primary": "Curcumin (Zerdeçal Ekstresi)", "supportive": "Boswellia (Akgünlük Ekstresi)" }
+        ]
+      },
+      {
+        "id": "ek_q3",
+        "priority": 3,
+        "text": "Spor veya yoğun fiziksel hareket sonrasında kas ağrılarınızın geçmesi uzun sürüyor mu?",
+        "match_rules": [
+          { "gender": ["M", "F"], "age_min": 18, "age_max": 120, "primary": "Magnezyum (Sitrat/Malat)", "supportive": "Yüksek EPA oranlı Omega-3" }
+        ]
+      }
+    ]
+  },
+  {
+    "category_slug": "guzellik",
+    "title": "Saç, Cilt & Tırnak",
+    "icon": "fa-spa",
+    "questions": [
+      {
+        "id": "gu_q1",
+        "priority": 1,
+        "text": "Saçlarınızda normalden fazla dökülme, incelme veya cansızlık var mı?",
+        "match_rules": [
+          { "gender": ["M"], "age_min": 18, "age_max": 120, "primary": "Cüce Palmiye (Saw Palmetto)", "supportive": "Çinko & Biotin" },
+          { "gender": ["F"], "age_min": 18, "age_max": 120, "primary": "Biotin (B7 Vitamini) & Çinko", "supportive": "Keratin Kompleks" }
+        ]
+      },
+      {
+        "id": "gu_q2",
+        "priority": 2,
+        "text": "Tırnaklarınız çok çabuk kırılıyor veya üzerinde beyaz lekeler oluşuyor mu?",
+        "match_rules": [
+          { "gender": ["M", "F"], "age_min": 18, "age_max": 120, "primary": "Çinko", "supportive": "Kalsiyum & Magnezyum" }
+        ]
+      },
+      {
+        "id": "gu_q3",
+        "priority": 3,
+        "text": "Cildinizde kuruluk, elastikiyet kaybı veya solgun bir görünüm hissediyor musunuz?",
+        "match_rules": [
+          { "gender": ["F"], "age_min": 18, "age_max": 39, "primary": "Tip 1 ve 3 Kolajen Peptitleri", "supportive": "C Vitamini" },
+          { "gender": ["F"], "age_min": 40, "age_max": 120, "primary": "Hyalüronik Asit", "supportive": "E Vitamini" },
+          { "gender": ["M"], "age_min": 18, "age_max": 120, "primary": "Kolajen Peptitleri", "supportive": "E Vitamini" }
+        ]
+      }
+    ]
+  },
+  {
+    "category_slug": "odaklanma",
+    "title": "Odaklanma & Hafıza",
+    "icon": "fa-lightbulb",
+    "questions": [
+      {
+        "id": "od_q1",
+        "priority": 1,
+        "text": "Son zamanlarda isimleri, kelimeleri veya eşyaların yerini sık sık unutuyor musunuz?",
+        "match_rules": [
+          { "gender": ["M", "F"], "age_min": 18, "age_max": 49, "primary": "Sitikolin veya L-Tirozin", "supportive": "B12 Vitamini" },
+          { "gender": ["M", "F"], "age_min": 50, "age_max": 120, "primary": "Ginkgo Biloba Ekstresi", "supportive": "Omega-3 (Balık Yağı)" }
+        ]
+      },
+      {
+        "id": "od_q2",
+        "priority": 2,
+        "text": "Ekran başında çalışırken veya okurken uzun süre odaklanmakta zorlanıyor musunuz?",
+        "match_rules": [
+          { "gender": ["M", "F"], "age_min": 18, "age_max": 120, "primary": "Omega-3 (Yüksek DHA oranlı)", "supportive": "L-Teanin" }
+        ]
+      },
+      {
+        "id": "od_q3",
+        "priority": 3,
+        "text": "Zihinsel olarak kendinizi bulanık (beyin sisi) veya çabuk yorulmuş hissediyor musunuz?",
+        "match_rules": [
+          { "gender": ["M", "F"], "age_min": 18, "age_max": 120, "primary": "B-Kompleks Vitamini", "supportive": "Koenzim Q10" }
+        ]
+      }
+    ]
+  },
+  {
+    "category_slug": "kadin_sagligi",
+    "title": "Kadın Sağlığı",
+    "icon": "fa-venus",
+    "questions": [
+      {
+        "id": "ks_q1",
+        "priority": 1,
+        "text": "Regl (adet) dönemleriniz çok ağrılı, sancılı veya aşırı gergin geçiyor mu?",
+        "match_rules": [
+          { "gender": ["F"], "age_min": 18, "age_max": 55, "primary": "Çuha Çiçeği Yağı (Evening Primrose)", "supportive": "Magnezyum Bisglisinat" }
+        ]
+      },
+      {
+        "id": "ks_q2",
+        "priority": 2,
+        "text": "Sıcak basması, gece terlemesi veya ani duygu değişimleri (Menopoz belirtisi) yaşıyor musunuz?",
+        "match_rules": [
+          { "gender": ["F"], "age_min": 40, "age_max": 120, "primary": "Karayılan Otu (Black Cohosh)", "supportive": "Kalsiyum & D3 Vitamini" }
+        ]
+      },
+      {
+        "id": "ks_q3",
+        "priority": 3,
+        "text": "Sık sık idrar yolu hassasiyeti (yanma, sık idrara çıkma) yaşar mısınız?",
+        "match_rules": [
+          { "gender": ["F"], "age_min": 18, "age_max": 120, "primary": "Turna Yemişi (Cranberry) Ekstresi", "supportive": "D-Mannose" }
+        ]
+      }
+    ]
+  },
+  {
+    "category_slug": "erkek_sagligi",
+    "title": "Erkek Sağlığı",
+    "icon": "fa-mars",
+    "questions": [
+      {
+        "id": "es_q1",
+        "priority": 1,
+        "text": "Geceleri sık sık idrara çıkma ihtiyacı ile uyanıyor musunuz?",
+        "match_rules": [
+          { "gender": ["M"], "age_min": 40, "age_max": 120, "primary": "Cüce Palmiye (Saw Palmetto)", "supportive": "Kabak Çekirdeği Ekstresi & Çinko" }
+        ]
+      },
+      {
+        "id": "es_q2",
+        "priority": 2,
+        "text": "Günlük fiziksel performansınızda, gücünüzde veya dayanıklılığınızda düşüş hissediyor musunuz?",
+        "match_rules": [
+          { "gender": ["M"], "age_min": 18, "age_max": 49, "primary": "L-Arginin", "supportive": "Maca Kökü Ekstresi" },
+          { "gender": ["M"], "age_min": 50, "age_max": 120, "primary": "Tribulus Terrestris", "supportive": "Ginseng Ekstresi" }
+        ]
+      },
+      {
+        "id": "es_q3",
+        "priority": 3,
+        "text": "Ağır spor yapıyor veya kas kütlenizi korumakta zorlanıyor musunuz?",
+        "match_rules": [
+          { "gender": ["M"], "age_min": 18, "age_max": 120, "primary": "ZMA (Çinko, Magnezyum, B6)", "supportive": "L-Glutamin" }
+        ]
+      }
+    ]
+  },
+  {
+    "category_slug": "goz_sagligi",
+    "title": "Göz Sağlığı",
+    "icon": "fa-eye",
+    "questions": [
+      {
+        "id": "gz_q1",
+        "priority": 1,
+        "text": "Gözlerinizde sık sık kuruluk, yanma veya batma hissediyor musunuz?",
+        "match_rules": [
+          { "gender": ["M", "F"], "age_min": 18, "age_max": 120, "primary": "Omega-3 (Balık Yağı)", "supportive": "Lutein" }
+        ]
+      },
+      {
+        "id": "gz_q2",
+        "priority": 2,
+        "text": "Uzun süre ekrana (telefon, bilgisayar) bakmaktan dolayı baş veya göz yorgunluğu yaşıyor musunuz?",
+        "match_rules": [
+          { "gender": ["M", "F"], "age_min": 18, "age_max": 120, "primary": "Lutein ve Zeaksantin", "supportive": "Yaban Mersini (Bilberry) Ekstresi" }
+        ]
+      },
+      {
+        "id": "gz_q3",
+        "priority": 3,
+        "text": "Gece görüşünüzde zayıflama veya bulanıklaşma fark ettiniz mi?",
+        "match_rules": [
+          { "gender": ["M", "F"], "age_min": 40, "age_max": 120, "primary": "A Vitamini", "supportive": "Lutein" }
+        ]
+      }
+    ]
+  },
+  {
+    "category_slug": "metabolizma",
+    "title": "Kilo Kontrolü & Ödem",
+    "icon": "fa-weight-scale",
+    "questions": [
+      {
+        "id": "me_q1",
+        "priority": 1,
+        "text": "Tatlı krizleri yaşıyor veya iştahınızı kontrol etmekte zorlanıyor musunuz?",
+        "match_rules": [
+          { "gender": ["M", "F"], "age_min": 18, "age_max": 120, "primary": "Krom Pikolinat", "supportive": "Elma Sirkesi Ekstresi" }
+        ]
+      },
+      {
+        "id": "me_q2",
+        "priority": 2,
+        "text": "Diyet yapmanıza rağmen kilo vermekte veya vücudunuzdaki ödemi atmakta zorluk çekiyor musunuz?",
+        "match_rules": [
+          { "gender": ["M", "F"], "age_min": 18, "age_max": 120, "primary": "Bromelain", "supportive": "Yeşil Çay Ekstresi" }
+        ]
+      },
+      {
+        "id": "me_q3",
+        "priority": 3,
+        "text": "Yemeklerden sonra aşırı ağırlık çökmesi veya uyku hali oluyor mu?",
+        "match_rules": [
+          { "gender": ["M", "F"], "age_min": 18, "age_max": 120, "primary": "Tarçın Ekstresi", "supportive": "Krom" }
+        ]
+      }
+    ]
+  }
+]

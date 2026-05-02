@@ -1,0 +1,181 @@
+"""
+Django ayarları — E-İSA Merkezi API.
+
+KVKK uyumu: tüm kişisel olmayan demografik veriler anonim toplanır.
+"""
+from datetime import timedelta
+from pathlib import Path
+
+from decouple import Csv, config
+from django.core.exceptions import ImproperlyConfigured
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+DEBUG = config("DJANGO_DEBUG", default=False, cast=bool)
+
+SECRET_KEY = config("DJANGO_SECRET_KEY", default="dev-only-change-me" if DEBUG else "")
+if not DEBUG and (not SECRET_KEY or SECRET_KEY == "dev-only-change-me"):
+    raise ImproperlyConfigured(
+        "DJANGO_SECRET_KEY üretimde mutlaka güçlü ve rastgele bir değere ayarlanmalıdır."
+    )
+
+ALLOWED_HOSTS = config(
+    "DJANGO_ALLOWED_HOSTS",
+    default="localhost,127.0.0.1" if DEBUG else "",
+    cast=Csv(),
+)
+if not DEBUG and (not ALLOWED_HOSTS or "*" in ALLOWED_HOSTS):
+    raise ImproperlyConfigured(
+        "DJANGO_ALLOWED_HOSTS üretimde açık bir host listesi içermelidir; '*' kabul edilmez."
+    )
+
+INSTALLED_APPS = [
+    "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
+    # Üçüncü parti
+    "rest_framework",
+    "rest_framework_simplejwt",
+    "rest_framework_simplejwt.token_blacklist",
+    "corsheaders",
+    # Yerel uygulamalar
+    "apps.users",
+    "apps.pharmacies",
+    "apps.products",
+    "apps.analytics",
+    "apps.campaigns",
+]
+
+MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",
+    "django.middleware.security.SecurityMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
+]
+
+ROOT_URLCONF = "core_api.urls"
+WSGI_APPLICATION = "core_api.wsgi.application"
+ASGI_APPLICATION = "core_api.asgi.application"
+
+TEMPLATES = [
+    {
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.debug",
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
+            ],
+        },
+    },
+]
+
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": config("POSTGRES_DB", default="eisa"),
+        "USER": config("POSTGRES_USER", default="eisa"),
+        "PASSWORD": config("POSTGRES_PASSWORD", default="eisa" if DEBUG else ""),
+        "HOST": config("POSTGRES_HOST", default="localhost"),
+        "PORT": config("POSTGRES_PORT", default="5432"),
+    }
+}
+if not DEBUG and (not DATABASES["default"]["PASSWORD"] or DATABASES["default"]["PASSWORD"] == "eisa"):
+    raise ImproperlyConfigured(
+        "POSTGRES_PASSWORD üretimde güçlü ve rastgele bir değere ayarlanmalıdır."
+    )
+
+# Django'nun yerleşik parola güvenlik politikaları
+AUTH_PASSWORD_VALIDATORS = [
+    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
+     "OPTIONS": {"min_length": 10}},
+    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
+    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
+]
+
+AUTH_USER_MODEL = "users.User"
+
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        # Paneller: JWT — Kiosk: App-Key (apps.pharmacies.auth)
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "apps.pharmacies.auth.KioskAppKeyAuthentication",
+    ),
+    "DEFAULT_PERMISSION_CLASSES": (
+        "rest_framework.permissions.IsAuthenticated",
+    ),
+    "DEFAULT_RENDERER_CLASSES": (
+        "rest_framework.renderers.JSONRenderer",
+    ),
+    "DEFAULT_THROTTLE_CLASSES": (
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+        "rest_framework.throttling.ScopedRateThrottle",
+    ),
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": config("THROTTLE_ANON", default="100/hour"),
+        "user": config("THROTTLE_USER", default="2000/hour"),
+        "login": config("THROTTLE_LOGIN", default="5/min"),
+    },
+}
+
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(
+        minutes=config("JWT_ACCESS_TTL_MIN", default=30, cast=int)
+    ),
+    "REFRESH_TOKEN_LIFETIME": timedelta(
+        days=config("JWT_REFRESH_TTL_DAYS", default=7, cast=int)
+    ),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
+    "UPDATE_LAST_LOGIN": True,
+}
+
+CORS_ALLOWED_ORIGINS = config(
+    "DJANGO_CORS_ORIGINS",
+    default="",
+    cast=lambda v: [s.strip() for s in v.split(",") if s.strip()],
+)
+CORS_ALLOW_ALL_ORIGINS = False
+if not DEBUG and not CORS_ALLOWED_ORIGINS:
+    raise ImproperlyConfigured(
+        "DJANGO_CORS_ORIGINS üretimde panel domain(leri) ile doldurulmalıdır."
+    )
+
+# Üretim güvenlik başlıkları (Traefik HTTPS sonlandırması arkasında)
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SESSION_COOKIE_HTTPONLY = True
+    CSRF_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = "Lax"
+    CSRF_COOKIE_SAMESITE = "Lax"
+    SECURE_HSTS_SECONDS = 31536000  # 1 yıl
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
+    X_FRAME_OPTIONS = "DENY"
+
+LANGUAGE_CODE = "tr"
+TIME_ZONE = "Europe/Istanbul"
+USE_I18N = True
+USE_TZ = True
+
+STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

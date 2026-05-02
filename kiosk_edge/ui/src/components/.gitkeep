@@ -1,0 +1,16 @@
+// Kiosk UI yalnızca localhost FastAPI ile konuşur.
+const BASE = '/api';
+
+export async function getCategories() {
+  const r = await fetch(`${BASE}/categories`);
+  return r.json();
+}
+
+export async function submitSession(payload) {
+  const r = await fetch(`${BASE}/sessions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  return r.json();
+}
