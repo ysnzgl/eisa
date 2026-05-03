@@ -1,17 +1,16 @@
-// Push/Pull mantığı — node-cron tabanlı.
-// PULL: kategoriler/sorular + kampanyaları merkezden çekip SQLite'a upsert eder.
-// PUSH: outbox'taki anonim logları merkeze iter ve pushed_at damgası vurur.
+// Push/Pull mantigi — Turkce sema, Turkce backend payload'lari.
+// PULL: kategori/soru/etken_madde + reklamlari merkezden cekip SQLite'a upsert eder.
+// PUSH: outbox'taki anonim loglari merkeze iter; idempotency_anahtari ile guvenli silme.
 import cron from 'node-cron';
 import { Agent, fetch } from 'undici';
+import { checkOutboxPressure } from './db.js';
 
 let _tasks = [];
 let _undiciAgent = null;
 
 function getAgent(verifyTls) {
   if (_undiciAgent) return _undiciAgent;
-  _undiciAgent = new Agent({
-    connect: { rejectUnauthorized: !!verifyTls },
-  });
+  _undiciAgent = new Agent({ connect: { rejectUnauthorized: !!verifyTls } });
   return _undiciAgent;
 }
 
@@ -36,197 +35,284 @@ async function request(settings, method, pathPart, body) {
   return res;
 }
 
-function upsertCategory(db, c) {
-  const exists = db.prepare('SELECT id FROM categories WHERE id = ?').get(c.id);
-  if (exists) {
-    db.prepare(
-      `UPDATE categories SET slug=@slug, name=@name, is_sensitive=@is_sensitive, is_active=@is_active WHERE id=@id`,
-    ).run({
-      id: c.id,
-      slug: c.slug,
-      name: c.name,
-      is_sensitive: c.is_sensitive ? 1 : 0,
-      is_active: c.is_active === false ? 0 : 1,
-    });
-  } else {
-    db.prepare(
-      `INSERT INTO categories (id, slug, name, icon, is_sensitive, is_active)
-       VALUES (@id, @slug, @name, @icon, @is_sensitive, @is_active)`,
-    ).run({
-      id: c.id,
-      slug: c.slug,
-      name: c.name,
-      icon: c.icon || 'fa-circle',
-      is_sensitive: c.is_sensitive ? 1 : 0,
-      is_active: c.is_active === false ? 0 : 1,
-    });
+// Exponential backoff ile retry (ERR-002).
+async function requestWithRetry(settings, method, pathPart, body, log) {
+  const delays = [0, 1000, 3000];
+  let lastErr;
+  for (let attempt = 0; attempt < delays.length; attempt++) {
+    if (delays[attempt] > 0) await new Promise((r) => setTimeout(r, delays[attempt]));
+    try {
+      const res = await request(settings, method, pathPart, body);
+      if (res.status >= 500) {
+        lastErr = new Error(`HTTP ${res.status}`);
+        log?.warn?.(`PUSH ${pathPart} HTTP ${res.status} (deneme ${attempt + 1}/${delays.length})`);
+        continue;
+      }
+      return res;
+    } catch (err) {
+      lastErr = err;
+      log?.warn?.(
+        { err: err.message },
+        `PUSH ${pathPart} ag hatasi (deneme ${attempt + 1}/${delays.length})`,
+      );
+    }
   }
+  throw lastErr;
 }
 
-function upsertQuestion(db, q, categoryId) {
-  const exists = db.prepare('SELECT id FROM questions WHERE id = ?').get(q.id);
-  if (exists) {
-    db.prepare(
-      `UPDATE questions SET text=@text, priority=@priority WHERE id=@id`,
-    ).run({ id: q.id, text: q.text, priority: q.order ?? q.priority ?? 0 });
-  } else {
-    db.prepare(
-      `INSERT INTO questions (id, category_id, seed_id, text, priority, match_rules)
-       VALUES (@id, @category_id, @seed_id, @text, @priority, @match_rules)`,
-    ).run({
-      id: q.id,
-      category_id: categoryId,
-      seed_id: q.seed_id || `q_${q.id}`,
-      text: q.text,
-      priority: q.order ?? q.priority ?? 0,
-      match_rules: JSON.stringify(q.match_rules ?? []),
-    });
-  }
-}
-
-function upsertCampaign(db, c) {
-  const targeting = {
-    cities: c.target_cities ?? [],
-    districts: c.target_districts ?? [],
-    age_ranges: c.target_age_ranges ?? [],
-    genders: c.target_genders ?? [],
-  };
-  const exists = db.prepare('SELECT id FROM campaigns WHERE id = ?').get(c.id);
+// ── upsert yardimcilari (Turkce alanlar) ─────────────────────────────────
+function upsertKategori(db, c) {
+  const exists = db.prepare('SELECT id FROM kategoriler WHERE id = ?').get(c.id);
   const params = {
     id: c.id,
-    name: c.name,
-    media_local_path: c.media_url || '',
-    starts_at: c.starts_at,
-    ends_at: c.ends_at,
-    targeting: JSON.stringify(targeting),
-    is_active: c.is_active === false ? 0 : 1,
+    slug: c.slug,
+    ad: c.ad,
+    ikon: c.ikon || 'fa-circle',
+    hassas: c.hassas ? 1 : 0,
+    aktif: c.aktif === false ? 0 : 1,
+    hedef_cinsiyetler: JSON.stringify(c.hedef_cinsiyetler ?? []),
+    hedef_yas_araliklari: JSON.stringify(c.hedef_yas_araliklari ?? []),
   };
   if (exists) {
     db.prepare(
-      `UPDATE campaigns SET name=@name, media_local_path=@media_local_path,
-       starts_at=@starts_at, ends_at=@ends_at, targeting=@targeting, is_active=@is_active
-       WHERE id=@id`,
+      `UPDATE kategoriler
+          SET slug=@slug, ad=@ad, ikon=@ikon, hassas=@hassas, aktif=@aktif,
+              hedef_cinsiyetler=@hedef_cinsiyetler,
+              hedef_yas_araliklari=@hedef_yas_araliklari,
+              guncellenme_tarihi=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+        WHERE id=@id`,
     ).run(params);
   } else {
     db.prepare(
-      `INSERT INTO campaigns (id, name, media_local_path, starts_at, ends_at, targeting, is_active)
-       VALUES (@id, @name, @media_local_path, @starts_at, @ends_at, @targeting, @is_active)`,
+      `INSERT INTO kategoriler
+         (id, slug, ad, ikon, hassas, aktif, hedef_cinsiyetler, hedef_yas_araliklari)
+       VALUES (@id, @slug, @ad, @ikon, @hassas, @aktif,
+               @hedef_cinsiyetler, @hedef_yas_araliklari)`,
     ).run(params);
   }
 }
 
+function upsertSoru(db, q, kategoriId) {
+  const exists = db.prepare('SELECT id FROM sorular WHERE id = ?').get(q.id);
+  const params = {
+    id: q.id,
+    kategori_id: kategoriId,
+    seed_id: q.seed_id || `q_${q.id}`,
+    metin: q.metin ?? q.text ?? '',
+    sira: q.sira ?? q.priority ?? 0,
+    eslesme_kurallari: JSON.stringify(q.eslesme_kurallari ?? q.match_rules ?? []),
+    hedef_cinsiyetler: JSON.stringify(q.hedef_cinsiyetler ?? []),
+    hedef_yas_araliklari: JSON.stringify(q.hedef_yas_araliklari ?? []),
+  };
+  if (exists) {
+    db.prepare(
+      `UPDATE sorular SET metin=@metin, sira=@sira, eslesme_kurallari=@eslesme_kurallari,
+              hedef_cinsiyetler=@hedef_cinsiyetler,
+              hedef_yas_araliklari=@hedef_yas_araliklari,
+              guncellenme_tarihi=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+        WHERE id=@id`,
+    ).run(params);
+  } else {
+    db.prepare(
+      `INSERT INTO sorular
+         (id, kategori_id, seed_id, metin, sira, eslesme_kurallari,
+          hedef_cinsiyetler, hedef_yas_araliklari)
+       VALUES (@id, @kategori_id, @seed_id, @metin, @sira, @eslesme_kurallari,
+               @hedef_cinsiyetler, @hedef_yas_araliklari)`,
+    ).run(params);
+  }
+}
+
+function upsertCevap(db, a, soruId) {
+  const exists = db.prepare('SELECT id FROM cevaplar WHERE id = ?').get(a.id);
+  const params = { id: a.id, soru_id: soruId, metin: a.metin ?? '', agirlik: a.agirlik ?? 0 };
+  if (exists) {
+    db.prepare('UPDATE cevaplar SET metin=@metin, agirlik=@agirlik WHERE id=@id').run(params);
+  } else {
+    db.prepare(
+      'INSERT INTO cevaplar (id, soru_id, metin, agirlik) VALUES (@id, @soru_id, @metin, @agirlik)',
+    ).run(params);
+  }
+}
+
+function upsertEtkenMadde(db, em) {
+  db.prepare(
+    `INSERT INTO etken_maddeler (id, ad, aciklama) VALUES (@id, @ad, @aciklama)
+     ON CONFLICT(id) DO UPDATE SET ad=excluded.ad, aciklama=excluded.aciklama`,
+  ).run({ id: em.id, ad: em.ad, aciklama: em.aciklama || '' });
+}
+
+function upsertReklam(db, r) {
+  // Backend: hedef_eczaneler id listesi doner; bos = herkese goster.
+  const hedefleme = {
+    eczaneler: r.hedef_eczaneler ?? [],
+  };
+  const exists = db.prepare('SELECT id FROM reklamlar WHERE id = ?').get(r.id);
+  const params = {
+    id: r.id,
+    ad: r.ad,
+    medya_url: r.medya_url || '',
+    baslangic_tarihi: r.baslangic_tarihi,
+    bitis_tarihi: r.bitis_tarihi,
+    hedefleme: JSON.stringify(hedefleme),
+    aktif: r.aktif === false ? 0 : 1,
+  };
+  if (exists) {
+    db.prepare(
+      `UPDATE reklamlar SET ad=@ad, medya_url=@medya_url,
+              baslangic_tarihi=@baslangic_tarihi, bitis_tarihi=@bitis_tarihi,
+              hedefleme=@hedefleme, aktif=@aktif,
+              guncellenme_tarihi=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+        WHERE id=@id`,
+    ).run(params);
+  } else {
+    db.prepare(
+      `INSERT INTO reklamlar (id, ad, medya_url, baslangic_tarihi, bitis_tarihi, hedefleme, aktif)
+       VALUES (@id, @ad, @medya_url, @baslangic_tarihi, @bitis_tarihi, @hedefleme, @aktif)`,
+    ).run(params);
+  }
+}
+
+// ── PULL ─────────────────────────────────────────────────────────────────
 export async function pullFromCentral(db, settings, log = console) {
   try {
-    // 1) products/sync — kategoriler + sorular
-    const r1 = await request(settings, 'GET', '/api/products/sync/');
+    // 1) products/sync — { kategoriler: [...], etken_maddeler: [...] }
+    const r1 = await requestWithRetry(settings, 'GET', '/api/products/sync/', undefined, log);
     if (r1.ok) {
       const data = await r1.json();
-      const tx = db.transaction((cats) => {
-        for (const cat of cats) {
-          upsertCategory(db, cat);
-          for (const q of cat.questions || []) {
-            upsertQuestion(db, q, cat.id);
+      const tx = db.transaction((payload) => {
+        for (const cat of payload.kategoriler || []) {
+          upsertKategori(db, cat);
+          for (const q of cat.sorular || []) {
+            upsertSoru(db, q, cat.id);
+            for (const a of q.cevaplar || []) upsertCevap(db, a, q.id);
           }
         }
+        for (const em of payload.etken_maddeler || []) upsertEtkenMadde(db, em);
       });
-      tx(data.categories || []);
-      log.info?.(`PULL: ${(data.categories || []).length} kategori güncellendi`);
+      tx(data);
+      log.info?.(`PULL: ${(data.kategoriler || []).length} kategori, ${(data.etken_maddeler || []).length} etken madde guncellendi`);
     } else {
       log.warn?.(`PULL products/sync HTTP ${r1.status}`);
     }
 
-    // 2) campaigns/sync
-    const r2 = await request(settings, 'GET', '/api/campaigns/sync/');
+    // 2) campaigns/sync — Reklam[]
+    const r2 = await requestWithRetry(settings, 'GET', '/api/campaigns/sync/', undefined, log);
     if (r2.ok) {
-      const camps = await r2.json();
+      const reklamlar = await r2.json();
       const tx = db.transaction((items) => {
-        for (const c of items) upsertCampaign(db, c);
+        for (const r of items) upsertReklam(db, r);
       });
-      tx(camps);
-      log.info?.(`PULL: ${camps.length} kampanya güncellendi`);
+      tx(reklamlar);
+      log.info?.(`PULL: ${reklamlar.length} reklam guncellendi`);
     } else {
       log.warn?.(`PULL campaigns/sync HTTP ${r2.status}`);
     }
   } catch (err) {
-    log.error?.({ err }, 'PULL başarısız (offline mod)');
+    log.error?.({ err: err.message || String(err) }, 'PULL basarisiz (offline mod)');
   }
 }
 
+// ── PUSH ─────────────────────────────────────────────────────────────────
 export async function pushToCentral(db, settings, log = console) {
   try {
-    // 1) session_log_outbox — "Forward & Drop":
-    //    Merkez 200/201 dönerse satır LOKAL SQLITE'TAN KESİNLİKLE SİLİNİR.
-    //    Böylece offline-first kuyruk merkezde gerçeklik haline gelir gelmez yer açılır.
-    const sessions = db
+    // 1) oturum_outbox → /api/analytics/sessions/
+    const oturumlar = db
       .prepare(
-        'SELECT id, payload FROM session_log_outbox WHERE pushed_at IS NULL LIMIT 50',
+        `SELECT id, idempotency_anahtari, payload FROM oturum_outbox
+          WHERE gonderilme_tarihi IS NULL LIMIT 50`,
       )
       .all();
-    if (sessions.length) {
-      const r = await request(settings, 'POST', '/api/analytics/sessions/', {
-        items: sessions.map((s) => JSON.parse(s.payload)),
-      });
-      if (r.ok || r.status === 201) {
-        const del = db.prepare('DELETE FROM session_log_outbox WHERE id = ?');
-        const tx = db.transaction((rows) => {
-          for (const row of rows) del.run(row.id);
-        });
-        tx(sessions);
-        log.info?.(
-          `PUSH: ${sessions.length} oturum logu gönderildi ve lokalden silindi`,
+    if (oturumlar.length) {
+      try {
+        const r = await requestWithRetry(
+          settings, 'POST', '/api/analytics/sessions/',
+          { items: oturumlar.map((s) => JSON.parse(s.payload)) }, log,
         );
-      } else {
-        log.warn?.(`PUSH sessions HTTP ${r.status}`);
+        await consumeBulkPushResponse(db, 'oturum_outbox', oturumlar, r, log, 'sessions');
+      } catch (err) {
+        log.warn?.({ err: err.message }, 'PUSH sessions kalici hata; kayitlar saklaniyor');
       }
     }
 
-    // 2) ad_impression_outbox — aynı Forward & Drop politikası.
-    const imps = db
+    // 2) reklam_gosterim_outbox → /api/analytics/impressions/
+    const gosterimler = db
       .prepare(
-        'SELECT id, payload FROM ad_impression_outbox WHERE pushed_at IS NULL LIMIT 100',
+        `SELECT id, idempotency_anahtari, payload FROM reklam_gosterim_outbox
+          WHERE gonderilme_tarihi IS NULL LIMIT 100`,
       )
       .all();
-    if (imps.length) {
-      const r = await request(settings, 'POST', '/api/analytics/impressions/', {
-        items: imps.map((i) => JSON.parse(i.payload)),
-      });
-      if (r.ok || r.status === 201) {
-        const del = db.prepare('DELETE FROM ad_impression_outbox WHERE id = ?');
-        const tx = db.transaction((rows) => {
-          for (const row of rows) del.run(row.id);
-        });
-        tx(imps);
-        log.info?.(
-          `PUSH: ${imps.length} impression logu gönderildi ve lokalden silindi`,
+    if (gosterimler.length) {
+      try {
+        const r = await requestWithRetry(
+          settings, 'POST', '/api/analytics/impressions/',
+          { items: gosterimler.map((i) => JSON.parse(i.payload)) }, log,
         );
-      } else {
-        log.warn?.(`PUSH impressions HTTP ${r.status}`);
+        await consumeBulkPushResponse(db, 'reklam_gosterim_outbox', gosterimler, r, log, 'impressions');
+      } catch (err) {
+        log.warn?.({ err: err.message }, 'PUSH impressions kalici hata; kayitlar saklaniyor');
       }
     }
   } catch (err) {
-    log.error?.({ err }, 'PUSH başarısız (offline mod)');
+    log.error?.({ err }, 'PUSH basarisiz (offline mod)');
+  }
+}
+
+/**
+ * Backend 200/207 yanitini isler:
+ *  - `accepted_keys` listesindeki idempotency_anahtari'na sahip outbox satirlari silinir.
+ *  - `errors` icindeki kayitlar lokalde tutulmaya devam eder.
+ */
+async function consumeBulkPushResponse(db, table, rows, res, log, label) {
+  if (!(res.status === 200 || res.status === 201 || res.status === 207)) {
+    log?.warn?.(`PUSH ${label} HTTP ${res.status}; kayitlar saklaniyor`);
+    return;
+  }
+  let body = null;
+  try { body = await res.json(); } catch { body = {}; }
+  const acceptedKeys = new Set(
+    Array.isArray(body?.accepted_keys) ? body.accepted_keys.map(String) : [],
+  );
+  if (!acceptedKeys.size) {
+    log?.warn?.(`PUSH ${label} accepted_keys bos; kayitlar saklaniyor`);
+    return;
+  }
+
+  const toDelete = rows.filter((r) => acceptedKeys.has(String(r.idempotency_anahtari)));
+  if (toDelete.length) {
+    const del = db.prepare(`DELETE FROM ${table} WHERE id = ?`);
+    const tx = db.transaction((items) => {
+      for (const it of items) del.run(it.id);
+    });
+    tx(toDelete);
+  }
+
+  const rejected = rows.length - toDelete.length;
+  log?.info?.(
+    `PUSH ${label}: ${toDelete.length} kabul ve silindi` +
+      (rejected ? `, ${rejected} reddedildi (lokalde tutuluyor)` : ''),
+  );
+  if (Array.isArray(body?.errors) && body.errors.length) {
+    log?.warn?.({ errors: body.errors }, `PUSH ${label} kismi hata`);
   }
 }
 
 export function startScheduler(db, settings, log = console) {
   if (_tasks.length) return;
-  // node-cron en küçük birimi 1 dakikadır; saniye bazlı interval için setInterval kullanıyoruz.
   const pullEvery = settings.pullIntervalSec * 1000;
   const pushEvery = settings.pushIntervalSec * 1000;
 
-  const pullTimer = setInterval(() => {
-    pullFromCentral(db, settings, log);
-  }, pullEvery);
-  const pushTimer = setInterval(() => {
-    pushToCentral(db, settings, log);
+  const pullTimer = setInterval(() => pullFromCentral(db, settings, log), pullEvery);
+  const pushTimer = setInterval(() => pushToCentral(db, settings, log), pushEvery);
+  const pressureTimer = setInterval(() => {
+    try { checkOutboxPressure(log, settings.outboxMaxRows); }
+    catch (err) { log?.warn?.({ err: err?.message }, 'Outbox basinc kontrolu basarisiz'); }
   }, pushEvery);
-  // Node event loop'unu canlı tutmasın
-  pullTimer.unref?.();
-  pushTimer.unref?.();
-  _tasks.push(pullTimer, pushTimer);
+  pullTimer.unref?.(); pushTimer.unref?.(); pressureTimer.unref?.();
+  _tasks.push(pullTimer, pushTimer, pressureTimer);
 
   log.info?.(
-    `Scheduler başlatıldı — pull:${settings.pullIntervalSec}s push:${settings.pushIntervalSec}s`,
+    `Scheduler baslatildi — pull:${settings.pullIntervalSec}s push:${settings.pushIntervalSec}s`,
   );
 }
 
@@ -235,5 +321,4 @@ export function stopScheduler() {
   _tasks = [];
 }
 
-// node-cron kullanımı isteğe bağlı (ileride saatlik full sync vb.)
 export { cron };

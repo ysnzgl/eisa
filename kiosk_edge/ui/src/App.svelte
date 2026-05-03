@@ -47,7 +47,7 @@
         cats = await fetchCategories();
         allCategories.set(cats);
       }
-      visibleCategories.set(cats.filter(c => c.is_sensitive === sensitive));
+      visibleCategories.set(cats.filter(c => c.hassas === sensitive));
     } catch (err) {
       console.error('Kategori yÃ¼kleme hatasÄ±:', err);
     } finally {
@@ -106,7 +106,7 @@
     const firstRec = recs[0];
 
     result.set({
-      label:       `Önerilen Etken Maddeler — ${cat?.name ?? ''}`,
+      label:       `Önerilen Etken Maddeler — ${cat?.ad ?? ''}`,
       recs,
       ana:         firstRec?.primary    ?? '—',
       destek:      firstRec?.supportive ?? '',
@@ -124,10 +124,10 @@
     selectedAge.update(v => { age = v; return v; });
     selectedSex.update(v => { sex = v; return v; });
 
-    const { qrCode, qrPayload } = await doSubmitSession(true, cat?.slug ?? cat?.name ?? '', true, []);
+    const { qrCode, qrPayload } = await doSubmitSession(true, cat?.slug ?? cat?.ad ?? '', true, []);
     result.set({
       label:       'Sessiz bildirim gönderildi',
-      ana:         cat?.name ?? cat,
+      ana:         cat?.ad ?? cat,
       destek:      'Eczacınız sizi bekliyor — QR kodu okutunuz.',
       isSensitive: true,
       qrCode,

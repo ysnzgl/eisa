@@ -1,49 +1,60 @@
-"""Anonim demografik ve davranışsal log modelleri (KVKK uyumlu)."""
+"""Anonim demografik ve davranissal log modelleri (KVKK uyumlu)."""
+import uuid
+
 from django.db import models
 
-
-class AgeRange(models.TextChoices):
-    R_0_17 = "0-17", "0-17"
-    R_18_25 = "18-25", "18-25"
-    R_26_35 = "26-35", "26-35"
-    R_36_50 = "36-50", "36-50"
-    R_51_65 = "51-65", "51-65"
-    R_65_PLUS = "65+", "65+"
+from apps.core.models import BaseModel
 
 
-class Gender(models.TextChoices):
-    FEMALE = "F", "Kadın"
-    MALE = "M", "Erkek"
-    OTHER = "O", "Diğer"
+class OturumLogu(BaseModel):
+    """Bir kiosk oturumu — kisiyi tanimlayan hicbir veri ICERMEZ."""
 
-
-class SessionLog(models.Model):
-    """Bir kiosk oturumu — kişiyi tanımlamayan tamamen anonim kayıt."""
-
-    kiosk = models.ForeignKey("pharmacies.Kiosk", on_delete=models.CASCADE, related_name="sessions")
-    age_range = models.CharField(max_length=8, choices=AgeRange.choices)
-    gender = models.CharField(max_length=1, choices=Gender.choices)
-    category = models.ForeignKey(
-        "products.Category", on_delete=models.PROTECT, related_name="sessions"
+    # Kioskun urettigi duplicate-koruma anahtari (SEC-004 / ARC-001).
+    idempotency_anahtari = models.UUIDField(
+        default=uuid.uuid4, editable=False, unique=True, db_index=True
     )
-    is_sensitive_flow = models.BooleanField(default=False)
-    qr_code = models.CharField(max_length=64, db_index=True)
-    answers_payload = models.JSONField(default=dict, blank=True)
-    suggested_ingredients = models.JSONField(default=list, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    kiosk = models.ForeignKey(
+        "pharmacies.Kiosk", on_delete=models.CASCADE, related_name="oturumlar"
+    )
+    yas_araligi = models.ForeignKey(
+        "lookups.YasAraligi", on_delete=models.PROTECT, related_name="oturumlar"
+    )
+    cinsiyet = models.ForeignKey(
+        "lookups.Cinsiyet", on_delete=models.PROTECT, related_name="oturumlar"
+    )
+    kategori = models.ForeignKey(
+        "products.Kategori", on_delete=models.PROTECT, related_name="oturumlar"
+    )
+    hassas_akis = models.BooleanField(default=False)
+    qr_kodu = models.CharField(max_length=64, db_index=True)
+    cevaplar = models.JSONField(default=dict, blank=True)
+    onerilen_etken_maddeler = models.JSONField(default=list, blank=True)
 
     class Meta:
-        db_table = "session_logs"
-        indexes = [models.Index(fields=["created_at", "kiosk"])]
+        db_table = "oturum_loglari"
+        ordering = ("-olusturulma_tarihi",)
+        indexes = [models.Index(fields=["olusturulma_tarihi", "kiosk"])]
+        verbose_name = "Oturum Logu"
+        verbose_name_plural = "Oturum Loglari"
 
 
-class AdImpression(models.Model):
-    """DOOH idle moddaki reklam gösterim logu."""
+class ReklamGosterim(BaseModel):
+    """DOOH idle moddaki reklam gosterim logu."""
 
-    kiosk = models.ForeignKey("pharmacies.Kiosk", on_delete=models.CASCADE)
-    campaign = models.ForeignKey("campaigns.Campaign", on_delete=models.CASCADE)
-    shown_at = models.DateTimeField()
-    duration_ms = models.PositiveIntegerField(default=0)
+    idempotency_anahtari = models.UUIDField(
+        default=uuid.uuid4, editable=False, unique=True, db_index=True
+    )
+    kiosk = models.ForeignKey(
+        "pharmacies.Kiosk", on_delete=models.CASCADE, related_name="reklam_gosterimleri"
+    )
+    reklam = models.ForeignKey(
+        "campaigns.Reklam", on_delete=models.CASCADE, related_name="gosterimler"
+    )
+    gosterilme_tarihi = models.DateTimeField()
+    sure_ms = models.PositiveIntegerField(default=0)
 
     class Meta:
-        db_table = "ad_impressions"
+        db_table = "reklam_gosterimleri"
+        ordering = ("-gosterilme_tarihi",)
+        verbose_name = "Reklam Gosterim"
+        verbose_name_plural = "Reklam Gosterimleri"

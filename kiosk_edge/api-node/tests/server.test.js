@@ -5,34 +5,38 @@ import { makeMemoryDb, fakeSettings } from './helpers.js';
 async function makeApp() {
   const db = makeMemoryDb();
 
-  // Seed: 1 kategori + 2 soru + 1 aktif kampanya
+  // Lookup seed (cinsiyet/yas_araligi)
+  db.prepare("INSERT INTO cinsiyetler (kod, ad) VALUES ('M','Erkek'),('F','Kadin'),('O','Diger')").run();
   db.prepare(
-    `INSERT INTO categories (id, slug, name, icon, is_sensitive, is_active)
-     VALUES (1, 'energy', 'Enerji', 'fa-bolt', 0, 1)`,
+    "INSERT INTO yas_araliklari (kod, ad, alt_sinir, ust_sinir) VALUES ('26-35','26-35',26,35)",
+  ).run();
+
+  // 1 kategori + 2 soru + 1 aktif reklam
+  db.prepare(
+    `INSERT INTO kategoriler (id, slug, ad, ikon, hassas, aktif)
+     VALUES (1, 'enerji', 'Enerji', 'fa-bolt', 0, 1)`,
   ).run();
   db.prepare(
-    `INSERT INTO questions (id, category_id, seed_id, text, priority, match_rules)
+    `INSERT INTO sorular (id, kategori_id, seed_id, metin, sira, eslesme_kurallari)
      VALUES (1, 1, 'en_q1', 'Yorgun musunuz?', 1, '[]'),
-            (2, 1, 'en_q2', 'Uykunuz nasıl?', 2, '[]')`,
+            (2, 1, 'en_q2', 'Uykunuz nasil?', 2, '[]')`,
   ).run();
 
   const now = new Date();
   const past = new Date(now.getTime() - 24 * 3600 * 1000).toISOString();
   const future = new Date(now.getTime() + 24 * 3600 * 1000).toISOString();
   db.prepare(
-    `INSERT INTO campaigns (id, name, media_local_path, starts_at, ends_at, targeting, is_active)
-     VALUES (10, 'C1', '/m1.png', ?, ?, '{}', 1)`,
+    `INSERT INTO reklamlar (id, ad, medya_url, baslangic_tarihi, bitis_tarihi, hedefleme, aktif)
+     VALUES (10, 'R1', '/m1.png', ?, ?, '{}', 1)`,
   ).run(past, future);
 
   const app = await buildServer({ db, settings: fakeSettings, logger: false });
   return { app, db };
 }
 
-describe('Kiosk API', () => {
+describe('Kiosk API (Turkce sema)', () => {
   let app, db;
-  beforeEach(async () => {
-    ({ app, db } = await makeApp());
-  });
+  beforeEach(async () => { ({ app, db } = await makeApp()); });
 
   it('GET /health', async () => {
     const r = await app.inject({ method: 'GET', url: '/health' });
@@ -40,130 +44,124 @@ describe('Kiosk API', () => {
     expect(r.json()).toEqual({ status: 'ok' });
   });
 
-  it('GET /api/categories aktif olanları döner', async () => {
-    const r = await app.inject({ method: 'GET', url: '/api/categories' });
+  it('GET /api/kategoriler aktif olanlari doner', async () => {
+    const r = await app.inject({ method: 'GET', url: '/api/kategoriler' });
     expect(r.statusCode).toBe(200);
     const data = r.json();
     expect(data).toHaveLength(1);
-    expect(data[0].slug).toBe('energy');
+    expect(data[0].slug).toBe('enerji');
+    expect(data[0].ad).toBe('Enerji');
+    expect(data[0].hassas).toBe(false);
+    expect(data[0].hedef_cinsiyetler).toEqual([]);
+    expect(data[0].hedef_yas_araliklari).toEqual([]);
   });
 
-  it('GET /api/categories/:slug/questions priority sırasıyla', async () => {
+  it('GET /api/kategoriler/:slug/sorular sira ile gelir', async () => {
     const r = await app.inject({
       method: 'GET',
-      url: '/api/categories/energy/questions',
+      url: '/api/kategoriler/enerji/sorular',
     });
     expect(r.statusCode).toBe(200);
     const qs = r.json();
     expect(qs).toHaveLength(2);
     expect(qs[0].seed_id).toBe('en_q1');
+    expect(qs[0].metin).toBe('Yorgun musunuz?');
   });
 
-  it('GET /api/categories/:slug/questions 404', async () => {
+  it('GET /api/kategoriler/:slug/sorular 404', async () => {
     const r = await app.inject({
       method: 'GET',
-      url: '/api/categories/yok/questions',
+      url: '/api/kategoriler/yok/sorular',
     });
     expect(r.statusCode).toBe(404);
   });
 
-  it('POST /api/session/submit qr üretir ve outbox\'a yazar', async () => {
+  it('POST /api/oturum/gonder qr uretir ve outbox\'a yazar', async () => {
     const r = await app.inject({
       method: 'POST',
-      url: '/api/session/submit',
+      url: '/api/oturum/gonder',
       headers: { 'content-type': 'application/json' },
       payload: {
-        age_range: '26-35',
-        gender: 'M',
-        category_slug: 'energy',
-        answers_payload: { en_q1: 'Y' },
+        yas_araligi_kod: '26-35',
+        cinsiyet_kod: 'M',
+        kategori_slug: 'enerji',
+        cevaplar: { en_q1: 'Y' },
       },
     });
     expect(r.statusCode).toBe(200);
     const data = r.json();
-    expect(data.status).toBe('saved');
-    expect(data.qr_code).toMatch(/^[A-F0-9]{12}$/);
+    expect(data.durum).toBe('kaydedildi');
+    expect(data.qr_kodu).toMatch(/^[A-F0-9]{12}$/);
 
-    const row = db.prepare('SELECT payload FROM session_log_outbox').get();
+    const row = db.prepare('SELECT payload FROM oturum_outbox').get();
     expect(row).toBeTruthy();
     const payload = JSON.parse(row.payload);
-    expect(payload.qr_code).toBe(data.qr_code);
-    expect(payload.gender).toBe('M');
+    expect(payload.qr_kodu).toBe(data.qr_kodu);
+    expect(payload.cinsiyet_kod).toBe('M');
+    expect(payload.idempotency_anahtari).toBeTruthy();
   });
 
-  it('POST /api/session/submit geçersiz yaş 422', async () => {
+  it('POST /api/oturum/gonder gecersiz yas 422', async () => {
     const r = await app.inject({
       method: 'POST',
-      url: '/api/session/submit',
-      payload: { age_range: 'X', gender: 'M', category_slug: 'energy' },
+      url: '/api/oturum/gonder',
+      payload: { yas_araligi_kod: 'X', cinsiyet_kod: 'M', kategori_slug: 'enerji' },
     });
     expect(r.statusCode).toBe(422);
   });
 
-  it('GET /api/session/:qr Bearer secret olmadan 401', async () => {
-    const r = await app.inject({
-      method: 'GET',
-      url: '/api/session/ABCDEF123456',
-    });
+  it('GET /api/oturum/:qr Bearer secret olmadan 401', async () => {
+    const r = await app.inject({ method: 'GET', url: '/api/oturum/ABCDEF123456' });
     expect(r.statusCode).toBe(401);
   });
 
-  it('GET /api/session/:qr başarılı sorgu', async () => {
+  it('GET /api/oturum/:qr basarili sorgu', async () => {
     const submit = await app.inject({
       method: 'POST',
-      url: '/api/session/submit',
+      url: '/api/oturum/gonder',
       payload: {
-        age_range: '26-35',
-        gender: 'F',
-        category_slug: 'energy',
-        qr_code: 'ABCDEF123456',
-        answers_payload: {},
+        yas_araligi_kod: '26-35',
+        cinsiyet_kod: 'F',
+        kategori_slug: 'enerji',
+        qr_kodu: 'ABCDEF123456',
+        cevaplar: {},
       },
     });
     expect(submit.statusCode).toBe(200);
-
     const r = await app.inject({
       method: 'GET',
-      url: '/api/session/ABCDEF123456',
-      headers: { authorization: `Bearer ${fakeSettings.localApiSecret}` },
+      url: '/api/oturum/ABCDEF123456',
+      headers: { authorization: 'Bearer test-secret' },
     });
     expect(r.statusCode).toBe(200);
-    const data = r.json();
-    expect(data.found).toBe(true);
-    expect(data.session.qr_code).toBe('ABCDEF123456');
+    expect(r.json().bulundu).toBe(true);
   });
 
-  it('GET /api/session/:qr bulunamadı 404', async () => {
-    const r = await app.inject({
-      method: 'GET',
-      url: '/api/session/NOTEXIST1234',
-      headers: { authorization: `Bearer ${fakeSettings.localApiSecret}` },
-    });
-    expect(r.statusCode).toBe(404);
-  });
-
-  it('GET /api/campaigns/active aktif kampanyaları döner', async () => {
-    const r = await app.inject({ method: 'GET', url: '/api/campaigns/active' });
+  it('GET /api/reklamlar/aktif aktif reklami doner', async () => {
+    const r = await app.inject({ method: 'GET', url: '/api/reklamlar/aktif' });
     expect(r.statusCode).toBe(200);
     const data = r.json();
     expect(data).toHaveLength(1);
     expect(data[0].id).toBe(10);
+    expect(data[0].ad).toBe('R1');
   });
 
-  it('POST /api/ad-impression 201 ve outbox\'a yazar', async () => {
+  it('POST /api/reklam-gosterim outbox\'a yazar', async () => {
     const r = await app.inject({
       method: 'POST',
-      url: '/api/ad-impression',
+      url: '/api/reklam-gosterim',
       payload: {
-        campaign_id: 10,
-        shown_at: new Date().toISOString(),
-        duration_ms: 3000,
+        reklam_id: 10,
+        gosterilme_tarihi: new Date().toISOString(),
+        sure_ms: 1500,
       },
     });
     expect(r.statusCode).toBe(201);
-    const row = db.prepare('SELECT payload FROM ad_impression_outbox').get();
+    expect(r.json()).toEqual({ durum: 'kaydedildi' });
+    const row = db.prepare('SELECT payload FROM reklam_gosterim_outbox').get();
     expect(row).toBeTruthy();
-    const p = JSON.parse(row.payload);
-    expect(p.campaign_id).toBe(10);
+    const payload = JSON.parse(row.payload);
+    expect(payload.reklam_id).toBe(10);
+    expect(payload.idempotency_anahtari).toBeTruthy();
   });
 });

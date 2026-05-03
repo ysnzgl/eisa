@@ -20,6 +20,11 @@ if not DEBUG and (not SECRET_KEY or SECRET_KEY == "dev-only-change-me"):
     raise ImproperlyConfigured(
         "DJANGO_SECRET_KEY üretimde mutlaka güçlü ve rastgele bir değere ayarlanmalıdır."
     )
+# SEC-006: zayıf/kısa secret'ları üretimde bloka.
+if not DEBUG and len(SECRET_KEY) < 50:
+    raise ImproperlyConfigured(
+        "DJANGO_SECRET_KEY en az 50 karakter olmalıdır (entropi gereksinimi)."
+    )
 
 ALLOWED_HOSTS = config(
     "DJANGO_ALLOWED_HOSTS",
@@ -45,6 +50,8 @@ INSTALLED_APPS = [
     "corsheaders",
     "drf_spectacular",
     # Yerel uygulamalar
+    "apps.core",
+    "apps.lookups",
     "apps.users",
     "apps.pharmacies",
     "apps.products",
@@ -108,12 +115,14 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
-AUTH_USER_MODEL = "users.User"
+AUTH_USER_MODEL = "users.Kullanici"
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        # Paneller: JWT — Kiosk: App-Key (apps.pharmacies.auth)
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        # Paneller: httpOnly çerez tabanlı JWT (SEC-002).
+        # Authorization başlığı geriye dönük uyumluluk için hâlâ desteklenir.
+        "core_api.cookie_jwt.JWTCookieAuthentication",
+        # Kiosk: App-Key (apps.pharmacies.auth)
         "apps.pharmacies.auth.KioskAppKeyAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": (
@@ -123,6 +132,7 @@ REST_FRAMEWORK = {
         "rest_framework.renderers.JSONRenderer",
     ),
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "EXCEPTION_HANDLER": "core_api.exception_handler.custom_exception_handler",
     "DEFAULT_THROTTLE_CLASSES": (
         "rest_framework.throttling.AnonRateThrottle",
         "rest_framework.throttling.UserRateThrottle",
@@ -132,6 +142,8 @@ REST_FRAMEWORK = {
         "anon": config("THROTTLE_ANON", default="100/hour"),
         "user": config("THROTTLE_USER", default="2000/hour"),
         "login": config("THROTTLE_LOGIN", default="5/min"),
+        # SEC-008: Hassas admin işlemleri (örn. kiosk app_key yenileme).
+        "admin_sensitive": config("THROTTLE_ADMIN_SENSITIVE", default="10/hour"),
     },
 }
 
@@ -147,16 +159,38 @@ SIMPLE_JWT = {
     "UPDATE_LAST_LOGIN": True,
 }
 
+# ─── JWT httpOnly Çerez Ayarları (SEC-002) ──────────────────────────────────
+JWT_AUTH_COOKIE = config("JWT_AUTH_COOKIE", default="eisa_access")
+JWT_REFRESH_COOKIE = config("JWT_REFRESH_COOKIE", default="eisa_refresh")
+JWT_COOKIE_SAMESITE = config("JWT_COOKIE_SAMESITE", default="Strict")
+JWT_COOKIE_SECURE = config("JWT_COOKIE_SECURE", default=not DEBUG, cast=bool)
+JWT_COOKIE_DOMAIN = config("JWT_COOKIE_DOMAIN", default=None)
+if JWT_COOKIE_DOMAIN == "":
+    JWT_COOKIE_DOMAIN = None
+
 CORS_ALLOWED_ORIGINS = config(
     "DJANGO_CORS_ORIGINS",
     default="",
     cast=lambda v: [s.strip() for s in v.split(",") if s.strip()],
 )
 CORS_ALLOW_ALL_ORIGINS = False
+# httpOnly JWT çerezlerinin cross-origin panel istekleriyle gönderilebilmesi için.
+CORS_ALLOW_CREDENTIALS = True
 if not DEBUG and not CORS_ALLOWED_ORIGINS:
     raise ImproperlyConfigured(
         "DJANGO_CORS_ORIGINS üretimde panel domain(leri) ile doldurulmalıdır."
     )
+# SEC-007: CORS allow-list yalnızca https:// ile başlayan tam origin'leri kabul etsin.
+if not DEBUG:
+    for _origin in CORS_ALLOWED_ORIGINS:
+        if not _origin.startswith("https://"):
+            raise ImproperlyConfigured(
+                f"DJANGO_CORS_ORIGINS üretimde sadece HTTPS origin'leri kabul eder: {_origin}"
+            )
+        if "*" in _origin:
+            raise ImproperlyConfigured(
+                "DJANGO_CORS_ORIGINS wildcard ('*') içermemelidir."
+            )
 
 # Üretim güvenlik başlıkları (Traefik HTTPS sonlandırması arkasında)
 if not DEBUG:

@@ -1,27 +1,27 @@
-"""Kiosk App-Key kimlik doğrulama (JWT yerine kullanılır)."""
+"""Kiosk App-Key kimlik dogrulama (JWT yerine kullanilir)."""
 from __future__ import annotations
 
+import logging
 import secrets
 from datetime import timedelta
 
 from django.utils import timezone
 from rest_framework import authentication, exceptions
 
-from apps.audit.models import AuditLog, record as audit_record
+from apps.audit.models import DenetimLogu, kayit_birak
 
 from .models import Kiosk
 
+logger = logging.getLogger(__name__)
 
-# Bu süreden uzun sessizlikten sonra gelen istekleri "yeniden online" olarak kaydeder.
-KIOSK_ONLINE_THRESHOLD = timedelta(minutes=5)
+# Bu sureden uzun sessizlikten sonra gelen istekleri "yeniden online" olarak kaydeder.
+KIOSK_ONLINE_ESIGI = timedelta(minutes=5)
 
 
 class KioskAppKeyAuthentication(authentication.BaseAuthentication):
     """
-    `Authorization: AppKey <key>` başlığı ile kiosk cihazlarını yetkilendirir.
-
-    MAC adresi `X-Kiosk-MAC` başlığında gönderilir ve App-Key ile eşleşmek zorundadır.
-    Karşılaştırma constant-time yapılır (timing attack koruması).
+    `Authorization: AppKey <key>` basligi ile kiosk cihazlarini yetkilendirir.
+    MAC adresi `X-Kiosk-MAC` basliginda gonderilir; constant-time karsilastirma.
     """
 
     keyword = "AppKey"
@@ -31,47 +31,48 @@ class KioskAppKeyAuthentication(authentication.BaseAuthentication):
         if not auth or auth[0] != self.keyword:
             return None
         if len(auth) != 2:
-            raise exceptions.AuthenticationFailed("Geçersiz App-Key başlığı.")
+            raise exceptions.AuthenticationFailed("Gecersiz App-Key basligi.")
 
         key = auth[1]
         mac = request.headers.get("X-Kiosk-MAC", "")
         if not mac:
-            raise exceptions.AuthenticationFailed("X-Kiosk-MAC başlığı eksik.")
+            raise exceptions.AuthenticationFailed("X-Kiosk-MAC basligi eksik.")
 
-        # MAC public bir tanımlayıcı, indeks ile filtreliyoruz; app_key constant-time karşılaştırılır
-        candidates = Kiosk.objects.select_related("pharmacy").filter(
-            mac_address=mac, is_active=True
+        candidates = Kiosk.objects.select_related("eczane").filter(
+            mac_adresi=mac, aktif=True
         )
         kiosk = None
         for candidate in candidates:
-            if secrets.compare_digest(str(candidate.app_key), key):
+            if secrets.compare_digest(str(candidate.uygulama_anahtari), key):
                 kiosk = candidate
                 break
         if kiosk is None:
-            raise exceptions.AuthenticationFailed("Kiosk doğrulanamadı.")
+            raise exceptions.AuthenticationFailed("Kiosk dogrulanamadi.")
 
+        # last_seen guncelleme — UoW kapsam disi (audit alani degil, sadece heartbeat)
         now = timezone.now()
-        previous = kiosk.last_seen_at
-        kiosk.last_seen_at = now
-        kiosk.save(update_fields=["last_seen_at"])
+        previous = kiosk.son_goruldu
+        Kiosk.objects.filter(pk=kiosk.pk).update(son_goruldu=now)
+        kiosk.son_goruldu = now
 
-        # Kiosk uzun süre sessiz kaldıktan sonra döndüyse online olayını audit'e yaz.
-        if previous is None or (now - previous) > KIOSK_ONLINE_THRESHOLD:
+        if previous is None or (now - previous) > KIOSK_ONLINE_ESIGI:
             try:
                 fwd = request.META.get("HTTP_X_FORWARDED_FOR", "")
                 ip = fwd.split(",")[0].strip() if fwd else request.META.get("REMOTE_ADDR")
-                audit_record(
-                    action=AuditLog.Action.KIOSK_ONLINE,
-                    summary=f"Kiosk online: {kiosk.mac_address}",
-                    kiosk_mac=kiosk.mac_address,
-                    ip_address=ip,
+                kayit_birak(
+                    eylem=DenetimLogu.Eylem.KIOSK_ONLINE,
+                    ozet=f"Kiosk online: {kiosk.mac_adresi}",
+                    kiosk_mac=kiosk.mac_adresi,
+                    ip_adresi=ip,
                     metadata={
                         "kiosk_id": kiosk.pk,
                         "previous_seen_at": previous.isoformat() if previous else None,
                     },
                 )
-            except Exception:  # pragma: no cover - audit yazımı hiç bir zaman istek akışını bozmasın
-                pass
+            except Exception:  # pragma: no cover
+                logger.exception(
+                    "Kiosk online audit kaydi olusturulamadi (mac=%s)",
+                    kiosk.mac_adresi,
+                )
 
-        # DRF user/auth ikilisi: (user, auth). Kiosk'u "user" olarak işaretliyoruz.
         return (kiosk, key)

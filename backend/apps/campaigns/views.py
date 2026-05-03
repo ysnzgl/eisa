@@ -1,68 +1,83 @@
 """
-Kampanya yönetim görünümleri.
-Admin: tam CRUD (süper admin JWT).
-Kiosk: /sync/ endpoint'i ile eczaneye hedeflenmiş aktif kampanyaları alır (App-Key).
+Reklam (Kampanya) gorunumleri.
+
+Admin: tam CRUD (super admin JWT, UoW ile).
+Kiosk: /sync/ endpoint'i — kioskun eczanesine hedeflenmis aktif reklamlar.
+Bos hedef_eczaneler = herkese goster (genel yayin).
 """
-from django.db.models import Q
 from django.utils import timezone
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
+from apps.core.uow import UnitOfWork
 from apps.pharmacies.auth import KioskAppKeyAuthentication
 from apps.pharmacies.models import Kiosk
 from apps.pharmacies.permissions import IsKiosk, IsSuperAdmin
 
-from .models import Campaign
-from .serializers import CampaignSerializer
+from .models import Reklam
+from .serializers import ReklamSerializer
 
 
-class CampaignViewSet(viewsets.ModelViewSet):
-    """
-    Kampanya CRUD endpoint'leri — süper admin JWT ile korumalı.
-    /sync/ — Kiosk'un eczanesine göre hedeflenmiş aktif kampanyaları döner (App-Key).
-    """
-
-    queryset = Campaign.objects.all().order_by("-created_at")
-    serializer_class = CampaignSerializer
+class ReklamViewSet(viewsets.ModelViewSet):
+    queryset = Reklam.objects.prefetch_related("hedef_eczaneler").all()
+    serializer_class = ReklamSerializer
 
     def get_authenticators(self):
-        """sync endpoint'i App-Key; diğerleri JWT ile doğrulanır."""
         if getattr(self, "action", None) == "sync":
             return [KioskAppKeyAuthentication()]
         return [JWTAuthentication()]
 
     def get_permissions(self):
-        """sync endpoint'i kiosk'a açık; diğer işlemler süper admin gerektirir."""
         if self.action == "sync":
             return [IsKiosk()]
         return [IsSuperAdmin()]
 
+    # ── UoW ile yazma ──
+    def perform_create(self, serializer):
+        hedef_eczaneler = serializer.validated_data.pop("hedef_eczaneler", [])
+        instance = Reklam(**serializer.validated_data)
+        with UnitOfWork(user=self.request.user) as uow:
+            uow.add(instance)
+            instance.hedef_eczaneler.set(hedef_eczaneler)
+        serializer.instance = instance
+
+    def perform_update(self, serializer):
+        instance: Reklam = serializer.instance
+        hedef_eczaneler = serializer.validated_data.pop("hedef_eczaneler", None)
+        for k, v in serializer.validated_data.items():
+            setattr(instance, k, v)
+        with UnitOfWork(user=self.request.user) as uow:
+            uow.update(instance)
+            if hedef_eczaneler is not None:
+                instance.hedef_eczaneler.set(hedef_eczaneler)
+
+    def perform_destroy(self, instance):
+        with UnitOfWork(user=self.request.user) as uow:
+            uow.delete(instance)
+
+    # ── Kiosk sync ──
     @action(detail=False, methods=["get"], url_path="sync")
     def sync(self, request):
         """
         GET /api/campaigns/sync/
-        Kioskin bağlı olduğu eczanenin şehir ve ilçesine göre filtrelenmiş,
-        şu anda aktif kampanyaları döner.
-        Boş target_cities / target_districts listesi "herkese hedefli" anlamına gelir.
+        Kioskun eczanesine hedeflenmis, su an aktif reklamlar.
+        Bos hedef_eczaneler = herkese hedefli (genel yayin).
         """
         kiosk: Kiosk = request.user
-        pharmacy = kiosk.pharmacy
+        eczane = kiosk.eczane
         now = timezone.now()
 
-        # Zaman aralığı filtresi: şu an yayında olan kampanyalar
-        qs = Campaign.objects.filter(is_active=True, starts_at__lte=now, ends_at__gte=now)
-
-        # Şehir filtresi: boş liste (herkese) VEYA eczane şehrini içerenler
-        qs = qs.filter(
-            Q(target_cities=[]) | Q(target_cities__contains=[pharmacy.city])
+        qs = Reklam.objects.filter(
+            aktif=True, baslangic_tarihi__lte=now, bitis_tarihi__gte=now
         )
-
-        # İlçe filtresi: boş liste (herkese) VEYA eczane ilçesini içerenler
+        # Bos hedef_eczaneler = herkese; yoksa bu eczane dahil olmali
         qs = qs.filter(
-            Q(target_districts=[]) | Q(target_districts__contains=[pharmacy.district])
+            hedef_eczaneler__isnull=True
+        ) | qs.filter(
+            hedef_eczaneler=eczane
         )
+        qs = qs.distinct()
 
-        serializer = CampaignSerializer(qs.distinct(), many=True)
-        return Response(serializer.data)
+        return Response(ReklamSerializer(qs, many=True).data)

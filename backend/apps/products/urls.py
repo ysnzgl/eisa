@@ -1,25 +1,22 @@
-"""Ürün URL yönlendirmeleri — kiosk sync ve admin CRUD endpoint'leri."""
+"""Urun URL yonlendirmeleri — kiosk sync ve admin CRUD."""
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    ActiveIngredientViewSet,
-    AnswerViewSet,
-    CategoryViewSet,
-    ProductSyncView,
-    QuestionViewSet,
+    CevapViewSet,
+    EtkenMaddeViewSet,
+    KategoriViewSet,
+    SoruViewSet,
+    UrunSyncView,
 )
 
 router = DefaultRouter()
-router.register(r"categories", CategoryViewSet, basename="category")
-router.register(r"questions", QuestionViewSet, basename="question")
-router.register(r"answers", AnswerViewSet, basename="answer")
-router.register(r"ingredients", ActiveIngredientViewSet, basename="ingredient")
+router.register(r"categories", KategoriViewSet, basename="kategori")
+router.register(r"questions", SoruViewSet, basename="soru")
+router.register(r"answers", CevapViewSet, basename="cevap")
+router.register(r"ingredients", EtkenMaddeViewSet, basename="etken-madde")
 
 urlpatterns = [
-    # GET /api/products/sync/ — Kiosk için tam ürün verisi (JWT veya App-Key)
-    path("sync/", ProductSyncView.as_view(), name="product-sync"),
-    # Admin CRUD endpoint'leri
+    path("sync/", UrunSyncView.as_view(), name="urun-sync"),
     path("", include(router.urls)),
 ]
-

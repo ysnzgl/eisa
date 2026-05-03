@@ -1,13 +1,16 @@
-// SQLite (better-sqlite3) — şema oluşturma ve JSON yardımcıları.
+// SQLite (better-sqlite3) — yerel offline-first sema (Turkce + lookup tablolari).
+// Backend'in 3NF semasiyla 1:1 hizalanir; kiosk dis sunucu olmadan calisir.
 import path from 'node:path';
 import fs from 'node:fs';
 import Database from 'better-sqlite3';
 
 let _db = null;
 
-// Outbox satır sayısı bu eşiği aşarsa "FIFO koruması" devreye girer.
-// Kiosk uzun süre çevrimdışı kalsa bile eMMC dolmaz.
 const DEFAULT_OUTBOX_MAX_ROWS = 10000;
+
+// Sema versiyonu — hedef_cinsiyetler/yas_araliklari kategoriler+sorular tablosuna eklendi;
+// reklamlar.hedefleme eczane bazina donusturuldu.
+const SCHEMA_VERSION = 3;
 
 export function openDb(sqlitePath, options = {}) {
   if (_db) return _db;
@@ -15,6 +18,34 @@ export function openDb(sqlitePath, options = {}) {
   if (dir && dir !== '.' && !fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
+
+  // Eski (v1, ingilizce alanlar) sema varsa DB'yi sifirla.
+  if (fs.existsSync(sqlitePath)) {
+    try {
+      const probe = new Database(sqlitePath, { readonly: true });
+      const row = probe.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+      ).get('schema_meta');
+      let version = 1;
+      if (row) {
+        const r = probe.prepare('SELECT version FROM schema_meta LIMIT 1').get();
+        version = r?.version ?? 1;
+      }
+      probe.close();
+      if (version !== SCHEMA_VERSION) {
+        for (const ext of ['', '-wal', '-shm']) {
+          const p = sqlitePath + ext;
+          if (fs.existsSync(p)) fs.unlinkSync(p);
+        }
+      }
+    } catch {
+      for (const ext of ['', '-wal', '-shm']) {
+        const p = sqlitePath + ext;
+        if (fs.existsSync(p)) fs.unlinkSync(p);
+      }
+    }
+  }
+
   _db = new Database(sqlitePath);
   _db.pragma('journal_mode = WAL');
   _db.pragma('foreign_keys = ON');
@@ -23,7 +54,7 @@ export function openDb(sqlitePath, options = {}) {
 }
 
 export function getDb() {
-  if (!_db) throw new Error('DB açılmadı; önce openDb() çağırın.');
+  if (!_db) throw new Error('DB acilmadi; once openDb() cagirin.');
   return _db;
 }
 
@@ -34,65 +65,148 @@ export function closeDb() {
   }
 }
 
+/**
+ * ERR-006: Outbox kapasitesinin %80'ini gectiginde uyari log'u uretir.
+ */
+export function checkOutboxPressure(logger, maxRows = DEFAULT_OUTBOX_MAX_ROWS) {
+  if (!_db) return { oturum: 0, reklam: 0, threshold: maxRows, warned: false };
+  const limit = Math.max(100, Number(maxRows) | 0);
+  const threshold = Math.floor(limit * 0.8);
+  const oturum = _db.prepare('SELECT COUNT(*) AS c FROM oturum_outbox').get().c;
+  const reklam = _db.prepare('SELECT COUNT(*) AS c FROM reklam_gosterim_outbox').get().c;
+  let warned = false;
+  if (oturum >= threshold && logger?.warn) {
+    logger.warn({ count: oturum, threshold, limit },
+      'oturum_outbox kapasitesinin %80\'ine yaklasti');
+    warned = true;
+  }
+  if (reklam >= threshold && logger?.warn) {
+    logger.warn({ count: reklam, threshold, limit },
+      'reklam_gosterim_outbox kapasitesinin %80\'ine yaklasti');
+    warned = true;
+  }
+  return { oturum, reklam, threshold, warned };
+}
+
 function initSchema(db, outboxMaxRows = DEFAULT_OUTBOX_MAX_ROWS) {
   db.exec(`
-    CREATE TABLE IF NOT EXISTS categories (
-      id           INTEGER PRIMARY KEY,
-      slug         TEXT    NOT NULL UNIQUE,
-      name         TEXT    NOT NULL,
-      icon         TEXT    NOT NULL DEFAULT 'fa-circle',
-      is_sensitive INTEGER NOT NULL DEFAULT 0,
-      is_active    INTEGER NOT NULL DEFAULT 1
+    CREATE TABLE IF NOT EXISTS schema_meta (version INTEGER NOT NULL);
+
+    -- LOOKUP TABLOLARI (audit kolonu YOK)
+    CREATE TABLE IF NOT EXISTS iller (
+      id    INTEGER PRIMARY KEY,
+      ad    TEXT    NOT NULL UNIQUE,
+      plaka INTEGER
+    );
+    CREATE TABLE IF NOT EXISTS ilceler (
+      id    INTEGER PRIMARY KEY,
+      il_id INTEGER NOT NULL REFERENCES iller(id),
+      ad    TEXT    NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS cinsiyetler (
+      id  INTEGER PRIMARY KEY,
+      kod TEXT    NOT NULL UNIQUE,
+      ad  TEXT    NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS yas_araliklari (
+      id        INTEGER PRIMARY KEY,
+      kod       TEXT    NOT NULL UNIQUE,
+      ad        TEXT    NOT NULL,
+      alt_sinir INTEGER,
+      ust_sinir INTEGER
     );
 
-    CREATE TABLE IF NOT EXISTS questions (
-      id          INTEGER PRIMARY KEY,
-      category_id INTEGER NOT NULL REFERENCES categories(id),
-      seed_id     TEXT    NOT NULL UNIQUE,
-      text        TEXT    NOT NULL,
-      priority    INTEGER NOT NULL DEFAULT 0,
-      match_rules TEXT    NOT NULL DEFAULT '[]'
+    -- IS TABLOLARI (BaseModel kolonlari: olusturulma_tarihi, surum)
+    CREATE TABLE IF NOT EXISTS kategoriler (
+      id                   INTEGER PRIMARY KEY,
+      slug                 TEXT    NOT NULL UNIQUE,
+      ad                   TEXT    NOT NULL,
+      ikon                 TEXT    NOT NULL DEFAULT 'fa-circle',
+      hassas               INTEGER NOT NULL DEFAULT 0,
+      aktif                INTEGER NOT NULL DEFAULT 1,
+      surum                INTEGER NOT NULL DEFAULT 1,
+      hedef_cinsiyetler    TEXT    NOT NULL DEFAULT '[]',
+      hedef_yas_araliklari TEXT    NOT NULL DEFAULT '[]',
+      olusturulma_tarihi   TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      guncellenme_tarihi   TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
     );
 
-    CREATE TABLE IF NOT EXISTS campaigns (
-      id               INTEGER PRIMARY KEY,
-      name             TEXT    NOT NULL,
-      media_local_path TEXT    NOT NULL DEFAULT '',
-      starts_at        TEXT    NOT NULL,
-      ends_at          TEXT    NOT NULL,
-      targeting        TEXT    NOT NULL DEFAULT '{}',
-      is_active        INTEGER NOT NULL DEFAULT 1
+    CREATE TABLE IF NOT EXISTS sorular (
+      id                   INTEGER PRIMARY KEY,
+      kategori_id          INTEGER NOT NULL REFERENCES kategoriler(id),
+      seed_id              TEXT,
+      metin                TEXT    NOT NULL,
+      sira                 INTEGER NOT NULL DEFAULT 0,
+      eslesme_kurallari    TEXT    NOT NULL DEFAULT '[]',
+      surum                INTEGER NOT NULL DEFAULT 1,
+      hedef_cinsiyetler    TEXT    NOT NULL DEFAULT '[]',
+      hedef_yas_araliklari TEXT    NOT NULL DEFAULT '[]',
+      olusturulma_tarihi   TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      guncellenme_tarihi   TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
     );
 
-    CREATE TABLE IF NOT EXISTS session_log_outbox (
-      id         INTEGER PRIMARY KEY AUTOINCREMENT,
-      payload    TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-      pushed_at  TEXT
+    CREATE TABLE IF NOT EXISTS cevaplar (
+      id      INTEGER PRIMARY KEY,
+      soru_id INTEGER NOT NULL REFERENCES sorular(id) ON DELETE CASCADE,
+      metin   TEXT    NOT NULL,
+      agirlik INTEGER NOT NULL DEFAULT 0
     );
 
-    CREATE TABLE IF NOT EXISTS ad_impression_outbox (
-      id         INTEGER PRIMARY KEY AUTOINCREMENT,
-      payload    TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-      pushed_at  TEXT
+    CREATE TABLE IF NOT EXISTS etken_maddeler (
+      id       INTEGER PRIMARY KEY,
+      ad       TEXT    NOT NULL UNIQUE,
+      aciklama TEXT    NOT NULL DEFAULT ''
     );
+
+    CREATE TABLE IF NOT EXISTS reklamlar (
+      id                 INTEGER PRIMARY KEY,
+      ad                 TEXT    NOT NULL,
+      medya_url          TEXT    NOT NULL DEFAULT '',
+      baslangic_tarihi   TEXT    NOT NULL,
+      bitis_tarihi       TEXT    NOT NULL,
+      hedefleme          TEXT    NOT NULL DEFAULT '{}',
+      aktif              INTEGER NOT NULL DEFAULT 1,
+      surum              INTEGER NOT NULL DEFAULT 1,
+      olusturulma_tarihi TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      guncellenme_tarihi TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
+
+    -- OUTBOX
+    CREATE TABLE IF NOT EXISTS oturum_outbox (
+      id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+      idempotency_anahtari TEXT    UNIQUE,
+      payload              TEXT    NOT NULL,
+      olusturulma_tarihi   TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      gonderilme_tarihi    TEXT
+    );
+    CREATE TABLE IF NOT EXISTS reklam_gosterim_outbox (
+      id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+      idempotency_anahtari TEXT    UNIQUE,
+      payload              TEXT    NOT NULL,
+      olusturulma_tarihi   TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      gonderilme_tarihi    TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS sorular_kategori_idx  ON sorular(kategori_id);
+    CREATE INDEX IF NOT EXISTS cevaplar_soru_idx     ON cevaplar(soru_id);
+    CREATE INDEX IF NOT EXISTS ilceler_il_idx        ON ilceler(il_id);
+    CREATE INDEX IF NOT EXISTS oturum_outbox_pending ON oturum_outbox(gonderilme_tarihi);
+    CREATE INDEX IF NOT EXISTS reklam_outbox_pending ON reklam_gosterim_outbox(gonderilme_tarihi);
   `);
+
+  const meta = db.prepare('SELECT version FROM schema_meta LIMIT 1').get();
+  if (!meta) {
+    db.prepare('INSERT INTO schema_meta (version) VALUES (?)').run(SCHEMA_VERSION);
+  } else if (meta.version !== SCHEMA_VERSION) {
+    db.prepare('UPDATE schema_meta SET version = ?').run(SCHEMA_VERSION);
+  }
 
   installOutboxFifoTriggers(db, outboxMaxRows);
 }
 
-/**
- * FIFO koruyucu trigger'ları kurar.
- * Outbox tablosu `maxRows`'u aşınca en eski kayıtlar (id ASC) silinir.
- * Bu, eMMC'nin dolmasını ve OS-seviyesi kilitlenmeyi önleyen son güvenlik bariyeridir.
- *
- * Not: Tetikleyici INSERT'ten SONRA çalışır; bu yüzden boyut tabanlı toplu ekleme
- * sırasında bile satır sayısı `maxRows`'un sadece çok kısa süreliğine üstüne çıkabilir.
- */
 export function installOutboxFifoTriggers(db, maxRows = DEFAULT_OUTBOX_MAX_ROWS) {
   const limit = Math.max(100, Number(maxRows) | 0);
-  const tables = ['session_log_outbox', 'ad_impression_outbox'];
+  const tables = ['oturum_outbox', 'reklam_gosterim_outbox'];
   for (const t of tables) {
     const trigger = `${t}_fifo_cap`;
     db.exec(`DROP TRIGGER IF EXISTS ${trigger};`);
@@ -112,41 +226,45 @@ export function installOutboxFifoTriggers(db, maxRows = DEFAULT_OUTBOX_MAX_ROWS)
   }
 }
 
-// JSON sütunlarını parse eden satır dönüştürücüleri
-export function rowToCategory(row) {
+// ── Satir donusturuculer ──
+export function rowToKategori(row) {
   if (!row) return null;
   return {
     id: row.id,
     slug: row.slug,
-    name: row.name,
-    icon: row.icon,
-    is_sensitive: !!row.is_sensitive,
-    is_active: !!row.is_active,
+    ad: row.ad,
+    ikon: row.ikon,
+    hassas: !!row.hassas,
+    aktif: !!row.aktif,
+    hedef_cinsiyetler: safeJson(row.hedef_cinsiyetler, []),
+    hedef_yas_araliklari: safeJson(row.hedef_yas_araliklari, []),
   };
 }
 
-export function rowToQuestion(row) {
+export function rowToSoru(row) {
   if (!row) return null;
   return {
     id: row.id,
-    category_id: row.category_id,
+    kategori_id: row.kategori_id,
     seed_id: row.seed_id,
-    text: row.text,
-    priority: row.priority,
-    match_rules: safeJson(row.match_rules, []),
+    metin: row.metin,
+    sira: row.sira,
+    eslesme_kurallari: safeJson(row.eslesme_kurallari, []),
+    hedef_cinsiyetler: safeJson(row.hedef_cinsiyetler, []),
+    hedef_yas_araliklari: safeJson(row.hedef_yas_araliklari, []),
   };
 }
 
-export function rowToCampaign(row) {
+export function rowToReklam(row) {
   if (!row) return null;
   return {
     id: row.id,
-    name: row.name,
-    media_local_path: row.media_local_path,
-    starts_at: row.starts_at,
-    ends_at: row.ends_at,
-    targeting: safeJson(row.targeting, {}),
-    is_active: !!row.is_active,
+    ad: row.ad,
+    medya_url: row.medya_url,
+    baslangic_tarihi: row.baslangic_tarihi,
+    bitis_tarihi: row.bitis_tarihi,
+    hedefleme: safeJson(row.hedefleme, {}),
+    aktif: !!row.aktif,
   };
 }
 

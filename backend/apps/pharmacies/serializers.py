@@ -1,36 +1,71 @@
-"""
-Eczane ve kiosk serileştiricileri — admin panel CRUD için.
-"""
+"""Eczane ve kiosk serileştiricileri."""
 from rest_framework import serializers
 
-from .models import Kiosk, Pharmacy
+from .models import Eczane, Kiosk
 
 
-class PharmacySerializer(serializers.ModelSerializer):
-    """Eczane oluşturma, güncelleme ve listeleme için serileştirici."""
+class EczaneSerializer(serializers.ModelSerializer):
+    """Eczane CRUD serileştiricisi. Lookup id'lerini direkt alir; isimleri read-only doner."""
+
+    il_adi = serializers.CharField(source="il.ad", read_only=True)
+    ilce_adi = serializers.CharField(source="ilce.ad", read_only=True)
+    kiosk_sayisi = serializers.IntegerField(read_only=True, default=0)
 
     class Meta:
-        model = Pharmacy
-        fields = ["id", "name", "city", "district", "address", "is_active", "created_at"]
-        read_only_fields = ["id", "created_at"]
+        model = Eczane
+        fields = [
+            "id",
+            "ad",
+            "il",
+            "il_adi",
+            "ilce",
+            "ilce_adi",
+            "adres",
+            "sahip_adi",
+            "telefon",
+            "eczane_kodu",
+            "aktif",
+            "olusturulma_tarihi",
+            "guncellenme_tarihi",
+            "surum",
+            "kiosk_sayisi",
+        ]
+        read_only_fields = (
+            "id",
+            "olusturulma_tarihi",
+            "guncellenme_tarihi",
+            "surum",
+            "kiosk_sayisi",
+            "il_adi",
+            "ilce_adi",
+        )
 
 
 class KioskSerializer(serializers.ModelSerializer):
-    """
-    Kiosk serileştiricisi.
-    app_key: sadece okunur — oluşturma/yenileme işlemleri server tarafında yapılır.
-    last_seen_at: sadece okunur — KioskAppKeyAuthentication tarafından güncellenir.
-    """
+    """Kiosk serileştiricisi. uygulama_anahtari salt-okunur (server uretir)."""
+
+    eczane_adi = serializers.CharField(source="eczane.ad", read_only=True)
 
     class Meta:
         model = Kiosk
         fields = [
             "id",
-            "pharmacy",
-            "mac_address",
-            "app_key",
-            "is_active",
-            "last_seen_at",
-            "created_at",
+            "eczane",
+            "eczane_adi",
+            "mac_adresi",
+            "uygulama_anahtari",
+            "aktif",
+            "son_goruldu",
+            "olusturulma_tarihi",
+            "guncellenme_tarihi",
+            "surum",
         ]
-        read_only_fields = ["id", "app_key", "last_seen_at", "created_at"]
+        read_only_fields = (
+            "id",
+            "uygulama_anahtari",
+            "son_goruldu",
+            "olusturulma_tarihi",
+            "guncellenme_tarihi",
+            "surum",
+            "eczane_adi",
+        )

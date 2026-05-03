@@ -11,7 +11,17 @@ export default defineConfig({
       '/api': 'http://127.0.0.1:8765'
     }
   },
-  build: { target: 'es2022' },
+  // DRY-001: Üretim build'inde console.log/debug'ları sök.
+  build: {
+    target: 'es2022',
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        drop_console: ['log', 'debug', 'info'],
+        drop_debugger: true,
+      },
+    },
+  },
   test: {
     environment: 'happy-dom',
     globals: true,

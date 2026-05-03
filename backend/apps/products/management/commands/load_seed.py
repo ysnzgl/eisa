@@ -1,112 +1,92 @@
 """
-Django management komutu: master_seed.json'u Products DB'sine yükler.
-
-Kullanım:
-  python manage.py load_seed --file /path/to/master_seed.json
-
-Hassas kategoriler (is_sensitive=True) otomatik olarak sluglarına göre tespit edilir.
-Mevcut kayıtlar güncellenir; yeni kayıtlar oluşturulur (upsert).
+Django management komutu: master_seed.json'u Kategori/Soru/EtkenMadde
+tablolarina yukler. UoW kullanmaz cunku komut bir kullanici baglami yok;
+bootstrap idempotent upsert yapar.
 """
 import json
 from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
 
-from apps.products.models import ActiveIngredient, Category, Question
+from apps.products.models import EtkenMadde, Kategori, Soru
 
-# Hassas kategori slug'ları (Akış B için otomatik işaretlenir)
-SENSITIVE_SLUGS = {"cinsel", "hemoroid", "koku", "mantar", "sac", "ishal"}
+# Hassas kategori slug'lari
+HASSAS_SLUGLAR = {"cinsel", "hemoroid", "koku", "mantar", "sac", "ishal"}
 
 
 class Command(BaseCommand):
-    help = "master_seed.json dosyasındaki kategori ve soruları veritabanına yükler."
+    help = "master_seed.json dosyasindaki kategori ve sorulari veritabanina yukler."
 
     def add_arguments(self, parser):
-        parser.add_argument(
-            "--file",
-            type=str,
-            default=None,
-            help="Seed JSON dosyasının yolu. Verilmezse proje kökünde master_seed.json aranır.",
-        )
+        parser.add_argument("--file", type=str, default=None,
+                            help="Seed JSON dosyasi yolu.")
 
     def handle(self, *args, **options):
-        # ── Dosyayı bul ──────────────────────────────────────────────────────
         if options["file"]:
             seed_path = Path(options["file"])
         else:
-            # manage.py ile aynı dizinde veya üst dizinde ara
-            base = Path(__file__).resolve().parents[5]  # repo kökü
+            base = Path(__file__).resolve().parents[5]
             seed_path = base / "master_seed.json"
 
         if not seed_path.exists():
-            raise CommandError(f"Seed dosyası bulunamadı: {seed_path}")
+            raise CommandError(f"Seed dosyasi bulunamadi: {seed_path}")
 
         with seed_path.open(encoding="utf-8") as f:
             seed_data = json.load(f)
 
-        self.stdout.write(f"Seed dosyası yüklendi: {seed_path}")
+        self.stdout.write(f"Seed dosyasi yuklendi: {seed_path}")
         self.stdout.write(f"Toplam kategori: {len(seed_data)}")
 
-        categories_created = 0
-        categories_updated = 0
-        questions_created = 0
-        questions_updated = 0
-        ingredients_created = 0
+        kat_olusan = kat_guncellenen = 0
+        soru_olusan = soru_guncellenen = 0
+        em_olusan = 0
 
         for entry in seed_data:
             slug = entry["category_slug"]
-            name = entry.get("title", slug)
-            is_sensitive = slug in SENSITIVE_SLUGS
+            ad = entry.get("title", slug)
+            hassas = slug in HASSAS_SLUGLAR
 
-            # ── Kategori upsert ───────────────────────────────────────────────
-            cat, created = Category.objects.update_or_create(
+            kat, created = Kategori.objects.update_or_create(
                 slug=slug,
                 defaults={
-                    "name": name,
-                    "icon": entry.get("icon", "fa-circle"),
-                    "is_sensitive": is_sensitive,
-                    "is_active": True,
+                    "ad": ad,
+                    "ikon": entry.get("icon", "fa-circle"),
+                    "hassas": hassas,
+                    "aktif": True,
                 },
             )
             if created:
-                categories_created += 1
-                self.stdout.write(self.style.SUCCESS(f"  [+] Kategori oluşturuldu: {name}"))
+                kat_olusan += 1
             else:
-                categories_updated += 1
-                self.stdout.write(f"  [~] Kategori güncellendi: {name}")
+                kat_guncellenen += 1
 
-            # ── Sorular ───────────────────────────────────────────────────────
-            for q_data in entry.get("questions", []):
-                q_text = q_data["text"]
-                q_order = q_data.get("priority", 0)
-
-                q, q_created = Question.objects.update_or_create(
-                    category=cat,
-                    order=q_order,
+            for q in entry.get("questions", []):
+                _, q_created = Soru.objects.update_or_create(
+                    kategori=kat,
+                    sira=q.get("priority", 0),
                     defaults={
-                        "seed_id": q_data.get("id"),
-                        "text": q_text,
-                        "match_rules": q_data.get("match_rules", []),
+                        "seed_id": q.get("id"),
+                        "metin": q["text"],
+                        "eslesme_kurallari": q.get("match_rules", []),
                     },
                 )
                 if q_created:
-                    questions_created += 1
+                    soru_olusan += 1
                 else:
-                    questions_updated += 1
+                    soru_guncellenen += 1
 
-                # ── Etken maddeler (match_rules'dan çıkar) ────────────────────
-                for rule in q_data.get("match_rules", []):
-                    for ingredient_name in [rule.get("primary"), rule.get("supportive")]:
-                        if ingredient_name:
-                            _, ing_created = ActiveIngredient.objects.get_or_create(
-                                name=ingredient_name,
-                                defaults={"description": ""},
+                for rule in q.get("match_rules", []):
+                    for em_ad in [rule.get("primary"), rule.get("supportive")]:
+                        if em_ad:
+                            _, em_created = EtkenMadde.objects.get_or_create(
+                                ad=em_ad,
+                                defaults={"aciklama": ""},
                             )
-                            if ing_created:
-                                ingredients_created += 1
+                            if em_created:
+                                em_olusan += 1
 
         self.stdout.write("")
-        self.stdout.write(self.style.SUCCESS("Seed yükleme tamamlandı:"))
-        self.stdout.write(f"  Kategoriler — oluşturuldu: {categories_created}, güncellendi: {categories_updated}")
-        self.stdout.write(f"  Sorular     — oluşturuldu: {questions_created}, güncellendi: {questions_updated}")
-        self.stdout.write(f"  Etken mad.  — oluşturuldu: {ingredients_created}")
+        self.stdout.write(self.style.SUCCESS("Seed yukleme tamamlandi:"))
+        self.stdout.write(f"  Kategoriler   — olusan: {kat_olusan}, guncellenen: {kat_guncellenen}")
+        self.stdout.write(f"  Sorular       — olusan: {soru_olusan}, guncellenen: {soru_guncellenen}")
+        self.stdout.write(f"  Etken maddeler— olusan: {em_olusan}")

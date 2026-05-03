@@ -1,121 +1,110 @@
 """
-Eczacı paneli ana sayfa görünümü — kendi eczanesine ait özet metrikler.
+Eczaci paneli ana sayfa gorunumu — kendi eczanesine ait ozet metrikler.
 
-GET /api/pharmacies/me/dashboard/
-Yalnızca rolü 'pharmacist' olan ve bir eczaneye bağlı kullanıcılara açıktır.
-
-KVKK uyumu: Tüm sayımlar request.user.pharmacy_id üzerinden filtrelenir;
-başka eczanenin verileri SIZDIRILMAZ.
+KVKK uyumu: Tum sayimlar request.user.eczane uzerinden filtrelenir.
 """
 from datetime import timedelta
 
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
-from apps.analytics.models import SessionLog
-from apps.campaigns.models import Campaign
-from apps.products.models import Category
+from apps.analytics.models import OturumLogu
+from apps.campaigns.models import Reklam
+from apps.products.models import Kategori
 
 from .models import Kiosk
-from .permissions import IsPharmacist
+from .permissions import IsEczaci
 
 
-# Kiosk son temas süresi (saniye) — bu süreden eski ise 'offline' kabul edilir.
-HEALTH_OFFLINE_THRESHOLD_SECONDS = 15 * 60  # 15 dakika
-HEALTH_DEGRADED_THRESHOLD_SECONDS = 5 * 60  # 5 dakika
+HEALTH_OFFLINE_ESIGI_SAN = 15 * 60   # 15 dakika
+HEALTH_DEGRADED_ESIGI_SAN = 5 * 60   # 5 dakika
 
 
-def _kiosk_health(last_seen_at):
-    """Kiosk son temas zamanına göre 'online' / 'degraded' / 'offline' döner."""
-    if last_seen_at is None:
+def _kiosk_durum(son_goruldu):
+    if son_goruldu is None:
         return "offline"
-    age = (timezone.now() - last_seen_at).total_seconds()
-    if age <= HEALTH_DEGRADED_THRESHOLD_SECONDS:
+    yas = (timezone.now() - son_goruldu).total_seconds()
+    if yas <= HEALTH_DEGRADED_ESIGI_SAN:
         return "online"
-    if age <= HEALTH_OFFLINE_THRESHOLD_SECONDS:
+    if yas <= HEALTH_OFFLINE_ESIGI_SAN:
         return "degraded"
     return "offline"
 
 
-class PharmacistDashboardView(APIView):
-    """Eczacı ana sayfa: kiosk sayısı, kategori sayısı, oturum sayısı,
-    kampanya sayısı ve kiosk health durumları."""
-
+class EczaciDashboardView(APIView):
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated, IsPharmacist]
+    permission_classes = [IsAuthenticated, IsEczaci]
 
     def get(self, request):
         user = request.user
-        pharmacy = user.pharmacy
-        if pharmacy is None:
+        eczane = user.eczane
+        if eczane is None:
             return Response(
                 {
-                    "kiosk_count": 0,
-                    "category_count": 0,
-                    "session_count": 0,
-                    "session_count_today": 0,
-                    "campaign_count": 0,
-                    "kiosks": [],
-                    "warning": "Hesabınıza eczane bağlı değil.",
+                    "kiosk_sayisi": 0,
+                    "kategori_sayisi": 0,
+                    "oturum_sayisi": 0,
+                    "oturum_sayisi_bugun": 0,
+                    "reklam_sayisi": 0,
+                    "kiosklar": [],
+                    "uyari": "Hesabiniza eczane bagli degil.",
                 }
             )
 
         now = timezone.now()
-        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        bugun_basi = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
-        kiosks = list(
-            Kiosk.objects.filter(pharmacy_id=pharmacy.id).order_by("id")
+        kiosklar = list(Kiosk.objects.filter(eczane_id=eczane.id).order_by("id"))
+        kiosk_ids = [k.id for k in kiosklar]
+
+        oturum_qs = (
+            OturumLogu.objects.filter(kiosk_id__in=kiosk_ids)
+            if kiosk_ids
+            else OturumLogu.objects.none()
         )
+        oturum_sayisi = oturum_qs.count()
+        oturum_sayisi_bugun = oturum_qs.filter(olusturulma_tarihi__gte=bugun_basi).count()
 
-        # Bu eczanenin kioskları üzerinden işlem (oturum) sayıları
-        kiosk_ids = [k.id for k in kiosks]
-        session_qs = SessionLog.objects.filter(kiosk_id__in=kiosk_ids) if kiosk_ids else SessionLog.objects.none()
-        session_count = session_qs.count()
-        session_count_today = session_qs.filter(created_at__gte=today_start).count()
-
-        # Eczaneye yayında olan kampanyalar (admin DOOH kampanyaları, şehir/ilçe hedefli)
-        campaign_qs = Campaign.objects.filter(
-            is_active=True, starts_at__lte=now, ends_at__gte=now
-        )
-        # Boş target_cities = "herkese hedefli" anlamına gelir
-        from django.db.models import Q
-
-        campaign_qs = campaign_qs.filter(
-            Q(target_cities=[]) | Q(target_cities__contains=[pharmacy.city])
+        # Eczanenin il/ilcesine hedeflenmis aktif reklamlar
+        reklam_qs = Reklam.objects.filter(
+            aktif=True, baslangic_tarihi__lte=now, bitis_tarihi__gte=now
         ).filter(
-            Q(target_districts=[]) | Q(target_districts__contains=[pharmacy.district])
-        )
-        campaign_count = campaign_qs.distinct().count()
+            Q(hedef_iller__isnull=True) | Q(hedef_iller=eczane.il)
+        ).filter(
+            Q(hedef_ilceler__isnull=True) | Q(hedef_ilceler=eczane.ilce)
+        ).distinct()
+        reklam_sayisi = reklam_qs.count()
 
-        category_count = Category.objects.filter(is_active=True).count()
+        kategori_sayisi = Kategori.objects.filter(aktif=True).count()
 
-        kiosks_payload = [
+        kiosklar_payload = [
             {
                 "id": k.id,
-                "mac_address": k.mac_address,
-                "is_active": k.is_active,
-                "last_seen_at": k.last_seen_at,
-                "health": _kiosk_health(k.last_seen_at),
+                "mac_adresi": k.mac_adresi,
+                "aktif": k.aktif,
+                "son_goruldu": k.son_goruldu,
+                "durum": _kiosk_durum(k.son_goruldu),
             }
-            for k in kiosks
+            for k in kiosklar
         ]
 
         return Response(
             {
-                "pharmacy": {
-                    "id": pharmacy.id,
-                    "name": pharmacy.name,
-                    "city": pharmacy.city,
-                    "district": pharmacy.district,
+                "eczane": {
+                    "id": eczane.id,
+                    "ad": eczane.ad,
+                    "il": eczane.il.ad,
+                    "ilce": eczane.ilce.ad,
                 },
-                "kiosk_count": len(kiosks),
-                "category_count": category_count,
-                "session_count": session_count,
-                "session_count_today": session_count_today,
-                "campaign_count": campaign_count,
-                "kiosks": kiosks_payload,
+                "kiosk_sayisi": len(kiosklar),
+                "kategori_sayisi": kategori_sayisi,
+                "oturum_sayisi": oturum_sayisi,
+                "oturum_sayisi_bugun": oturum_sayisi_bugun,
+                "reklam_sayisi": reklam_sayisi,
+                "kiosklar": kiosklar_payload,
             }
         )

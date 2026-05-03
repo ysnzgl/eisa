@@ -1,5 +1,8 @@
 /**
- * Auth store testleri — Pinia ile JWT durumu yönetimi.
+ * Auth store testleri — httpOnly çerez tabanlı JWT (SEC-002).
+ *
+ * Token'lar artık çerezlerde saklanır; store yalnızca rol/pharmacyId/userId
+ * gibi UI ipuçlarını localStorage'da tutar.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { setActivePinia, createPinia } from 'pinia';
@@ -8,6 +11,7 @@ import { useAuthStore } from '../auth';
 // api.js mock
 vi.mock('../../services/api', () => ({
   login: vi.fn(),
+  logout: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { login as mockLogin } from '../../services/api';
@@ -31,55 +35,59 @@ describe('useAuthStore', () => {
     setActivePinia(createPinia());
   });
 
-  it('başlangıçta boş token ile yüklenir', () => {
+  it('başlangıçta boş rol ile yüklenir ve isAuthenticated=false döner', () => {
     const store = useAuthStore();
-    expect(store.accessToken).toBe('');
+    expect(store.role).toBe('');
     expect(store.isAuthenticated).toBe(false);
   });
 
-  it('localStorage\'da token varsa yükler', () => {
-    localStorageMock.setItem('eisa_access', 'existing-token');
+  it("localStorage'da rol varsa yükler ve authenticated kabul edilir", () => {
     localStorageMock.setItem('eisa_role', 'superadmin');
+    localStorageMock.setItem('eisa_pharmacy_id', '7');
     const store = useAuthStore();
-    expect(store.accessToken).toBe('existing-token');
     expect(store.role).toBe('superadmin');
+    expect(store.pharmacyId).toBe(7);
     expect(store.isAuthenticated).toBe(true);
   });
 
-  it('login başarılı olduğunda token\'ları saklar', async () => {
+  it('login başarılı olduğunda profil bilgilerini saklar (token YOK)', async () => {
     mockLogin.mockResolvedValueOnce({
-      access: 'acc-token',
-      refresh: 'ref-token',
       role: 'superadmin',
+      pharmacyId: null,
+      userId: 1,
     });
 
     const store = useAuthStore();
     await store.login('admin', 'password');
 
-    expect(store.accessToken).toBe('acc-token');
-    expect(store.refreshToken).toBe('ref-token');
     expect(store.role).toBe('superadmin');
-    expect(localStorageMock.getItem('eisa_access')).toBe('acc-token');
+    expect(store.userId).toBe(1);
+    expect(localStorageMock.getItem('eisa_role')).toBe('superadmin');
+    // Token'lar artık localStorage'da SAKLANMAMALI (SEC-002).
+    expect(localStorageMock.getItem('eisa_access')).toBeNull();
+    expect(localStorageMock.getItem('eisa_refresh')).toBeNull();
     expect(store.isAuthenticated).toBe(true);
   });
 
-  it('logout token\'ları temizler', async () => {
-    mockLogin.mockResolvedValueOnce({ access: 'a', refresh: 'r', role: 'pharmacist' });
+  it("logout state ve localStorage'ı temizler", async () => {
+    mockLogin.mockResolvedValueOnce({ role: 'pharmacist', pharmacyId: 3, userId: 2 });
     const store = useAuthStore();
     await store.login('u', 'p');
-    store.logout();
+    await store.logout();
 
-    expect(store.accessToken).toBe('');
-    expect(store.refreshToken).toBe('');
     expect(store.role).toBe('');
+    expect(store.pharmacyId).toBeNull();
+    expect(store.userId).toBeNull();
     expect(store.isAuthenticated).toBe(false);
-    expect(localStorageMock.getItem('eisa_access')).toBeNull();
+    expect(localStorageMock.getItem('eisa_role')).toBeNull();
+    expect(localStorageMock.getItem('eisa_pharmacy_id')).toBeNull();
   });
 
   it('pharmacist rolüyle login', async () => {
-    mockLogin.mockResolvedValueOnce({ access: 't', refresh: 'r', role: 'pharmacist' });
+    mockLogin.mockResolvedValueOnce({ role: 'pharmacist', pharmacyId: 5, userId: 9 });
     const store = useAuthStore();
     await store.login('eczaci', 'pass');
     expect(store.role).toBe('pharmacist');
+    expect(store.pharmacyId).toBe(5);
   });
 });

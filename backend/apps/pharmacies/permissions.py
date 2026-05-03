@@ -1,59 +1,59 @@
 """
-E-İSA özel izin sınıfları.
-JWT panel kullanıcıları (süper admin / eczacı) ve kiosk cihazları için.
+E-ISA ozel izin siniflari.
+
+JWT panel kullanicilari (super admin / eczaci) ve kiosk cihazlari icin.
 """
 from rest_framework.permissions import BasePermission
 
+from apps.users.models import Kullanici
+
 
 class IsSuperAdmin(BasePermission):
-    """Sadece 'superadmin' rolüne sahip JWT kullanıcılarına izin verir."""
+    """Sadece 'superadmin' rolune sahip JWT kullanicilarina izin verir."""
 
-    message = "Bu işlem için süper admin yetkisi gereklidir."
+    message = "Bu islem icin super admin yetkisi gereklidir."
 
     def has_permission(self, request, view):
         return bool(
             request.user
-            and hasattr(request.user, "role")
-            and request.user.role == "superadmin"
+            and isinstance(request.user, Kullanici)
+            and request.user.rol == Kullanici.Rol.SUPERADMIN
         )
 
 
-class IsPharmacist(BasePermission):
-    """Sadece 'pharmacist' rolüne sahip JWT kullanıcılarına izin verir."""
+class IsEczaci(BasePermission):
+    """Sadece 'pharmacist' rolune sahip JWT kullanicilarina izin verir."""
 
-    message = "Bu işlem için eczacı yetkisi gereklidir."
+    message = "Bu islem icin eczaci yetkisi gereklidir."
 
     def has_permission(self, request, view):
         return bool(
             request.user
-            and hasattr(request.user, "role")
-            and request.user.role == "pharmacist"
+            and isinstance(request.user, Kullanici)
+            and request.user.rol == Kullanici.Rol.ECZACI
         )
 
 
 class IsKiosk(BasePermission):
-    """
-    Sadece App-Key ile doğrulanmış kiosk cihazlarına izin verir.
-    KioskAppKeyAuthentication başarılı olduğunda request.auth bir string (app_key) olur.
-    """
+    """Sadece App-Key ile dogrulanmis kiosk cihazlarina izin verir."""
 
-    message = "Bu endpoint sadece kiosk cihazları içindir."
+    message = "Bu endpoint sadece kiosk cihazlari icindir."
 
     def has_permission(self, request, view):
+        # KioskAppKeyAuthentication request.auth icine string anahtar koyar
         return isinstance(request.auth, str)
 
 
 class IsKioskOrAuthenticated(BasePermission):
-    """
-    Kiosk (App-Key) veya JWT ile doğrulanmış panel kullanıcılarına izin verir.
-    Hem kiosk hem admin panelin erişebildiği endpoint'ler için kullanılır.
-    """
+    """Kiosk (App-Key) veya JWT panel kullanicisi."""
 
-    message = "Kimlik doğrulama gereklidir."
+    message = "Kimlik dogrulamasi gereklidir."
 
     def has_permission(self, request, view):
-        # JWT ile doğrulanmış panel kullanıcısı kontrolü
-        if request.user and hasattr(request.user, "role"):
+        if request.user and isinstance(request.user, Kullanici):
             return True
-        # App-Key ile doğrulanmış kiosk cihazı kontrolü
         return isinstance(request.auth, str)
+
+
+# Geriye donuk uyumluluk takma adlari
+IsPharmacist = IsEczaci

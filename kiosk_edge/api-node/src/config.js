@@ -14,10 +14,21 @@ function readInt(value, fallback) {
 const central = process.env.EISA_CENTRAL_API_BASE || 'https://api.e-isa.local';
 const appKey = process.env.EISA_KIOSK_APP_KEY || '';
 const mac = process.env.EISA_KIOSK_MAC || '';
+const localApiSecret = process.env.EISA_LOCAL_API_SECRET || '';
+const devMode = readBool(process.env.EISA_DEV_MODE, false);
 
 if (!appKey || !mac) {
   throw new Error(
     'EISA_KIOSK_APP_KEY ve EISA_KIOSK_MAC environment değişkenleri zorunludur.',
+  );
+}
+
+// SEC-005: Eczacı uçbiriminden gelen istekler için kullanılan lokal Bearer
+// secret'ın boş olması kabul edilemez. Sadece dev modunda boş bırakılabilir
+// ki hızlı testler engellenmesin; bu durumda auth middleware zaten 503 döner.
+if (!devMode && !localApiSecret) {
+  throw new Error(
+    'EISA_LOCAL_API_SECRET zorunludur (dev modu dışında boş bırakılamaz).',
   );
 }
 
@@ -41,11 +52,11 @@ export const settings = Object.freeze({
   // Termal yazıcı (opsiyonel — TCP raw 9100). Tanımsızsa fiş basılmaz.
   thermalPrinterHost: process.env.EISA_THERMAL_PRINTER_HOST || '',
   thermalPrinterPort: readInt(process.env.EISA_THERMAL_PRINTER_PORT, 9100),
-  localApiSecret: process.env.EISA_LOCAL_API_SECRET || '',
+  localApiSecret,
   pullIntervalSec: readInt(process.env.EISA_PULL_INTERVAL_SEC, 900),
   pushIntervalSec: readInt(process.env.EISA_PUSH_INTERVAL_SEC, 300),
   verifyTls: readBool(process.env.EISA_VERIFY_TLS, true),
-  devMode: readBool(process.env.EISA_DEV_MODE, false),
+  devMode,
   host: process.env.EISA_HOST || '127.0.0.1',
   port: readInt(process.env.EISA_PORT, 8765),
   // Log dosyası yolu — kiosk eMMC dolmasın diye pino-roll ile rotate edilir.

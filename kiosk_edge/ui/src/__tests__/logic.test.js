@@ -54,33 +54,33 @@ describe('idle timeout kontrolü', () => {
 
 describe('kategori filtreleme', () => {
   const categories = [
-    { id: 1, slug: 'enerji', is_sensitive: false },
-    { id: 2, slug: 'uyku', is_sensitive: false },
-    { id: 7, slug: 'cinsel', is_sensitive: true },
-    { id: 8, slug: 'hemoroid', is_sensitive: true },
+    { id: 1, slug: 'enerji', hassas: false },
+    { id: 2, slug: 'uyku', hassas: false },
+    { id: 7, slug: 'cinsel', hassas: true },
+    { id: 8, slug: 'hemoroid', hassas: true },
   ];
 
-  it('is_sensitive=false filtresi normal kategorileri döner', () => {
-    const normal = categories.filter(c => c.is_sensitive === false);
+  it('hassas=false filtresi normal kategorileri döner', () => {
+    const normal = categories.filter(c => c.hassas === false);
     expect(normal.length).toBe(2);
     expect(normal.map(c => c.slug)).toEqual(['enerji', 'uyku']);
   });
 
-  it('is_sensitive=true filtresi hassas kategorileri döner', () => {
-    const sensitive = categories.filter(c => c.is_sensitive === true);
+  it('hassas=true filtresi hassas kategorileri döner', () => {
+    const sensitive = categories.filter(c => c.hassas === true);
     expect(sensitive.length).toBe(2);
     expect(sensitive.map(c => c.slug)).toContain('cinsel');
   });
 
   it('boş kategori listesi filtrelemesi güvenli', () => {
-    expect([].filter(c => c.is_sensitive === false)).toEqual([]);
+    expect([].filter(c => c.hassas === false)).toEqual([]);
   });
 });
 
 // ─── fetchCategories fallback davranışı ───────────────────────────────────
 
 describe('fetchCategories fallback', () => {
-  const FALLBACK = [{ id: 1, slug: 'enerji', name: 'Enerji', is_sensitive: false }];
+  const FALLBACK = [{ id: 1, slug: 'enerji', ad: 'Enerji', hassas: false }];
 
   it('fetch başarısız olduğunda fallback kullanılır', async () => {
     const fetchMock = vi.fn().mockRejectedValueOnce(new Error('Network error'));
@@ -100,7 +100,7 @@ describe('fetchCategories fallback', () => {
   });
 
   it('fetch başarılı olduğunda API verisi kullanılır', async () => {
-    const apiData = [{ id: 99, slug: 'test', name: 'Test', is_sensitive: false }];
+    const apiData = [{ id: 99, slug: 'test', ad: 'Test', hassas: false }];
     const fetchMock = vi.fn().mockResolvedValueOnce({
       ok: true,
       json: () => Promise.resolve(apiData),
@@ -125,15 +125,15 @@ describe('fetchCategories fallback', () => {
 // ─── QR kod doğrulama ─────────────────────────────────────────────────────
 
 describe('QR kodu doğrulama', () => {
-  const QR_RE = /^[A-Za-z0-9][\w:\-]{5,255}$/;
+  const QR_RE = /^[0-9A-Z]{8,12}$/;
 
   it('geçerli QR kodunu kabul eder', () => {
-    expect(QR_RE.test('ABC123456')).toBe(true);
-    expect(QR_RE.test('QR-CODE:2024')).toBe(true);
+    expect(QR_RE.test('ABC12345')).toBe(true);
+    expect(QR_RE.test('ABCDEF12345')).toBe(true);
   });
 
   it('çok kısa kodu reddeder', () => {
-    expect(QR_RE.test('AB')).toBe(false);
+    expect(QR_RE.test('AB12')).toBe(false);
   });
 
   it('özel karakterli kodu reddeder', () => {

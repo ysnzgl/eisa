@@ -1,30 +1,28 @@
-"""
-Kampanya serileştiricisi — admin CRUD ve kiosk senkronizasyonu için.
-"""
+"""Reklam (kampanya) serileştiricisi."""
 from rest_framework import serializers
 
-from .models import Campaign
+from .models import Reklam
 
 
-class CampaignSerializer(serializers.ModelSerializer):
+class ReklamSerializer(serializers.ModelSerializer):
     """
-    Kampanya serileştiricisi.
-    target_* alanları JSON listelerdir (şehir, ilçe, yaş aralığı, cinsiyet hedefleme).
+    hedef_eczaneler: M2M Eczane id listesi.
+    Yazarken: integer id listesi gonder. Okurken: aynen id listesi doner.
+    Bos liste = herkese goster.
     """
 
     class Meta:
-        model = Campaign
+        model = Reklam
         fields = [
             "id",
-            "name",
-            "media_url",
-            "starts_at",
-            "ends_at",
-            "target_cities",
-            "target_districts",
-            "target_age_ranges",
-            "target_genders",
-            "is_active",
-            "created_at",
+            "ad",
+            "medya_url",
+            "baslangic_tarihi",
+            "bitis_tarihi",
+            "hedef_eczaneler",
+            "aktif",
+            "olusturulma_tarihi",
+            "guncellenme_tarihi",
+            "surum",
         ]
-        read_only_fields = ["id", "created_at"]
+        read_only_fields = ("id", "olusturulma_tarihi", "guncellenme_tarihi", "surum")

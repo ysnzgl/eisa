@@ -1,13 +1,18 @@
 // E-İSA Kiosk API — entrypoint.
 import { settings } from './config.js';
 import { openDb, closeDb } from './db.js';
-import { seedCategoriesIfEmpty, seedCampaignsIfEmpty } from './seed.js';
+import {
+  seedLookupsIfEmpty,
+  seedKategorilerIfEmpty,
+  seedReklamlarIfEmpty,
+} from './seed.js';
 import { buildServer } from './server.js';
 import { startScheduler, stopScheduler } from './scheduler.js';
 
 const db = openDb(settings.sqlitePath, { outboxMaxRows: settings.outboxMaxRows });
-seedCategoriesIfEmpty(db);
-seedCampaignsIfEmpty(db);
+seedLookupsIfEmpty(db);
+seedKategorilerIfEmpty(db);
+seedReklamlarIfEmpty(db);
 
 const app = await buildServer({ db, settings });
 startScheduler(db, settings, app.log);

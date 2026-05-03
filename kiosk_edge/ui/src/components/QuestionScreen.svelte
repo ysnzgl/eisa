@@ -13,7 +13,7 @@
   <div class="kiosk-header"><div class="kiosk-logo">e-<span>İSA</span></div></div>
   <span class="screen-badge">Adım 3 / 3 — Anket</span>
 
-  <div class="q-cat-name">{$currentCategory?.name ?? ''}</div>
+  <div class="q-cat-name">{$currentCategory?.ad ?? ''}</div>
 
   <div class="progress-bar-wrap">
     <div class="progress-bar-fill" style="width:{qProgress}%"></div>
@@ -26,7 +26,7 @@
     </div>
   {:else if $currentQuestions[$currentQIndex]}
     <div class="question-box">
-      <p class="question-text">{$currentQuestions[$currentQIndex].text}</p>
+      <p class="question-text">{$currentQuestions[$currentQIndex].metin}</p>
       <div class="answer-row">
         <button class="btn-touch btn-primary-touch" on:click={() => dispatch('answer', 'Y')}>
           <i class="fa-solid fa-check"></i> EVET

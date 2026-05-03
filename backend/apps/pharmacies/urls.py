@@ -1,36 +1,23 @@
-"""
-Eczane ve kiosk URL yönlendirmeleri.
-Eczane endpoint'leri int:pk ile çakışmayı önlemek için manuel olarak tanımlanmıştır.
-Kiosk endpoint'leri DRF router üzerinden yönetilir.
-"""
+"""Eczane ve Kiosk URL yonlendirmeleri."""
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from .dashboard import PharmacistDashboardView
-from .views import KioskViewSet, PharmacyViewSet
+from .dashboard import EczaciDashboardView
+from .views import EczaneViewSet, KioskViewSet
 
-# Kiosk router'ı: /kiosks/, /kiosks/me/, /kiosks/{pk}/, /kiosks/{pk}/regenerate-key/
 kiosk_router = DefaultRouter()
 kiosk_router.register(r"kiosks", KioskViewSet, basename="kiosk")
 
 urlpatterns = [
-    # Eczacı ana sayfa özeti: GET /api/pharmacies/me/dashboard/
-    path(
-        "me/dashboard/",
-        PharmacistDashboardView.as_view(),
-        name="pharmacist-dashboard",
-    ),
-    # Eczane listesi/oluşturma: GET/POST /api/pharmacies/
+    path("me/dashboard/", EczaciDashboardView.as_view(), name="eczaci-dashboard"),
     path(
         "",
-        PharmacyViewSet.as_view({"get": "list", "post": "create"}),
-        name="pharmacy-list",
+        EczaneViewSet.as_view({"get": "list", "post": "create"}),
+        name="eczane-list",
     ),
-    # Eczane detay: GET/PUT/PATCH/DELETE /api/pharmacies/{pk}/
-    # int:pk kullanımı "kiosks/" gibi string'lerin yanlış eşleşmesini engeller
     path(
         "<int:pk>/",
-        PharmacyViewSet.as_view(
+        EczaneViewSet.as_view(
             {
                 "get": "retrieve",
                 "put": "update",
@@ -38,9 +25,7 @@ urlpatterns = [
                 "delete": "destroy",
             }
         ),
-        name="pharmacy-detail",
+        name="eczane-detail",
     ),
-    # Kiosk endpoint'leri router üzerinden dahil edilir
     path("", include(kiosk_router.urls)),
 ]
-

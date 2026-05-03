@@ -1,18 +1,12 @@
-"""
-Kampanya URL yönlendirmeleri.
-/sync/ endpoint'i DRF router tarafından list action'larından önce oluşturulur.
-"""
+"""Reklam URL yonlendirmeleri."""
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from .views import CampaignViewSet
+from .views import ReklamViewSet
 
 router = DefaultRouter()
-# Boş prefix: /api/campaigns/ → liste, /api/campaigns/{pk}/ → detay
-# /api/campaigns/sync/ → kiosk sync action (DRF list action'ı olarak kayıtlı)
-router.register(r"", CampaignViewSet, basename="campaign")
+router.register(r"", ReklamViewSet, basename="reklam")
 
 urlpatterns = [
     path("", include(router.urls)),
 ]
-

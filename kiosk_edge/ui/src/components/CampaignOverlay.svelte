@@ -27,11 +27,11 @@
 
 <div class="campaign-overlay" role="dialog" aria-modal="true">
   <div class="campaign-media-wrap">
-    {#if campaign?.media_local_path}
-      {#if /\.(mp4|webm|ogg)$/i.test(campaign.media_local_path)}
+    {#if campaign?.medya_url}
+      {#if /\.(mp4|webm|ogg)$/i.test(campaign.medya_url)}
         <!-- svelte-ignore a11y-media-has-caption -->
         <video
-          src={campaign.media_local_path}
+          src={campaign.medya_url}
           autoplay
           loop
           muted
@@ -39,12 +39,12 @@
           class="campaign-media"
         ></video>
       {:else}
-        <img src={campaign.media_local_path} alt={campaign.name} class="campaign-media" />
+        <img src={campaign.medya_url} alt={campaign.ad} class="campaign-media" />
       {/if}
     {:else}
       <div class="campaign-placeholder">
         <i class="fa-solid fa-photo-film"></i>
-        <p>{campaign?.name ?? 'Kampanya'}</p>
+        <p>{campaign?.ad ?? 'Kampanya'}</p>
       </div>
     {/if}
   </div>

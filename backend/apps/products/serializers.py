@@ -1,74 +1,68 @@
-"""
-Ürün/kategori serileştiricileri — admin panel CRUD ve kiosk senkronizasyonu için.
-"""
+"""Urun/kategori serileştiricileri."""
 from rest_framework import serializers
 
-from .models import ActiveIngredient, Answer, Category, Question
+from .models import Cevap, EtkenMadde, Kategori, Soru
 
 
-class AnswerSerializer(serializers.ModelSerializer):
-    """Soru cevabı — kiosk sync ve admin panel için."""
+class CevapSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Cevap
+        fields = ["id", "metin", "agirlik"]
+
+
+class SoruSerializer(serializers.ModelSerializer):
+    cevaplar = CevapSerializer(many=True, read_only=True)
 
     class Meta:
-        model = Answer
-        fields = ["id", "text", "weight"]
+        model = Soru
+        fields = [
+            "id", "kategori", "metin", "sira", "cevaplar",
+            "hedef_cinsiyetler", "hedef_yas_araliklari",
+        ]
 
 
-class QuestionSerializer(serializers.ModelSerializer):
-    """
-    Soru serileştiricisi.
-    Admin CRUD'da answers salt okunur olarak listelenir.
-    """
+class CevapWriteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Cevap
+        fields = ["id", "soru", "metin", "agirlik"]
 
-    answers = AnswerSerializer(many=True, read_only=True)
+
+class KategoriSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Kategori
+        fields = [
+            "id", "ad", "slug", "ikon", "hassas", "aktif",
+            "hedef_cinsiyetler", "hedef_yas_araliklari",
+        ]
+
+
+class SoruDetayliSerializer(serializers.ModelSerializer):
+    """Kiosk sync icin: cevaplar ic ice + hedefleme."""
+
+    cevaplar = CevapSerializer(many=True, read_only=True)
 
     class Meta:
-        model = Question
-        fields = ["id", "category", "text", "order", "answers"]
+        model = Soru
+        fields = [
+            "id", "metin", "sira", "cevaplar",
+            "hedef_cinsiyetler", "hedef_yas_araliklari",
+        ]
 
 
-class AnswerWriteSerializer(serializers.ModelSerializer):
-    """Cevap oluşturma/güncelleme için serileştirici."""
+class KategoriSyncSerializer(serializers.ModelSerializer):
+    """Kiosk sync icin: aktif kategoriler + sorular + cevaplar + hedefleme."""
 
-    class Meta:
-        model = Answer
-        fields = ["id", "question", "text", "weight"]
-
-
-class CategorySerializer(serializers.ModelSerializer):
-    """Admin panel için düz kategori serileştiricisi (soru detayı olmadan)."""
+    sorular = SoruDetayliSerializer(many=True, read_only=True)
 
     class Meta:
-        model = Category
-        fields = ["id", "name", "slug", "is_sensitive", "is_active"]
+        model = Kategori
+        fields = [
+            "id", "ad", "slug", "ikon", "hassas", "sorular",
+            "hedef_cinsiyetler", "hedef_yas_araliklari",
+        ]
 
 
-class QuestionWithAnswersSerializer(serializers.ModelSerializer):
-    """Kiosk senkronizasyonu için iç içe (nested) cevapları olan soru."""
-
-    answers = AnswerSerializer(many=True, read_only=True)
-
+class EtkenMaddeSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Question
-        fields = ["id", "text", "order", "answers"]
-
-
-class CategorySyncSerializer(serializers.ModelSerializer):
-    """
-    Kiosk senkronizasyonu için iç içe sorular ve cevapları olan kategori.
-    Sadece aktif kategoriler gönderilir.
-    """
-
-    questions = QuestionWithAnswersSerializer(many=True, read_only=True)
-
-    class Meta:
-        model = Category
-        fields = ["id", "name", "slug", "is_sensitive", "questions"]
-
-
-class ActiveIngredientSerializer(serializers.ModelSerializer):
-    """Etken madde CRUD ve kiosk sync için serileştirici."""
-
-    class Meta:
-        model = ActiveIngredient
-        fields = ["id", "name", "description"]
+        model = EtkenMadde
+        fields = ["id", "ad", "aciklama"]

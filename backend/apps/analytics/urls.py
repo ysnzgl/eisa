@@ -1,18 +1,10 @@
-"""
-Analitik URL yönlendirmeleri.
-Sıralama önemli: /sessions/stats/ mutlaka /sessions/'den önce gelmelidir.
-"""
+"""Analitik URL yonlendirmeleri. /sessions/stats/ /sessions/'den onceye konmali."""
 from django.urls import path
 
-from .views import AdImpressionBulkPushView, SessionLogStatsView, SessionLogView
+from .views import OturumLoguStatsView, OturumLoguView, ReklamGosterimBulkPushView
 
 urlpatterns = [
-    # GET /api/analytics/sessions/stats/ — Süper admin istatistikleri
-    # Bu path /sessions/'den önce tanımlanmalı, aksi hâlde "stats" pk olarak yorumlanır
-    path("sessions/stats/", SessionLogStatsView.as_view(), name="session-stats"),
-    # GET (admin liste) / POST (kiosk push) /api/analytics/sessions/
-    path("sessions/", SessionLogView.as_view(), name="session-log"),
-    # POST /api/analytics/impressions/ — Kiosk reklam gösterim verisi
-    path("impressions/", AdImpressionBulkPushView.as_view(), name="ad-impression"),
+    path("sessions/stats/", OturumLoguStatsView.as_view(), name="oturum-stats"),
+    path("sessions/", OturumLoguView.as_view(), name="oturum-log"),
+    path("impressions/", ReklamGosterimBulkPushView.as_view(), name="reklam-gosterim"),
 ]
-

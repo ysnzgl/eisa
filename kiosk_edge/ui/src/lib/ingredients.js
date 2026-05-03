@@ -29,16 +29,25 @@ export function getRecommendations(questions, answers, ageRange, gender) {
   const age = representativeAge(ageRange);
   const recs = new Map(); // primary → supportive  (deduplicate)
 
+  if (!Array.isArray(questions) || !Array.isArray(answers)) return [];
+
   for (const ans of answers) {
-    if (ans.answer !== 'Y') continue;
+    if (!ans || ans.answer !== 'Y') continue;
 
-    const question = questions.find(q => q.seed_id === ans.id);
-    if (!question?.match_rules?.length) continue;
+    const question = questions.find((q) => q && q.seed_id === ans.id);
+    // Backend yeni şemada `eslesme_kurallari` gönderir; eski `match_rules` da fallback olarak kabul edilir.
+    const rules = question?.eslesme_kurallari ?? question?.match_rules;
+    if (!Array.isArray(rules) || rules.length === 0) continue;
 
-    for (const rule of question.match_rules) {
-      if (!rule.gender.includes(gender)) continue;
-      if (age < rule.age_min || age > rule.age_max) continue;
-      recs.set(rule.primary, rule.supportive);
+    for (const rule of rules) {
+      if (!rule || typeof rule !== 'object') continue;
+      const ruleGenders = Array.isArray(rule.gender) ? rule.gender : [];
+      if (!ruleGenders.includes(gender)) continue;
+      const minAge = Number.isFinite(rule.age_min) ? rule.age_min : 0;
+      const maxAge = Number.isFinite(rule.age_max) ? rule.age_max : 200;
+      if (age < minAge || age > maxAge) continue;
+      if (!rule.primary) continue;
+      recs.set(rule.primary, rule.supportive || '');
       break; // ilk eşleşen kural yeterli
     }
   }

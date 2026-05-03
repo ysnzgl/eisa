@@ -19,8 +19,8 @@
     <div class="cat-grid">
       {#each $visibleCategories as cat (cat.id)}
         <button class="cat-card" on:click={() => dispatch('select', cat)}>
-          <i class="fa-solid {cat.icon}"></i>
-          <h3>{cat.name}</h3>
+          <i class="fa-solid {cat.ikon}"></i>
+          <h3>{cat.ad}</h3>
         </button>
       {/each}
     </div>

@@ -1,10 +1,8 @@
-"""Kullanıcı URL yönlendirmeleri."""
+"""Kullanici URL yonlendirmeleri."""
 from django.urls import path
 
-from .views import ProfileView
+from .views import ProfilView
 
 urlpatterns = [
-    # GET/PATCH /api/users/me/ — Giriş yapmış kullanıcının profili
-    path("me/", ProfileView.as_view(), name="user-profile"),
+    path("me/", ProfilView.as_view(), name="user-profile"),
 ]
-

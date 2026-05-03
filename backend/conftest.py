@@ -1,46 +1,56 @@
-"""Proje genelinde paylaşılan pytest fixture'ları."""
+"""Pytest fixture'lari (yeni Turkce model adlari ile)."""
 import pytest
 from django.contrib.auth import get_user_model
 
-from apps.pharmacies.models import Pharmacy, Kiosk
+from apps.lookups.seed import seed_lookups
+from apps.lookups.models import Il, Ilce
+from apps.pharmacies.models import Eczane, Kiosk
 
-User = get_user_model()
+Kullanici = get_user_model()
+
+
+@pytest.fixture(autouse=True)
+def _seed_lookups(db):
+    """Her test oncesi lookup tablolarini doldur."""
+    seed_lookups()
 
 
 @pytest.fixture
-def pharmacy(db):
-    return Pharmacy.objects.create(
-        name="Test Eczanesi",
-        city="İstanbul",
-        district="Kadıköy",
+def eczane(db):
+    il = Il.objects.get(ad="Istanbul")
+    ilce = Ilce.objects.filter(il=il).first()
+    return Eczane.objects.create(
+        ad="Test Eczanesi",
+        il=il,
+        ilce=ilce,
     )
 
 
 @pytest.fixture
 def superadmin(db):
-    return User.objects.create_user(
+    return Kullanici.objects.create_user(
         username="superadmin",
         password="Str0ngPass!",
-        role="superadmin",
+        rol="superadmin",
     )
 
 
 @pytest.fixture
-def pharmacist(db, pharmacy):
-    return User.objects.create_user(
-        username="pharmacist",
+def eczaci(db, eczane):
+    return Kullanici.objects.create_user(
+        username="eczaci",
         password="Str0ngPass!",
-        role="pharmacist",
-        pharmacy=pharmacy,
+        rol="pharmacist",
+        eczane=eczane,
     )
 
 
 @pytest.fixture
-def kiosk(db, pharmacy):
+def kiosk(db, eczane):
     return Kiosk.objects.create(
-        pharmacy=pharmacy,
-        mac_address="AA:BB:CC:DD:EE:FF",
-        app_key="test-app-key-secure-48chars-xxxxxxxxxxxxxxxxxxx",
+        eczane=eczane,
+        mac_adresi="AA:BB:CC:DD:EE:FF",
+        uygulama_anahtari="test-app-key-secure-48chars-xxxxxxxxxxxxxxxxxxx",
     )
 
 
@@ -59,9 +69,9 @@ def admin_client(api_client, superadmin):
 
 
 @pytest.fixture
-def pharmacist_client(api_client, pharmacist):
+def eczaci_client(api_client, eczaci):
     from rest_framework_simplejwt.tokens import RefreshToken
-    refresh = RefreshToken.for_user(pharmacist)
+    refresh = RefreshToken.for_user(eczaci)
     api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}")
     return api_client
 
@@ -69,7 +79,7 @@ def pharmacist_client(api_client, pharmacist):
 @pytest.fixture
 def kiosk_client(api_client, kiosk):
     api_client.credentials(
-        HTTP_AUTHORIZATION=f"AppKey {kiosk.app_key}",
-        HTTP_X_KIOSK_MAC=kiosk.mac_address,
+        HTTP_AUTHORIZATION=f"AppKey {kiosk.uygulama_anahtari}",
+        HTTP_X_KIOSK_MAC=kiosk.mac_adresi,
     )
     return api_client

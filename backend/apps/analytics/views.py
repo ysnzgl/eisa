@@ -1,265 +1,244 @@
 """
-Analitik görünümleri.
-Kiosk: oturum ve reklam gösterim verilerini toplu gönderir.
-Admin (süper admin): istatistikler ve sayfalı oturum listesi.
+Analitik gorunumleri.
+
+Kiosk: oturum ve reklam gosterim verilerini toplu gonderir (idempotent).
+Admin: istatistikler ve sayfalanmis liste.
+
+Yazma yolu UoW uzerindendir; ancak kiosk push akisinda kullanici yoktur
+(kiosk anonim cihaz), bu yuzden olusturan/guncelleyen NULL kalir.
 """
 from datetime import timedelta
 
 from django.db.models import Count
 from django.db.models.functions import TruncDate
 from django.utils import timezone
-from rest_framework import generics, status
-from rest_framework.pagination import PageNumberPagination
+from rest_framework import status
+from rest_framework.pagination import CursorPagination
 from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
-
-def _OrPerm(*perms):
-    """İki izin sınıfını OR ile birleştiren küçük yardımcı."""
-
-    class _Combined(BasePermission):
-        def has_permission(self, request, view):
-            return any(p().has_permission(request, view) for p in perms)
-
-    return _Combined
-
+from apps.core.uow import UnitOfWork
+from apps.lookups.models import Cinsiyet, YasAraligi
 from apps.pharmacies.auth import KioskAppKeyAuthentication
-from apps.pharmacies.permissions import IsKiosk, IsPharmacist, IsSuperAdmin
-from apps.products.models import Category
+from apps.pharmacies.permissions import IsEczaci, IsKiosk, IsSuperAdmin
+from apps.products.models import Kategori
 
-from .models import AdImpression, SessionLog
+from .models import OturumLogu, ReklamGosterim
 from .serializers import (
-    AdImpressionItemSerializer,
-    SessionLogItemSerializer,
-    SessionLogSerializer,
+    OturumLoguItemSerializer,
+    OturumLoguSerializer,
+    ReklamGosterimItemSerializer,
 )
 
 
-class SessionLogPagination(PageNumberPagination):
-    """Oturum log listesi için sayfalama — varsayılan 50, maksimum 200."""
+def _OrPerm(*perms):
+    class _C(BasePermission):
+        def has_permission(self, request, view):
+            return any(p().has_permission(request, view) for p in perms)
+    return _C
 
+
+class OturumLoguPagination(CursorPagination):
     page_size = 50
     page_size_query_param = "page_size"
     max_page_size = 200
+    ordering = "-id"
 
 
-class SessionLogView(APIView):
-    """
-    GET  /api/analytics/sessions/ — Süper admin: sayfalı oturum log listesi.
-    POST /api/analytics/sessions/ — Kiosk: outbox'tan toplu oturum verisi iletimi.
-
-    Farklı HTTP metodları farklı kimlik doğrulama ve izin sınıfları gerektirir.
-    """
+class OturumLoguView(APIView):
+    """GET (admin/eczaci) / POST (kiosk) /api/analytics/sessions/"""
 
     authentication_classes = [JWTAuthentication, KioskAppKeyAuthentication]
 
     def get_permissions(self):
-        """POST → kiosk; GET → süper admin veya eczacı (kendi kiosk'larıyla sınırlı)."""
         if self.request.method == "POST":
             return [IsKiosk()]
-        return [_OrPerm(IsSuperAdmin, IsPharmacist)()]
+        return [_OrPerm(IsSuperAdmin, IsEczaci)()]
 
-    # --- GET: Admin oturum listesi ---
-
+    # ── GET: Admin/Eczaci listesi ──
     def get(self, request):
-        """Tüm oturum kayıtlarını tersten tarihe göre sıralı ve sayfalı döner.
-        Eczacı için yalnızca kendi eczanesinin kioskları döner.
-        Desteklenen query params: qr_code, is_sensitive_flow, ordering."""
-        queryset = (
-            SessionLog.objects.select_related("kiosk__pharmacy", "category")
+        qs = (
+            OturumLogu.objects.select_related(
+                "kiosk__eczane", "kategori", "yas_araligi", "cinsiyet"
+            )
             .all()
-            .order_by("-created_at")
+            .order_by("-olusturulma_tarihi")
         )
-
-        # Eczacı ise yalnızca kendi eczanesinin kiosk oturumlarını gör
         user = request.user
-        if getattr(user, "role", None) == "pharmacist":
-            if not user.pharmacy_id:
+        if getattr(user, "rol", None) == "pharmacist":
+            if not user.eczane_id:
                 return Response({"results": [], "count": 0, "next": None, "previous": None})
-            queryset = queryset.filter(kiosk__pharmacy_id=user.pharmacy_id)
+            qs = qs.filter(kiosk__eczane_id=user.eczane_id)
 
-        # qr_code filtresi — QrScan.vue tarafından kullanılır
-        qr_code = request.query_params.get("qr_code")
-        if qr_code:
-            queryset = queryset.filter(qr_code=qr_code.upper())
+        qr_kodu = request.query_params.get("qr_kodu") or request.query_params.get("qr_code")
+        if qr_kodu:
+            qs = qs.filter(qr_kodu=qr_kodu.upper())
 
-        # is_sensitive_flow filtresi — Inbox.vue tarafından kullanılır
-        is_sensitive = request.query_params.get("is_sensitive_flow")
-        if is_sensitive is not None:
-            queryset = queryset.filter(is_sensitive_flow=is_sensitive.lower() == "true")
+        hassas = request.query_params.get("hassas_akis") or request.query_params.get("is_sensitive_flow")
+        if hassas is not None:
+            qs = qs.filter(hassas_akis=str(hassas).lower() == "true")
 
-        paginator = SessionLogPagination()
-        page = paginator.paginate_queryset(queryset, request)
-        serializer = SessionLogSerializer(page, many=True)
-        return paginator.get_paginated_response(serializer.data)
+        paginator = OturumLoguPagination()
+        page = paginator.paginate_queryset(qs, request)
+        return paginator.get_paginated_response(OturumLoguSerializer(page, many=True).data)
 
-    # --- POST: Kiosk outbox push ---
-
+    # ── POST: Kiosk outbox push (idempotent) ──
     def post(self, request):
-        """
-        Kiosk outbox'tan gelen oturum kayıtlarını toplu işler.
-        Her öğe bağımsız olarak doğrulanır; hatalılar reddedilirken diğerleri kabul edilir.
-        Yanıt: {"accepted": N, "errors": [...]}
-        """
         items = request.data.get("items", [])
         if not isinstance(items, list):
-            return Response(
-                {"detail": "'items' alanı bir liste olmalıdır."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return Response({"detail": "'items' alani bir liste olmalidir."},
+                            status=status.HTTP_400_BAD_REQUEST)
 
-        accepted = 0
+        accepted = []
         errors = []
 
-        for i, item_data in enumerate(items):
-            serializer = SessionLogItemSerializer(data=item_data)
-            if not serializer.is_valid():
-                errors.append({"index": i, "errors": serializer.errors})
+        for i, raw in enumerate(items):
+            ser = OturumLoguItemSerializer(data=raw)
+            if not ser.is_valid():
+                errors.append({"index": i, "idempotency_anahtari": (raw or {}).get("idempotency_anahtari"),
+                              "errors": ser.errors})
                 continue
+            d = ser.validated_data
+            idem = d["idempotency_anahtari"]
 
-            data = serializer.validated_data
-            # Kimlik doğrulamasından gelen kiosk kullanılacağı için kiosk_mac payload'dan çıkar
-            data.pop("kiosk_mac", None)
-            category_slug = data.pop("category_slug")
-            # Kiosk'un orijinal zaman damgasını sakla (auto_now_add'ı aşmak için)
-            kiosk_created_at = data.pop("created_at", None)
+            if OturumLogu.objects.filter(idempotency_anahtari=idem).exists():
+                accepted.append(str(idem))
+                continue
 
             try:
-                category = Category.objects.get(slug=category_slug)
-            except Category.DoesNotExist:
-                errors.append(
-                    {
-                        "index": i,
-                        "errors": {
-                            "category_slug": [f"'{category_slug}' kategorisi bulunamadı."]
-                        },
-                    }
-                )
+                kategori = Kategori.objects.get(slug=d["kategori_slug"])
+            except Kategori.DoesNotExist:
+                errors.append({"index": i, "idempotency_anahtari": str(idem),
+                              "errors": {"kategori_slug": [f"'{d['kategori_slug']}' kategori yok."]}})
+                continue
+            try:
+                yas = YasAraligi.objects.get(kod=d["yas_araligi_kod"])
+            except YasAraligi.DoesNotExist:
+                errors.append({"index": i, "idempotency_anahtari": str(idem),
+                              "errors": {"yas_araligi_kod": [f"Yas araligi yok: {d['yas_araligi_kod']}"]}})
+                continue
+            try:
+                cins = Cinsiyet.objects.get(kod=d["cinsiyet_kod"])
+            except Cinsiyet.DoesNotExist:
+                errors.append({"index": i, "idempotency_anahtari": str(idem),
+                              "errors": {"cinsiyet_kod": [f"Cinsiyet yok: {d['cinsiyet_kod']}"]}})
                 continue
 
-            # Oturumu kaydet (created_at auto_now_add ile server zamanına ayarlanır)
-            log = SessionLog.objects.create(
+            instance = OturumLogu(
+                idempotency_anahtari=idem,
                 kiosk=request.user,
-                category=category,
-                **data,
+                kategori=kategori,
+                yas_araligi=yas,
+                cinsiyet=cins,
+                hassas_akis=d.get("hassas_akis", False),
+                qr_kodu=d["qr_kodu"],
+                cevaplar=d.get("cevaplar", {}),
+                onerilen_etken_maddeler=d.get("onerilen_etken_maddeler", []),
             )
-            # Kiosk'un orijinal zaman damgasını koru (auto_now_add'ı queryset.update ile aş)
-            if kiosk_created_at:
-                SessionLog.objects.filter(pk=log.pk).update(created_at=kiosk_created_at)
-
-            accepted += 1
+            with UnitOfWork(user=None) as uow:
+                uow.add(instance)
+            kiosk_ts = d.get("olusturulma_tarihi")
+            if kiosk_ts:
+                OturumLogu.objects.filter(pk=instance.pk).update(olusturulma_tarihi=kiosk_ts)
+            accepted.append(str(idem))
 
         return_status = status.HTTP_207_MULTI_STATUS if errors else status.HTTP_200_OK
-        return Response({"accepted": accepted, "errors": errors}, status=return_status)
+        return Response({"accepted": len(accepted), "accepted_keys": accepted, "errors": errors},
+                        status=return_status)
 
 
-class AdImpressionBulkPushView(APIView):
-    """
-    POST /api/analytics/impressions/
-    Kiosk'tan gelen toplu reklam gösterim kayıtlarını kabul eder.
-    Yanıt: {"accepted": N, "errors": [...]}
-    """
+class ReklamGosterimBulkPushView(APIView):
+    """POST /api/analytics/impressions/ — Kiosk reklam gosterim toplu push."""
 
     authentication_classes = [KioskAppKeyAuthentication]
     permission_classes = [IsKiosk]
 
     def post(self, request):
-        # İçe aktarımı döngüsel bağımlılığı önlemek için burada yap
-        from apps.campaigns.models import Campaign
+        from apps.campaigns.models import Reklam
 
         items = request.data.get("items", [])
         if not isinstance(items, list):
-            return Response(
-                {"detail": "'items' alanı bir liste olmalıdır."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return Response({"detail": "'items' alani bir liste olmalidir."},
+                            status=status.HTTP_400_BAD_REQUEST)
 
-        accepted = 0
+        accepted = []
         errors = []
 
-        for i, item_data in enumerate(items):
-            serializer = AdImpressionItemSerializer(data=item_data)
-            if not serializer.is_valid():
-                errors.append({"index": i, "errors": serializer.errors})
+        for i, raw in enumerate(items):
+            ser = ReklamGosterimItemSerializer(data=raw)
+            if not ser.is_valid():
+                errors.append({"index": i, "errors": ser.errors})
                 continue
-
-            data = serializer.validated_data
-
+            d = ser.validated_data
+            idem = d["idempotency_anahtari"]
+            if ReklamGosterim.objects.filter(idempotency_anahtari=idem).exists():
+                accepted.append(str(idem))
+                continue
             try:
-                campaign = Campaign.objects.get(pk=data["campaign_id"])
-            except Campaign.DoesNotExist:
-                errors.append(
-                    {"index": i, "errors": {"campaign_id": ["Kampanya bulunamadı."]}}
-                )
+                reklam = Reklam.objects.get(pk=d["reklam_id"])
+            except Reklam.DoesNotExist:
+                errors.append({"index": i, "idempotency_anahtari": str(idem),
+                              "errors": {"reklam_id": ["Reklam bulunamadi."]}})
                 continue
-
-            AdImpression.objects.create(
+            instance = ReklamGosterim(
+                idempotency_anahtari=idem,
                 kiosk=request.user,
-                campaign=campaign,
-                shown_at=data["shown_at"],
-                duration_ms=data.get("duration_ms", 0),
+                reklam=reklam,
+                gosterilme_tarihi=d["gosterilme_tarihi"],
+                sure_ms=d.get("sure_ms", 0),
             )
-            accepted += 1
+            with UnitOfWork(user=None) as uow:
+                uow.add(instance)
+            accepted.append(str(idem))
 
         return_status = status.HTTP_207_MULTI_STATUS if errors else status.HTTP_200_OK
-        return Response({"accepted": accepted, "errors": errors}, status=return_status)
+        return Response({"accepted": len(accepted), "accepted_keys": accepted, "errors": errors},
+                        status=return_status)
 
 
-class SessionLogStatsView(APIView):
-    """
-    GET /api/analytics/sessions/stats/
-    Toplam oturum istatistiklerini döner (sadece süper admin).
-    Dönen veriler: toplam, yaş aralığı, cinsiyet, kategori dağılımı ve son 30 günlük trend.
-    """
+class OturumLoguStatsView(APIView):
+    """GET /api/analytics/sessions/stats/ — super admin istatistikleri."""
 
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsSuperAdmin]
 
     def get(self, request):
-        qs = SessionLog.objects.all()
-        total = qs.count()
+        qs = OturumLogu.objects.all()
+        toplam = qs.count()
 
-        # Yaş aralığına göre dağılım: {"18-25": 100, ...}
-        by_age_raw = qs.values("age_range").annotate(count=Count("id"))
-        by_age = {item["age_range"]: item["count"] for item in by_age_raw}
-
-        # Cinsiyete göre dağılım: {"F": 500, "M": 700, ...}
-        by_gender_raw = qs.values("gender").annotate(count=Count("id"))
-        by_gender = {item["gender"]: item["count"] for item in by_gender_raw}
-
-        # Kategoriye göre dağılım: [{"name": "Enerji", "count": 300}, ...]
-        by_category = list(
-            qs.values("category__name")
-            .annotate(count=Count("id"))
-            .order_by("-count")
-            .values("category__name", "count")
-        )
-        by_category = [
-            {"name": item["category__name"], "count": item["count"]}
-            for item in by_category
+        yas_dagilim = {
+            row["yas_araligi__kod"]: row["count"]
+            for row in qs.values("yas_araligi__kod").annotate(count=Count("id"))
+        }
+        cinsiyet_dagilim = {
+            row["cinsiyet__kod"]: row["count"]
+            for row in qs.values("cinsiyet__kod").annotate(count=Count("id"))
+        }
+        kategori_dagilim = [
+            {"ad": row["kategori__ad"], "sayi": row["count"]}
+            for row in qs.values("kategori__ad").annotate(count=Count("id")).order_by("-count")
         ]
 
-        # Son 30 günlük günlük dağılım: [{"date": "2025-01-01", "count": 10}, ...]
-        thirty_days_ago = timezone.now() - timedelta(days=30)
-        by_date_raw = (
-            qs.filter(created_at__gte=thirty_days_ago)
-            .annotate(date=TruncDate("created_at"))
-            .values("date")
-            .annotate(count=Count("id"))
-            .order_by("date")
-        )
-        by_date = [
-            {"date": str(item["date"]), "count": item["count"]} for item in by_date_raw
+        otuz_gun_once = timezone.now() - timedelta(days=30)
+        gunluk = [
+            {"tarih": str(row["tarih"]), "sayi": row["count"]}
+            for row in (
+                qs.filter(olusturulma_tarihi__gte=otuz_gun_once)
+                .annotate(tarih=TruncDate("olusturulma_tarihi"))
+                .values("tarih")
+                .annotate(count=Count("id"))
+                .order_by("tarih")
+            )
         ]
 
         return Response(
             {
-                "total_sessions": total,
-                "by_age_range": by_age,
-                "by_gender": by_gender,
-                "by_category": by_category,
-                "by_date": by_date,
+                "toplam_oturum": toplam,
+                "yas_araligi_dagilimi": yas_dagilim,
+                "cinsiyet_dagilimi": cinsiyet_dagilim,
+                "kategori_dagilimi": kategori_dagilim,
+                "gunluk_dagilim": gunluk,
             }
         )

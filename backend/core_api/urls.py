@@ -2,23 +2,20 @@
 from django.conf import settings
 from django.contrib import admin
 from django.urls import include, path
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-
-class ThrottledTokenObtainPairView(TokenObtainPairView):
-    """Brute-force koruması için login endpoint'inde sıkı rate limit."""
-    throttle_scope = "login"
-
-
-class ThrottledTokenRefreshView(TokenRefreshView):
-    throttle_scope = "login"
+from .auth_views import (
+    CookieLogoutView,
+    CookieTokenObtainPairView,
+    CookieTokenRefreshView,
+)
 
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    # Panel kimlik doğrulama (JWT) — rate-limited
-    path("api/auth/token/", ThrottledTokenObtainPairView.as_view(), name="token_obtain_pair"),
-    path("api/auth/token/refresh/", ThrottledTokenRefreshView.as_view(), name="token_refresh"),
+    # Panel kimlik doğrulama (httpOnly çerez tabanlı JWT) — rate-limited
+    path("api/auth/token/", CookieTokenObtainPairView.as_view(), name="token_obtain_pair"),
+    path("api/auth/token/refresh/", CookieTokenRefreshView.as_view(), name="token_refresh"),
+    path("api/auth/logout/", CookieLogoutView.as_view(), name="token_logout"),
     # Domain API'leri
     path("api/users/", include("apps.users.urls")),
     path("api/pharmacies/", include("apps.pharmacies.urls")),

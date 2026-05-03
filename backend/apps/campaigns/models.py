@@ -1,26 +1,36 @@
-"""DOOH reklam kampanyaları — lokasyon/yaş/cinsiyet hedefli."""
+"""DOOH reklam (kampanya) modelleri — eczane hedefli."""
 from django.core.exceptions import ValidationError
 from django.db import models
 
+from apps.core.models import BaseModel
 
-def validate_https_url(value: str) -> None:
-    """Yalnızca http(s) şemalarına izin ver — javascript:/file:/data: bloklanır."""
+
+def _https_url_validator(value: str) -> None:
+    """Yalnizca http(s) semalarina izin ver — javascript:/file:/data: bloklanir."""
     lower = (value or "").lower()
     if not (lower.startswith("https://") or lower.startswith("http://")):
-        raise ValidationError("media_url yalnızca http veya https olabilir.")
+        raise ValidationError("medya_url yalnizca http veya https olabilir.")
 
 
-class Campaign(models.Model):
-    name = models.CharField(max_length=255)
-    media_url = models.URLField(validators=[validate_https_url])
-    starts_at = models.DateTimeField()
-    ends_at = models.DateTimeField()
-    target_cities = models.JSONField(default=list, blank=True)
-    target_districts = models.JSONField(default=list, blank=True)
-    target_age_ranges = models.JSONField(default=list, blank=True)
-    target_genders = models.JSONField(default=list, blank=True)
-    is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+class Reklam(BaseModel):
+    """DOOH idle reklami. Bos hedef_eczaneler = herkese goster."""
+
+    ad = models.CharField(max_length=255)
+    medya_url = models.URLField(validators=[_https_url_validator])
+    baslangic_tarihi = models.DateTimeField()
+    bitis_tarihi = models.DateTimeField()
+
+    hedef_eczaneler = models.ManyToManyField(
+        "pharmacies.Eczane", blank=True, related_name="reklamlar"
+    )
+
+    aktif = models.BooleanField(default=True)
 
     class Meta:
-        db_table = "campaigns"
+        db_table = "reklamlar"
+        ordering = ("-olusturulma_tarihi",)
+        verbose_name = "Reklam"
+        verbose_name_plural = "Reklamlar"
+
+    def __str__(self) -> str:
+        return self.ad

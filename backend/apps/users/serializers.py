@@ -1,18 +1,11 @@
-"""
-Kullanıcı serileştiricileri — JWT ile doğrulanmış panel kullanıcıları için.
-"""
+"""Kullanici serileştiricisi."""
 from rest_framework import serializers
 
-from .models import User
+from .models import Kullanici
 
 
-class UserSerializer(serializers.ModelSerializer):
-    """
-    Kullanıcı profili serileştiricisi.
-    id, username, role alanları salt okunurdur; email ve pharmacy güncellenebilir.
-    """
-
+class KullaniciSerializer(serializers.ModelSerializer):
     class Meta:
-        model = User
-        fields = ["id", "username", "email", "role", "pharmacy"]
-        read_only_fields = ["id", "username", "role"]
+        model = Kullanici
+        fields = ["id", "username", "email", "rol", "eczane"]
+        read_only_fields = ["id", "username", "rol"]
