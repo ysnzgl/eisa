@@ -6,6 +6,7 @@ Kiosk endpoint'leri DRF router üzerinden yönetilir.
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from .dashboard import PharmacistDashboardView
 from .views import KioskViewSet, PharmacyViewSet
 
 # Kiosk router'ı: /kiosks/, /kiosks/me/, /kiosks/{pk}/, /kiosks/{pk}/regenerate-key/
@@ -13,6 +14,12 @@ kiosk_router = DefaultRouter()
 kiosk_router.register(r"kiosks", KioskViewSet, basename="kiosk")
 
 urlpatterns = [
+    # Eczacı ana sayfa özeti: GET /api/pharmacies/me/dashboard/
+    path(
+        "me/dashboard/",
+        PharmacistDashboardView.as_view(),
+        name="pharmacist-dashboard",
+    ),
     # Eczane listesi/oluşturma: GET/POST /api/pharmacies/
     path(
         "",

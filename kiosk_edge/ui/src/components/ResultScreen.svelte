@@ -9,8 +9,9 @@
   export async function drawQR(code) {
     const QrCreator = (await import('qr-creator')).default;
     if (!qrCanvas) return;
+    // Şifrelenmiş payload uzun olabileceği için Q yerine L, modül daha sık.
     QrCreator.render(
-      { text: code, radius: 0.5, ecLevel: 'M', fill: '#1a2e44', background: '#fff', size: 200 },
+      { text: code, radius: 0.4, ecLevel: 'L', fill: '#1a2e44', background: '#fff', size: 240 },
       qrCanvas,
     );
   }

@@ -19,7 +19,7 @@ export const currentQIndex   = writable(0);
 export const catsLoading     = writable(false);
 export const questionsLoading = writable(false);
 
-// Sonuç state'i: { label, ana, destek, recs, isSensitive, qrCode }
+// Sonuç state'i: { label, ana, destek, recs, isSensitive, qrCode, qrPayload }
 export const result = writable(null);
 
 // Kampanya state'i

@@ -2,11 +2,18 @@
 from __future__ import annotations
 
 import secrets
+from datetime import timedelta
 
 from django.utils import timezone
 from rest_framework import authentication, exceptions
 
+from apps.audit.models import AuditLog, record as audit_record
+
 from .models import Kiosk
+
+
+# Bu süreden uzun sessizlikten sonra gelen istekleri "yeniden online" olarak kaydeder.
+KIOSK_ONLINE_THRESHOLD = timedelta(minutes=5)
 
 
 class KioskAppKeyAuthentication(authentication.BaseAuthentication):
@@ -43,8 +50,28 @@ class KioskAppKeyAuthentication(authentication.BaseAuthentication):
         if kiosk is None:
             raise exceptions.AuthenticationFailed("Kiosk doğrulanamadı.")
 
-        kiosk.last_seen_at = timezone.now()
+        now = timezone.now()
+        previous = kiosk.last_seen_at
+        kiosk.last_seen_at = now
         kiosk.save(update_fields=["last_seen_at"])
+
+        # Kiosk uzun süre sessiz kaldıktan sonra döndüyse online olayını audit'e yaz.
+        if previous is None or (now - previous) > KIOSK_ONLINE_THRESHOLD:
+            try:
+                fwd = request.META.get("HTTP_X_FORWARDED_FOR", "")
+                ip = fwd.split(",")[0].strip() if fwd else request.META.get("REMOTE_ADDR")
+                audit_record(
+                    action=AuditLog.Action.KIOSK_ONLINE,
+                    summary=f"Kiosk online: {kiosk.mac_address}",
+                    kiosk_mac=kiosk.mac_address,
+                    ip_address=ip,
+                    metadata={
+                        "kiosk_id": kiosk.pk,
+                        "previous_seen_at": previous.isoformat() if previous else None,
+                    },
+                )
+            except Exception:  # pragma: no cover - audit yazımı hiç bir zaman istek akışını bozmasın
+                pass
 
         # DRF user/auth ikilisi: (user, auth). Kiosk'u "user" olarak işaretliyoruz.
         return (kiosk, key)

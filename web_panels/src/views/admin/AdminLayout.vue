@@ -35,6 +35,27 @@ function logout() {
         >
           📺 Kampanyalar
         </RouterLink>
+        <RouterLink
+          to="/admin/devices"
+          class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium hover:bg-blue-800 transition"
+          active-class="bg-blue-700"
+        >
+          🖥️ Cihaz Yönetimi
+        </RouterLink>
+        <RouterLink
+          to="/admin/medical-logic"
+          class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium hover:bg-blue-800 transition"
+          active-class="bg-blue-700"
+        >
+          🧬 Algoritma Editörü
+        </RouterLink>
+        <RouterLink
+          to="/admin/campaign-manager"
+          class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium hover:bg-blue-800 transition"
+          active-class="bg-blue-700"
+        >
+          📡 Kampanya Yöneticisi
+        </RouterLink>
       </nav>
       <div class="px-4 py-4 border-t border-blue-800">
         <button @click="logout" class="w-full text-left text-xs text-blue-300 hover:text-white transition">

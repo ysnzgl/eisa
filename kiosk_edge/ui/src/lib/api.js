@@ -29,7 +29,7 @@ export async function fetchQuestions(categorySlug) {
  * @param {boolean} payload.isSensitiveFlow
  * @param {object} payload.answersPayload  — { seed_id: 'Y'|'N' }
  * @param {string[]} payload.ingredientList
- * @returns {Promise<string>} QR kodu
+ * @returns {Promise<{qrCode: string, qrPayload: string}>}
  */
 export async function submitSession({ ageRange, gender, categorySlug, isSensitiveFlow, answersPayload, ingredientList }) {
   const res = await fetch(`${API_BASE}/api/session/submit`, {
@@ -47,7 +47,8 @@ export async function submitSession({ ageRange, gender, categorySlug, isSensitiv
   });
   if (!res.ok) throw new Error('HTTP ' + res.status);
   const data = await res.json();
-  return data.qr_code;
+  // Şifreli payload yoksa (eski edge), kısa kodu fallback olarak kullan.
+  return { qrCode: data.qr_code, qrPayload: data.qr_payload || data.qr_code };
 }
 
 export async function fetchActiveCampaigns() {

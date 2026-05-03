@@ -9,10 +9,19 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
+from apps.audit.models import AuditLog, record as audit_record
+
 from .auth import KioskAppKeyAuthentication
 from .models import Kiosk, Pharmacy
 from .permissions import IsKiosk, IsSuperAdmin
 from .serializers import KioskSerializer, PharmacySerializer
+
+
+def _client_ip(request):
+    fwd = request.META.get("HTTP_X_FORWARDED_FOR", "")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.META.get("REMOTE_ADDR")
 
 
 class PharmacyViewSet(viewsets.ModelViewSet):
@@ -31,6 +40,39 @@ class PharmacyViewSet(viewsets.ModelViewSet):
         if self.action in ("list", "retrieve"):
             return [permissions.IsAuthenticated()]
         return [IsSuperAdmin()]
+
+    def perform_create(self, serializer):
+        instance = serializer.save()
+        audit_record(
+            action=AuditLog.Action.CREATE,
+            actor=self.request.user,
+            target=instance,
+            summary=f"Pharmacy created: {instance}",
+            ip_address=_client_ip(self.request),
+        )
+
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        audit_record(
+            action=AuditLog.Action.UPDATE,
+            actor=self.request.user,
+            target=instance,
+            summary=f"Pharmacy updated: {instance}",
+            ip_address=_client_ip(self.request),
+        )
+
+    def perform_destroy(self, instance):
+        target_id = instance.pk
+        target_repr = str(instance)
+        instance.delete()
+        audit_record(
+            action=AuditLog.Action.DELETE,
+            actor=self.request.user,
+            target_type="Pharmacy",
+            target_id=target_id,
+            summary=f"Pharmacy deleted: {target_repr}",
+            ip_address=_client_ip(self.request),
+        )
 
 
 class KioskViewSet(viewsets.ModelViewSet):
@@ -54,7 +96,40 @@ class KioskViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         """Yeni kiosk kaydederken kriptografik olarak güvenli benzersiz app_key üret."""
         app_key = secrets.token_urlsafe(48)
-        serializer.save(app_key=app_key)
+        instance = serializer.save(app_key=app_key)
+        audit_record(
+            action=AuditLog.Action.CREATE,
+            actor=self.request.user,
+            target=instance,
+            summary=f"Kiosk created: {instance.mac_address}",
+            kiosk_mac=instance.mac_address,
+            ip_address=_client_ip(self.request),
+        )
+
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        audit_record(
+            action=AuditLog.Action.UPDATE,
+            actor=self.request.user,
+            target=instance,
+            summary=f"Kiosk updated: {instance.mac_address}",
+            kiosk_mac=instance.mac_address,
+            ip_address=_client_ip(self.request),
+        )
+
+    def perform_destroy(self, instance):
+        target_id = instance.pk
+        mac = instance.mac_address
+        instance.delete()
+        audit_record(
+            action=AuditLog.Action.DELETE,
+            actor=self.request.user,
+            target_type="Kiosk",
+            target_id=target_id,
+            summary=f"Kiosk deleted: {mac}",
+            kiosk_mac=mac,
+            ip_address=_client_ip(self.request),
+        )
 
     @action(detail=False, methods=["get"], url_path="me")
     def me(self, request):
@@ -81,4 +156,12 @@ class KioskViewSet(viewsets.ModelViewSet):
         kiosk = self.get_object()
         kiosk.app_key = secrets.token_urlsafe(48)
         kiosk.save(update_fields=["app_key"])
+        audit_record(
+            action=AuditLog.Action.REGENERATE_KEY,
+            actor=request.user,
+            target=kiosk,
+            summary=f"Kiosk app_key regenerated: {kiosk.mac_address}",
+            kiosk_mac=kiosk.mac_address,
+            ip_address=_client_ip(request),
+        )
         return Response({"app_key": kiosk.app_key}, status=status.HTTP_200_OK)

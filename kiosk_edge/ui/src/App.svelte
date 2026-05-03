@@ -102,20 +102,21 @@
 
     const recs = getRecommendations(qs, answers, age ?? '18-25', sex ?? 'M');
     const ingredientList = recsToIngredientList(recs);
-    const qrCode = await doSubmitSession(false, cat?.slug ?? '', false, ingredientList);
+    const { qrCode, qrPayload } = await doSubmitSession(false, cat?.slug ?? '', false, ingredientList);
     const firstRec = recs[0];
 
     result.set({
-      label:       `Ã–nerilen Etken Maddeler â€” ${cat?.name ?? ''}`,
+      label:       `Önerilen Etken Maddeler — ${cat?.name ?? ''}`,
       recs,
-      ana:         firstRec?.primary    ?? 'â€”',
+      ana:         firstRec?.primary    ?? '—',
       destek:      firstRec?.supportive ?? '',
       isSensitive: false,
       qrCode,
+      qrPayload,
     });
     goTo('result');
     await tick();
-    resultScreenRef?.drawQR(qrCode);
+    resultScreenRef?.drawQR(qrPayload);
   }
 
   async function selectSensitive(cat) {
@@ -123,17 +124,18 @@
     selectedAge.update(v => { age = v; return v; });
     selectedSex.update(v => { sex = v; return v; });
 
-    const qrCode = await doSubmitSession(true, cat?.slug ?? cat?.name ?? '', true, []);
+    const { qrCode, qrPayload } = await doSubmitSession(true, cat?.slug ?? cat?.name ?? '', true, []);
     result.set({
-      label:       'Sessiz bildirim gÃ¶nderildi',
+      label:       'Sessiz bildirim gönderildi',
       ana:         cat?.name ?? cat,
-      destek:      'EczacÄ±nÄ±z sizi bekliyor â€” QR kodu okutunuz.',
+      destek:      'Eczacınız sizi bekliyor — QR kodu okutunuz.',
       isSensitive: true,
       qrCode,
+      qrPayload,
     });
     goTo('result');
     await tick();
-    resultScreenRef?.drawQR(qrCode);
+    resultScreenRef?.drawQR(qrPayload);
   }
 
   async function doSubmitSession(isFlowB, categorySlug, isSensitiveFlow, ingredientList) {
@@ -152,7 +154,8 @@
         ingredientList,
       });
     } catch {
-      return Math.random().toString(36).slice(2, 10).toUpperCase();
+      const fallback = Math.random().toString(36).slice(2, 10).toUpperCase();
+      return { qrCode: fallback, qrPayload: fallback };
     }
   }
 </script>

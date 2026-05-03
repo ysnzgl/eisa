@@ -23,6 +23,13 @@ function logout() {
       <nav class="flex-1 px-3 py-4 space-y-1">
         <RouterLink
           to="/pharmacist"
+          :class="$route.path === '/pharmacist' ? 'bg-teal-600' : ''"
+          class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium hover:bg-teal-700 transition"
+        >
+          📊 Ana Sayfa
+        </RouterLink>
+        <RouterLink
+          to="/pharmacist/inbox"
           class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium hover:bg-teal-700 transition"
           active-class="bg-teal-600"
         >

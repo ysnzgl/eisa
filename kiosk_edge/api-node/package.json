@@ -1,0 +1,33 @@
+{
+  "name": "eisa-kiosk-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "E-İSA Kiosk Local API (Node.js / Fastify) — offline-first",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "seed": "node src/seed_standalone.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@fastify/cors": "^10.0.1",
+    "better-sqlite3": "^11.3.0",
+    "dotenv": "^16.4.5",
+    "fastify": "^5.0.0",
+    "node-cron": "^3.0.3",
+    "pino-roll": "^2.0.0",
+    "undici": "^6.20.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^2.1.0",
+    "vitest": "^2.1.0"
+  }
+}

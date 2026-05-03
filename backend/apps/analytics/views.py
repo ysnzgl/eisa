@@ -10,12 +10,23 @@ from django.db.models.functions import TruncDate
 from django.utils import timezone
 from rest_framework import generics, status
 from rest_framework.pagination import PageNumberPagination
+from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
+
+def _OrPerm(*perms):
+    """İki izin sınıfını OR ile birleştiren küçük yardımcı."""
+
+    class _Combined(BasePermission):
+        def has_permission(self, request, view):
+            return any(p().has_permission(request, view) for p in perms)
+
+    return _Combined
+
 from apps.pharmacies.auth import KioskAppKeyAuthentication
-from apps.pharmacies.permissions import IsKiosk, IsSuperAdmin
+from apps.pharmacies.permissions import IsKiosk, IsPharmacist, IsSuperAdmin
 from apps.products.models import Category
 
 from .models import AdImpression, SessionLog
@@ -45,21 +56,30 @@ class SessionLogView(APIView):
     authentication_classes = [JWTAuthentication, KioskAppKeyAuthentication]
 
     def get_permissions(self):
-        """POST → kiosk; GET → süper admin."""
+        """POST → kiosk; GET → süper admin veya eczacı (kendi kiosk'larıyla sınırlı)."""
         if self.request.method == "POST":
             return [IsKiosk()]
-        return [IsSuperAdmin()]
+        return [_OrPerm(IsSuperAdmin, IsPharmacist)()]
 
     # --- GET: Admin oturum listesi ---
 
     def get(self, request):
         """Tüm oturum kayıtlarını tersten tarihe göre sıralı ve sayfalı döner.
+        Eczacı için yalnızca kendi eczanesinin kioskları döner.
         Desteklenen query params: qr_code, is_sensitive_flow, ordering."""
         queryset = (
             SessionLog.objects.select_related("kiosk__pharmacy", "category")
             .all()
             .order_by("-created_at")
         )
+
+        # Eczacı ise yalnızca kendi eczanesinin kiosk oturumlarını gör
+        user = request.user
+        if getattr(user, "role", None) == "pharmacist":
+            if not user.pharmacy_id:
+                return Response({"results": [], "count": 0, "next": None, "previous": None})
+            queryset = queryset.filter(kiosk__pharmacy_id=user.pharmacy_id)
+
         # qr_code filtresi — QrScan.vue tarafından kullanılır
         qr_code = request.query_params.get("qr_code")
         if qr_code:

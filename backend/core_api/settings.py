@@ -3,6 +3,8 @@ Django ayarları — E-İSA Merkezi API.
 
 KVKK uyumu: tüm kişisel olmayan demografik veriler anonim toplanır.
 """
+import json
+import logging
 from datetime import timedelta
 from pathlib import Path
 
@@ -48,6 +50,7 @@ INSTALLED_APPS = [
     "apps.products",
     "apps.analytics",
     "apps.campaigns",
+    "apps.audit",
 ]
 
 MIDDLEWARE = [
@@ -218,4 +221,126 @@ if DEBUG:
             {"name": "campaigns", "description": "Kampanya yönetimi"},
         ],
     }
+
+
+# ─── Loglama: Yapısal JSON + Rotasyonlu Dosya ────────────────────────────────
+# ElasticSearch/Logstash gibi ağır araçlar yerine; uygulama hatalarını ve
+# isteklerini standart yapısal JSON olarak rotasyonlu dosyalara yazıyoruz.
+# Audit (iş-mantığı) logları PostgreSQL'deki AuditLog modelinde tutulur.
+
+LOG_DIR = Path(config("DJANGO_LOG_DIR", default=str(BASE_DIR / "logs")))
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+LOG_LEVEL = config("DJANGO_LOG_LEVEL", default="INFO" if not DEBUG else "DEBUG")
+LOG_MAX_BYTES = config("DJANGO_LOG_MAX_BYTES", default=10 * 1024 * 1024, cast=int)  # 10 MB
+LOG_BACKUP_COUNT = config("DJANGO_LOG_BACKUP_COUNT", default=5, cast=int)
+
+
+class _JsonFormatter(logging.Formatter):
+    """Hafif, bağımlılıksız JSON satır formatlayıcı."""
+
+    _RESERVED = {
+        "name", "msg", "args", "levelname", "levelno", "pathname", "filename",
+        "module", "exc_info", "exc_text", "stack_info", "lineno", "funcName",
+        "created", "msecs", "relativeCreated", "thread", "threadName",
+        "processName", "process", "asctime", "message",
+    }
+
+    def format(self, record: logging.LogRecord) -> str:  # pragma: no cover
+        payload = {
+            "ts": self.formatTime(record, "%Y-%m-%dT%H:%M:%S%z"),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+            "module": record.module,
+            "line": record.lineno,
+        }
+        if record.exc_info:
+            payload["exc"] = self.formatException(record.exc_info)
+        for key, value in record.__dict__.items():
+            if key in self._RESERVED or key.startswith("_"):
+                continue
+            try:
+                json.dumps(value)
+                payload[key] = value
+            except TypeError:
+                payload[key] = repr(value)
+        return json.dumps(payload, ensure_ascii=False)
+
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "json": {"()": _JsonFormatter},
+        "console": {
+            "format": "[{asctime}] {levelname} {name}: {message}",
+            "style": "{",
+        },
+    },
+    "filters": {
+        "require_debug_false": {"()": "django.utils.log.RequireDebugFalse"},
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "console",
+            "level": LOG_LEVEL,
+        },
+        "app_file": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": str(LOG_DIR / "app.log"),
+            "maxBytes": LOG_MAX_BYTES,
+            "backupCount": LOG_BACKUP_COUNT,
+            "encoding": "utf-8",
+            "formatter": "json",
+            "level": "INFO",
+        },
+        "error_file": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": str(LOG_DIR / "error.log"),
+            "maxBytes": LOG_MAX_BYTES,
+            "backupCount": LOG_BACKUP_COUNT,
+            "encoding": "utf-8",
+            "formatter": "json",
+            "level": "ERROR",
+        },
+        "request_file": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": str(LOG_DIR / "request.log"),
+            "maxBytes": LOG_MAX_BYTES,
+            "backupCount": LOG_BACKUP_COUNT,
+            "encoding": "utf-8",
+            "formatter": "json",
+            "level": "WARNING",  # 4xx/5xx
+        },
+    },
+    "root": {
+        "handlers": ["console", "app_file", "error_file"],
+        "level": LOG_LEVEL,
+    },
+    "loggers": {
+        "django": {
+            "handlers": ["console", "app_file", "error_file"],
+            "level": LOG_LEVEL,
+            "propagate": False,
+        },
+        # 5xx ve unhandled exception'lar buraya düşer.
+        "django.request": {
+            "handlers": ["console", "request_file", "error_file"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "django.server": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "eisa": {
+            "handlers": ["console", "app_file", "error_file"],
+            "level": LOG_LEVEL,
+            "propagate": False,
+        },
+    },
+}
 

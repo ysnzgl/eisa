@@ -1,5 +1,5 @@
 [Unit]
-Description=E-ISA Kiosk Local API (FastAPI)
+Description=E-ISA Kiosk Local API (Node.js / Fastify)
 After=network.target
 
 [Service]
@@ -8,12 +8,9 @@ User=eisa
 Group=eisa
 WorkingDirectory=/opt/eisa/api
 EnvironmentFile=/etc/eisa/kiosk.env
-ExecStart=/opt/eisa/api/eisa_api.bin
+ExecStart=/usr/bin/node /opt/eisa/api/src/index.js
 Restart=always
 RestartSec=3
-
-# Yalnızca localhost'a bind — eczacı/Svelte UI lokalden gelir
-# (uvicorn host'u config ile 127.0.0.1 olmalı)
 
 # Sistemd hardening
 NoNewPrivileges=true
@@ -28,7 +25,6 @@ RestrictRealtime=true
 RestrictSUIDSGID=true
 RestrictNamespaces=true
 LockPersonality=true
-MemoryDenyWriteExecute=true
 ReadWritePaths=/var/lib/eisa
 CapabilityBoundingSet=
 AmbientCapabilities=

@@ -13,6 +13,18 @@ http.interceptors.request.use((config) => {
 
 export async function login(username, password) {
   const { data } = await http.post('/api/auth/token/', { username, password });
-  // Rol bilgisi backend'den döndürülecek; şimdilik decode placeholder.
-  return { access: data.access, refresh: data.refresh, role: data.role || 'pharmacist' };
+  // access token'ı geçici olarak hemen ayarla; profil çağrısı bu token'ı kullanır.
+  localStorage.setItem('eisa_access', data.access);
+  let role = 'pharmacist';
+  let pharmacyId = null;
+  let userId = null;
+  try {
+    const me = await http.get('/api/users/me/');
+    role = me.data?.role || role;
+    pharmacyId = me.data?.pharmacy ?? null;
+    userId = me.data?.id ?? null;
+  } catch {
+    // Profil alınamazsa rol fallback'iyle devam et.
+  }
+  return { access: data.access, refresh: data.refresh, role, pharmacyId, userId };
 }
