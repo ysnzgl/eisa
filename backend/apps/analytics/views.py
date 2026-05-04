@@ -1,4 +1,4 @@
-"""
+﻿"""
 Analitik gorunumleri.
 
 Kiosk: oturum ve reklam gosterim verilerini toplu gonderir (idempotent).
@@ -17,7 +17,7 @@ from rest_framework.pagination import CursorPagination
 from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework_simplejwt.authentication import JWTAuthentication
+from core_api.cookie_jwt import JWTCookieAuthentication as JWTAuthentication
 
 from apps.core.uow import UnitOfWork
 from apps.lookups.models import Cinsiyet, YasAraligi
@@ -57,7 +57,7 @@ class OturumLoguView(APIView):
             return [IsKiosk()]
         return [_OrPerm(IsSuperAdmin, IsEczaci)()]
 
-    # ── GET: Admin/Eczaci listesi ──
+    # â”€â”€ GET: Admin/Eczaci listesi â”€â”€
     def get(self, request):
         qs = (
             OturumLogu.objects.select_related(
@@ -84,7 +84,7 @@ class OturumLoguView(APIView):
         page = paginator.paginate_queryset(qs, request)
         return paginator.get_paginated_response(OturumLoguSerializer(page, many=True).data)
 
-    # ── POST: Kiosk outbox push (idempotent) ──
+    # â”€â”€ POST: Kiosk outbox push (idempotent) â”€â”€
     def post(self, request):
         items = request.data.get("items", [])
         if not isinstance(items, list):
@@ -150,7 +150,7 @@ class OturumLoguView(APIView):
 
 
 class ReklamGosterimBulkPushView(APIView):
-    """POST /api/analytics/impressions/ — Kiosk reklam gosterim toplu push."""
+    """POST /api/analytics/impressions/ â€” Kiosk reklam gosterim toplu push."""
 
     authentication_classes = [KioskAppKeyAuthentication]
     permission_classes = [IsKiosk]
@@ -199,7 +199,7 @@ class ReklamGosterimBulkPushView(APIView):
 
 
 class OturumLoguStatsView(APIView):
-    """GET /api/analytics/sessions/stats/ — super admin istatistikleri."""
+    """GET /api/analytics/sessions/stats/ â€” super admin istatistikleri."""
 
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsSuperAdmin]
@@ -242,3 +242,4 @@ class OturumLoguStatsView(APIView):
                 "gunluk_dagilim": gunluk,
             }
         )
+

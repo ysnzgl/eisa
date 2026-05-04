@@ -21,20 +21,17 @@ const form = ref(emptyForm());
 
 function emptyForm() {
   return {
-    name: '',
-    media_url: '',
-    starts_at: '',
-    ends_at: '',
-    target_cities: '',
-    target_districts: '',
-    target_age_ranges: [],
-    target_genders: [],
-    is_active: true,
+    ad: '',
+    medya_url: '',
+    baslangic_tarihi: '',
+    bitis_tarihi: '',
+    hedef_eczaneler: [],
+    aktif: true,
   };
 }
 
-const AGE_RANGES = ['0-17', '18-25', '26-35', '36-50', '51-65', '65+'];
-const GENDERS = [{ value: 'F', label: 'Kadın' }, { value: 'M', label: 'Erkek' }, { value: 'O', label: 'Diğer' }];
+const AGE_RANGES = [];
+const GENDERS = [];
 
 // ── Veri çekme ──────────────────────────────────────────────
 async function fetchCampaigns() {
@@ -61,15 +58,12 @@ function openCreate() {
 function openEdit(campaign) {
   editingId.value = campaign.id;
   form.value = {
-    name: campaign.name,
-    media_url: campaign.media_url,
-    starts_at: toDatetimeLocal(campaign.starts_at),
-    ends_at: toDatetimeLocal(campaign.ends_at),
-    target_cities: (campaign.target_cities ?? []).join(', '),
-    target_districts: (campaign.target_districts ?? []).join(', '),
-    target_age_ranges: [...(campaign.target_age_ranges ?? [])],
-    target_genders: [...(campaign.target_genders ?? [])],
-    is_active: campaign.is_active,
+    ad: campaign.ad,
+    medya_url: campaign.medya_url,
+    baslangic_tarihi: toDatetimeLocal(campaign.baslangic_tarihi),
+    bitis_tarihi: toDatetimeLocal(campaign.bitis_tarihi),
+    hedef_eczaneler: [...(campaign.hedef_eczaneler ?? [])],
+    aktif: campaign.aktif,
   };
   showModal.value = true;
 }
@@ -83,15 +77,12 @@ async function save() {
   saving.value = true;
   try {
     const payload = {
-      name: form.value.name,
-      media_url: form.value.media_url,
-      starts_at: form.value.starts_at,
-      ends_at: form.value.ends_at,
-      target_cities: splitTrim(form.value.target_cities),
-      target_districts: splitTrim(form.value.target_districts),
-      target_age_ranges: form.value.target_age_ranges,
-      target_genders: form.value.target_genders,
-      is_active: form.value.is_active,
+      ad: form.value.ad,
+      medya_url: form.value.medya_url,
+      baslangic_tarihi: form.value.baslangic_tarihi,
+      bitis_tarihi: form.value.bitis_tarihi,
+      hedef_eczaneler: form.value.hedef_eczaneler,
+      aktif: form.value.aktif,
     };
 
     if (editingId.value) {
@@ -125,7 +116,7 @@ async function deleteCampaign(id) {
 // ── Aktif/Pasif toggle ───────────────────────────────────────
 async function toggleActive(campaign) {
   try {
-    await http.patch(`/api/campaigns/${campaign.id}/`, { is_active: !campaign.is_active });
+    await http.patch(`/api/campaigns/${campaign.id}/`, { aktif: !campaign.aktif });
     await fetchCampaigns();
   } catch {
     showToast('Durum değiştirilemedi', 'error');
@@ -136,10 +127,6 @@ async function toggleActive(campaign) {
 function showToast(message, type = 'success') {
   toast.value = { show: true, message, type };
   setTimeout(() => (toast.value.show = false), 3000);
-}
-
-function splitTrim(str) {
-  return str.split(',').map(s => s.trim()).filter(Boolean);
 }
 
 function toDatetimeLocal(iso) {
@@ -183,7 +170,7 @@ function formatDate(iso) {
         <thead class="bg-gray-50 text-gray-500 uppercase text-xs">
           <tr>
             <th class="px-4 py-3 text-left">Kampanya Adı</th>
-            <th class="px-4 py-3 text-left">Hedef Şehirler</th>
+            <th class="px-4 py-3 text-left">Hedef Eczaneler</th>
             <th class="px-4 py-3 text-left">Tarih Aralığı</th>
             <th class="px-4 py-3 text-center">Durum</th>
             <th class="px-4 py-3 text-right">İşlemler</th>
@@ -191,20 +178,20 @@ function formatDate(iso) {
         </thead>
         <tbody>
           <tr v-for="c in campaigns" :key="c.id" class="border-t border-gray-100 hover:bg-gray-50">
-            <td class="px-4 py-3 font-medium text-gray-800">{{ c.name }}</td>
+            <td class="px-4 py-3 font-medium text-gray-800">{{ c.ad }}</td>
             <td class="px-4 py-3 text-gray-600">
-              {{ (c.target_cities ?? []).join(', ') || 'Tümü' }}
+              {{ (c.hedef_eczaneler ?? []).length > 0 ? `${c.hedef_eczaneler.length} eczane` : 'Tümü' }}
             </td>
             <td class="px-4 py-3 text-gray-600">
-              {{ formatDate(c.starts_at) }} – {{ formatDate(c.ends_at) }}
+              {{ formatDate(c.baslangic_tarihi) }} – {{ formatDate(c.bitis_tarihi) }}
             </td>
             <td class="px-4 py-3 text-center">
               <button
                 @click="toggleActive(c)"
-                :class="c.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'"
+                :class="c.aktif ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'"
                 class="px-3 py-1 rounded-full text-xs font-semibold transition"
               >
-                {{ c.is_active ? 'Aktif' : 'Pasif' }}
+                {{ c.aktif ? 'Aktif' : 'Pasif' }}
               </button>
             </td>
             <td class="px-4 py-3 text-right space-x-2">
@@ -225,51 +212,34 @@ function formatDate(iso) {
         <form @submit.prevent="save" class="p-6 space-y-4">
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Kampanya Adı *</label>
-            <input v-model="form.name" required class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <input v-model="form.ad" required class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Medya URL *</label>
-            <input v-model="form.media_url" required type="url" placeholder="https://..." class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <input v-model="form.medya_url" required type="url" placeholder="https://..." class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
           <div class="grid grid-cols-2 gap-3">
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">Başlangıç *</label>
-              <input v-model="form.starts_at" required type="datetime-local" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <input v-model="form.baslangic_tarihi" required type="datetime-local" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">Bitiş *</label>
-              <input v-model="form.ends_at" required type="datetime-local" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <input v-model="form.bitis_tarihi" required type="datetime-local" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
           </div>
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Hedef Şehirler (virgülle ayır)</label>
-            <input v-model="form.target_cities" placeholder="Diyarbakır, Şanlıurfa" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Hedef İlçeler (virgülle ayır)</label>
-            <input v-model="form.target_districts" placeholder="Merkez, Bağcılar" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Hedef Yaş Aralıkları</label>
-            <div class="flex flex-wrap gap-2">
-              <label v-for="ar in AGE_RANGES" :key="ar" class="flex items-center gap-1 cursor-pointer text-sm">
-                <input type="checkbox" :value="ar" v-model="form.target_age_ranges" class="accent-blue-600" />
-                {{ ar }}
-              </label>
-            </div>
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Hedef Cinsiyet</label>
-            <div class="flex gap-4">
-              <label v-for="g in GENDERS" :key="g.value" class="flex items-center gap-1 cursor-pointer text-sm">
-                <input type="checkbox" :value="g.value" v-model="form.target_genders" class="accent-blue-600" />
-                {{ g.label }}
-              </label>
-            </div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Hedef Eczaneler (virgülle ID girin)</label>
+            <input
+              :value="form.hedef_eczaneler.join(', ')"
+              @input="form.hedef_eczaneler = $event.target.value.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n))"
+              placeholder="1, 2, 3 — boş bırak = tüm eczaneler"
+              class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
           </div>
           <div class="flex items-center gap-2">
-            <input type="checkbox" id="is_active" v-model="form.is_active" class="accent-blue-600 w-4 h-4" />
-            <label for="is_active" class="text-sm font-medium text-gray-700">Kampanyayı aktif yap</label>
+            <input type="checkbox" id="aktif" v-model="form.aktif" class="accent-blue-600 w-4 h-4" />
+            <label for="aktif" class="text-sm font-medium text-gray-700">Kampanyayı aktif yap</label>
           </div>
           <div class="flex gap-3 pt-2">
             <button type="submit" :disabled="saving" class="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white py-2 rounded-lg font-medium transition">

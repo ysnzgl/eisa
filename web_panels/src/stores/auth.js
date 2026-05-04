@@ -1,9 +1,9 @@
 import { defineStore } from 'pinia';
 import { login as apiLogin, logout as apiLogout } from '../services/api';
 
-// Panel kimlik durumu (SEC-002).
-// JWT access/refresh token'ları artık httpOnly çerezlerde tutulur; localStorage
-// yalnızca XSS riski olmayan UI ipuçlarını (rol, pharmacyId, userId) saklar.
+// Panel kimlik durumu.
+// JWT tokenları localStorage'da tutulur; profil bilgileri (rol, pharmacyId, userId)
+// ayrıca saklanır.
 export const useAuthStore = defineStore('auth', {
   state: () => ({
     role: localStorage.getItem('eisa_role') || '',
@@ -36,8 +36,6 @@ export const useAuthStore = defineStore('auth', {
       ['eisa_role', 'eisa_pharmacy_id', 'eisa_user_id'].forEach((k) =>
         localStorage.removeItem(k),
       );
-      // Eski şemadan kalan token kalıntılarını da temizle.
-      ['eisa_access', 'eisa_refresh'].forEach((k) => localStorage.removeItem(k));
     },
   },
 });

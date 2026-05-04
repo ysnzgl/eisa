@@ -1,7 +1,9 @@
 import axios from 'axios';
 import { useToastStore } from '../stores/toast';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'https://api.e-isa.local';
+// Vite dev proxy üzerinden gider (/api/* → localhost:8000);
+// prod'da VITE_API_BASE env ile geçersiz kılınabilir.
+const API_BASE = import.meta.env.VITE_API_BASE ?? '';
 
 // httpOnly JWT çerezleri otomatik gönderilsin diye `withCredentials` (SEC-002).
 export const http = axios.create({
@@ -10,7 +12,7 @@ export const http = axios.create({
 });
 
 // Belirli endpoint'ler için varsayılan toast bastırılabilsin (örn. login formu
-// kendi hata mesajını göstermek istiyorsa `{ silent: true }` flag'i ile çağırır).
+// kendi hata mesajını göstermek istiyorsa `{ __silent: true }` flag'i ile çağırır).
 function _isSilent(config) {
   return config?.__silent === true;
 }
@@ -20,6 +22,7 @@ let _refreshPromise = null;
 
 async function _refreshAccess() {
   if (!_refreshPromise) {
+    // Refresh token httpOnly çerezde; body boş gidecek, backend cookie'den okur.
     _refreshPromise = http
       .post('/api/auth/token/refresh/', null, { __silent: true })
       .finally(() => {
@@ -81,7 +84,7 @@ http.interceptors.response.use(
 );
 
 export async function login(username, password) {
-  // Backend httpOnly çerezleri set eder; yanıt gövdesinde yalnızca profil var.
+  // Backend httpOnly cookie set eder; body'de { id, username, rol, eczane } döner.
   // Login formu kendi hatasını gösterdiği için interceptor toast'ını bastırıyoruz.
   const { data } = await http.post(
     '/api/auth/token/',
@@ -89,8 +92,8 @@ export async function login(username, password) {
     { __silent: true },
   );
   return {
-    role: data?.role || 'pharmacist',
-    pharmacyId: data?.pharmacy ?? null,
+    role: data?.rol ?? 'pharmacist',
+    pharmacyId: data?.eczane ?? null,
     userId: data?.id ?? null,
   };
 }
@@ -99,15 +102,16 @@ export async function logout() {
   try {
     await http.post('/api/auth/logout/');
   } catch {
-    // Çerezler istemci tarafında her durumda temizlenecek.
+    // Sunucu ulaşılamazsa da yerel state temizlenir.
   }
 }
 
 export async function fetchProfile() {
+  // GET /api/users/me/ → Kullanici schema: { id, username, rol, eczane }
   const { data } = await http.get('/api/users/me/');
   return {
-    role: data?.role || 'pharmacist',
-    pharmacyId: data?.pharmacy ?? null,
+    role: data?.rol ?? 'pharmacist',
+    pharmacyId: data?.eczane ?? null,
     userId: data?.id ?? null,
   };
 }

@@ -1,8 +1,8 @@
-"""Urun yonetim gorunumleri (UoW ile yazma)."""
+﻿"""Urun yonetim gorunumleri (UoW ile yazma)."""
 from rest_framework import viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework_simplejwt.authentication import JWTAuthentication
+from core_api.cookie_jwt import JWTCookieAuthentication as JWTAuthentication
 
 from apps.core.uow import UnitOfWork
 from apps.pharmacies.auth import KioskAppKeyAuthentication
@@ -40,7 +40,7 @@ class _UoWWritableViewSet(viewsets.ModelViewSet):
 
 
 class UrunSyncView(APIView):
-    """GET /api/products/sync/ — kiosk yerel DB icin tam katalog."""
+    """GET /api/products/sync/ â€” kiosk yerel DB icin tam katalog."""
 
     authentication_classes = [JWTAuthentication, KioskAppKeyAuthentication]
     permission_classes = [IsKioskOrAuthenticated]
@@ -118,3 +118,4 @@ class EtkenMaddeViewSet(_UoWWritableViewSet):
     serializer_class = EtkenMaddeSerializer
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsSuperAdmin]
+

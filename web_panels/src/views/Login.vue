@@ -24,7 +24,7 @@ async function submit() {
   errorMsg.value = '';
   try {
     await auth.login(username.value.trim(), password.value);
-    router.push(auth.role === 'superadmin' ? '/admin' : '/pharmacist');
+    router.push(auth.rol === 'superadmin' ? '/admin' : '/pharmacist');
   } catch {
     errorMsg.value = 'Kullanıcı adı veya şifre hatalı. Lütfen tekrar deneyin.';
   } finally {

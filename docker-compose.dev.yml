@@ -11,12 +11,15 @@ services:
       - "5432:5432"
 
   backend:
-    # runserver ile ayağa kalk, önce migrate + superuser oluştur
+    # runserver ile ayağa kalk, önce migrate + superuser + dev seed oluştur
     command: >
       sh -c "python manage.py migrate --noinput &&
              python manage.py createsuperuser --noinput --skip-checks 2>/dev/null || true &&
+             python manage.py seed_dev &&
              python manage.py runserver 0.0.0.0:8000"
     user: root
+    environment:
+      POSTGRES_HOST: postgres
     volumes:
       - ./backend:/app
     ports:

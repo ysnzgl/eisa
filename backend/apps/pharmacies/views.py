@@ -1,4 +1,4 @@
-"""
+﻿"""
 Eczane ve Kiosk yonetim gorunumleri.
 
 UoW ile yazma: tum CRUD perform_*() metotlari `UnitOfWork(user=request.user)`
@@ -11,7 +11,7 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
-from rest_framework_simplejwt.authentication import JWTAuthentication
+from core_api.cookie_jwt import JWTCookieAuthentication as JWTAuthentication
 
 from apps.audit.models import DenetimLogu, kayit_birak
 from apps.core.uow import UnitOfWork
@@ -154,7 +154,7 @@ class KioskViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"], url_path="me")
     def me(self, request):
-        """GET /api/pharmacies/kiosks/me/ — App-Key ile kioskin kendi kaydi."""
+        """GET /api/pharmacies/kiosks/me/ â€” App-Key ile kioskin kendi kaydi."""
         serializer = self.get_serializer(request.user)
         return Response(serializer.data)
 
@@ -167,7 +167,7 @@ class KioskViewSet(viewsets.ModelViewSet):
         throttle_classes=[_AnahtarYenileThrottle],
     )
     def regenerate_key(self, request, pk=None):
-        """POST /api/pharmacies/kiosks/{id}/regenerate-key/ — yeni app_key uretir."""
+        """POST /api/pharmacies/kiosks/{id}/regenerate-key/ â€” yeni app_key uretir."""
         kiosk: Kiosk = self.get_object()
         kiosk.uygulama_anahtari = secrets.token_urlsafe(48)
         with UnitOfWork(user=request.user) as uow:
@@ -181,3 +181,4 @@ class KioskViewSet(viewsets.ModelViewSet):
             ip_adresi=_client_ip(request),
         )
         return Response({"uygulama_anahtari": kiosk.uygulama_anahtari}, status=status.HTTP_200_OK)
+

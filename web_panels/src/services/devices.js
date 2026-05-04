@@ -3,11 +3,11 @@
  *
  * Backend ile gerçek HTTP iletişimi. Form bileşeni `province` / `owner` /
  * `kioskCount` / `lastPing` isimlerini kullandığı için bu katman backend
- * alanları (`city` / `owner_name` / `kiosk_count` / `last_seen_at`) ile
+ * Türkçe alanları (`ad` / `sahip_adi` / `kiosk_sayisi` / `son_goruldu`) ile
  * eşleştirme yapar.
  *
  * Backend endpoint'leri:
- *   GET    /api/pharmacies/                         — liste (kiosk_count ile)
+ *   GET    /api/pharmacies/                         — liste
  *   POST   /api/pharmacies/                         — oluştur
  *   PATCH  /api/pharmacies/{id}/                    — güncelle
  *   DELETE /api/pharmacies/{id}/                    — sil
@@ -21,22 +21,23 @@ function mapPharmacyFromApi(p) {
   if (!p) return null;
   return {
     id: p.id,
-    name: p.name,
-    province: p.city,
-    district: p.district,
-    owner: p.owner_name || '',
-    kioskCount: p.kiosk_count ?? 0,
-    isActive: p.is_active !== false,
+    name: p.ad,
+    province: p.il_adi ?? String(p.il ?? ''),
+    district: p.ilce_adi ?? String(p.ilce ?? ''),
+    owner: p.sahip_adi ?? '',
+    kioskCount: p.kiosk_sayisi ?? 0,
+    isActive: p.aktif !== false,
   };
 }
 
 function mapPharmacyToApi(data) {
   const out = {};
-  if (data.name !== undefined) out.name = data.name;
-  if (data.province !== undefined) out.city = data.province;
-  if (data.district !== undefined) out.district = data.district;
-  if (data.owner !== undefined) out.owner_name = data.owner;
-  if (data.isActive !== undefined) out.is_active = data.isActive;
+  if (data.name !== undefined) out.ad = data.name;
+  if (data.owner !== undefined) out.sahip_adi = data.owner;
+  if (data.isActive !== undefined) out.aktif = data.isActive;
+  // il/ilce backend'de integer FK (id) gönderilmeli
+  if (data.il !== undefined) out.il = data.il;
+  if (data.ilce !== undefined) out.ilce = data.ilce;
   return out;
 }
 
@@ -44,11 +45,13 @@ function mapKioskFromApi(k) {
   if (!k) return null;
   return {
     id: k.id,
-    pharmacyId: k.pharmacy,
-    pharmacyName: k.pharmacy_name || '',
-    mac: k.mac_address,
-    isActive: k.is_active !== false,
-    lastPing: k.last_seen_at,
+    pharmacyId: k.eczane,
+    pharmacyName: k.eczane_adi ?? '',
+    mac: k.mac_adresi,
+    appKey: k.uygulama_anahtari,
+    isActive: k.aktif !== false,
+    lastPing: k.son_goruldu,
+    health: k.durum ?? null,
   };
 }
 

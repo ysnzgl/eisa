@@ -173,7 +173,8 @@ CORS_ALLOWED_ORIGINS = config(
     default="",
     cast=lambda v: [s.strip() for s in v.split(",") if s.strip()],
 )
-CORS_ALLOW_ALL_ORIGINS = False
+# Development ortamında tüm originleri kabul et, üretimde whitelist kullan
+CORS_ALLOW_ALL_ORIGINS = DEBUG
 # httpOnly JWT çerezlerinin cross-origin panel istekleriyle gönderilebilmesi için.
 CORS_ALLOW_CREDENTIALS = True
 if not DEBUG and not CORS_ALLOWED_ORIGINS:

@@ -1,3 +1,9 @@
+/* ─── Font Awesome — npm ile bundle edilmiş, CDN bağımlılığı yok ─── */
+/* Yalnızca solid + regular import edildi; brands atlandı (~200KB tasarruf). */
+@import '@fortawesome/fontawesome-free/css/fontawesome.min.css';
+@import '@fortawesome/fontawesome-free/css/solid.min.css';
+@import '@fortawesome/fontawesome-free/css/regular.min.css';
+
 /* app.css — kiosk_edge UI global stilleri */
 
 /* ─── Reset / body ─── */
@@ -353,3 +359,17 @@ body {
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+/* ─── Bootstrap utility stubs ─────────────────────────────────────────────
+   Bootstrap CDN kaldırıldı. Kiosk bileşenlerinde kullanılan minimum
+   Bootstrap utility class'ları burada tanımlandı (~200 bayt vs ~230 KB).
+   ────────────────────────────────────────────────────────────────────── */
+.d-flex               { display: flex !important; }
+.flex-grow-1          { flex-grow: 1 !important; }
+.justify-content-center { justify-content: center !important; }
+.gap-2                { gap: 0.5rem !important; }
+.gap-3                { gap: 1rem !important; }
+.mt-3                 { margin-top: 1rem !important; }
+.mt-auto              { margin-top: auto !important; }
+.text-success         { color: #22c55e !important; }
+.text-danger          { color: #dc2626 !important; }

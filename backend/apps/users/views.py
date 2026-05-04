@@ -1,12 +1,12 @@
-"""Kullanici gorunumleri — JWT korumali profil."""
+﻿"""Kullanici gorunumleri â€” JWT korumali profil."""
 from rest_framework import generics, permissions
-from rest_framework_simplejwt.authentication import JWTAuthentication
+from core_api.cookie_jwt import JWTCookieAuthentication as JWTAuthentication
 
 from .serializers import KullaniciSerializer
 
 
 class ProfilView(generics.RetrieveUpdateAPIView):
-    """GET/PATCH /api/users/me/ — Kullanici profilini doner/gunceller."""
+    """GET/PATCH /api/users/me/ â€” Kullanici profilini doner/gunceller."""
 
     authentication_classes = [JWTAuthentication]
     permission_classes = [permissions.IsAuthenticated]
@@ -15,3 +15,4 @@ class ProfilView(generics.RetrieveUpdateAPIView):
 
     def get_object(self):
         return self.request.user
+

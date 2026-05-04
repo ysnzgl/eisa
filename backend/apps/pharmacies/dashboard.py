@@ -1,5 +1,5 @@
-"""
-Eczaci paneli ana sayfa gorunumu — kendi eczanesine ait ozet metrikler.
+﻿"""
+Eczaci paneli ana sayfa gorunumu â€” kendi eczanesine ait ozet metrikler.
 
 KVKK uyumu: Tum sayimlar request.user.eczane uzerinden filtrelenir.
 """
@@ -10,7 +10,7 @@ from django.utils import timezone
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework_simplejwt.authentication import JWTAuthentication
+from core_api.cookie_jwt import JWTCookieAuthentication as JWTAuthentication
 
 from apps.analytics.models import OturumLogu
 from apps.campaigns.models import Reklam
@@ -108,3 +108,4 @@ class EczaciDashboardView(APIView):
                 "kiosklar": kiosklar_payload,
             }
         )
+
