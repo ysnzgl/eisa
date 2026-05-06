@@ -1,7 +1,7 @@
 <script setup>
 /**
  * Tıbbi Mantık Editörü — Algoritma & Karar Ağacı Yönetimi
- * Kategori  Soru  Eleme Kural hiyerarisi
+ * Kategori → Soru → Eleme Kuralı hiyerarşisi
  */
 import { ref, computed, onMounted, watch, nextTick } from 'vue';
 import {
@@ -61,7 +61,7 @@ function openEditCategory(cat) {
 function closeCatModal() { catModalOpen.value = false; }
 
 async function saveCategory() {
-  if (!catForm.value.name.trim()) { catFormError.value = 'Kategori ad zorunludur.'; return; }
+  if (!catForm.value.name.trim()) { catFormError.value = 'Kategori adı zorunludur.'; return; }
   catSaving.value    = true;
   catFormError.value = '';
   try {
@@ -175,7 +175,7 @@ function openEditQuestion(q) {
 }
 
 async function saveQuestion() {
-  if (!qForm.value.text.trim()) { qFormError.value = 'Soru metni bo olamaz.'; return; }
+  if (!qForm.value.text.trim()) { qFormError.value = 'Soru metni boş olamaz.'; return; }
   qSaving.value    = true;
   qFormError.value = '';
   try {
@@ -189,7 +189,7 @@ async function saveQuestion() {
       if (idx !== -1) questions.value[idx] = updated;
     }
     qModalOpen.value = false;
-  } catch { qFormError.value = 'lem baarsz.'; }
+  } catch { qFormError.value = 'İşlem başarısız.'; }
   finally { qSaving.value = false; }
 }
 
@@ -278,7 +278,7 @@ function ingredientName(id) {
 }
 
 function genderLabel(g) {
-  return g === 'F' ? 'Kadn' : g === 'M' ? 'Erkek' : 'Tümü';
+  return g === 'F' ? 'Kadın' : g === 'M' ? 'Erkek' : 'Tümü';
 }
 
 function genderBadgeClass(g) {
@@ -294,12 +294,12 @@ const iconPickerOpen = ref(false);
 const HEALTH_ICONS = [
   { cls: 'fa-solid fa-pills',               label: 'İlaç'        },
   { cls: 'fa-solid fa-heart-pulse',         label: 'Kalp'        },
-  { cls: 'fa-solid fa-lungs',               label: 'Akcier'    },
+  { cls: 'fa-solid fa-lungs',               label: 'Akciğer'     },
   { cls: 'fa-solid fa-brain',               label: 'Beyin'       },
-  { cls: 'fa-solid fa-tooth',               label: 'Di'         },
+  { cls: 'fa-solid fa-tooth',               label: 'Diş'         },
   { cls: 'fa-solid fa-eye',                 label: 'Göz'         },
   { cls: 'fa-solid fa-ear-deaf',            label: 'Kulak'       },
-  { cls: 'fa-solid fa-hand',                label: 'El/Ar'    },
+  { cls: 'fa-solid fa-hand',                label: 'El/Ağrı'     },
   { cls: 'fa-solid fa-bone',                label: 'Kemik'       },
   { cls: 'fa-solid fa-virus',               label: 'Virüs'       },
   { cls: 'fa-solid fa-bacterium',           label: 'Bakteri'     },
@@ -308,7 +308,7 @@ const HEALTH_ICONS = [
   { cls: 'fa-solid fa-spa',                 label: 'Cilt'        },
   { cls: 'fa-solid fa-sun',                 label: 'Güneş'      },
   { cls: 'fa-solid fa-moon',                label: 'Uyku'        },
-  { cls: 'fa-solid fa-temperature-high',    label: 'Ate'        },
+  { cls: 'fa-solid fa-temperature-high',    label: 'Ateş'        },
   { cls: 'fa-solid fa-syringe',             label: 'Enjeksiyon'  },
   { cls: 'fa-solid fa-droplet',             label: 'Kan'         },
   { cls: 'fa-solid fa-stethoscope',         label: 'Stetoskop'   },
@@ -322,7 +322,7 @@ const HEALTH_ICONS = [
   { cls: 'fa-solid fa-shield-heart',        label: 'Koruma'      },
   { cls: 'fa-solid fa-baby',                label: 'Bebek'       },
   { cls: 'fa-solid fa-person-walking',      label: 'Hareket'     },
-  { cls: 'fa-solid fa-triangle-exclamation',label: 'Uyar'       },
+  { cls: 'fa-solid fa-triangle-exclamation',label: 'Uyarı'       },
   { cls: 'fa-solid fa-circle-info',         label: 'Bilgi'       },
 ];
 </script>
@@ -331,13 +331,13 @@ const HEALTH_ICONS = [
   <div class="medical-logic-root flex min-h-screen">
 
     <!--  LEFT RAIL: Kategoriler  -->
-    <aside class="category-rail w-64 flex-shrink-0 flex flex-col border-r border-zinc-800 sticky top-0 self-start" style="max-height: 100vh; overflow-y: auto;">
-      <div class="px-5 pt-6 pb-4 border-b border-zinc-800">
-        <p class="text-xs font-bold tracking-[0.15em] text-amber-400 uppercase mb-1">ikayet Aac</p>
-        <h2 class="text-base font-semibold text-zinc-100 leading-tight">Kategoriler</h2>
+    <aside class="category-rail w-64 flex-shrink-0 flex flex-col border-r border-gray-200 sticky top-0 self-start" style="max-height: 100vh; overflow-y: auto;">
+      <div class="px-5 pt-6 pb-4 border-b border-gray-200">
+        <p class="text-xs font-bold tracking-[0.15em] text-blue-600 uppercase mb-1">Şikayet Ağacı</p>
+        <h2 class="text-base font-semibold text-gray-900 leading-tight">Kategoriler</h2>
         <button
           @click="openAddCategory"
-          class="mt-3 w-full flex items-center justify-center gap-1.5 text-xs font-semibold text-zinc-400 hover:text-amber-300 border border-zinc-700 hover:border-amber-600/50 rounded-lg py-1.5 transition"
+          class="mt-3 w-full flex items-center justify-center gap-1.5 text-xs font-semibold text-gray-600 hover:text-blue-700 border border-gray-300 hover:border-blue-500 rounded-lg py-1.5 transition"
         >
           <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
           Yeni Kategori
@@ -349,7 +349,7 @@ const HEALTH_ICONS = [
           v-if="loadingCats"
           v-for="n in 5"
           :key="n"
-          class="h-10 bg-zinc-800/60 rounded-lg animate-pulse mb-1"
+          class="h-10 bg-gray-100 rounded-lg animate-pulse mb-1"
         ></div>
 
         <button
@@ -358,22 +358,22 @@ const HEALTH_ICONS = [
           @click="selectCategory(cat.id)"
           class="cat-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-150 group"
           :class="activeCatId === cat.id
-            ? 'bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/30'
-            : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'"
+            ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-300'
+            : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'"
         >
           <span class="w-5 text-center flex-shrink-0 text-lg leading-none"><i :class="cat.icon || 'fa-solid fa-pills'"></i></span>
           <span class="flex-1 text-sm font-medium truncate">{{ cat.name }}</span>
           <!-- Sensitive badge -->
-          <span v-if="cat.is_sensitive" class="text-[10px] font-bold text-rose-400 leading-none" title="Hassas Durum"></span>
+          <span v-if="cat.is_sensitive" class="text-[10px] font-bold text-rose-600 leading-none" title="Hassas Durum">⚠</span>
           <!-- Active indicator -->
           <span
             class="w-1.5 h-1.5 rounded-full flex-shrink-0"
-            :class="activeCatId === cat.id ? 'bg-amber-400' : 'bg-transparent group-hover:bg-zinc-600'"
+            :class="activeCatId === cat.id ? 'bg-blue-600' : 'bg-transparent group-hover:bg-gray-300'"
           ></span>
           <!-- Edit button -->
           <button
             @click.stop="openEditCategory(cat)"
-            class="ml-auto p-0.5 text-zinc-600 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition rounded flex-shrink-0"
+            class="ml-auto p-0.5 text-gray-400 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition rounded flex-shrink-0"
             title="Kategoriyi Düzenle"
           >
             <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
@@ -388,27 +388,27 @@ const HEALTH_ICONS = [
     <main class="flex-1 overflow-y-auto flex flex-col">
 
       <!-- Balk Bar -->
-      <div class="sticky top-0 z-10 main-header px-8 py-5 border-b border-zinc-800 flex items-center justify-between">
+      <div class="sticky top-0 z-10 main-header px-8 py-5 border-b border-gray-200 flex items-center justify-between">
         <div>
           <div class="flex items-center gap-2 mb-0.5">
             <span class="text-xl"><i :class="activeCategory?.icon || 'fa-solid fa-pills'"></i></span>
-            <h1 class="text-lg font-bold text-zinc-100 tracking-tight">
+            <h1 class="text-lg font-bold text-gray-900 tracking-tight">
               {{ activeCategory?.name ?? 'Kategori seçin' }}
             </h1>
             <span
               v-if="activeCategory?.is_sensitive"
-              class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-900/50 text-rose-400 border border-rose-700/30 uppercase tracking-wider"
+              class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-100 text-rose-600 border border-rose-200 uppercase tracking-wider"
             >Hassas</span>
           </div>
-          <p class="text-xs text-zinc-500 font-mono" v-if="activeCategory">
+          <p class="text-xs text-gray-500 font-mono" v-if="activeCategory">
             {{ questions.length }} soru
-            — {{ questions.reduce((s, q) => s + q.match_rules.length, 0) }} kural tanml
+            — {{ questions.reduce((s, q) => s + q.match_rules.length, 0) }} kural tanımlı
           </p>
         </div>
         <button
           v-if="activeCategory"
           @click="openAddQuestion"
-          class="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-zinc-900 text-sm font-bold px-4 py-2 rounded-lg transition-colors duration-150 shadow-lg shadow-amber-900/30"
+          class="eisa-btn eisa-btn-cta text-sm"
         >
           <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
@@ -422,13 +422,13 @@ const HEALTH_ICONS = [
 
         <!-- Yükleniyor -->
         <div v-if="loadingQuestions" class="space-y-3">
-          <div v-for="n in 3" :key="n" class="h-16 bg-zinc-800/40 rounded-xl animate-pulse"></div>
+          <div v-for="n in 3" :key="n" class="h-16 bg-gray-100 rounded-xl animate-pulse"></div>
         </div>
 
         <!-- Bo durum -->
         <div
           v-else-if="!activeCategory"
-          class="flex flex-col items-center justify-center h-64 text-zinc-600"
+          class="flex flex-col items-center justify-center h-64 text-gray-400"
         >
           <svg class="w-12 h-12 mb-3 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
@@ -438,10 +438,10 @@ const HEALTH_ICONS = [
 
         <div
           v-else-if="questions.length === 0 && !loadingQuestions"
-          class="flex flex-col items-center justify-center h-48 text-zinc-600"
+          class="flex flex-col items-center justify-center h-48 text-gray-500"
         >
           <p class="text-sm mb-3">Bu kategoride henüz soru yok.</p>
-          <button @click="openAddQuestion" class="text-amber-400 text-sm hover:text-amber-300 underline underline-offset-2">lk soruyu ekle </button>
+          <button @click="openAddQuestion" class="text-blue-600 text-sm hover:text-blue-700 underline underline-offset-2">İlk soruyu ekle →</button>
         </div>
 
         <!-- Soru Kartlar (Accordion) -->
@@ -451,30 +451,30 @@ const HEALTH_ICONS = [
           :key="q.id"
           class="question-card rounded-xl border overflow-hidden transition-all duration-200"
           :class="expandedQId === q.id
-            ? 'border-amber-500/40 shadow-lg shadow-amber-900/10'
-            : 'border-zinc-700/50 hover:border-zinc-600'"
+            ? 'border-blue-400 shadow-lg shadow-blue-500/10'
+            : 'border-gray-200 hover:border-gray-400'"
           :style="{ animationDelay: qi * 40 + 'ms' }"
         >
           <!-- Soru Balk Satr -->
           <div
             class="question-header flex items-center gap-3 px-5 py-4 cursor-pointer select-none group"
-            :class="expandedQId === q.id ? 'bg-zinc-800/80' : 'bg-zinc-800/40 hover:bg-zinc-800/70'"
+            :class="expandedQId === q.id ? 'bg-gray-50' : 'bg-white hover:bg-gray-50'"
             @click="toggleQuestion(q.id)"
           >
-            <!-- Sra numaras -->
-            <span class="text-xs font-mono font-bold text-zinc-500 w-5 text-center flex-shrink-0">{{ q.order + 1 }}</span>
+            <!-- Sıra numarası -->
+            <span class="text-xs font-mono font-bold text-gray-500 w-5 text-center flex-shrink-0">{{ q.order + 1 }}</span>
 
             <!-- Soru metni -->
-            <p class="flex-1 text-sm font-medium text-zinc-200 leading-snug">{{ q.text }}</p>
+            <p class="flex-1 text-sm font-medium text-gray-800 leading-snug">{{ q.text }}</p>
 
-            <!-- Sa taraf meta -->
+            <!-- Sağ taraf meta -->
             <div class="flex items-center gap-2 flex-shrink-0">            
-              <!-- Kural says -->
+              <!-- Kural sayısı -->
               <span
                 class="text-xs font-semibold px-2 py-0.5 rounded-full"
                 :class="q.match_rules.length
-                  ? 'bg-amber-500/15 text-amber-400 border border-amber-500/20'
-                  : 'bg-zinc-700/40 text-zinc-500'"
+                  ? 'bg-blue-50 text-blue-600 border border-blue-200'
+                  : 'bg-gray-100 text-gray-500'"
               >
                 {{ q.match_rules.length }} kural
               </span>
@@ -482,7 +482,7 @@ const HEALTH_ICONS = [
               <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity" @click.stop>
                 <button
                   @click="openEditQuestion(q)"
-                  class="p-1.5 text-zinc-500 hover:text-amber-400 hover:bg-amber-500/10 rounded transition"
+                  class="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition"
                   title="Düzenle"
                 >
                   <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -491,7 +491,7 @@ const HEALTH_ICONS = [
                 </button>
                 <button
                   @click="openDeleteQuestion(q)"
-                  class="p-1.5 text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 rounded transition"
+                  class="p-1.5 text-gray-500 hover:text-rose-600 hover:bg-rose-50 rounded transition"
                   title="Sil"
                 >
                   <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -501,7 +501,7 @@ const HEALTH_ICONS = [
               </div>
               <!-- Chevron -->
               <svg
-                class="w-4 h-4 text-zinc-500 transition-transform duration-200 ml-1"
+                class="w-4 h-4 text-gray-500 transition-transform duration-200 ml-1"
                 :class="expandedQId === q.id ? 'rotate-180' : ''"
                 fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
               >
@@ -512,15 +512,15 @@ const HEALTH_ICONS = [
 
           <!-- Accordion Body: Kurallar -->
           <Transition name="accordion">
-            <div v-if="expandedQId === q.id" class="rules-body border-t border-zinc-700/50 bg-zinc-900/50">
+            <div v-if="expandedQId === q.id" class="rules-body border-t border-gray-200 bg-gray-50">
               <div class="px-5 py-4">
 
-                <!-- Kural Bal -->
+                <!-- Kural Başlığı -->
                 <div class="flex items-center justify-between mb-3">
-                  <h3 class="text-xs font-bold tracking-[0.12em] text-zinc-400 uppercase">Eleme Kurallar</h3>
+                  <h3 class="text-xs font-bold tracking-[0.12em] text-gray-600 uppercase">Eleme Kuralları</h3>
                   <button
                     @click="openAddRule(q)"
-                    class="flex items-center gap-1 text-xs font-semibold text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 px-2.5 py-1 rounded-md transition"
+                    class="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-2.5 py-1 rounded-md transition"
                   >
                     <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
                       <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
@@ -530,7 +530,7 @@ const HEALTH_ICONS = [
                 </div>
 
                 <!-- Kural Listesi -->
-                <div v-if="q.match_rules.length === 0" class="text-center py-5 text-zinc-600 text-xs">
+                <div v-if="q.match_rules.length === 0" class="text-center py-5 text-gray-500 text-xs">
                   Bu soruya henüz kural tanımlanmamış.
                 </div>
 
@@ -538,35 +538,35 @@ const HEALTH_ICONS = [
                   <div
                     v-for="rule in q.match_rules"
                     :key="rule.id"
-                    class="rule-row flex items-center gap-3 bg-zinc-800/60 border border-zinc-700/40 rounded-lg px-4 py-3 group/rule hover:border-zinc-600/60 transition"
+                    class="rule-row flex items-center gap-3 bg-white border border-gray-200 rounded-lg px-4 py-3 group/rule hover:border-gray-300 transition"
                   >
                     <!-- Rule ID -->
-                    <span class="text-[10px] font-mono text-zinc-600 w-12 flex-shrink-0">#{{ rule.id }}</span>
+                    <span class="text-[10px] font-mono text-gray-400 w-12 flex-shrink-0">#{{ rule.id }}</span>
 
                     <!-- Cinsiyet -->
                     <span class="text-xs font-semibold px-2 py-0.5 rounded" :class="genderBadgeClass(rule.gender)">
                       {{ genderLabel(rule.gender) }}
                     </span>
 
-                    <!-- Ya aral -->
-                    <span class="flex items-center gap-1 text-xs text-zinc-400 font-mono bg-zinc-700/40 px-2 py-0.5 rounded">
-                      <span class="text-zinc-500">ya</span>
+                    <!-- Yaş aralığı -->
+                    <span class="flex items-center gap-1 text-xs text-gray-600 font-mono bg-gray-100 px-2 py-0.5 rounded">
+                      <span class="text-gray-500">yaş</span>
                       {{ rule.age_min }}–{{ rule.age_max }}
                     </span>
 
-                    <!-- Öneri oklar -->
+                    <!-- Öneri okları -->
                     <div class="flex items-center gap-1.5 flex-1 min-w-0">
-                      <div class="flex items-center gap-1 bg-emerald-900/30 border border-emerald-700/25 text-emerald-300 text-xs px-2 py-1 rounded truncate max-w-[180px]">
-                        <svg class="w-3 h-3 flex-shrink-0 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                      <div class="flex items-center gap-1 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs px-2 py-1 rounded truncate max-w-[180px]">
+                        <svg class="w-3 h-3 flex-shrink-0 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
                           <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                         </svg>
                         <span class="truncate font-medium">{{ ingredientName(rule.primary_id) }}</span>
                       </div>
-                      <svg v-if="rule.supportive_id" class="w-3 h-3 text-zinc-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <svg v-if="rule.supportive_id" class="w-3 h-3 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
                       </svg>
-                      <div v-if="rule.supportive_id" class="flex items-center gap-1 bg-sky-900/25 border border-sky-700/20 text-sky-300 text-xs px-2 py-1 rounded truncate max-w-[160px]">
-                        <svg class="w-3 h-3 flex-shrink-0 text-sky-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <div v-if="rule.supportive_id" class="flex items-center gap-1 bg-sky-50 border border-sky-200 text-sky-700 text-xs px-2 py-1 rounded truncate max-w-[160px]">
+                        <svg class="w-3 h-3 flex-shrink-0 text-sky-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                           <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
                         </svg>
                         <span class="truncate">{{ ingredientName(rule.supportive_id) }}</span>
@@ -577,7 +577,7 @@ const HEALTH_ICONS = [
                     <div class="flex items-center gap-0.5 opacity-0 group-hover/rule:opacity-100 transition-opacity flex-shrink-0">
                       <button
                         @click="openEditRule(q, rule)"
-                        class="p-1.5 text-zinc-500 hover:text-amber-400 hover:bg-amber-500/10 rounded transition"
+                        class="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition"
                         title="Kural Düzenle"
                       >
                         <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -587,7 +587,7 @@ const HEALTH_ICONS = [
                       <button
                         @click="removeRule(q, rule.id)"
                         :disabled="ruleDeleting === rule.id"
-                        class="p-1.5 text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 rounded transition disabled:opacity-40"
+                        class="p-1.5 text-gray-500 hover:text-rose-600 hover:bg-rose-50 rounded transition disabled:opacity-40"
                         title="Kural Sil"
                       >
                         <svg v-if="ruleDeleting === rule.id" class="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
@@ -627,19 +627,19 @@ const HEALTH_ICONS = [
           v-if="drawerOpen"
           class="fixed right-0 top-0 h-full w-[420px] drawer-panel z-50 flex flex-col shadow-2xl"
         >
-          <!-- Drawer Balk -->
-          <div class="px-6 py-5 border-b border-zinc-700/60 flex items-start justify-between flex-shrink-0">
+          <!-- Drawer Başlığı -->
+          <div class="px-6 py-5 border-b border-gray-200 flex items-start justify-between flex-shrink-0">
             <div>
-              <p class="text-xs font-bold tracking-[0.15em] text-amber-400 uppercase mb-1">
+              <p class="text-xs font-bold tracking-[0.15em] text-blue-600 uppercase mb-1">
                 {{ drawerMode === 'add' ? 'Yeni Kural' : 'Kural Düzenle' }}
               </p>
-              <h3 class="text-sm font-semibold text-zinc-100 leading-snug max-w-[300px] line-clamp-2">
+              <h3 class="text-sm font-semibold text-gray-900 leading-snug max-w-[300px] line-clamp-2">
                 {{ drawerQuestion?.text }}
               </h3>
             </div>
             <button
               @click="closeDrawer"
-              class="mt-0.5 p-1.5 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-700 rounded-lg transition flex-shrink-0"
+              class="mt-0.5 p-1.5 text-gray-500 hover:text-gray-900 hover:bg-gray-200 rounded-lg transition flex-shrink-0"
             >
               <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
@@ -651,7 +651,7 @@ const HEALTH_ICONS = [
           <div class="flex-1 overflow-y-auto px-6 py-6 space-y-6">
 
             <!-- Hata -->
-            <div v-if="drawerError" class="flex items-start gap-2 bg-rose-900/30 border border-rose-700/40 text-rose-300 text-sm px-4 py-3 rounded-lg">
+            <div v-if="drawerError" class="flex items-start gap-2 bg-rose-50 border border-rose-200 text-rose-600 text-sm px-4 py-3 rounded-lg">
               <svg class="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
               </svg>
@@ -663,18 +663,18 @@ const HEALTH_ICONS = [
               <label class="drawer-label">Cinsiyet</label>
               <div class="grid grid-cols-3 gap-2 mt-2">
                 <button
-                  v-for="opt in [{ v: 'all', l: 'Tümü', icon: '' }, { v: 'F', l: 'Kadn', icon: '' }, { v: 'M', l: 'Erkek', icon: '' }]"
+                  v-for="opt in [{ v: 'all', l: 'Tümü', icon: '⚥' }, { v: 'F', l: 'Kadın', icon: '♀' }, { v: 'M', l: 'Erkek', icon: '♂' }]"
                   :key="opt.v"
                   @click="ruleForm.gender = opt.v"
                   type="button"
                   class="gender-btn flex flex-col items-center gap-1 py-3 rounded-lg border text-sm font-semibold transition-all duration-150"
                   :class="ruleForm.gender === opt.v
                     ? opt.v === 'F'
-                      ? 'bg-pink-900/40 border-pink-500/60 text-pink-200'
+                      ? 'bg-pink-100 border-pink-400 text-pink-700'
                       : opt.v === 'M'
-                        ? 'bg-sky-900/40 border-sky-500/60 text-sky-200'
-                        : 'bg-amber-900/40 border-amber-500/60 text-amber-200'
-                    : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-300'"
+                        ? 'bg-sky-100 border-sky-400 text-sky-700'
+                        : 'bg-blue-50 border-blue-500 text-blue-800'
+                    : 'bg-white border-gray-300 text-gray-600 hover:border-gray-400 hover:text-gray-700'"
                 >
                   <span class="text-base">{{ opt.icon }}</span>
                   <span class="text-xs">{{ opt.l }}</span>
@@ -682,12 +682,12 @@ const HEALTH_ICONS = [
               </div>
             </div>
 
-            <!-- 2. Ya Aral -->
+            <!-- 2. Yaş Aralığı -->
             <div class="form-group">
-              <label class="drawer-label">Ya Aral</label>
+              <label class="drawer-label">Yaş Aralığı</label>
               <div class="grid grid-cols-2 gap-3 mt-2">
                 <div>
-                  <label class="text-[11px] text-zinc-500 font-medium block mb-1">Min Ya</label>
+                  <label class="text-[11px] text-gray-500 font-medium block mb-1">Min Yaş</label>
                   <input
                     v-model.number="ruleForm.age_min"
                     type="number" min="0" max="120"
@@ -696,7 +696,7 @@ const HEALTH_ICONS = [
                   />
                 </div>
                 <div>
-                  <label class="text-[11px] text-zinc-500 font-medium block mb-1">Max Ya</label>
+                  <label class="text-[11px] text-gray-500 font-medium block mb-1">Max Yaş</label>
                   <input
                     v-model.number="ruleForm.age_max"
                     type="number" min="0" max="120"
@@ -706,16 +706,16 @@ const HEALTH_ICONS = [
                 </div>
               </div>
               <!-- Yaş görselleştirme bar -->
-              <div class="mt-2 h-1.5 bg-zinc-700 rounded-full overflow-hidden">
+              <div class="mt-2 h-1.5 bg-gray-200 rounded-full overflow-hidden">
                 <div
-                  class="h-full bg-amber-400 rounded-full transition-all duration-200"
+                  class="h-full bg-blue-600 rounded-full transition-all duration-200"
                   :style="{
                     marginLeft: `${(ruleForm.age_min / 120) * 100}%`,
                     width: `${Math.max(0, ((ruleForm.age_max - ruleForm.age_min) / 120) * 100)}%`
                   }"
                 ></div>
               </div>
-              <div class="flex justify-between text-[10px] text-zinc-600 mt-1 font-mono">
+              <div class="flex justify-between text-[10px] text-gray-400 mt-1 font-mono">
                 <span>0</span><span>30</span><span>60</span><span>90</span><span>120</span>
               </div>
             </div>
@@ -724,26 +724,26 @@ const HEALTH_ICONS = [
             <div class="form-group">
               <label class="drawer-label">
                 Ana Öneri (Primary)
-                <span class="text-rose-400 ml-0.5">*</span>
+                <span class="text-rose-600 ml-0.5">*</span>
               </label>
-              <p class="text-[11px] text-zinc-600 mt-0.5 mb-2">Hastaya Öncelikli önerilecek etken madde</p>
+              <p class="text-[11px] text-gray-500 mt-0.5 mb-2">Hastaya Öncelikli önerilecek etken madde</p>
               <select v-model.number="ruleForm.primary_id" class="drawer-input w-full">
                 <option :value="null" disabled>— Seçin —</option>
                 <option v-for="ing in ingredients" :key="ing.id" :value="ing.id">{{ ing.name }}</option>
               </select>
               <!-- Seçili Öneri göstergesi -->
-              <div v-if="ruleForm.primary_id" class="mt-2 flex items-center gap-2 bg-emerald-900/20 border border-emerald-700/25 px-3 py-2 rounded-lg">
-                <svg class="w-4 h-4 text-emerald-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <div v-if="ruleForm.primary_id" class="mt-2 flex items-center gap-2 bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-lg">
+                <svg class="w-4 h-4 text-emerald-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                 </svg>
-                <span class="text-sm font-semibold text-emerald-300">{{ ingredientName(ruleForm.primary_id) }}</span>
+                <span class="text-sm font-semibold text-emerald-700">{{ ingredientName(ruleForm.primary_id) }}</span>
               </div>
             </div>
 
             <!-- 4. Destekleyici Öneri -->
             <div class="form-group">
               <label class="drawer-label">Destekleyici Öneri (Supportive)</label>
-              <p class="text-[11px] text-zinc-600 mt-0.5 mb-2">İsteğe bağlı — ek destek etken maddesi</p>
+              <p class="text-[11px] text-gray-500 mt-0.5 mb-2">İsteğe bağlı — ek destek etken maddesi</p>
               <select v-model.number="ruleForm.supportive_id" class="drawer-input w-full">
                 <option :value="null">— Yok —</option>
                 <option
@@ -752,43 +752,43 @@ const HEALTH_ICONS = [
                   :value="ing.id"
                 >{{ ing.name }}</option>
               </select>
-              <div v-if="ruleForm.supportive_id" class="mt-2 flex items-center gap-2 bg-sky-900/20 border border-sky-700/25 px-3 py-2 rounded-lg">
-                <svg class="w-4 h-4 text-sky-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <div v-if="ruleForm.supportive_id" class="mt-2 flex items-center gap-2 bg-sky-50 border border-sky-200 px-3 py-2 rounded-lg">
+                <svg class="w-4 h-4 text-sky-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
                 </svg>
-                <span class="text-sm font-medium text-sky-300">{{ ingredientName(ruleForm.supportive_id) }}</span>
+                <span class="text-sm font-medium text-sky-700">{{ ingredientName(ruleForm.supportive_id) }}</span>
               </div>
             </div>
 
             <!-- Özet Önizleme -->
-            <div v-if="ruleForm.primary_id" class="rule-preview rounded-xl border border-zinc-700/40 bg-zinc-800/40 p-4">
-              <p class="text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-2">Kural Özeti</p>
+            <div v-if="ruleForm.primary_id" class="rule-preview rounded-xl border border-gray-200 bg-gray-50 p-4">
+              <p class="text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-2">Kural Özeti</p>
               <div class="flex flex-wrap gap-1.5 text-xs">
-                <span class="px-2 py-1 rounded bg-zinc-700 text-zinc-300 font-mono">{{ genderLabel(ruleForm.gender) }}</span>
-                <span class="px-2 py-1 rounded bg-zinc-700 text-zinc-300 font-mono">{{ ruleForm.age_min }}–{{ ruleForm.age_max }} ya</span>
-                <svg class="w-3 h-3 self-center text-amber-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L12.586 11H5a1 1 0 110-2h7.586l-2.293-2.293a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
-                <span class="px-2 py-1 rounded bg-emerald-900/50 text-emerald-300 font-medium">{{ ingredientName(ruleForm.primary_id) }}</span>
+                <span class="px-2 py-1 rounded bg-gray-200 text-gray-700 font-mono">{{ genderLabel(ruleForm.gender) }}</span>
+                <span class="px-2 py-1 rounded bg-gray-200 text-gray-700 font-mono">{{ ruleForm.age_min }}–{{ ruleForm.age_max }} yaş</span>
+                <svg class="w-3 h-3 self-center text-blue-600" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L12.586 11H5a1 1 0 110-2h7.586l-2.293-2.293a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+                <span class="px-2 py-1 rounded bg-emerald-100 text-emerald-700 font-medium">{{ ingredientName(ruleForm.primary_id) }}</span>
                 <template v-if="ruleForm.supportive_id">
-                  <span class="text-zinc-500 self-center">+</span>
-                  <span class="px-2 py-1 rounded bg-sky-900/40 text-sky-300">{{ ingredientName(ruleForm.supportive_id) }}</span>
+                  <span class="text-gray-500 self-center">+</span>
+                  <span class="px-2 py-1 rounded bg-sky-100 text-sky-700">{{ ingredientName(ruleForm.supportive_id) }}</span>
                 </template>
               </div>
             </div>
           </div>
 
           <!-- Drawer Footer -->
-          <div class="px-6 py-4 border-t border-zinc-700/60 flex items-center gap-3 flex-shrink-0">
+          <div class="px-6 py-4 border-t border-gray-200 flex items-center gap-3 flex-shrink-0">
             <button
               @click="closeDrawer"
               :disabled="drawerSaving"
-              class="flex-1 py-2.5 text-sm font-medium text-zinc-400 hover:text-zinc-200 border border-zinc-700 hover:border-zinc-500 rounded-lg transition disabled:opacity-50"
+              class="eisa-btn flex-1 disabled:opacity-50"
             >
-              ptal
+              İptal
             </button>
             <button
               @click="saveRule"
               :disabled="drawerSaving || !ruleForm.primary_id"
-              class="flex-1 flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-400 disabled:bg-zinc-700 disabled:text-zinc-500 text-zinc-900 text-sm font-bold py-2.5 rounded-lg transition-colors duration-150 shadow-lg shadow-amber-900/20"
+              class="eisa-btn eisa-btn-cta flex-1 disabled:opacity-60"
             >
               <svg v-if="drawerSaving" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
@@ -816,21 +816,21 @@ const HEALTH_ICONS = [
         >
           <Transition name="modal" appear>
             <div v-if="qModalOpen" class="question-modal w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl">
-              <div class="px-6 py-4 border-b border-zinc-700/60 flex items-center justify-between">
-                <h3 class="text-sm font-bold text-zinc-100">
+              <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                <h3 class="text-sm font-bold text-gray-900">
                   {{ qModalMode === 'add' ? 'Yeni Soru' : 'Soruyu Düzenle' }}
                 </h3>
-                <button @click="qModalOpen = false" class="p-1.5 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-700 rounded-lg transition">
+                <button @click="qModalOpen = false" class="p-1.5 text-gray-500 hover:text-gray-900 hover:bg-gray-200 rounded-lg transition">
                   <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
                   </svg>
                 </button>
               </div>
               <div class="px-6 py-5">
-                <div v-if="qFormError" class="text-sm text-rose-400 bg-rose-900/20 border border-rose-700/30 px-3 py-2.5 rounded-lg mb-4">
+                <div v-if="qFormError" class="text-sm text-rose-600 bg-rose-50 border border-rose-200 px-3 py-2.5 rounded-lg mb-4">
                   {{ qFormError }}
                 </div>
-                <label class="drawer-label mb-2 block">Soru Metni <span class="text-rose-400">*</span></label>
+                <label class="drawer-label mb-2 block">Soru Metni <span class="text-rose-600">*</span></label>
                 <textarea
                   v-model="qForm.text"
                   rows="3"
@@ -838,11 +838,11 @@ const HEALTH_ICONS = [
                   class="drawer-input w-full resize-none"
                 ></textarea>
               </div>
-              <div class="px-6 py-4 border-t border-zinc-700/60 flex items-center gap-3">
-                <button @click="qModalOpen = false" :disabled="qSaving" class="flex-1 py-2 text-sm text-zinc-400 border border-zinc-700 rounded-lg hover:border-zinc-500 hover:text-zinc-200 transition disabled:opacity-50">
-                  ptal
+              <div class="px-6 py-4 border-t border-gray-200 flex items-center gap-3">
+                <button @click="qModalOpen = false" :disabled="qSaving" class="eisa-btn flex-1 disabled:opacity-50">
+                  İptal
                 </button>
-                <button @click="saveQuestion" :disabled="qSaving" class="flex-1 flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-400 disabled:bg-zinc-700 disabled:text-zinc-500 text-zinc-900 text-sm font-bold py-2 rounded-lg transition">
+                <button @click="saveQuestion" :disabled="qSaving" class="eisa-btn eisa-btn-cta flex-1 disabled:opacity-60">
                   <svg v-if="qSaving" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
@@ -867,17 +867,17 @@ const HEALTH_ICONS = [
           <Transition name="modal" appear>
             <div v-if="qDeleteOpen" class="question-modal w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl">
               <div class="p-6 text-center">
-                <div class="w-12 h-12 bg-rose-900/50 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <svg class="w-6 h-6 text-rose-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <div class="w-12 h-12 bg-rose-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <svg class="w-6 h-6 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
                   </svg>
                 </div>
-                <h3 class="text-sm font-semibold text-zinc-100 mb-1">Soruyu Sil</h3>
-                <p class="text-xs text-zinc-400">Bu soru ve bal <span class="text-rose-300 font-semibold">{{ qDeleteTarget?.match_rules?.length ?? 0 }} kural</span> kalc olarak silinecek.</p>
+                <h3 class="text-sm font-semibold text-gray-900 mb-1">Soruyu Sil</h3>
+                <p class="text-xs text-gray-600">Bu soru ve bağlı <span class="text-rose-600 font-semibold">{{ qDeleteTarget?.match_rules?.length ?? 0 }} kural</span> kalıcı olarak silinecek.</p>
               </div>
               <div class="px-6 pb-5 flex gap-2.5">
-                <button @click="qDeleteOpen = false" :disabled="qDeleting" class="flex-1 py-2 text-sm text-zinc-400 border border-zinc-700 rounded-lg hover:border-zinc-500 transition disabled:opacity-50">Vazgeç</button>
-                <button @click="confirmDeleteQuestion" :disabled="qDeleting" class="flex-1 flex items-center justify-center gap-1.5 bg-rose-600 hover:bg-rose-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white text-sm font-bold py-2 rounded-lg transition">
+                <button @click="qDeleteOpen = false" :disabled="qDeleting" class="eisa-btn flex-1 disabled:opacity-50">Vazgeç</button>
+                <button @click="confirmDeleteQuestion" :disabled="qDeleting" class="eisa-btn eisa-btn-danger flex-1 disabled:opacity-60">
                   <svg v-if="qDeleting" class="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
@@ -906,40 +906,39 @@ const HEALTH_ICONS = [
         <Transition name="modal" appear>
           <div v-if="catModalOpen" class="question-modal w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl">
             <!-- Balk -->
-            <div class="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
-              <h3 class="text-sm font-semibold text-zinc-100">{{ catModalMode === 'add' ? 'Yeni Kategori' : 'Kategori Düzenle' }}</h3>
-              <button @click="closeCatModal" class="p-1.5 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 rounded-lg transition">
+            <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 class="text-sm font-semibold text-gray-900">{{ catModalMode === 'add' ? 'Yeni Kategori' : 'Kategori Düzenle' }}</h3>
+              <button @click="closeCatModal" class="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition">
                 <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
               </button>
             </div>
 
             <!-- Form Gövdesi -->
             <div class="px-6 py-5 space-y-4 max-h-[70vh] overflow-y-auto">
-              <div v-if="catFormError" class="flex items-center gap-2 bg-rose-900/30 border border-rose-700/40 text-rose-400 text-sm px-3 py-2.5 rounded-lg">{{ catFormError }}</div>
+              <div v-if="catFormError" class="flex items-center gap-2 bg-rose-50 border border-rose-200 text-rose-600 text-sm px-3 py-2.5 rounded-lg">{{ catFormError }}</div>
 
-              <!-- Ad + kon -->
+              <!-- Ad + ikon -->
               <div class="grid grid-cols-3 gap-3">
                 <div class="col-span-2">
-                  <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Kategori Ad <span class="text-rose-400">*</span></label>
+                  <label class="block text-xs font-semibold text-gray-600 mb-2">Kategori Adı <span class="text-rose-600">*</span></label>
                   <input
                     v-model="catForm.name"
                     type="text"
                     placeholder="Örn: Enerji & Yorgunluk"
-                    class="w-full px-3 py-2 text-sm bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-200 placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-amber-500/60 focus:border-transparent"
+                    class="drawer-input w-full"
                   />
                 </div>
                 <div>
-                  <label class="block text-xs font-semibold text-zinc-400 mb-1.5">İkon Seç</label>
+                  <label class="block text-xs font-semibold text-gray-600 mb-1.5">İkon Seç</label>
                   <button
                     type="button"
                     @click="iconPickerOpen = true"
-                    class="w-full flex items-center gap-3 px-3 py-2.5 bg-zinc-800 border border-zinc-700 rounded-lg hover:border-amber-500/60 transition"
+                    class="drawer-input flex items-center gap-2"
                   >
-                    <span class="w-8 h-8 flex items-center justify-center text-lg bg-zinc-700/60 rounded">
-                      <i :class="catForm.icon || 'fa-solid fa-pills'" class="text-amber-400"></i>
-                    </span>
-                    <span class="flex-1 text-left text-sm text-zinc-300 truncate">{{ catForm.icon || 'fa-solid fa-pills' }}</span>
-                    <i class="fa-solid fa-grip text-zinc-500"></i>
+                    <span class="w-6 h-6 flex items-center justify-center text-sm bg-blue-50 rounded flex-shrink-0">
+                      <i :class="catForm.icon || 'fa-solid fa-pills'" class="text-blue-600"></i>
+                    </span>                   
+                    <i class="fa-solid fa-grip text-gray-400 flex-shrink-0"></i>
                   </button>
                 </div>
               </div>
@@ -947,13 +946,13 @@ const HEALTH_ICONS = [
               <!-- Hassas Toggle -->
               <div class="flex items-center gap-2.5">
                 <input id="cat-hassas" type="checkbox" v-model="catForm.is_sensitive"
-                  class="w-4 h-4 rounded bg-zinc-700 border-zinc-600 text-amber-500 focus:ring-amber-500/40" />
-                <label for="cat-hassas" class="text-sm text-zinc-300 cursor-pointer">Hassas kategori <span class="text-zinc-500 text-xs">(Özel danışmanlık gerektirir)</span></label>
+                  class="w-4 h-4 rounded bg-white border-gray-300 text-blue-600 focus:ring-blue-400" />
+                <label for="cat-hassas" class="text-sm text-gray-700 cursor-pointer">Hassas kategori <span class="text-gray-500 text-xs">(Özel danışmanlık gerektirir)</span></label>
               </div>
 
               <!-- Hedef Cinsiyetler -->
               <div>
-                <label class="block text-xs font-semibold text-zinc-400 mb-2">Hedef Cinsiyetler</label>
+                <label class="block text-xs font-semibold text-gray-600 mb-2">Hedef Cinsiyetler</label>
                 <div class="flex flex-wrap gap-2">
                   <button
                     v-for="c in cinsiyetler" :key="c.id"
@@ -961,16 +960,16 @@ const HEALTH_ICONS = [
                     @click="toggleCatGender(c.id)"
                     class="px-3 py-1 text-xs font-semibold rounded-full border transition"
                     :class="catForm.hedef_cinsiyetler.includes(c.id)
-                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/50'
-                      : 'bg-zinc-800 text-zinc-500 border-zinc-700 hover:border-zinc-500'"
+                      ? 'bg-blue-100 text-blue-700 border-blue-400'
+                      : 'bg-white text-gray-500 border-gray-300 hover:border-gray-400'"
                   >{{ c.ad }}</button>
                 </div>
-                <p class="mt-1 text-[10px] text-zinc-600">Boş bırakırsanız tüm cinsiyetler hedeflenir.</p>
+                <p class="mt-1 text-[10px] text-gray-500">Boş bırakırsanız tüm cinsiyetler hedeflenir.</p>
               </div>
 
-              <!-- Hedef Ya Aralklar -->
+              <!-- Hedef Yaş Aralıkları -->
               <div>
-                <label class="block text-xs font-semibold text-zinc-400 mb-2">Hedef Ya Aralklar</label>
+                <label class="block text-xs font-semibold text-gray-600 mb-2">Hedef Yaş Aralıkları</label>
                 <div class="flex flex-wrap gap-2">
                   <button
                     v-for="y in yasAraliklari" :key="y.id"
@@ -978,23 +977,23 @@ const HEALTH_ICONS = [
                     @click="toggleCatAge(y.id)"
                     class="px-3 py-1 text-xs font-semibold rounded-full border transition"
                     :class="catForm.hedef_yas_araliklari.includes(y.id)
-                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/50'
-                      : 'bg-zinc-800 text-zinc-500 border-zinc-700 hover:border-zinc-500'"
+                      ? 'bg-blue-100 text-blue-700 border-blue-400'
+                      : 'bg-white text-gray-500 border-gray-300 hover:border-gray-400'"
                   >{{ y.ad }}</button>
                 </div>
-                <p class="mt-1 text-[10px] text-zinc-600">Boş bırakırsanız tüm yaş gruplar hedeflenir.</p>
+                <p class="mt-1 text-[10px] text-gray-500">Boş bırakırsanız tüm yaş grupları hedeflenir.</p>
               </div>
             </div>
 
             <!-- Footer -->
-            <div class="px-6 py-4 border-t border-zinc-800 flex items-center justify-end gap-2.5 bg-zinc-900/50">
-              <button @click="closeCatModal" :disabled="catSaving" class="px-4 py-2 text-sm text-zinc-400 border border-zinc-700 rounded-lg hover:border-zinc-500 transition disabled:opacity-50">ptal</button>
-              <button @click="saveCategory" :disabled="catSaving" class="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-400 disabled:bg-zinc-700 disabled:text-zinc-500 text-zinc-900 text-sm font-bold px-4 py-2 rounded-lg transition">
+            <div class="px-6 py-4 border-t border-gray-200 flex items-center justify-end gap-2.5 bg-gray-50">
+              <button @click="closeCatModal" :disabled="catSaving" class="eisa-btn disabled:opacity-50">İptal</button>
+              <button @click="saveCategory" :disabled="catSaving" class="eisa-btn eisa-btn-cta disabled:opacity-60">
                 <svg v-if="catSaving" class="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
                   <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
                   <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
                 </svg>
-                {{ catSaving ? 'Kaydediliyor…' : (catModalMode === 'add' ? 'Olutur' : 'Güncelle') }}
+                {{ catSaving ? 'Kaydediliyor…' : (catModalMode === 'add' ? 'Oluştur' : 'Güncelle') }}
               </button>
             </div>
           </div>
@@ -1009,22 +1008,22 @@ const HEALTH_ICONS = [
       <div
         v-if="iconPickerOpen"
         class="fixed inset-0 z-[60] flex items-center justify-center p-4"
-        style="background: rgba(15,23,42,0.65); backdrop-filter: blur(6px);"
+        style="background: rgba(15,23,42,0.45); backdrop-filter: blur(6px);"
         @click.self="iconPickerOpen = false"
       >
         <div
-          class="w-full max-w-2xl bg-zinc-900 border border-zinc-700/60 rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+          class="w-full max-w-2xl bg-white border border-gray-200 rounded-2xl shadow-2xl overflow-hidden flex flex-col"
           style="max-height: 80vh;"
         >
-          <div class="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
+          <div class="flex items-center justify-between px-5 py-4 border-b border-gray-200">
             <div>
-              <h3 class="text-base font-bold text-zinc-100">İkon Seç</h3>
-              <p class="text-xs text-zinc-500 mt-0.5">Kategori için bir sağlık ikonu seçin</p>
+              <h3 class="text-base font-bold text-gray-900">İkon Seç</h3>
+              <p class="text-xs text-gray-500 mt-0.5">Kategori için bir sağlık ikonu seçin</p>
             </div>
             <button
               type="button"
               @click="iconPickerOpen = false"
-              class="w-8 h-8 flex items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition"
+              class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition"
             >
               <i class="fa-solid fa-xmark"></i>
             </button>
@@ -1039,22 +1038,22 @@ const HEALTH_ICONS = [
                 @click="catForm.icon = ic.cls; iconPickerOpen = false"
                 class="aspect-square flex flex-col items-center justify-center gap-1 rounded-xl border transition group"
                 :class="catForm.icon === ic.cls
-                  ? 'bg-amber-500/20 border-amber-500/60 text-amber-400 ring-2 ring-amber-500/40'
-                  : 'bg-zinc-800/60 border-zinc-700/60 text-zinc-300 hover:border-amber-500/50 hover:text-amber-400 hover:bg-zinc-800'"
+                  ? 'bg-blue-100 border-blue-500 text-blue-700 ring-2 ring-blue-400'
+                  : 'bg-white border-gray-200 text-gray-600 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50'"
               >
                 <i :class="ic.cls" class="text-lg"></i>
                 <span class="text-[10px] leading-tight text-center px-1 truncate w-full opacity-70 group-hover:opacity-100">{{ ic.label }}</span>
               </button>
             </div>
           </div>
-          <div class="px-5 py-3 border-t border-zinc-800 flex justify-between items-center bg-zinc-900/50">
-            <div class="text-xs text-zinc-500">
-              Mevcut: <code class="text-amber-400 ml-1">{{ catForm.icon || 'fa-solid fa-pills' }}</code>
+          <div class="px-5 py-3 border-t border-gray-200 flex justify-between items-center bg-gray-50">
+            <div class="text-xs text-gray-500">
+              Mevcut: <code class="text-blue-600 ml-1">{{ catForm.icon || 'fa-solid fa-pills' }}</code>
             </div>
             <button
               type="button"
               @click="iconPickerOpen = false"
-              class="px-4 py-1.5 text-sm bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg transition"
+              class="eisa-btn"
             >
               Kapat
             </button>
@@ -1065,72 +1064,6 @@ const HEALTH_ICONS = [
   </Teleport>
 </template>
 
-<!-- Non-scoped overrides: convert dark zinc Tailwind classes to light theme -->
-<style>
-/*  Background overrides  */
-.medical-logic-root .bg-zinc-800\/40  { background: rgba(255,255,255,0.85) !important; }
-.medical-logic-root .bg-zinc-800\/80  { background: rgba(248,247,244,0.97) !important; }
-.medical-logic-root .bg-zinc-800\/60  { background: rgba(249,248,246,0.9)  !important; }
-.medical-logic-root .bg-zinc-800      { background: #FFFFFF                !important; }
-.medical-logic-root .bg-zinc-900\/50  { background: rgba(249,248,246,0.8)  !important; }
-.medical-logic-root .bg-zinc-700\/50  { background: rgba(243,244,246,0.9)  !important; }
-.medical-logic-root .bg-zinc-700\/40  { background: rgba(243,244,246,0.8)  !important; }
-.medical-logic-root .bg-zinc-700      { background: #F3F4F6                !important; }
-.medical-logic-root .hover\:bg-zinc-800:hover { background: #F3F4F6        !important; }
-.medical-logic-root .hover\:bg-zinc-800\/70:hover { background: rgba(249,248,246,0.9) !important; }
-
-/*  Text overrides  */
-.medical-logic-root .text-zinc-100    { color: #111827 !important; }
-.medical-logic-root .text-zinc-200    { color: #374151 !important; }
-.medical-logic-root .text-zinc-300    { color: #4B5563 !important; }
-.medical-logic-root .text-zinc-400    { color: #6B7280 !important; }
-.medical-logic-root .text-zinc-500    { color: #9CA3AF !important; }
-.medical-logic-root .text-zinc-600    { color: #9CA3AF !important; }
-.medical-logic-root .hover\:text-zinc-200:hover { color: #111827 !important; }
-.medical-logic-root .placeholder-zinc-600::placeholder { color: #D1D5DB !important; }
-
-/*  Border overrides  */
-.medical-logic-root .border-zinc-700\/50 { border-color: rgba(209,213,219,0.6)  !important; }
-.medical-logic-root .border-zinc-700     { border-color: #E5E7EB               !important; }
-.medical-logic-root .border-zinc-800     { border-color: #E5E3DF               !important; }
-.medical-logic-root .border-zinc-600\/30 { border-color: rgba(229,231,235,0.6) !important; }
-
-/*  Amber accent overrides  */
-.medical-logic-root .text-amber-400   { color: #B45309 !important; }
-.medical-logic-root .text-amber-300   { color: #92400E !important; }
-.medical-logic-root .bg-amber-500\/15 { background: rgba(217,119,6,0.08)   !important; }
-.medical-logic-root .ring-amber-500\/30 { --tw-ring-color: rgba(217,119,6,0.25) !important; }
-
-/*  Status color overrides  */
-.medical-logic-root .bg-rose-900\/50  { background: rgba(254,226,226,0.7)  !important; }
-.medical-logic-root .text-rose-400    { color: #DC2626                     !important; }
-.medical-logic-root .border-rose-700\/30 { border-color: rgba(252,165,165,0.5) !important; }
-.medical-logic-root .bg-emerald-900\/30 { background: rgba(209,250,229,0.6) !important; }
-.medical-logic-root .text-emerald-300 { color: #059669                     !important; }
-.medical-logic-root .border-emerald-700\/30 { border-color: rgba(110,231,183,0.5) !important; }
-.medical-logic-root .bg-sky-900\/25   { background: rgba(224,242,254,0.6)  !important; }
-.medical-logic-root .text-sky-300     { color: #0284C7                     !important; }
-.medical-logic-root .border-sky-700\/30 { border-color: rgba(125,211,252,0.5) !important; }
-.medical-logic-root .bg-pink-900\/40  { background: rgba(253,242,248,0.8)  !important; }
-.medical-logic-root .text-pink-300    { color: #BE185D                     !important; }
-.medical-logic-root .border-pink-700\/30 { border-color: rgba(249,168,212,0.5) !important; }
-.medical-logic-root .bg-violet-900\/30 { background: rgba(237,233,254,0.7) !important; }
-.medical-logic-root .text-violet-300  { color: #7C3AED                     !important; }
-.medical-logic-root .border-violet-700\/30 { border-color: rgba(196,181,253,0.5) !important; }
-
-/*  Form input overrides (category modal)  */
-.medical-logic-root input[class*="bg-zinc-800"],
-.medical-logic-root select[class*="bg-zinc-800"] {
-  background: #FFFFFF !important;
-  border-color: #E5E3DF !important;
-  color: #111827 !important;
-}
-.medical-logic-root input[class*="bg-zinc-700"],
-.medical-logic-root select[class*="bg-zinc-700"] {
-  background: #F9FAFB !important;
-  border-color: #E5E3DF !important;
-}
-</style>
 
 <style scoped>
 @import url('https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Mono:wght@400;500&display=swap');
@@ -1219,8 +1152,8 @@ const HEALTH_ICONS = [
 }
 
 .drawer-input:focus {
-  border-color: #B45309;
-  box-shadow: 0 0 0 3px rgba(180,83,9,0.08);
+  border-color: #2563EB;
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.10);
 }
 
 .drawer-input option {
@@ -1283,5 +1216,5 @@ const HEALTH_ICONS = [
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 2px; }
-::-webkit-scrollbar-thumb:hover { background: #B45309; }
+::-webkit-scrollbar-thumb:hover { background: #2563EB; }
 </style>

@@ -1457,6 +1457,27 @@ body {
 @keyframes fc-dot-bounce { 0%,80%,100%{transform:scale(0.8);opacity:0.5} 40%{transform:scale(1.1);opacity:1} }
 .fc-footer { text-align:center; margin-top:1.5rem; font-size:0.78rem; color:#9CA3AF; }
 
+/* Login fixes: SVG sizes, icon padding, floating crosses */
+.fc-input { padding-left:2.5rem; }
+.fi-icon { width:18px; height:18px; pointer-events:none; }
+.fi-pw-toggle { width:32px; height:32px; display:inline-flex; align-items:center; justify-content:center; }
+.fi-pw-toggle svg { width:18px; height:18px; }
+.fc-error svg { width:16px; height:16px; flex-shrink:0; }
+.fc-submit svg { width:18px; height:18px; flex-shrink:0; }
+
+.cross { position:absolute; font-family:'Syne',sans-serif; font-weight:300; color:rgba(37,99,235,0.18); user-select:none; pointer-events:none; line-height:1; animation:cross-float 8s ease-in-out infinite; }
+.cross-1 { top:12%; left:14%; font-size:2.5rem; animation-delay:0s; }
+.cross-2 { top:22%; right:18%; font-size:1.75rem; animation-delay:1.5s; }
+.cross-3 { bottom:18%; left:22%; font-size:2rem; animation-delay:3s; }
+.cross-4 { bottom:24%; right:14%; font-size:1.5rem; color:rgba(6,182,212,0.18); animation-delay:4.5s; }
+@keyframes cross-float { 0%,100%{transform:translateY(0) rotate(0deg)} 50%{transform:translateY(-12px) rotate(8deg)} }
+
+.brand-body, .lr-form-card { opacity:0; transform:translateY(8px); transition:opacity 0.5s ease, transform 0.5s ease; }
+.brand-body.is-visible, .lr-form-card.is-visible { opacity:1; transform:translateY(0); }
+
+.shake-enter-active { animation:fc-shake 0.35s ease; }
+@keyframes fc-shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-4px)} 75%{transform:translateX(4px)} }
+
 /* ═══════════════════════════════════════════════════════════
    CAMPAIGN MANAGER (cm-*)
    ═══════════════════════════════════════════════════════════ */

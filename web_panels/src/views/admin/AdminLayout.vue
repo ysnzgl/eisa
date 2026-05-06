@@ -26,7 +26,7 @@ const navItems = [
     <aside class="admin-sidebar">
       <div class="brand">
         <span class="brand-logo">e-<span class="brand-accent">İSA</span></span>
-        <p class="brand-sub">Admin Paneli</p>
+        <p class="brand-sub">Yönetici Paneli</p>
       </div>
 
       <nav class="nav">
@@ -43,8 +43,7 @@ const navItems = [
       </nav>
 
       <div class="footer">
-        <div class="user">
-          <div class="avatar">{{ (auth.user?.first_name || auth.user?.username || '?')[0]?.toUpperCase() }}</div>
+        <div class="user">          
           <div class="user-meta">
             <span class="user-name">{{ auth.user?.first_name || auth.user?.username }}</span>
             <span class="user-role">Süper Admin</span>
