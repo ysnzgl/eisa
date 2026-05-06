@@ -16,9 +16,13 @@ class ReklamSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "ad",
+            "musteri",
             "medya_url",
+            "sure_saniye",
             "baslangic_tarihi",
             "bitis_tarihi",
+            "yayin_baslangic",
+            "yayin_bitis",
             "hedef_eczaneler",
             "aktif",
             "olusturulma_tarihi",

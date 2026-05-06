@@ -12,19 +12,26 @@
  *   PATCH  /api/pharmacies/{id}/                    — güncelle
  *   DELETE /api/pharmacies/{id}/                    — sil
  *   GET    /api/pharmacies/kiosks/                  — kiosk durum listesi
+ *   POST   /api/pharmacies/kiosks/                  — kiosk oluştur
+ *   DELETE /api/pharmacies/kiosks/{id}/             — kiosk sil
  */
 import { http } from './api';
 
 // ─── Eşleştiriciler ─────────────────────────────────────────────────────────
 
-function mapPharmacyFromApi(p) {
+export function mapPharmacyFromApi(p) {
   if (!p) return null;
   return {
     id: p.id,
     name: p.ad,
-    province: p.il_adi ?? String(p.il ?? ''),
-    district: p.ilce_adi ?? String(p.ilce ?? ''),
+    il: p.il,                              // FK id
+    ilAdi: p.il_adi ?? '',
+    ilce: p.ilce,                          // FK id
+    ilceAdi: p.ilce_adi ?? '',
+    adres: p.adres ?? '',
     owner: p.sahip_adi ?? '',
+    telefon: p.telefon ?? '',
+    eczaneKodu: p.eczane_kodu ?? '',
     kioskCount: p.kiosk_sayisi ?? 0,
     isActive: p.aktif !== false,
   };
@@ -32,16 +39,18 @@ function mapPharmacyFromApi(p) {
 
 function mapPharmacyToApi(data) {
   const out = {};
-  if (data.name !== undefined) out.ad = data.name;
-  if (data.owner !== undefined) out.sahip_adi = data.owner;
-  if (data.isActive !== undefined) out.aktif = data.isActive;
-  // il/ilce backend'de integer FK (id) gönderilmeli
-  if (data.il !== undefined) out.il = data.il;
-  if (data.ilce !== undefined) out.ilce = data.ilce;
+  if (data.name      !== undefined) out.ad          = data.name;
+  if (data.owner     !== undefined) out.sahip_adi   = data.owner;
+  if (data.adres     !== undefined) out.adres        = data.adres;
+  if (data.telefon   !== undefined) out.telefon      = data.telefon;
+  if (data.eczaneKodu !== undefined) out.eczane_kodu = data.eczaneKodu || null;
+  if (data.isActive  !== undefined) out.aktif        = data.isActive;
+  if (data.il        !== undefined) out.il           = data.il;   // integer FK
+  if (data.ilce      !== undefined) out.ilce         = data.ilce; // integer FK
   return out;
 }
 
-function mapKioskFromApi(k) {
+export function mapKioskFromApi(k) {
   if (!k) return null;
   return {
     id: k.id,
@@ -82,8 +91,26 @@ export async function deletePharmacy(id) {
 
 // ─── Kiosk Servisleri ───────────────────────────────────────────────────────
 
-export async function getKioskStatus() {
-  const { data } = await http.get('/api/pharmacies/kiosks/');
+export async function getKioskStatus(pharmacyId = null) {
+  const params = pharmacyId ? { eczane: pharmacyId } : {};
+  const { data } = await http.get('/api/pharmacies/kiosks/', { params });
   const items = Array.isArray(data) ? data : (data?.results ?? []);
   return items.map(mapKioskFromApi);
+}
+
+/**
+ * Eczaneye yeni kiosk ekler.
+ * @param {{ pharmacyId: number, mac: string }} data
+ */
+export async function createKiosk(data) {
+  const { data: created } = await http.post('/api/pharmacies/kiosks/', {
+    eczane: data.pharmacyId,
+    mac_adresi: data.mac,
+    aktif: true,
+  });
+  return mapKioskFromApi(created);
+}
+
+export async function deleteKiosk(id) {
+  await http.delete(`/api/pharmacies/kiosks/${id}/`);
 }

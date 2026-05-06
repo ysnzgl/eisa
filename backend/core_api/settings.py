@@ -218,6 +218,9 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # ─── API Dokümantasyonu (yalnızca geliştirme ortamında) ─────────────────────
@@ -266,7 +269,7 @@ if DEBUG:
 LOG_DIR = Path(config("DJANGO_LOG_DIR", default=str(BASE_DIR / "logs")))
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
-LOG_LEVEL = config("DJANGO_LOG_LEVEL", default="INFO" if not DEBUG else "DEBUG")
+LOG_LEVEL = config("DJANGO_LOG_LEVEL", default="INFO" if not DEBUG else "INFO")
 LOG_MAX_BYTES = config("DJANGO_LOG_MAX_BYTES", default=10 * 1024 * 1024, cast=int)  # 10 MB
 LOG_BACKUP_COUNT = config("DJANGO_LOG_BACKUP_COUNT", default=5, cast=int)
 

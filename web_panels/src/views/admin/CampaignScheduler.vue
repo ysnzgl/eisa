@@ -70,9 +70,12 @@
           <div class="pharmacy-label-row">
             <div class="pharmacy-name-cell">
               <div class="pharmacy-icon">⬡</div>
-              <div>
+              <div class="pharmacy-name-info">
                 <div class="pharmacy-name">{{ pharmacy.name }}</div>
-                <div class="pharmacy-meta">{{ pharmacy.kiosks.length }} kiosk</div>
+                <div class="pharmacy-meta">
+                  {{ pharmacy.kiosks.length }} kiosk · ortalama doluluk
+                  <strong>{{ Math.round(pharmacy.kiosks.reduce((s, k) => s + fillRate(k.id), 0) / Math.max(1, pharmacy.kiosks.length)) }}%</strong>
+                </div>
               </div>
             </div>
             <div class="pharmacy-timeline-row">
@@ -94,6 +97,17 @@
             <div class="kiosk-label-cell">
               <span class="kiosk-status-dot" :class="kiosk.online ? 'online' : 'offline'"></span>
               <span class="kiosk-name">{{ kiosk.name }}</span>
+              <span
+                class="fill-badge"
+                :class="{
+                  high: fillRate(kiosk.id) >= 70,
+                  mid:  fillRate(kiosk.id) >= 30 && fillRate(kiosk.id) < 70,
+                  low:  fillRate(kiosk.id) < 30,
+                }"
+                :title="`Reklam doluluk oranı: ${fillRate(kiosk.id)}%`"
+              >
+                {{ fillRate(kiosk.id) }}%
+              </span>
             </div>
             <div class="kiosk-timeline" :style="{ width: timelineWidth + 'px' }">
               <!-- Hour cells (background grid) -->
@@ -229,12 +243,21 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { getPharmacies, getKioskStatus } from '../../services/devices'
+import { getCampaigns } from '../../services/campaignManager'
 
 // --- CONFIG ---
 const cellWidth = 52   // px per hour
 const hours = Array.from({ length: 24 }, (_, i) => i)
 const timeLabels = hours.map(h => `${String(h).padStart(2, '0')}:00`)
 const timelineWidth = computed(() => cellWidth * 24)
+
+// --- Fixed campaign palette ---
+const CAMP_COLORS = [
+  '#2563EB', '#7C3AED', '#059669', '#DC2626', '#EA580C',
+  '#0891B2', '#DB2777', '#65A30D', '#9333EA', '#0EA5E9',
+]
+function colorFor(id) { return CAMP_COLORS[(Number(id) || 0) % CAMP_COLORS.length] }
 
 // --- STATE ---
 const activeView = ref('today')
@@ -246,51 +269,84 @@ const hoveredBlock = ref(null)
 const selectedBlock = ref(null)
 const showAssignModal = ref(false)
 const assignForm = ref({ campaignId: '', kioskId: '', start: 8, end: 12 })
+const loading = ref(false)
 
-// --- DATA ---
-const campaigns = ref([
-  { id: 1, name: 'X Vitamin Reklamı', color: '#22d3ee', client: 'Bayer AG', mediaType: 'Video 30s', priority: 'Yüksek' },
-  { id: 2, name: 'Güneş Kremi Kampanyası', color: '#f59e0b', client: 'L\'Oréal', mediaType: 'Carousel', priority: 'Normal' },
-  { id: 3, name: 'Ağrı Kesici Promosyon', color: '#a78bfa', client: 'Novartis', mediaType: 'Video 15s', priority: 'Yüksek' },
-  { id: 4, name: 'Bebek Bakım', color: '#34d399', client: 'Johnsons', mediaType: 'Statik Görsel', priority: 'Düşük' },
-  { id: 5, name: 'Allerji Sezonu', color: '#fb7185', client: 'UCB Pharma', mediaType: 'Video 20s', priority: 'Normal' },
-])
+// --- DATA loaded from API ---
+const campaigns = ref([])    // [{ id, name, color, client, mediaType, priority }]
+const pharmacies = ref([])   // [{ id, name, kiosks: [{id, name, online}] }]
+// Local-only campaign blocks (backend henüz scheduler persist endpoint'i sunmuyor)
+const blocks = ref([])
 
-const pharmacies = ref([
-  {
-    id: 1, name: 'Merkez Eczanesi',
-    kiosks: [
-      { id: 'k1', name: 'Kiosk-01', online: true },
-      { id: 'k2', name: 'Kiosk-02', online: true },
-    ]
-  },
-  {
-    id: 2, name: 'Sağlık Eczanesi',
-    kiosks: [
-      { id: 'k3', name: 'Kiosk-01', online: false },
-      { id: 'k4', name: 'Kiosk-02', online: true },
-    ]
-  },
-  {
-    id: 3, name: 'Hayat Eczanesi',
-    kiosks: [
-      { id: 'k5', name: 'Kiosk-01', online: true },
-    ]
-  },
-])
+async function loadData() {
+  loading.value = true
+  try {
+    const [camps, pharms, kiosks] = await Promise.all([
+      getCampaigns().catch(() => []),
+      getPharmacies().catch(() => []),
+      getKioskStatus().catch(() => []),
+    ])
 
-// blocks: { id, kioskId, campaignId, name, color, start, end (hours), client, mediaType, priority }
-const blocks = ref([
-  { id: 'b1', kioskId: 'k1', campaignId: 1, name: 'X Vitamin Reklamı', color: '#22d3ee', start: 8, end: 12, client: 'Bayer AG', mediaType: 'Video 30s', priority: 'Yüksek' },
-  { id: 'b2', kioskId: 'k1', campaignId: 2, name: 'Güneş Kremi Kampanyası', color: '#f59e0b', start: 12, end: 16, client: 'L\'Oréal', mediaType: 'Carousel', priority: 'Normal' },
-  { id: 'b3', kioskId: 'k1', campaignId: 3, name: 'Ağrı Kesici Promosyon', color: '#a78bfa', start: 10, end: 14, client: 'Novartis', mediaType: 'Video 15s', priority: 'Yüksek' },
-  { id: 'b4', kioskId: 'k2', campaignId: 4, name: 'Bebek Bakım', color: '#34d399', start: 9, end: 13, client: 'Johnsons', mediaType: 'Statik Görsel', priority: 'Düşük' },
-  { id: 'b5', kioskId: 'k3', campaignId: 5, name: 'Allerji Sezonu', color: '#fb7185', start: 7, end: 19, client: 'UCB Pharma', mediaType: 'Video 20s', priority: 'Normal' },
-  { id: 'b6', kioskId: 'k4', campaignId: 1, name: 'X Vitamin Reklamı', color: '#22d3ee', start: 6, end: 10, client: 'Bayer AG', mediaType: 'Video 30s', priority: 'Yüksek' },
-  { id: 'b7', kioskId: 'k4', campaignId: 2, name: 'Güneş Kremi Kampanyası', color: '#f59e0b', start: 14, end: 20, client: 'L\'Oréal', mediaType: 'Carousel', priority: 'Normal' },
-  { id: 'b8', kioskId: 'k5', campaignId: 3, name: 'Ağrı Kesici Promosyon', color: '#a78bfa', start: 8, end: 20, client: 'Novartis', mediaType: 'Video 15s', priority: 'Yüksek' },
-  { id: 'b9', kioskId: 'k5', campaignId: 5, name: 'Allerji Sezonu', color: '#fb7185', start: 10, end: 18, client: 'UCB Pharma', mediaType: 'Video 20s', priority: 'Normal' },
-])
+    // Campaign mapping: campaignManager service'i { id, name, client, ... } döndürür
+    campaigns.value = (camps || []).filter(c => c.is_active !== false).map(c => ({
+      id: c.id,
+      name: c.name,
+      color: colorFor(c.id),
+      client: c.client || '—',
+      mediaType: c.duration_sec ? `Video ${c.duration_sec}s` : 'Medya',
+      priority: c.priority || 'Normal',
+      starts_at: c.starts_at,
+      ends_at: c.ends_at,
+      broadcast_start: c.broadcast_start || '08:00',
+      broadcast_end: c.broadcast_end || '22:00',
+      target_pharmacy_ids: c.target_pharmacy_ids || [],
+    }))
+
+    // Pharmacy + kiosk grupla
+    const kioskByPharmacy = {}
+    ;(kiosks || []).forEach(k => {
+      const pid = k.pharmacyId ?? k.pharmacy_id ?? k.eczane ?? k.eczane_id ?? null
+      if (!pid) return
+      if (!kioskByPharmacy[pid]) kioskByPharmacy[pid] = []
+      kioskByPharmacy[pid].push({
+        id: k.id,
+        name: k.name || k.kod || `Kiosk-${k.id}`,
+        online: !!(k.online ?? k.is_online ?? (k.lastPing && (Date.now() - new Date(k.lastPing).getTime() < 5 * 60 * 1000))),
+      })
+    })
+    pharmacies.value = (pharms || []).map(p => ({
+      id: p.id,
+      name: p.name,
+      kiosks: kioskByPharmacy[p.id] || [],
+    })).filter(p => p.kiosks.length > 0)
+
+    // Mevcut kampanyalardan otomatik blok seed et: yayın saatleri × hedef eczane kiosk'ları
+    blocks.value = []
+    campaigns.value.forEach(c => {
+      const [sH] = (c.broadcast_start || '08:00').split(':').map(Number)
+      const [eH] = (c.broadcast_end || '22:00').split(':').map(Number)
+      const targetIds = (c.target_pharmacy_ids?.length ? c.target_pharmacy_ids : pharmacies.value.map(p => p.id))
+      pharmacies.value.forEach(p => {
+        if (!targetIds.includes(p.id)) return
+        p.kiosks.forEach(k => {
+          blocks.value.push({
+            id: `seed-${c.id}-${k.id}`,
+            kioskId: k.id,
+            campaignId: c.id,
+            name: c.name,
+            color: c.color,
+            start: sH,
+            end: eH,
+            client: c.client,
+            mediaType: c.mediaType,
+            priority: c.priority,
+          })
+        })
+      })
+    })
+  } finally {
+    loading.value = false
+  }
+}
 
 // --- COMPUTED ---
 const allKiosks = computed(() => {
@@ -308,6 +364,18 @@ const currentDate = computed(() => {
 const nowHour = computed(() => new Date().getHours() + new Date().getMinutes() / 60)
 const nowLinePx = computed(() => nowHour.value * cellWidth)
 
+// Doluluk: kiosk başına atanan saat / 24 (overlap'ler birleştirilerek)
+function fillRate(kioskId) {
+  const kBlocks = blocks.value.filter(b => b.kioskId === kioskId)
+  if (!kBlocks.length) return 0
+  // Saat hücrelerini boolean olarak topla; overlap çakışma sayar ama doluluğa tek katkı yapar
+  const occupied = new Array(24).fill(false)
+  kBlocks.forEach(b => {
+    for (let h = Math.max(0, b.start); h < Math.min(24, b.end); h++) occupied[h] = true
+  })
+  return Math.round((occupied.filter(Boolean).length / 24) * 100)
+}
+
 const stats = computed(() => {
   const activeBlocks = blocks.value.filter(b => b.start <= nowHour.value && b.end > nowHour.value)
   const conflictKiosks = new Set()
@@ -316,10 +384,13 @@ const stats = computed(() => {
       if (hasConflict(k.id, h)) { conflictKiosks.add(k.id); break }
     }
   })
+  const totalFill = allKiosks.value.length
+    ? Math.round(allKiosks.value.reduce((s, k) => s + fillRate(k.id), 0) / allKiosks.value.length)
+    : 0
   return [
     { label: 'Aktif Kampanya', value: activeBlocks.length },
-    { label: 'Toplam Atama', value: blocks.value.length },
-    { label: 'Çakışma Olan Kiosk', value: conflictKiosks.size },
+    { label: 'Ortalama Doluluk', value: `${totalFill}%` },
+    { label: 'Çakışmalı Kiosk', value: conflictKiosks.size },
     { label: 'Toplam Kiosk', value: allKiosks.value.length },
     { label: 'Kampanya', value: campaigns.value.length },
   ]
@@ -346,13 +417,8 @@ function isCurrentHour(hIdx) {
   return Math.floor(nowHour.value) === hIdx
 }
 
-function isCurrentKioskVisible(_kioskId) {
-  return true
-}
-
-function formatHour(h) {
-  return `${String(h).padStart(2, '0')}:00`
-}
+function isCurrentKioskVisible(_kioskId) { return true }
+function formatHour(h) { return `${String(h).padStart(2, '0')}:00` }
 
 function selectBlock(block) {
   selectedBlock.value = selectedBlock.value?.id === block.id ? null : block
@@ -377,7 +443,7 @@ function confirmAssign() {
   const camp = campaigns.value.find(c => c.id === parseInt(assignForm.value.campaignId))
   if (!camp || !assignForm.value.kioskId || assignForm.value.start >= assignForm.value.end) return
 
-  const newBlock = {
+  blocks.value.push({
     id: 'b' + Date.now(),
     kioskId: assignForm.value.kioskId,
     campaignId: camp.id,
@@ -388,616 +454,9 @@ function confirmAssign() {
     client: camp.client,
     mediaType: camp.mediaType,
     priority: camp.priority,
-  }
-  blocks.value.push(newBlock)
+  })
   showAssignModal.value = false
 }
+
+onMounted(loadData)
 </script>
-
-<style scoped>
-/* ── Root ── */
-.scheduler-root {
-  min-height: 100vh;
-  background: #0a0c0f;
-  color: #e2e8f0;
-  font-family: 'Figtree', sans-serif;
-  padding: 2rem 2rem 4rem;
-  position: relative;
-  overflow-x: hidden;
-}
-
-/* subtle grid texture */
-.scheduler-root::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  background-image:
-    linear-gradient(rgba(34, 211, 238, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(34, 211, 238, 0.03) 1px, transparent 1px);
-  background-size: 40px 40px;
-  pointer-events: none;
-  z-index: 0;
-}
-
-* { box-sizing: border-box; }
-
-/* ── Header ── */
-.header {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  margin-bottom: 1.5rem;
-  padding-bottom: 1.5rem;
-  border-bottom: 1px solid rgba(34, 211, 238, 0.12);
-}
-.header-eyebrow {
-  font-family: 'Azeret Mono', monospace;
-  font-size: 0.6rem;
-  letter-spacing: 0.25em;
-  color: #22d3ee;
-  margin-bottom: 0.35rem;
-}
-.header-title {
-  font-family: 'Azeret Mono', monospace;
-  font-size: 1.75rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  color: #f8fafc;
-  margin: 0 0 0.25rem;
-}
-.header-sub {
-  font-size: 0.8rem;
-  color: #64748b;
-  font-family: 'Azeret Mono', monospace;
-}
-.header-controls {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-.view-toggle {
-  display: flex;
-  background: #131820;
-  border: 1px solid #1e293b;
-  border-radius: 6px;
-  overflow: hidden;
-}
-.toggle-btn {
-  padding: 0.45rem 1.1rem;
-  font-size: 0.78rem;
-  font-family: 'Azeret Mono', monospace;
-  color: #64748b;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.toggle-btn.active {
-  background: #22d3ee;
-  color: #0a0c0f;
-  font-weight: 600;
-}
-.btn-add {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.5rem 1.25rem;
-  background: #22d3ee;
-  color: #0a0c0f;
-  border: none;
-  border-radius: 6px;
-  font-family: 'Figtree', sans-serif;
-  font-weight: 600;
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: box-shadow 0.2s, transform 0.15s;
-}
-.btn-add:hover {
-  box-shadow: 0 0 20px rgba(34, 211, 238, 0.5);
-  transform: translateY(-1px);
-}
-.btn-icon { font-size: 1.1rem; line-height: 1; }
-
-/* ── Legend ── */
-.legend {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  gap: 1.25rem;
-  flex-wrap: wrap;
-  margin-bottom: 1.25rem;
-}
-.legend-item {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-size: 0.75rem;
-  color: #94a3b8;
-  font-family: 'Azeret Mono', monospace;
-}
-.legend-dot {
-  width: 10px; height: 10px;
-  border-radius: 2px;
-}
-.legend-dot.conflict {
-  background: #ef4444;
-  box-shadow: 0 0 6px #ef444499;
-  animation: pulse-red 1.5s infinite;
-}
-.legend-dot.empty {
-  background: #1e293b;
-  border: 1px solid #334155;
-}
-.legend-separator {
-  width: 1px; height: 16px;
-  background: #1e293b;
-  margin: 0 0.25rem;
-}
-
-/* ── Scheduler Wrapper ── */
-.scheduler-wrapper {
-  position: relative;
-  z-index: 1;
-  background: #0d1117;
-  border: 1px solid #1e293b;
-  border-radius: 12px;
-  overflow-x: auto;
-  overflow-y: visible;
-  scrollbar-width: thin;
-  scrollbar-color: #22d3ee22 transparent;
-}
-.scheduler-wrapper::-webkit-scrollbar { height: 4px; }
-.scheduler-wrapper::-webkit-scrollbar-thumb { background: #22d3ee33; border-radius: 2px; }
-
-/* ── Time Axis ── */
-.time-axis-spacer {
-  display: inline-block;
-  width: 220px;
-  flex-shrink: 0;
-}
-.time-axis {
-  display: flex;
-  padding-left: 220px;
-  border-bottom: 1px solid #1e293b;
-  position: sticky;
-  top: 0;
-  background: #0d1117;
-  z-index: 10;
-}
-.time-label {
-  flex-shrink: 0;
-  font-family: 'Azeret Mono', monospace;
-  font-size: 0.65rem;
-  color: #475569;
-  padding: 0.6rem 0 0.4rem;
-  text-align: center;
-  border-right: 1px solid #1e2433;
-}
-
-/* ── Rows ── */
-.rows-container { display: block; }
-
-.pharmacy-group { border-bottom: 1px solid #1e293b; }
-
-.pharmacy-label-row {
-  display: flex;
-  align-items: stretch;
-  background: #111827;
-}
-.pharmacy-name-cell {
-  width: 220px;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.6rem 1rem;
-  border-right: 1px solid #1e293b;
-}
-.pharmacy-icon {
-  color: #22d3ee;
-  font-size: 1.1rem;
-  opacity: 0.7;
-}
-.pharmacy-name {
-  font-family: 'Azeret Mono', monospace;
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: #e2e8f0;
-}
-.pharmacy-meta {
-  font-size: 0.65rem;
-  color: #475569;
-  font-family: 'Azeret Mono', monospace;
-}
-.pharmacy-timeline-row {
-  display: flex;
-  flex: 1;
-}
-.pharmacy-hour-cell {
-  flex-shrink: 0;
-  border-right: 1px solid #1e2433;
-  background: #111827;
-}
-
-/* ── Kiosk Row ── */
-.kiosk-row {
-  display: flex;
-  align-items: stretch;
-  border-top: 1px solid #1a2030;
-  min-height: 48px;
-}
-.kiosk-label-cell {
-  width: 220px;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0 1rem 0 2rem;
-  border-right: 1px solid #1e293b;
-  background: #0d1117;
-}
-.kiosk-status-dot {
-  width: 6px; height: 6px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-.kiosk-status-dot.online { background: #22d3ee; box-shadow: 0 0 6px #22d3ee; }
-.kiosk-status-dot.offline { background: #475569; }
-.kiosk-name {
-  font-family: 'Azeret Mono', monospace;
-  font-size: 0.72rem;
-  color: #94a3b8;
-}
-
-/* ── Timeline ── */
-.kiosk-timeline {
-  position: relative;
-  display: flex;
-  align-items: stretch;
-  flex-shrink: 0;
-}
-.hour-cell {
-  flex-shrink: 0;
-  border-right: 1px solid #151c28;
-  background: transparent;
-  cursor: pointer;
-  transition: background 0.15s;
-  position: relative;
-  overflow: visible;
-}
-.hour-cell:hover { background: rgba(34, 211, 238, 0.04); }
-
-.conflict-cell {
-  background: rgba(239, 68, 68, 0.08) !important;
-  border-right-color: rgba(239, 68, 68, 0.2);
-}
-.now-cell {
-  background: rgba(34, 211, 238, 0.05) !important;
-}
-
-.conflict-pulse {
-  position: absolute;
-  inset: 0;
-  background: repeating-linear-gradient(
-    45deg,
-    transparent,
-    transparent 4px,
-    rgba(239, 68, 68, 0.1) 4px,
-    rgba(239, 68, 68, 0.1) 8px
-  );
-  pointer-events: none;
-}
-
-/* ── Campaign Blocks ── */
-.campaign-block {
-  position: absolute;
-  top: 6px;
-  bottom: 6px;
-  border-radius: 4px;
-  cursor: pointer;
-  z-index: 5;
-  transition: filter 0.15s, transform 0.15s;
-  overflow: visible;
-}
-.campaign-block:hover {
-  filter: brightness(1.2);
-  transform: scaleY(1.04);
-  z-index: 20;
-}
-.block-inner {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  height: 100%;
-  padding: 0 0.5rem;
-  overflow: hidden;
-}
-.block-name {
-  font-size: 0.65rem;
-  font-weight: 600;
-  color: #0a0c0f;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-family: 'Figtree', sans-serif;
-}
-.block-time {
-  font-size: 0.58rem;
-  color: rgba(0,0,0,0.6);
-  font-family: 'Azeret Mono', monospace;
-}
-
-/* ── Tooltip ── */
-.block-tooltip {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 0;
-  min-width: 180px;
-  background: #1e293b;
-  border: 1px solid #334155;
-  border-radius: 8px;
-  padding: 0.75rem;
-  z-index: 100;
-  pointer-events: none;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
-}
-.tt-title {
-  font-family: 'Azeret Mono', monospace;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: #e2e8f0;
-  margin-bottom: 0.5rem;
-}
-.tt-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.5rem;
-  font-size: 0.68rem;
-  color: #94a3b8;
-  margin-bottom: 0.25rem;
-  font-family: 'Figtree', sans-serif;
-}
-
-/* ── Now Line ── */
-.now-line {
-  position: absolute;
-  top: 0; bottom: 0;
-  width: 2px;
-  background: #22d3ee;
-  box-shadow: 0 0 8px #22d3ee;
-  z-index: 15;
-  pointer-events: none;
-}
-.now-pip {
-  width: 8px; height: 8px;
-  background: #22d3ee;
-  border-radius: 50%;
-  position: absolute;
-  top: -4px;
-  left: -3px;
-  box-shadow: 0 0 10px #22d3ee;
-}
-
-/* ── Stats Bar ── */
-.stats-bar {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  gap: 1rem;
-  margin-top: 1.25rem;
-  flex-wrap: wrap;
-}
-.stat-card {
-  flex: 1;
-  min-width: 100px;
-  background: #0d1117;
-  border: 1px solid #1e293b;
-  border-radius: 8px;
-  padding: 1rem 1.25rem;
-  text-align: center;
-}
-.stat-value {
-  font-family: 'Azeret Mono', monospace;
-  font-size: 1.6rem;
-  font-weight: 700;
-  color: #22d3ee;
-}
-.stat-label {
-  font-size: 0.7rem;
-  color: #475569;
-  margin-top: 0.2rem;
-  font-family: 'Azeret Mono', monospace;
-  letter-spacing: 0.05em;
-}
-
-/* ── Block Detail Panel ── */
-.block-detail-panel {
-  position: fixed;
-  top: 0; right: 0;
-  width: 280px;
-  height: 100vh;
-  background: #0d1117;
-  border-left: 1px solid #1e293b;
-  padding: 2rem 1.5rem;
-  z-index: 50;
-  box-shadow: -8px 0 40px rgba(0,0,0,0.6);
-}
-.panel-close {
-  position: absolute;
-  top: 1.25rem; right: 1.25rem;
-  background: transparent;
-  border: none;
-  color: #475569;
-  font-size: 1rem;
-  cursor: pointer;
-  transition: color 0.15s;
-}
-.panel-close:hover { color: #e2e8f0; }
-.panel-eyebrow {
-  font-family: 'Azeret Mono', monospace;
-  font-size: 0.6rem;
-  letter-spacing: 0.2em;
-  color: #475569;
-  margin-bottom: 0.5rem;
-}
-.panel-title {
-  font-family: 'Azeret Mono', monospace;
-  font-size: 1rem;
-  font-weight: 700;
-  color: #e2e8f0;
-  margin: 0 0 1rem;
-  line-height: 1.3;
-}
-.panel-color-bar {
-  height: 3px;
-  border-radius: 2px;
-  margin-bottom: 1.5rem;
-}
-.panel-rows { display: flex; flex-direction: column; gap: 0.75rem; }
-.panel-row {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.78rem;
-  padding-bottom: 0.75rem;
-  border-bottom: 1px solid #1e293b;
-}
-.panel-row span:first-child { color: #475569; font-family: 'Azeret Mono', monospace; }
-.panel-row span:last-child { color: #e2e8f0; font-weight: 500; }
-.panel-actions {
-  display: flex;
-  gap: 0.75rem;
-  margin-top: 2rem;
-}
-.panel-btn {
-  flex: 1;
-  padding: 0.6rem;
-  border-radius: 6px;
-  font-size: 0.78rem;
-  font-family: 'Figtree', sans-serif;
-  font-weight: 600;
-  border: none;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.panel-btn.edit {
-  background: #1e293b;
-  color: #e2e8f0;
-}
-.panel-btn.edit:hover { background: #334155; }
-.panel-btn.delete {
-  background: rgba(239, 68, 68, 0.15);
-  color: #f87171;
-  border: 1px solid rgba(239, 68, 68, 0.25);
-}
-.panel-btn.delete:hover { background: rgba(239, 68, 68, 0.25); }
-
-/* ── Modal ── */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.75);
-  backdrop-filter: blur(4px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-}
-.modal-box {
-  background: #0d1117;
-  border: 1px solid #1e293b;
-  border-radius: 12px;
-  padding: 2rem;
-  width: 400px;
-  max-width: 90vw;
-  box-shadow: 0 24px 60px rgba(0,0,0,0.7);
-}
-.modal-eyebrow {
-  font-family: 'Azeret Mono', monospace;
-  font-size: 0.6rem;
-  letter-spacing: 0.2em;
-  color: #22d3ee;
-  margin-bottom: 0.4rem;
-}
-.modal-title {
-  font-family: 'Azeret Mono', monospace;
-  font-size: 1.1rem;
-  font-weight: 700;
-  color: #f8fafc;
-  margin: 0 0 1.5rem;
-}
-.form-group {
-  margin-bottom: 1rem;
-  flex: 1;
-}
-.form-row {
-  display: flex;
-  gap: 1rem;
-}
-.form-group label {
-  display: block;
-  font-size: 0.72rem;
-  color: #64748b;
-  font-family: 'Azeret Mono', monospace;
-  margin-bottom: 0.35rem;
-  letter-spacing: 0.05em;
-}
-.form-select,
-.form-input {
-  width: 100%;
-  background: #131820;
-  border: 1px solid #1e293b;
-  border-radius: 6px;
-  color: #e2e8f0;
-  padding: 0.55rem 0.75rem;
-  font-size: 0.82rem;
-  font-family: 'Figtree', sans-serif;
-  outline: none;
-  transition: border-color 0.15s;
-}
-.form-select:focus,
-.form-input:focus { border-color: #22d3ee; }
-.form-select option { background: #131820; }
-.modal-actions {
-  display: flex;
-  gap: 0.75rem;
-  margin-top: 1.5rem;
-}
-.modal-btn {
-  flex: 1;
-  padding: 0.65rem;
-  border-radius: 6px;
-  font-family: 'Figtree', sans-serif;
-  font-weight: 600;
-  font-size: 0.85rem;
-  border: none;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.modal-btn.cancel {
-  background: #1e293b;
-  color: #94a3b8;
-}
-.modal-btn.cancel:hover { background: #334155; }
-.modal-btn.confirm {
-  background: #22d3ee;
-  color: #0a0c0f;
-}
-.modal-btn.confirm:hover { box-shadow: 0 0 20px rgba(34, 211, 238, 0.4); }
-
-/* ── Animations ── */
-@keyframes pulse-red {
-  0%, 100% { opacity: 1; box-shadow: 0 0 6px #ef444499; }
-  50% { opacity: 0.5; box-shadow: 0 0 12px #ef4444cc; }
-}
-
-.drawer-enter-active, .drawer-leave-active { transition: transform 0.3s cubic-bezier(0.4,0,0.2,1); }
-.drawer-enter-from, .drawer-leave-to { transform: translateX(100%); }
-
-.modal-enter-active, .modal-leave-active { transition: opacity 0.2s; }
-.modal-enter-from, .modal-leave-to { opacity: 0; }
-.modal-enter-active .modal-box, .modal-leave-active .modal-box { transition: transform 0.2s; }
-.modal-enter-from .modal-box, .modal-leave-to .modal-box { transform: scale(0.95); }
-</style>

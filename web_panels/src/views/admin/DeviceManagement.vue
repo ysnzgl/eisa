@@ -3,14 +3,30 @@
  * Cihaz Yönetimi — Eczane Listesi + Kiosk İzleme Paneli
  * Modül 1: Süper Admin Device Management
  */
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import {
   getPharmacies,
   createPharmacy,
   updatePharmacy,
   deletePharmacy,
   getKioskStatus,
+  createKiosk,
+  deleteKiosk,
 } from '../../services/devices';
+import { getIller, getIlceler } from '../../services/lookups';
+import EisaDeleteConfirm from '../../components/shared/EisaDeleteConfirm.vue';
+
+// ─── Lookups ──────────────────────────────────────────────────────────────────
+const iller   = ref([]);
+const ilceler = ref([]);
+const ilcelerYukleniyor = ref(false);
+
+async function loadIlceler(ilId) {
+  if (!ilId) { ilceler.value = []; return; }
+  ilcelerYukleniyor.value = true;
+  try   { ilceler.value = await getIlceler(ilId); }
+  finally { ilcelerYukleniyor.value = false; }
+}
 
 // ─── Veri ────────────────────────────────────────────────────────────────────
 const pharmacies    = ref([]);
@@ -19,14 +35,38 @@ const loadingPharm  = ref(true);
 const loadingKiosk  = ref(true);
 const pharmacySearch = ref('');
 
-// ─── Modal state ─────────────────────────────────────────────────────────────
+// ─── Eczane Modal ─────────────────────────────────────────────────────────────
 const modalOpen    = ref(false);
 const modalMode    = ref('add');        // 'add' | 'edit'
-const modalTarget  = ref(null);         // pharmacy being edited
-const form         = ref({ name: '', province: '', district: '', owner: '' });
-const formError    = ref('');
-const saving       = ref(false);
+const modalTarget  = ref(null);
 
+const EMPTY_FORM = () => ({
+  name: '', il: '', ilce: '', adres: '', owner: '',
+  telefon: '', eczaneKodu: '', isActive: true,
+});
+const form      = ref(EMPTY_FORM());
+const formError = ref('');
+const saving    = ref(false);
+
+// İl değişince ilçeleri yeniden yükle
+watch(() => form.value.il, (ilId) => {
+  form.value.ilce = '';
+  loadIlceler(ilId);
+});
+
+// ─── Kiosk Ekleme Modal ───────────────────────────────────────────────────────
+const kioskModalOpen   = ref(false);
+const kioskModalPharm  = ref(null);     // hangi eczaneye kiosk ekleniyor
+const kioskForm        = ref({ mac: '' });
+const kioskFormError   = ref('');
+const kioskSaving      = ref(false);
+
+// ─── Kiosk Silme ──────────────────────────────────────────────────────────────
+const kioskDeleteTarget = ref(null);
+const kioskDeleteOpen   = ref(false);
+const kioskDeleting     = ref(false);
+
+// ─── Eczane Silme Modal ───────────────────────────────────────────────────────
 const deleteModalOpen   = ref(false);
 const deleteTarget      = ref(null);
 const deleting          = ref(false);
@@ -37,8 +77,8 @@ const filteredPharmacies = computed(() => {
   if (!q) return pharmacies.value;
   return pharmacies.value.filter((p) =>
     p.name.toLowerCase().includes(q)      ||
-    p.province.toLowerCase().includes(q)  ||
-    p.district.toLowerCase().includes(q)  ||
+    p.ilAdi.toLowerCase().includes(q)     ||
+    p.ilceAdi.toLowerCase().includes(q)   ||
     p.owner.toLowerCase().includes(q)
   );
 });
@@ -48,11 +88,13 @@ const offlineKiosks = computed(() => kiosks.value.filter((k) => !isOnline(k)));
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function isOnline(kiosk) {
+  if (!kiosk.lastPing) return false;
   const diffMin = (Date.now() - new Date(kiosk.lastPing).getTime()) / 60000;
   return diffMin <= 10;
 }
 
 function formatPing(iso) {
+  if (!iso) return 'Hiç bağlanmadı';
   const diffMin = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
   if (diffMin < 1)  return 'Az önce';
   if (diffMin < 60) return `${diffMin} dk önce`;
@@ -74,45 +116,54 @@ async function loadKiosks() {
   finally { loadingKiosk.value = false; }
 }
 
-onMounted(() => {
-  loadPharmacies();
-  loadKiosks();
+onMounted(async () => {
+  const [ils] = await Promise.all([getIller(), loadPharmacies(), loadKiosks()]);
+  iller.value = ils;
 });
 
-// ─── CRUD Modal ───────────────────────────────────────────────────────────────
+// ─── Eczane CRUD Modal ────────────────────────────────────────────────────────
 function openAdd() {
-  form.value   = { name: '', province: '', district: '', owner: '' };
+  form.value      = EMPTY_FORM();
   formError.value = '';
   modalMode.value   = 'add';
   modalTarget.value = null;
+  ilceler.value     = [];
   modalOpen.value   = true;
 }
 
 function openEdit(pharmacy) {
-  form.value   = { name: pharmacy.name, province: pharmacy.province, district: pharmacy.district, owner: pharmacy.owner };
-  formError.value = '';
+  form.value = {
+    name:       pharmacy.name,
+    il:         pharmacy.il,
+    ilce:       pharmacy.ilce,
+    adres:      pharmacy.adres,
+    owner:      pharmacy.owner,
+    telefon:    pharmacy.telefon,
+    eczaneKodu: pharmacy.eczaneKodu,
+    isActive:   pharmacy.isActive,
+  };
+  formError.value   = '';
   modalMode.value   = 'edit';
   modalTarget.value = pharmacy;
+  loadIlceler(pharmacy.il);
   modalOpen.value   = true;
 }
 
-function closeModal() {
-  modalOpen.value = false;
-}
+function closeModal() { modalOpen.value = false; }
 
 async function saveForm() {
-  const { name, province, district, owner } = form.value;
-  if (!name.trim() || !province.trim() || !district.trim() || !owner.trim()) {
-    formError.value = 'Tüm alanlar zorunludur.';
+  const { name, il, ilce, owner } = form.value;
+  if (!name.trim() || !il || !ilce || !owner.trim()) {
+    formError.value = 'Eczane adı, il, ilçe ve eczacı zorunludur.';
     return;
   }
-  saving.value = true;
+  saving.value    = true;
   formError.value = '';
   try {
     if (modalMode.value === 'add') {
-      await createPharmacy({ name: name.trim(), province: province.trim(), district: district.trim(), owner: owner.trim() });
+      await createPharmacy({ ...form.value });
     } else {
-      await updatePharmacy(modalTarget.value.id, { name: name.trim(), province: province.trim(), district: district.trim(), owner: owner.trim() });
+      await updatePharmacy(modalTarget.value.id, { ...form.value });
     }
     await loadPharmacies();
     closeModal();
@@ -123,7 +174,7 @@ async function saveForm() {
   }
 }
 
-// ─── Silme Modal ─────────────────────────────────────────────────────────────
+// ─── Eczane Silme Modal ───────────────────────────────────────────────────────
 function openDelete(pharmacy) {
   deleteTarget.value     = pharmacy;
   deleteModalOpen.value  = true;
@@ -144,386 +195,382 @@ async function confirmDelete() {
     deleting.value = false;
   }
 }
+
+function openAddKiosk(pharmacy) {
+  kioskModalPharm.value = pharmacy;
+  kioskForm.value       = { mac: '' };
+  kioskFormError.value  = '';
+  kioskModalOpen.value  = true;
+}
+
+function closeKioskModal() { kioskModalOpen.value = false; }
+
+async function saveKiosk() {
+  const mac = kioskForm.value.mac.trim();
+  if (!mac) { kioskFormError.value = 'MAC adresi zorunludur.'; return; }
+  // Basic MAC validation
+  if (!/^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$/.test(mac)) {
+    kioskFormError.value = 'Geçerli bir MAC adresi girin (örn: AA:BB:CC:DD:EE:FF).';
+    return;
+  }
+  kioskSaving.value    = true;
+  kioskFormError.value = '';
+  try {
+    await createKiosk({ pharmacyId: kioskModalPharm.value.id, mac });
+    await Promise.all([loadKiosks(), loadPharmacies()]);
+    closeKioskModal();
+  } catch {
+    kioskFormError.value = 'Kiosk eklenemedi. MAC adresi zaten kayıtlı olabilir.';
+  } finally {
+    kioskSaving.value = false;
+  }
+}
+
+function openDeleteKiosk(kiosk) {
+  kioskDeleteTarget.value = kiosk;
+  kioskDeleteOpen.value   = true;
+}
+
+function closeDeleteKiosk() {
+  kioskDeleteOpen.value   = false;
+  kioskDeleteTarget.value = null;
+}
+
+async function confirmDeleteKiosk() {
+  kioskDeleting.value = true;
+  try {
+    await deleteKiosk(kioskDeleteTarget.value.id);
+    await Promise.all([loadKiosks(), loadPharmacies()]);
+    closeDeleteKiosk();
+  } finally {
+    kioskDeleting.value = false;
+  }
+}
 </script>
 
 <template>
-  <div class="p-6 space-y-8 min-h-full">
+  <div class="eisa-page">
 
-    <!-- ── Sayfa Başlığı ─────────────────────────────────────────────────── -->
-    <div class="flex items-start justify-between">
+    <div class="eisa-page-header">
       <div>
-        <div class="flex items-center gap-2 text-xs text-gray-400 mb-1 font-medium tracking-wide uppercase">
-          <span>Süper Admin</span>
-          <svg class="w-3 h-3" fill="none" viewBox="0 0 16 16"><path d="M6 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          <span class="text-blue-600">Cihaz Yönetimi</span>
-        </div>
-        <h1 class="text-2xl font-bold text-gray-900 tracking-tight">Eczane & Kiosk Yönetimi</h1>
-        <p class="text-sm text-gray-500 mt-0.5">Eczaneleri yönetin ve kioskların anlık durumunu izleyin.</p>
+        <p class="eisa-eyebrow">Süper Admin / Cihaz Yönetimi</p>
+        <h1 class="eisa-page-title">Eczane &amp; Kiosk Yönetimi</h1>
+        <p class="eisa-page-subtitle">Eczaneleri yönetin ve kioskların anlık durumunu izleyin.</p>
       </div>
-      <button
-        @click="() => { loadPharmacies(); loadKiosks(); }"
-        class="flex items-center gap-1.5 text-sm text-gray-500 hover:text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors duration-150"
-      >
-        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h5M20 20v-5h-5M4 9a9 9 0 0114.13-2.13M20 15A9 9 0 015.87 17.13"/>
-        </svg>
-        Yenile
-      </button>
+      <div class="eisa-header-actions">
+        <button
+          class="eisa-btn eisa-btn-ghost"
+          @click="() => { loadPharmacies(); loadKiosks(); }"
+        >
+          <i class="fa-solid fa-rotate-right"></i>
+          Yenile
+        </button>
+      </div>
     </div>
 
-    <!-- ════════════════════════════════════════════════════════════════════ -->
-    <!-- BÖLÜM 1: Eczane Listesi                                             -->
-    <!-- ════════════════════════════════════════════════════════════════════ -->
-    <section class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-
-      <!-- Kart Başlığı -->
-      <div class="px-6 py-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div class="flex items-center gap-3">
-          <div class="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center flex-shrink-0">
-            <svg class="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
-            </svg>
-          </div>
-          <div>
-            <h2 class="text-base font-semibold text-gray-800">Eczane Listesi</h2>
-            <p class="text-xs text-gray-400">
-              {{ loadingPharm ? '…' : `${pharmacies.length} eczane` }}
-            </p>
-          </div>
+   <div class="eisa-panel">
+      <div class="eisa-panel-header">
+        <div>
+          <h2 class="eisa-panel-title">
+            <i class="fa-solid fa-hospital" style="color:#2563EB;margin-right:0.4rem;"></i>
+            Eczane Listesi
+          </h2>
+          <p class="eisa-stat-sub" style="margin-top:0.15rem;">
+            {{ loadingPharm ? '…' : `${pharmacies.length} eczane kayıtlı` }}
+          </p>
         </div>
-        <div class="flex items-center gap-2">
-          <!-- Arama -->
-          <div class="relative">
-            <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 105 11a6 6 0 0012 0z"/>
-            </svg>
+        <div class="eisa-header-actions">
+          <div class="eisa-search-wrap" style="min-width:200px;">
+            <i class="fa-solid fa-magnifying-glass eisa-search-icon"></i>
             <input
+              id="pharmacy-search"
+              name="pharmacySearch"
               v-model="pharmacySearch"
-              type="text"
+              type="search"
               placeholder="Eczane ara…"
-              class="pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent w-44 transition"
+              class="eisa-field eisa-search-field"
             />
           </div>
-          <!-- Yeni Ekle Butonu -->
-          <button
-            @click="openAdd"
-            class="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-3 py-1.5 rounded-lg transition-colors duration-150 shadow-sm"
-          >
-            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
-            </svg>
+          <button class="eisa-btn eisa-btn-cta" @click="openAdd">
+            <i class="fa-solid fa-plus"></i>
             Yeni Eczane
           </button>
         </div>
       </div>
 
-      <!-- Tablo -->
-      <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead>
-            <tr class="bg-gray-50 border-b border-gray-100">
-              <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Eczane Adı</th>
-              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">İl</th>
-              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">İlçe</th>
-              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Eczane Sahibi</th>
-              <th class="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Kiosk</th>
-              <th class="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">İşlemler</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-gray-50">
-            <!-- Yükleniyor -->
-            <tr v-if="loadingPharm">
-              <td colspan="6" class="px-6 py-10 text-center text-gray-400">
-                <div class="flex items-center justify-center gap-2">
-                  <svg class="animate-spin w-4 h-4 text-blue-500" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
-                  </svg>
-                  <span class="text-sm">Yükleniyor…</span>
-                </div>
-              </td>
-            </tr>
-            <!-- Boş durum -->
-            <tr v-else-if="filteredPharmacies.length === 0">
-              <td colspan="6" class="px-6 py-12 text-center text-gray-400 text-sm">
-                <svg class="w-8 h-8 mx-auto mb-2 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                </svg>
-                Sonuç bulunamadı.
-              </td>
-            </tr>
-            <!-- Satırlar -->
-            <tr
-              v-else
-              v-for="ph in filteredPharmacies"
-              :key="ph.id"
-              class="hover:bg-blue-50/40 transition-colors duration-100 group"
-            >
-              <td class="px-6 py-3.5 font-medium text-gray-800">{{ ph.name }}</td>
-              <td class="px-4 py-3.5 text-gray-600">{{ ph.province }}</td>
-              <td class="px-4 py-3.5 text-gray-600">{{ ph.district }}</td>
-              <td class="px-4 py-3.5 text-gray-600">{{ ph.owner }}</td>
-              <td class="px-4 py-3.5 text-center">
-                <span class="inline-flex items-center justify-center w-6 h-6 bg-blue-100 text-blue-700 text-xs font-semibold rounded-full">
-                  {{ ph.kioskCount }}
-                </span>
-              </td>
-              <td class="px-4 py-3.5 text-right">
-                <div class="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-                  <button
-                    @click="openEdit(ph)"
-                    title="Düzenle"
-                    class="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition"
-                  >
-                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-                    </svg>
-                  </button>
-                  <button
-                    @click="openDelete(ph)"
-                    title="Sil"
-                    class="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition"
-                  >
-                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                    </svg>
-                  </button>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+      <div class="eisa-panel-body" style="padding:0;">
+        <div style="overflow-x:auto;">
+          <table class="eisa-table">
+            <thead>
+              <tr>
+                <th>Eczane Adı</th>
+                <th>İl</th>
+                <th>İlçe</th>
+                <th>Eczacı</th>
+                <th>Telefon</th>
+                <th style="text-align:center;">Kiosk</th>
+                <th class="actions-col">İşlemler</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-if="loadingPharm">
+                <td colspan="7" class="empty-row">
+                  <i class="fa-solid fa-circle-notch fa-spin" style="margin-right:0.5rem;color:#2563EB;"></i>
+                  Yükleniyor…
+                </td>
+              </tr>
+              <tr v-else-if="filteredPharmacies.length === 0">
+                <td colspan="7" class="empty-row">
+                  <i class="fa-regular fa-face-frown" style="display:block;font-size:1.75rem;margin-bottom:0.4rem;color:#D1D5DB;"></i>
+                  Sonuç bulunamadı.
+                </td>
+              </tr>
+              <tr v-else v-for="ph in filteredPharmacies" :key="ph.id">
+                <td style="font-weight:600;">{{ ph.name }}</td>
+                <td class="cell-muted">{{ ph.ilAdi }}</td>
+                <td class="cell-muted">{{ ph.ilceAdi }}</td>
+                <td class="cell-muted">{{ ph.owner }}</td>
+                <td class="cell-muted">{{ ph.telefon || '—' }}</td>
+                <td style="text-align:center;">
+                  <span class="eisa-pill eisa-pill-info">{{ ph.kioskCount }}</span>
+                </td>
+                <td>
+                  <div class="cell-actions">
+                    <button
+                      class="eisa-icon-btn"
+                      title="Kiosk Ekle"
+                      @click="openAddKiosk(ph)"
+                    >
+                      <i class="fa-solid fa-display"></i>
+                    </button>
+                    <button
+                      class="eisa-icon-btn"
+                      title="Düzenle"
+                      @click="openEdit(ph)"
+                    >
+                      <i class="fa-solid fa-pen"></i>
+                    </button>
+                    <button
+                      class="eisa-icon-btn"
+                      title="Sil"
+                      @click="openDelete(ph)"
+                    >
+                      <i class="fa-solid fa-trash" style="color:#EF4444;"></i>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      <!-- Tablo Footer: toplam sayı -->
-      <div v-if="!loadingPharm && filteredPharmacies.length > 0" class="px-6 py-3 border-t border-gray-50 bg-gray-50/50 flex items-center justify-between text-xs text-gray-400">
+      <div v-if="!loadingPharm && filteredPharmacies.length > 0" class="eisa-panel-footer">
         <span>{{ filteredPharmacies.length }} / {{ pharmacies.length }} eczane gösteriliyor</span>
         <span v-if="pharmacySearch">· Filtre: "{{ pharmacySearch }}"</span>
       </div>
-    </section>
+    </div>
 
-    <!-- ════════════════════════════════════════════════════════════════════ -->
-    <!-- BÖLÜM 2: Kiosk İzleme Paneli                                        -->
-    <!-- ════════════════════════════════════════════════════════════════════ -->
-    <section class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-
-      <!-- Kart Başlığı -->
-      <div class="px-6 py-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div class="flex items-center gap-3">
-          <div class="w-8 h-8 bg-emerald-50 rounded-lg flex items-center justify-center flex-shrink-0">
-            <svg class="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17H3a2 2 0 01-2-2V5a2 2 0 012-2h14a2 2 0 012 2v10a2 2 0 01-2 2h-2"/>
-            </svg>
-          </div>
-          <div>
-            <h2 class="text-base font-semibold text-gray-800">Kiosk İzleme</h2>
-            <p class="text-xs text-gray-400">
-              {{ loadingKiosk ? '…' : `${kiosks.length} cihaz` }}
-            </p>
-          </div>
+  <div class="eisa-panel">
+      <div class="eisa-panel-header">
+        <div>
+          <h2 class="eisa-panel-title">
+            <i class="fa-solid fa-tv" style="color:#059669;margin-right:0.4rem;"></i>
+            Kiosk İzleme
+          </h2>
+          <p class="eisa-stat-sub" style="margin-top:0.15rem;">
+            {{ loadingKiosk ? '…' : `${kiosks.length} cihaz` }}
+          </p>
         </div>
-        <!-- Durum özeti -->
-        <div v-if="!loadingKiosk" class="flex items-center gap-3">
-          <div class="flex items-center gap-1.5 bg-emerald-50 text-emerald-700 text-xs font-semibold px-3 py-1.5 rounded-full">
-            <span class="relative flex h-2 w-2">
-              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-            </span>
+        <div v-if="!loadingKiosk" class="kiosk-summary">
+          <span class="kiosk-summary-pill kiosk-summary-pill--online">
+            <span class="eisa-kiosk-dot eisa-kiosk-dot--online"></span>
             {{ onlineKiosks.length }} Online
-          </div>
-          <div class="flex items-center gap-1.5 bg-red-50 text-red-600 text-xs font-semibold px-3 py-1.5 rounded-full">
-            <span class="inline-flex rounded-full h-2 w-2 bg-red-400"></span>
+          </span>
+          <span class="kiosk-summary-pill kiosk-summary-pill--offline">
+            <span class="eisa-kiosk-dot eisa-kiosk-dot--offline"></span>
             {{ offlineKiosks.length }} Offline
-          </div>
+          </span>
         </div>
       </div>
 
-      <!-- Grid -->
-      <div class="p-6">
-        <!-- Yükleniyor -->
-        <div v-if="loadingKiosk" class="flex items-center justify-center py-10 text-gray-400">
-          <svg class="animate-spin w-5 h-5 text-emerald-500 mr-2" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
-          </svg>
-          <span class="text-sm">Kiosk durumları alınıyor…</span>
+      <div class="eisa-panel-body">
+        <div v-if="loadingKiosk" style="display:flex;align-items:center;gap:0.5rem;padding:3rem 0;justify-content:center;color:#6B7280;">
+          <i class="fa-solid fa-circle-notch fa-spin" style="color:#059669;"></i>
+          Kiosk durumları alınıyor…
         </div>
 
-        <!-- Kart Grid -->
-        <div
-          v-else
-          class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4"
-        >
+        <div v-else class="dm-kiosk-grid" style="padding:0;">
           <div
             v-for="kiosk in kiosks"
             :key="kiosk.id"
-            class="relative rounded-xl border bg-white overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-200 kiosk-card"
-            :class="isOnline(kiosk) ? 'border-emerald-200' : 'border-red-100'"
+            class="eisa-kiosk-card"
+            :class="isOnline(kiosk) ? 'eisa-kiosk-card--online' : 'eisa-kiosk-card--offline'"
           >
-            <!-- Durum şeridi (üst) -->
             <div
-              class="h-1 w-full"
-              :class="isOnline(kiosk) ? 'bg-emerald-400' : 'bg-red-400'"
+              class="eisa-kiosk-card-stripe"
+              :class="isOnline(kiosk) ? 'eisa-kiosk-card-stripe--online' : 'eisa-kiosk-card-stripe--offline'"
             ></div>
-
-            <div class="p-4">
-              <!-- ID + Badge satırı -->
-              <div class="flex items-start justify-between mb-2.5">
-                <span class="font-mono text-sm font-bold text-gray-800 tracking-tight">{{ kiosk.id }}</span>
-                <!-- Online/Offline rozeti -->
+            <div class="eisa-kiosk-card-body">
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:0.6rem;">
+                <span style="font-family:'DM Mono',monospace;font-size:0.8rem;font-weight:700;color:#111827;">{{ kiosk.id }}</span>
                 <span
-                  class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full"
-                  :class="isOnline(kiosk)
-                    ? 'bg-emerald-100 text-emerald-700'
-                    : 'bg-red-100 text-red-600'"
+                  class="eisa-kiosk-status"
+                  :class="isOnline(kiosk) ? 'eisa-kiosk-status--online' : 'eisa-kiosk-status--offline'"
                 >
                   <span
-                    class="inline-block w-1.5 h-1.5 rounded-full"
-                    :class="isOnline(kiosk) ? 'bg-emerald-500 animate-pulse' : 'bg-red-400'"
+                    class="eisa-kiosk-dot"
+                    :class="isOnline(kiosk) ? 'eisa-kiosk-dot--online' : 'eisa-kiosk-dot--offline'"
                   ></span>
                   {{ isOnline(kiosk) ? 'Online' : 'Offline' }}
                 </span>
               </div>
-
-              <!-- Eczane adı -->
-              <div class="flex items-center gap-1.5 text-xs text-gray-500 mb-3 min-h-[2.5rem]">
-                <svg class="w-3 h-3 flex-shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
-                </svg>
-                <span class="leading-tight">{{ kiosk.pharmacyName }}</span>
+              <p style="font-size:0.78rem;color:#6B7280;min-height:2rem;line-height:1.4;">
+                <i class="fa-solid fa-hospital" style="margin-right:0.35rem;color:#9CA3AF;font-size:0.7rem;"></i>
+                {{ kiosk.pharmacyName }}
+              </p>
+            </div>
+            <div class="eisa-kiosk-card-footer">
+              <div>
+                <p style="font-size:0.65rem;color:#9CA3AF;margin-bottom:0.1rem;">Son Ping</p>
+                <p
+                  style="font-size:0.78rem;font-weight:600;"
+                  :style="{ color: isOnline(kiosk) ? '#059669' : '#EF4444' }"
+                >{{ formatPing(kiosk.lastPing) }}</p>
               </div>
-
-              <!-- Son senkronizasyon -->
-              <div class="pt-2.5 border-t border-gray-50">
-                <div class="flex items-center justify-between">
-                  <span class="text-xs text-gray-400">Son Ping</span>
-                  <span
-                    class="text-xs font-medium"
-                    :class="isOnline(kiosk) ? 'text-emerald-600' : 'text-red-500'"
-                  >
-                    {{ formatPing(kiosk.lastPing) }}
-                  </span>
-                </div>
-              </div>
+              <button
+                class="eisa-icon-btn"
+                title="Kiosk'u Kaldır"
+                @click="openDeleteKiosk(kiosk)"
+              >
+                <i class="fa-solid fa-trash" style="color:#EF4444;"></i>
+              </button>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Kiosk Footer -->
-      <div v-if="!loadingKiosk" class="px-6 py-3 border-t border-gray-50 bg-gray-50/50 text-xs text-gray-400">
-        Son güncelleme: az önce · 10 dakikadan eski ping → Offline
+      <div v-if="!loadingKiosk" class="eisa-panel-footer">
+        <span>Son güncelleme: az önce</span>
+        <span>10 dakikadan eski ping → Offline</span>
       </div>
-    </section>
+    </div>
 
-  </div><!-- /p-6 -->
+  </div><!-- /eisa-page -->
 
-  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
   <!-- CRUD Modal: Eczane Ekle / Düzenle                                      -->
-  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
   <Teleport to="body">
     <Transition name="backdrop">
       <div
         v-if="modalOpen"
-        class="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+        id="pharmacy-modal-backdrop"
+        class="eisa-modal-backdrop"
         @click.self="closeModal"
       >
         <Transition name="modal" appear>
-          <div
-            v-if="modalOpen"
-            class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
-          >
-            <!-- Modal Başlık -->
-            <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-              <h3 class="text-base font-semibold text-gray-800">
+          <div v-if="modalOpen" id="pharmacy-modal" class="eisa-modal">
+            <div class="eisa-modal-header">
+              <h3 class="eisa-modal-title">
                 {{ modalMode === 'add' ? 'Yeni Eczane Ekle' : 'Eczane Düzenle' }}
               </h3>
-              <button
-                @click="closeModal"
-                class="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition"
-              >
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
-                </svg>
+              <button class="eisa-modal-close" @click="closeModal">
+                <i class="fa-solid fa-xmark"></i>
               </button>
             </div>
 
-            <!-- Form -->
-            <div class="px-6 py-5 space-y-4">
-              <!-- Hata mesajı -->
-              <div v-if="formError" class="flex items-center gap-2 bg-red-50 border border-red-100 text-red-600 text-sm px-3 py-2.5 rounded-lg">
-                <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-                </svg>
+            <div class="eisa-modal-body">
+              <div v-if="formError" class="eisa-error-banner">
+                <i class="fa-solid fa-triangle-exclamation"></i>
                 {{ formError }}
               </div>
 
-              <!-- Eczane Adı -->
-              <div>
-                <label class="block text-xs font-semibold text-gray-600 mb-1.5">Eczane Adı <span class="text-red-400">*</span></label>
-                <input
-                  v-model="form.name"
-                  type="text"
-                  placeholder="Örn: Merkez Eczanesi"
-                  class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                />
-              </div>
-
-              <!-- İl / İlçe -->
-              <div class="grid grid-cols-2 gap-3">
-                <div>
-                  <label class="block text-xs font-semibold text-gray-600 mb-1.5">İl <span class="text-red-400">*</span></label>
+              <div class="eisa-form-grid">
+                <!-- Eczane Adı -->
+                <div class="eisa-form-row eisa-form-row-full">
+                  <label for="ph-name" class="eisa-field-label">Eczane Adı <span style="color:#EF4444;">*</span></label>
                   <input
-                    v-model="form.province"
+                    id="ph-name"
+                    name="name"
+                    v-model="form.name"
                     type="text"
-                    placeholder="İstanbul"
-                    class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                    placeholder="Örn: Merkez Eczanesi"
+                    class="eisa-field"
                   />
                 </div>
-                <div>
-                  <label class="block text-xs font-semibold text-gray-600 mb-1.5">İlçe <span class="text-red-400">*</span></label>
-                  <input
-                    v-model="form.district"
-                    type="text"
-                    placeholder="Kadıköy"
-                    class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                  />
-                </div>
-              </div>
 
-              <!-- Eczane Sahibi -->
-              <div>
-                <label class="block text-xs font-semibold text-gray-600 mb-1.5">Eczane Sahibi <span class="text-red-400">*</span></label>
-                <input
-                  v-model="form.owner"
-                  type="text"
-                  placeholder="Ad Soyad"
-                  class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                />
+                <!-- İl -->
+                <div class="eisa-form-row">
+                  <label for="ph-il" class="eisa-field-label">İl <span style="color:#EF4444;">*</span></label>
+                  <select id="ph-il" name="il" v-model="form.il" class="eisa-field">
+                    <option value="">Seçiniz…</option>
+                    <option v-for="il in iller" :key="il.id" :value="il.id">{{ il.ad }}</option>
+                  </select>
+                </div>
+
+                <!-- İlçe -->
+                <div class="eisa-form-row">
+                  <label for="ph-ilce" class="eisa-field-label">İlçe <span style="color:#EF4444;">*</span></label>
+                  <select
+                    id="ph-ilce"
+                    name="ilce"
+                    v-model="form.ilce"
+                    :disabled="!form.il || ilcelerYukleniyor"
+                    class="eisa-field"
+                  >
+                    <option value="">{{ ilcelerYukleniyor ? 'Yükleniyor…' : 'Seçiniz…' }}</option>
+                    <option v-for="ilce in ilceler" :key="ilce.id" :value="ilce.id">{{ ilce.ad }}</option>
+                  </select>
+                </div>
+
+                <!-- Adres -->
+                <div class="eisa-form-row eisa-form-row-full">
+                  <label for="ph-adres" class="eisa-field-label">Adres</label>
+                  <textarea
+                    id="ph-adres"
+                    name="adres"
+                    v-model="form.adres"
+                    rows="2"
+                    placeholder="Sokak, mahalle, bina no…"
+                    class="eisa-field"
+                    style="resize:none;"
+                  ></textarea>
+                </div>
+
+                <!-- Eczacı -->
+                <div class="eisa-form-row">
+                  <label for="ph-owner" class="eisa-field-label">Eczacı <span style="color:#EF4444;">*</span></label>
+                  <input id="ph-owner" name="owner" v-model="form.owner" type="text" placeholder="Ad Soyad" class="eisa-field" />
+                </div>
+
+                <!-- Telefon -->
+                <div class="eisa-form-row">
+                  <label for="ph-telefon" class="eisa-field-label">Telefon</label>
+                  <input id="ph-telefon" name="telefon" v-model="form.telefon" type="tel" placeholder="05xx xxx xx xx" class="eisa-field" />
+                </div>
+
+                <!-- Eczane Kodu -->
+                <div class="eisa-form-row">
+                  <label for="ph-kod" class="eisa-field-label">Eczane Kodu</label>
+                  <input id="ph-kod" name="eczaneKodu" v-model="form.eczaneKodu" type="text" placeholder="ECZ-001" class="eisa-field" />
+                </div>
+
+                <!-- Aktif -->
+                <div class="eisa-form-row eisa-toggle-row" style="justify-content:flex-end;padding-bottom:0.25rem;">
+                  <label class="eisa-toggle">
+                    <input id="ph-aktif" name="isActive" type="checkbox" v-model="form.isActive" />
+                    Aktif
+                  </label>
+                </div>
               </div>
             </div>
 
-            <!-- Modal Footer -->
-            <div class="px-6 py-4 border-t border-gray-100 flex items-center justify-end gap-2.5 bg-gray-50/50">
-              <button
-                @click="closeModal"
-                :disabled="saving"
-                class="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition disabled:opacity-50"
-              >
-                İptal
-              </button>
-              <button
-                @click="saveForm"
-                :disabled="saving"
-                class="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-sm font-medium px-4 py-2 rounded-lg transition shadow-sm"
-              >
-                <svg v-if="saving" class="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
-                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
-                </svg>
-                <svg v-else class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
-                </svg>
+            <div class="eisa-modal-footer">
+              <button class="eisa-btn eisa-btn-ghost" :disabled="saving" @click="closeModal">İptal</button>
+              <button class="eisa-btn eisa-btn-cta" :disabled="saving" @click="saveForm">
+                <i v-if="saving" class="fa-solid fa-circle-notch fa-spin"></i>
+                <i v-else class="fa-solid fa-check"></i>
                 {{ saving ? 'Kaydediliyor…' : (modalMode === 'add' ? 'Ekle' : 'Güncelle') }}
               </button>
             </div>
@@ -533,48 +580,57 @@ async function confirmDelete() {
     </Transition>
   </Teleport>
 
-  <!-- ══════════════════════════════════════════════════════════════════════ -->
-  <!-- Silme Onay Modal                                                       -->
-  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- Kiosk Ekle Modal                                                        -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
   <Teleport to="body">
     <Transition name="backdrop">
       <div
-        v-if="deleteModalOpen"
-        class="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-        @click.self="closeDelete"
+        v-if="kioskModalOpen"
+        id="kiosk-modal-backdrop"
+        class="eisa-modal-backdrop"
+        @click.self="closeKioskModal"
       >
         <Transition name="modal" appear>
-          <div v-if="deleteModalOpen" class="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
-            <div class="p-6 text-center">
-              <!-- İkon -->
-              <div class="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg class="w-6 h-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                </svg>
+          <div v-if="kioskModalOpen" id="kiosk-modal" class="eisa-modal" style="max-width:420px;">
+            <div class="eisa-modal-header">
+              <div>
+                <h3 class="eisa-modal-title">Kiosk Ekle</h3>
+                <p class="eisa-stat-sub">{{ kioskModalPharm?.name }}</p>
               </div>
-              <h3 class="text-base font-semibold text-gray-800 mb-1">Eczane Sil</h3>
-              <p class="text-sm text-gray-500">
-                <span class="font-medium text-gray-700">{{ deleteTarget?.name }}</span> eczanesini kalıcı olarak silmek istediğinizden emin misiniz?
-              </p>
-            </div>
-            <div class="px-6 pb-5 flex gap-2.5">
-              <button
-                @click="closeDelete"
-                :disabled="deleting"
-                class="flex-1 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 border border-gray-200 hover:bg-gray-50 rounded-lg transition disabled:opacity-50"
-              >
-                Vazgeç
+              <button class="eisa-modal-close" @click="closeKioskModal">
+                <i class="fa-solid fa-xmark"></i>
               </button>
-              <button
-                @click="confirmDelete"
-                :disabled="deleting"
-                class="flex-1 flex items-center justify-center gap-1.5 bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white text-sm font-medium py-2 rounded-lg transition"
-              >
-                <svg v-if="deleting" class="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
-                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
-                </svg>
-                {{ deleting ? 'Siliniyor…' : 'Evet, Sil' }}
+            </div>
+
+            <div class="eisa-modal-body">
+              <div v-if="kioskFormError" class="eisa-error-banner">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                {{ kioskFormError }}
+              </div>
+              <div class="eisa-form-row">
+                <label for="kiosk-mac" class="eisa-field-label">
+                  MAC Adresi <span style="color:#EF4444;">*</span>
+                </label>
+                <input
+                  id="kiosk-mac"
+                  name="mac"
+                  v-model="kioskForm.mac"
+                  type="text"
+                  placeholder="AA:BB:CC:DD:EE:FF"
+                  class="eisa-field"
+                  style="font-family:'DM Mono',monospace;"
+                />
+                <p style="margin-top:0.35rem;font-size:0.75rem;color:#6B7280;">Kiosk cihazının fiziksel MAC adresi</p>
+              </div>
+            </div>
+
+            <div class="eisa-modal-footer">
+              <button class="eisa-btn eisa-btn-ghost" :disabled="kioskSaving" @click="closeKioskModal">İptal</button>
+              <button class="eisa-btn eisa-btn-cta" :disabled="kioskSaving" @click="saveKiosk">
+                <i v-if="kioskSaving" class="fa-solid fa-circle-notch fa-spin"></i>
+                <i v-else class="fa-solid fa-plus"></i>
+                {{ kioskSaving ? 'Ekleniyor…' : 'Kiosk Ekle' }}
               </button>
             </div>
           </div>
@@ -582,44 +638,27 @@ async function confirmDelete() {
       </div>
     </Transition>
   </Teleport>
+
+  <!-- Kiosk Sil -->
+  <EisaDeleteConfirm
+    :open="kioskDeleteOpen"
+    title="Kiosk'u Kaldır"
+    :message="`${kioskDeleteTarget?.mac} MAC adresli kiosku kaldırmak istediğinizden emin misiniz?`"
+    confirm-label="Evet, Kaldır"
+    :loading="kioskDeleting"
+    @confirm="confirmDeleteKiosk"
+    @cancel="closeDeleteKiosk"
+  />
+
+  <!-- Eczane Sil -->
+  <EisaDeleteConfirm
+    :open="deleteModalOpen"
+    title="Eczane Sil"
+    :message="`${deleteTarget?.name} eczanesini kalıcı olarak silmek istediğinizden emin misiniz?`"
+    confirm-label="Evet, Sil"
+    :loading="deleting"
+    @confirm="confirmDelete"
+    @cancel="closeDelete"
+  />
 </template>
 
-<style scoped>
-/* ── Modal geçiş animasyonları ─────────────────────────────────────────────── */
-.backdrop-enter-active,
-.backdrop-leave-active {
-  transition: opacity 0.2s ease;
-}
-.backdrop-enter-from,
-.backdrop-leave-to {
-  opacity: 0;
-}
-
-.modal-enter-active {
-  transition: opacity 0.2s ease, transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-.modal-leave-active {
-  transition: opacity 0.15s ease, transform 0.15s ease;
-}
-.modal-enter-from,
-.modal-leave-to {
-  opacity: 0;
-  transform: scale(0.94) translateY(8px);
-}
-
-/* ── Kiosk kart hover ──────────────────────────────────────────────────────── */
-.kiosk-card {
-  animation: fade-up 0.3s ease both;
-}
-
-@keyframes fade-up {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-</style>

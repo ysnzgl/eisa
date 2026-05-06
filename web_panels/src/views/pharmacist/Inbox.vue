@@ -1,21 +1,21 @@
 <script setup>
 /**
- * Pharmacist Inbox — Hassas durum (Akış B) bildirim kutusu.
+ * Pharmacist Inbox — Hassas durum (Akış Bildirimi) bildirim kutusu.
  * Her 10 saniyede bir merkezi API'yi yoklayarak yeni
- * "is_sensitive_flow=true" oturumlarını gösterir.
+ * "is_sensitive_flow=true" oturumları gösterir.
  */
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { http } from '../../services/api';
 
 const notifications = ref([]);   // Gelen bildirimler
-const readIds = ref(new Set());   // Okundu işaretlenenler (local)
+const readIds = ref(new Set());   // Okundu iaretlenenler (local)
 const newIds = ref(new Set());    // Yeni gelen (3sn vurgu)
 const connected = ref(true);
 const lastSeenId = ref(0);        // En son görülen bildirim ID'si
 
 let pollInterval = null;
 
-// ── Veri çekme ──────────────────────────────────────────────
+//  Veri Çekme Çekme 
 async function fetchInbox() {
   try {
     const res = await http.get('/api/analytics/sessions/', {
@@ -46,7 +46,7 @@ onMounted(() => {
 
 onUnmounted(() => clearInterval(pollInterval));
 
-// ── Hesaplanan ───────────────────────────────────────────────
+//  Hesaplanan 
 const unreadCount = computed(
   () => notifications.value.filter((n) => !readIds.value.has(n.id)).length
 );
@@ -59,7 +59,7 @@ function markAllRead() {
   notifications.value.forEach((n) => readIds.value.add(n.id));
 }
 
-// ── Yardımcılar ──────────────────────────────────────────────
+//  Yardmclar 
 const GENDER_LABEL = { F: 'Kadın', M: 'Erkek', O: 'Diğer' };
 
 function timeAgo(iso) {
@@ -72,75 +72,76 @@ function timeAgo(iso) {
 </script>
 
 <template>
-  <div class="p-6 space-y-5">
-    <!-- Başlık & durum -->
-    <div class="flex items-center justify-between">
-      <h1 class="text-2xl font-bold text-gray-800">
-        🔔 Gelen Kutusu
-        <span
-          v-if="unreadCount > 0"
-          class="ml-2 bg-red-500 text-white text-sm px-2 py-0.5 rounded-full"
-        >{{ unreadCount }}</span>
-      </h1>
-      <div class="flex items-center gap-3">
-        <span
-          :class="connected ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'"
-          class="text-xs px-3 py-1 rounded-full font-semibold"
-        >
-          {{ connected ? '● Canlı' : '✕ Bağlantı kesildi' }}
+  <div class="eisa-page pharm-page">
+
+    <!-- Page Header -->
+    <div class="eisa-page-header">
+      <div>
+        <p class="eisa-eyebrow">Eczacı / Bildirimler</p>
+        <h1 class="eisa-page-title">
+          Gelen Kutusu
+          <span v-if="unreadCount > 0" class="eisa-pill eisa-pill-danger" style="margin-left:0.5rem;">
+            {{ unreadCount }}
+          </span>
+        </h1>
+      </div>
+      <div class="eisa-header-actions">
+        <span class="inbox-badge" :class="connected ? 'inbox-connected' : 'inbox-disconnected'">
+          <i :class="connected ? 'fa-solid fa-signal' : 'fa-solid fa-triangle-exclamation'"></i>
+          {{ connected ? 'Canlı' : 'Bağlantı kesildi' }}
         </span>
         <button
           v-if="unreadCount > 0"
+          class="eisa-btn eisa-btn-ghost"
           @click="markAllRead"
-          class="text-sm text-blue-600 hover:underline"
-        >Tümünü okundu işaretle</button>
+        >
+          <i class="fa-solid fa-check-double"></i>
+          Tümünü Okundu İşaretle
+        </button>
       </div>
     </div>
 
-    <!-- Boş durum -->
-    <div v-if="notifications.length === 0" class="bg-white rounded-xl shadow p-10 text-center text-gray-400">
-      <p class="text-4xl mb-3">📭</p>
-      <p>Henüz bildirim yok.</p>
-      <p class="text-sm mt-1">Kiosk'tan hassas kategori seçildiğinde burada görünecek.</p>
+    <!-- Empty State -->
+    <div v-if="notifications.length === 0" class="eisa-panel" style="padding:3rem;text-align:center;color:#6B7280;">
+      <i class="fa-regular fa-bell" style="font-size:2.5rem;margin-bottom:1rem;opacity:0.3;display:block;"></i>
+      <p style="font-size:0.95rem;font-weight:600;margin-bottom:0.35rem;">Henüz bildirim yok</p>
+      <p style="font-size:0.8rem;">Kiosk'tan hassas kategori seçildiğinde burada görünecek.</p>
     </div>
 
-    <!-- Bildirim Kartları -->
-    <div class="space-y-3">
+    <!-- Notification Cards -->
+    <div style="display:flex;flex-direction:column;gap:0.75rem;">
       <div
         v-for="n in notifications"
         :key="n.id"
-        @click="markRead(n.id)"
+        class="inbox-card"
         :class="[
-          'bg-white rounded-xl shadow p-4 flex items-start gap-4 cursor-pointer transition border-l-4',
-          newIds.has(n.id) ? 'border-red-500 animate-pulse' : readIds.has(n.id) ? 'border-gray-200 opacity-70' : 'border-red-400',
+          newIds.has(n.id) ? 'inbox-card--new' : readIds.has(n.id) ? 'inbox-card--read' : 'inbox-card--unread'
         ]"
+        @click="markRead(n.id)"
       >
-        <!-- İkon -->
-        <div class="text-3xl select-none">🔴</div>
-
-        <!-- İçerik -->
-        <div class="flex-1 min-w-0">
-          <div class="flex items-center gap-2 flex-wrap">
-            <span class="font-semibold text-red-700 text-sm">Hassas Danışma</span>
-            <span class="bg-gray-100 text-gray-600 text-xs px-2 py-0.5 rounded-full">
-              {{ n.category?.name ?? n.category_id ?? '—' }}
-            </span>
-          </div>
-          <div class="text-gray-700 mt-1 text-sm flex gap-4 flex-wrap">
-            <span>👤 {{ GENDER_LABEL[n.gender] ?? n.gender }}</span>
-            <span>📅 {{ n.age_range }} yaş</span>
-          </div>
-          <div class="text-xs text-gray-400 mt-1">{{ timeAgo(n.created_at) }}</div>
+        <!-- Alert Icon -->
+        <div class="inbox-alert-icon">
+          <i class="fa-solid fa-triangle-exclamation"></i>
         </div>
 
-        <!-- QR Kodu -->
-        <div class="text-right flex-shrink-0">
-          <p class="text-xs text-gray-400 mb-1">QR Kodu</p>
-          <p class="font-mono font-bold text-lg text-gray-800 tracking-widest">{{ n.qr_code }}</p>
-          <span
-            v-if="!readIds.has(n.id)"
-            class="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full"
-          >Yeni</span>
+        <!-- Main Content -->
+        <div class="inbox-card-meta">
+          <p class="inbox-card-title">Hassas Danma</p>
+          <div class="inbox-card-details">
+            <span class="eisa-pill eisa-pill-muted">
+              {{ n.category?.name ?? n.category_id ?? '—' }}
+            </span>
+            <span><i class="fa-solid fa-person" style="font-size:0.65rem;margin-right:0.2rem;"></i>{{ GENDER_LABEL[n.gender] ?? n.gender }}</span>
+            <span><i class="fa-solid fa-calendar-days" style="font-size:0.65rem;margin-right:0.2rem;"></i>{{ n.age_range }} yaş</span>
+          </div>
+          <p class="inbox-card-time">{{ timeAgo(n.created_at) }}</p>
+        </div>
+
+        <!-- QR Code -->
+        <div class="inbox-card-qr">
+          <p style="font-size:0.7rem;color:#9CA3AF;margin-bottom:0.2rem;">QR Kodu</p>
+          <p class="inbox-card-qr-code">{{ n.qr_code }}</p>
+          <span v-if="!readIds.has(n.id)" class="inbox-card-badge">Yeni</span>
         </div>
       </div>
     </div>

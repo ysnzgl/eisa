@@ -173,144 +173,158 @@ function formatDT(iso) {
 </script>
 
 <template>
-  <div class="p-6 max-w-2xl mx-auto space-y-6">
-    <h1 class="text-2xl font-bold text-gray-800">🔍 QR Okutma</h1>
+  <div class="eisa-page pharm-page">
 
-    <div class="bg-white rounded-xl shadow p-5 space-y-4">
-      <label class="block text-sm font-medium text-gray-700">
-        Hastanın QR Kodunu Girin veya Okutun
-      </label>
-      <div class="flex gap-2">
-        <input
-          v-model="qrInput"
-          @keyup.enter="lookup"
-          placeholder="8 karakterlik QR kod (ör. A1B2C3D4)"
-          class="flex-1 border rounded-lg px-4 py-2 text-sm font-mono tracking-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
-          :disabled="loading"
-        />
-        <button
-          @click="lookup"
-          :disabled="loading || !qrInput.trim()"
-          class="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-5 py-2 rounded-lg font-medium transition"
-        >
-          {{ loading ? '…' : 'Sorgula' }}
-        </button>
-      </div>
-
-      <div v-if="cameraSupported" class="flex items-center gap-3">
-        <button
-          @click="cameraActive ? stopCamera() : startCamera()"
-          :class="cameraActive ? 'bg-red-100 text-red-700 border-red-300' : 'bg-gray-100 text-gray-600 border-gray-300'"
-          class="border text-sm px-4 py-2 rounded-lg font-medium transition"
-        >
-          {{ cameraActive ? '📷 Kamerayı Durdur' : '📷 Kamera ile Tara' }}
-        </button>
-        <span v-if="cameraActive" class="text-xs text-gray-400 animate-pulse">QR bekleniyor…</span>
-      </div>
-
-      <div v-if="cameraActive" class="rounded-lg overflow-hidden border border-gray-200">
-        <video ref="videoRef" class="w-full max-h-64 object-cover bg-black" muted playsinline />
+    <!-- Page Header -->
+    <div class="eisa-page-header">
+      <div>
+        <p class="eisa-eyebrow">Eczacı / Hasta Sorgulama</p>
+        <h1 class="eisa-page-title">QR Okutma</h1>
       </div>
     </div>
 
-    <div v-if="ownershipError" class="bg-red-50 border border-red-300 text-red-800 rounded-xl p-5 text-center">
-      <p class="text-3xl mb-2">🚫</p>
-      <p class="font-bold text-lg">{{ ownershipError }}</p>
-      <p class="text-sm mt-1 text-red-700">Bu QR kod başka bir eczanenin kioskundan üretilmiş.</p>
-      <button @click="reset" class="mt-3 text-sm text-blue-600 hover:underline">Yeniden dene</button>
-    </div>
+    <div class="qr-scan-page">
 
-    <div v-else-if="apiError" class="bg-red-50 text-red-700 border border-red-200 rounded-lg p-3 text-sm">
-      {{ apiError }}
-    </div>
-
-    <div v-if="offlineMode" class="bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-lg p-3 text-xs flex items-center gap-2">
-      <span>📴</span>
-      <span>Sunucuya ulaşılamadı; veriler QR'dan okundu (offline mod).</span>
-    </div>
-
-    <div v-if="notFound" class="bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-xl p-5 text-center">
-      <p class="text-2xl mb-2">🔎</p>
-      <p class="font-semibold">Oturum bulunamadı</p>
-      <p class="text-sm mt-1">
-        <span class="font-mono font-bold">{{ qrInput.trim() }}</span> koduna ait kayıt yok.
-      </p>
-      <button @click="reset" class="mt-3 text-sm text-blue-600 hover:underline">Yeniden dene</button>
-    </div>
-
-    <div v-if="session && !ownershipError" class="bg-white rounded-xl shadow divide-y divide-gray-100">
-      <div class="p-5 flex items-center justify-between">
-        <div>
-          <h2 class="font-bold text-gray-800 text-lg">Hasta Oturumu</h2>
-          <p class="text-xs text-gray-400 mt-0.5">{{ formatDT(session.created_at) }}</p>
-        </div>
-        <div class="text-right">
-          <p class="text-xs text-gray-500">QR Kodu</p>
-          <p class="font-mono font-bold text-xl tracking-widest text-gray-800">{{ session.qr_code }}</p>
-        </div>
-      </div>
-
-      <div v-if="session.is_sensitive_flow" class="px-5 py-3 bg-red-50 flex items-center gap-2">
-        <span class="text-red-600 font-bold">⚠️ Hassas Konu</span>
-        <span class="text-red-700 text-sm">Hasta bu konuyu kalabalık içinde söylemek istemedi.</span>
-      </div>
-
-      <div class="px-5 py-4 grid grid-cols-2 gap-4">
-        <div>
-          <p class="text-xs text-gray-500 uppercase tracking-wide mb-1">Yaş Aralığı</p>
-          <p class="font-semibold text-gray-800">{{ session.age_range }} yaş</p>
-        </div>
-        <div>
-          <p class="text-xs text-gray-500 uppercase tracking-wide mb-1">Cinsiyet</p>
-          <p class="font-semibold text-gray-800">{{ GENDER_LABEL[session.gender] ?? session.gender }}</p>
-        </div>
-        <div class="col-span-2">
-          <p class="text-xs text-gray-500 uppercase tracking-wide mb-1">Seçilen Kategori</p>
-          <p class="font-semibold text-gray-800">
-            {{ session.category?.name ?? session.category_name ?? session.category_slug ?? '—' }}
-          </p>
-        </div>
-      </div>
-
-      <div v-if="session.suggested_ingredients?.length" class="px-5 py-4">
-        <p class="text-xs text-gray-500 uppercase tracking-wide mb-2">Önerilen Etken Maddeler</p>
-        <div class="flex flex-wrap gap-2">
-          <span
-            v-for="ing in session.suggested_ingredients"
-            :key="ing"
-            class="bg-blue-50 text-blue-700 text-sm px-3 py-1 rounded-full font-medium"
-          >{{ ing }}</span>
-        </div>
-      </div>
-
-      <div
-        v-if="!session.is_sensitive_flow && session.answers_payload && Object.keys(session.answers_payload).length"
-        class="px-5 py-4"
-      >
-        <p class="text-xs text-gray-500 uppercase tracking-wide mb-2">Anket Cevapları</p>
-        <table class="w-full text-sm">
-          <tbody>
-            <tr
-              v-for="(val, key) in session.answers_payload"
-              :key="key"
-              class="border-t border-gray-50"
-            >
-              <td class="py-1.5 text-gray-500 pr-4">{{ key }}</td>
-              <td class="py-1.5 font-medium text-gray-700">{{ val }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div class="px-5 py-3 bg-gray-50 flex items-center justify-between">
-        <span class="text-xs text-gray-500">
-          Kiosk:
-          <span class="font-medium text-gray-700">
-            {{ session.kiosk?.mac_address ?? session.kiosk_mac ?? '—' }}
+      <!-- Input Panel -->
+      <div class="eisa-panel" style="margin-bottom:1.5rem;">
+        <div class="eisa-panel-header">
+          <span class="eisa-panel-title">
+            <i class="fa-solid fa-qrcode" style="margin-right:0.5rem;color:#0D9488;"></i>
+            Hasta QR Kodu
           </span>
-        </span>
-        <button @click="reset" class="text-xs text-blue-600 hover:underline">Yeni Sorgulama</button>
+        </div>
+        <div class="eisa-modal-body" style="padding:1.25rem 1.5rem;">
+          <div style="display:flex;gap:0.75rem;margin-bottom:1rem;">
+            <input
+              id="qr-input"
+              name="qr_code"
+              v-model="qrInput"
+              @keyup.enter="lookup"
+              placeholder="8 karakterlik QR kod (ör. A1B2C3D4)"
+              class="eisa-field"
+              style="flex:1;font-family:'DM Mono',monospace;letter-spacing:0.05em;"
+              :disabled="loading"
+            />
+            <button
+              id="qr-lookup-btn"
+              class="eisa-btn eisa-btn-cta"
+              :disabled="loading || !qrInput.trim()"
+              @click="lookup"
+            >
+              <i v-if="loading" class="fa-solid fa-circle-notch fa-spin"></i>
+              <i v-else class="fa-solid fa-magnifying-glass"></i>
+              {{ loading ? '…' : 'Sorgula' }}
+            </button>
+          </div>
+
+          <div v-if="cameraSupported" style="display:flex;align-items:center;gap:0.75rem;">
+            <button
+              id="camera-toggle-btn"
+              class="eisa-btn"
+              :class="cameraActive ? 'eisa-btn-danger' : 'eisa-btn-ghost'"
+              @click="cameraActive ? stopCamera() : startCamera()"
+            >
+              <i class="fa-solid fa-camera"></i>
+              {{ cameraActive ? 'Kamerayı Durdur' : 'Kamera ile Tara' }}
+            </button>
+            <span v-if="cameraActive" style="font-size:0.75rem;color:#9CA3AF;animation:pulse 1s infinite;">QR bekleniyor…</span>
+          </div>
+
+          <div v-if="cameraActive" class="qr-video-wrap" style="margin-top:1rem;">
+            <video ref="videoRef" class="qr-video" muted playsinline />
+          </div>
+        </div>
       </div>
-    </div>
+
+      <!-- Ownership Error -->
+      <div v-if="ownershipError" class="eisa-error-banner" style="margin-bottom:1.5rem;text-align:center;flex-direction:column;gap:0.5rem;padding:1.5rem;">
+        <i class="fa-solid fa-ban" style="font-size:1.5rem;"></i>
+        <p style="font-weight:700;">{{ ownershipError }}</p>
+        <p style="font-size:0.8rem;">Bu QR kod başka bir eczanenin kioskundan üretilmiş.</p>
+        <button class="eisa-btn eisa-btn-ghost" style="margin-top:0.5rem;" @click="reset">Yeniden Dene</button>
+      </div>
+
+      <!-- API Error -->
+      <div v-else-if="apiError" class="eisa-error-banner" style="margin-bottom:1.5rem;">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+        {{ apiError }}
+      </div>
+
+      <!-- Offline Warning -->
+      <div v-if="offlineMode" class="eisa-error-banner" style="background:rgba(245,158,11,0.06);border-color:rgba(245,158,11,0.3);color:#92400E;margin-bottom:1.5rem;">
+        <i class="fa-solid fa-wifi-slash"></i>
+        Sunucuya ulaşılamadı; veriler QR'dan okundu (offline mod).
+      </div>
+
+      <!-- Not Found -->
+      <div v-if="notFound" style="text-align:center;padding:2rem;color:#6B7280;">
+        <i class="fa-solid fa-circle-question" style="font-size:2rem;margin-bottom:0.75rem;display:block;"></i>
+        <p style="font-weight:600;margin-bottom:0.3rem;">Oturum bulunamadı</p>
+        <p style="font-size:0.8rem;margin-bottom:0.75rem;">
+          <code style="font-family:'DM Mono',monospace;font-weight:700;">{{ qrInput.trim() }}</code> koduna ait kayıt yok.
+        </p>
+        <button class="eisa-btn eisa-btn-ghost" @click="reset">Yeniden Dene</button>
+      </div>
+
+      <!-- Session Result -->
+      <div v-if="session && !ownershipError" class="qr-result-card">
+
+        <div class="qr-result-header">
+          <div>
+            <h2 style="font-size:1rem;font-weight:700;color:#111827;margin-bottom:0.2rem;">Hasta Oturumu</h2>
+            <p style="font-size:0.72rem;color:#9CA3AF;">{{ formatDT(session.created_at) }}</p>
+          </div>
+          <div style="text-align:right;">
+            <p style="font-size:0.7rem;color:#9CA3AF;margin-bottom:0.2rem;">QR Kodu</p>
+            <p style="font-family:'DM Mono',monospace;font-weight:700;font-size:1.25rem;letter-spacing:0.1em;color:#111827;">{{ session.qr_code }}</p>
+          </div>
+        </div>
+
+        <!-- Sensitive Alert -->
+        <div v-if="session.is_sensitive_flow" class="qr-sensitive-bar">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+          <span>Hassas Konu — Hasta bu konuyu kalabalık içinde söylemek istemedi.</span>
+        </div>
+
+        <!-- Details Grid -->
+        <div class="qr-result-section qr-grid-2">
+          <div>
+            <p class="qr-detail-label">Yaş Aralığı</p>
+            <p class="qr-detail-value">{{ session.age_range }} yaş</p>
+          </div>
+          <div>
+            <p class="qr-detail-label">Cinsiyet</p>
+            <p class="qr-detail-value">{{ GENDER_LABEL[session.gender] ?? session.gender }}</p>
+          </div>
+          <div style="grid-column:1/span 2;">
+            <p class="qr-detail-label">Seçilen Kategori</p>
+            <p class="qr-detail-value">
+              {{ session.category?.name ?? session.category_name ?? session.category_slug ?? '—' }}
+            </p>
+          </div>
+        </div>
+
+        <!-- Suggested Ingredients -->
+        <div v-if="session.suggested_ingredients?.length" class="qr-result-section">
+          <p class="qr-detail-label" style="margin-bottom:0.5rem;">Önerilen Etken Maddeler</p>
+          <div style="display:flex;flex-wrap:wrap;gap:0.5rem;">
+            <span
+              v-for="ing in session.suggested_ingredients"
+              :key="ing"
+              class="eisa-pill eisa-pill-info"
+            >{{ ing }}</span>
+          </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="qr-result-section" style="display:flex;align-items:center;justify-content:space-between;background:#F9FAFB;border-radius:0 0 0.875rem 0.875rem;margin:-0;padding:0.75rem 1.25rem;">
+          <span style="font-size:0.75rem;color:#6B7280;">
+            Kiosk: <span style="font-weight:600;color:#374151;">{{ session.kiosk?.mac_address ?? session.kiosk_mac ?? '—' }}</span>
+          </span>
+          <button class="eisa-btn eisa-btn-ghost" style="font-size:0.78rem;" @click="reset">Yeni Sorgulama</button>
+        </div>
+      </div>
+
+    </div><!-- /qr-scan-page -->
   </div>
 </template>

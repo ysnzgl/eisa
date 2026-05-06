@@ -1,266 +1,205 @@
-/**
+﻿/**
  * Algoritma & Karar Ağacı Servis Katmanı
  * Kategori → Soru → Eşleşme Kuralı hiyerarşisini yönetir.
  *
- * Gerçek endpoint'ler:
+ * Backend field mapping:
+ *   Kategori: ad→name, ikon→icon, hassas→is_sensitive, aktif→is_active
+ *             hedef_cinsiyetler→target_genders, hedef_yas_araliklari→target_age_ranges
+ *   Soru: metin→text, sira→order, eslesme_kurallari→match_rules
+ *   EtkenMadde: ad→name
+ *
+ * Endpoints:
  *   GET    /api/products/categories/
- *   GET    /api/products/questions/?category={id}
+ *   POST   /api/products/categories/
+ *   PATCH  /api/products/categories/{id}/
+ *   GET    /api/products/questions/?kategori={id}
  *   POST   /api/products/questions/
  *   PATCH  /api/products/questions/{id}/
  *   DELETE /api/products/questions/{id}/
- *   GET    /api/products/active-ingredients/
- *   PATCH  /api/products/questions/{id}/  (match_rules alanını günceller)
+ *   GET    /api/products/ingredients/
  */
 import { http } from './api';
 
-// ─── Mock: Etken Maddeler ─────────────────────────────────────────────────────
-const _ingredients = [
-  { id: 1,  name: 'B12 Vitamini'       },
-  { id: 2,  name: 'Demir (Fe)'         },
-  { id: 3,  name: 'Magnezyum'          },
-  { id: 4,  name: 'D3 Vitamini'        },
-  { id: 5,  name: 'Çinko'              },
-  { id: 6,  name: 'Omega-3'            },
-  { id: 7,  name: 'Melatonin'          },
-  { id: 8,  name: 'L-Teanin'           },
-  { id: 9,  name: 'Valerian Kökü'      },
-  { id: 10, name: 'Ashwagandha'        },
-  { id: 11, name: 'Koenzim Q10'        },
-  { id: 12, name: 'Folat (B9)'         },
-  { id: 13, name: 'C Vitamini'         },
-  { id: 14, name: 'Probiyotik'         },
-  { id: 15, name: 'Çuha Çiçeği Yağı'  },
-];
+// ─── Field mappers ────────────────────────────────────────────────────────────
 
-// ─── Mock: Kategoriler + Sorular + Kurallar ────────────────────────────────────
-let _ruleIdSeq = 100;
-const _categories = [
-  {
-    id: 1, name: 'Enerji & Yorgunluk', slug: 'enerji', icon: '⚡',
-    is_sensitive: false, is_active: true,
-    questions: [
-      {
-        id: 1, seed_id: 'Q_ENR_001', text: 'Yorgunluğunuz gün içinde ne zaman artıyor?', order: 0,
-        match_rules: [
-          { id: _ruleIdSeq++, gender: 'all', age_min: 18, age_max: 40, primary_id: 1, supportive_id: 3 },
-          { id: _ruleIdSeq++, gender: 'F',   age_min: 18, age_max: 50, primary_id: 2, supportive_id: 4 },
-        ],
-      },
-      {
-        id: 2, seed_id: 'Q_ENR_002', text: 'Egzersiz sonrası kendinizi nasıl hissediyorsunuz?', order: 1,
-        match_rules: [
-          { id: _ruleIdSeq++, gender: 'M', age_min: 20, age_max: 55, primary_id: 11, supportive_id: 5 },
-        ],
-      },
-    ],
-  },
-  {
-    id: 2, name: 'Uyku Kalitesi', slug: 'uyku', icon: '🌙',
-    is_sensitive: false, is_active: true,
-    questions: [
-      {
-        id: 3, seed_id: 'Q_UYK_001', text: 'Uykuya dalmakta güçlük çekiyor musunuz?', order: 0,
-        match_rules: [
-          { id: _ruleIdSeq++, gender: 'all', age_min: 18, age_max: 65, primary_id: 7, supportive_id: 8 },
-          { id: _ruleIdSeq++, gender: 'all', age_min: 50, age_max: 99, primary_id: 7, supportive_id: 9 },
-        ],
-      },
-      {
-        id: 4, seed_id: 'Q_UYK_002', text: 'Gece kaç kez uyanıyorsunuz?', order: 1,
-        match_rules: [],
-      },
-    ],
-  },
-  {
-    id: 3, name: 'Bağışıklık', slug: 'bagisiklik', icon: '🛡️',
-    is_sensitive: false, is_active: true,
-    questions: [
-      {
-        id: 5, seed_id: 'Q_BAG_001', text: 'Yılda kaç kez hastalanıyorsunuz?', order: 0,
-        match_rules: [
-          { id: _ruleIdSeq++, gender: 'all', age_min: 0, age_max: 17, primary_id: 13, supportive_id: 5 },
-          { id: _ruleIdSeq++, gender: 'all', age_min: 18, age_max: 99, primary_id: 13, supportive_id: 4 },
-        ],
-      },
-    ],
-  },
-  {
-    id: 4, name: 'Sindirim', slug: 'sindirim', icon: '🌿',
-    is_sensitive: false, is_active: true,
-    questions: [
-      {
-        id: 6, seed_id: 'Q_SND_001', text: 'Yemek sonrası şişkinlik hissediyor musunuz?', order: 0,
-        match_rules: [
-          { id: _ruleIdSeq++, gender: 'all', age_min: 18, age_max: 99, primary_id: 14, supportive_id: 6 },
-        ],
-      },
-    ],
-  },
-  {
-    id: 5, name: 'Gebelik / Emzirme', slug: 'gebelik', icon: '🤱',
-    is_sensitive: true, is_active: true,
-    questions: [
-      {
-        id: 7, seed_id: 'Q_GEB_001', text: 'Gebelik kaçıncı trimesterinde?', order: 0,
-        match_rules: [
-          { id: _ruleIdSeq++, gender: 'F', age_min: 18, age_max: 45, primary_id: 12, supportive_id: 4 },
-        ],
-      },
-    ],
-  },
-  {
-    id: 6, name: 'Stres & Anksiyete', slug: 'stres', icon: '🧠',
-    is_sensitive: false, is_active: true,
-    questions: [
-      {
-        id: 8, seed_id: 'Q_STR_001', text: 'Stres günlük yaşamınızı etkiliyor mu?', order: 0,
-        match_rules: [
-          { id: _ruleIdSeq++, gender: 'all', age_min: 18, age_max: 65, primary_id: 10, supportive_id: 3 },
-        ],
-      },
-    ],
-  },
-];
-
-let _qIdSeq = 100;
-
-function _delay(ms = 300) {
-  return new Promise((r) => setTimeout(r, ms));
+function mapCategoryFromApi(c) {
+  if (!c) return null;
+  return {
+    id: c.id,
+    name: c.ad,
+    slug: c.slug,
+    icon: c.ikon,
+    is_sensitive: c.hassas,
+    is_active: c.aktif,
+    target_genders: c.hedef_cinsiyetler ?? [],
+    target_age_ranges: c.hedef_yas_araliklari ?? [],
+  };
 }
 
-function _deepClone(obj) {
-  return JSON.parse(JSON.stringify(obj));
+function mapCategoryToApi(data) {
+  const out = {};
+  if (data.name         !== undefined) out.ad                   = data.name;
+  if (data.slug         !== undefined) out.slug                 = data.slug;
+  if (data.icon         !== undefined) out.ikon                 = data.icon;
+  if (data.is_sensitive !== undefined) out.hassas               = data.is_sensitive;
+  if (data.is_active    !== undefined) out.aktif                = data.is_active;
+  if (data.target_genders    !== undefined) out.hedef_cinsiyetler     = data.target_genders;
+  if (data.target_age_ranges !== undefined) out.hedef_yas_araliklari  = data.target_age_ranges;
+  return out;
+}
+
+function mapQuestionFromApi(q) {
+  if (!q) return null;
+  return {
+    id: q.id,
+    category_id: q.kategori,
+    seed_id: q.seed_id ?? null,
+    text: q.metin,
+    order: q.sira,
+    match_rules: q.eslesme_kurallari ?? [],
+    target_genders: q.hedef_cinsiyetler ?? [],
+    target_age_ranges: q.hedef_yas_araliklari ?? [],
+  };
+}
+
+function mapIngredientFromApi(i) {
+  if (!i) return null;
+  return { id: i.id, name: i.ad, description: i.aciklama ?? '' };
 }
 
 // ─── Kategori Servisleri ──────────────────────────────────────────────────────
 
-/**
- * Tüm kategorileri listeler.
- * Gerçek API: return http.get('/api/products/categories/').then(r => r.data);
- */
+/** Tüm kategorileri listeler. */
 export async function getCategories() {
-  await _delay();
-  return _categories.map(({ questions: _, ...cat }) => _deepClone(cat));
+  const { data } = await http.get('/api/products/categories/');
+  const items = Array.isArray(data) ? data : (data?.results ?? []);
+  return items.map(mapCategoryFromApi);
+}
+
+/**
+ * Yeni kategori oluşturur.
+ * @param {{ name: string, slug?: string, icon?: string, is_sensitive?: boolean }} data
+ */
+export async function createCategory(data) {
+  if (!data.slug) {
+    data = {
+      ...data,
+      slug: data.name
+        .toLowerCase()
+        .replace(/ğ/g, 'g').replace(/ü/g, 'u').replace(/ş/g, 's')
+        .replace(/ı/g, 'i').replace(/ö/g, 'o').replace(/ç/g, 'c')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$$/g, ''),
+    };
+  }
+  const { data: created } = await http.post('/api/products/categories/', mapCategoryToApi(data));
+  return mapCategoryFromApi(created);
+}
+
+/**
+ * Kategoriyi günceller (hedefleme alanları dahil).
+ * @param {number} id
+ * @param {object} data
+ */
+export async function updateCategory(id, data) {
+  const { data: updated } = await http.patch(
+    `/api/products/categories/${id}/`,
+    mapCategoryToApi(data),
+  );
+  return mapCategoryFromApi(updated);
 }
 
 // ─── Soru Servisleri ──────────────────────────────────────────────────────────
 
 /**
  * Kategoriye ait soruları getirir.
- * Gerçek API: return http.get('/api/products/questions/', { params: { category: categoryId } }).then(r => r.data);
  * @param {number} categoryId
  */
 export async function getQuestions(categoryId) {
-  await _delay();
-  const cat = _categories.find((c) => c.id === categoryId);
-  if (!cat) return [];
-  return _deepClone(cat.questions);
+  const { data } = await http.get('/api/products/questions/', {
+    params: { kategori: categoryId },
+  });
+  const items = Array.isArray(data) ? data : (data?.results ?? []);
+  return items.map(mapQuestionFromApi);
 }
 
 /**
  * Yeni soru ekler.
- * Gerçek API: return http.post('/api/products/questions/', data).then(r => r.data);
  * @param {number} categoryId
  * @param {{ text: string, order?: number }} data
  */
 export async function createQuestion(categoryId, data) {
-  await _delay();
-  const cat = _categories.find((c) => c.id === categoryId);
-  if (!cat) throw new Error('Kategori bulunamadı');
-  const q = {
-    id: _qIdSeq++,
-    seed_id: null,
-    text: data.text,
-    order: data.order ?? cat.questions.length,
-    match_rules: [],
+  const payload = {
+    kategori: categoryId,
+    metin: data.text,
+    sira: data.order ?? 0,
+    eslesme_kurallari: [],
   };
-  cat.questions.push(q);
-  return _deepClone(q);
+  const { data: created } = await http.post('/api/products/questions/', payload);
+  return mapQuestionFromApi(created);
 }
 
 /**
  * Soruyu günceller.
- * Gerçek API: return http.patch(`/api/products/questions/${id}/`, data).then(r => r.data);
  * @param {number} id
  * @param {{ text?: string, match_rules?: Array }} data
  */
 export async function updateQuestion(id, data) {
-  await _delay();
-  for (const cat of _categories) {
-    const q = cat.questions.find((q) => q.id === id);
-    if (q) {
-      Object.assign(q, data);
-      return _deepClone(q);
-    }
-  }
-  throw new Error(`Soru bulunamadı: ${id}`);
+  const payload = {};
+  if (data.text        !== undefined) payload.metin             = data.text;
+  if (data.order       !== undefined) payload.sira              = data.order;
+  if (data.match_rules !== undefined) payload.eslesme_kurallari = data.match_rules;
+  const { data: updated } = await http.patch(`/api/products/questions/${id}/`, payload);
+  return mapQuestionFromApi(updated);
 }
 
 /**
  * Soruyu siler.
- * Gerçek API: return http.delete(`/api/products/questions/${id}/`);
  * @param {number} id
  */
 export async function deleteQuestion(id) {
-  await _delay();
-  for (const cat of _categories) {
-    const idx = cat.questions.findIndex((q) => q.id === id);
-    if (idx !== -1) { cat.questions.splice(idx, 1); return; }
-  }
+  await http.delete(`/api/products/questions/${id}/`);
 }
 
-// ─── Match Rule Yardımcıları (client-side, patch ile gönderilir) ──────────────
+// ─── Match Rule Yardımcıları ──────────────────────────────────────────────────
+
+let _ruleIdSeq = Date.now();
 
 /** Bir soruya yeni kural ekler, güncellenmiş soruyu döner. */
 export async function addMatchRule(questionId, ruleData) {
-  await _delay(200);
-  for (const cat of _categories) {
-    const q = cat.questions.find((q) => q.id === questionId);
-    if (q) {
-      const rule = { id: _ruleIdSeq++, ...ruleData };
-      q.match_rules.push(rule);
-      // Gerçek API: await http.patch(`/api/products/questions/${questionId}/`, { match_rules: q.match_rules });
-      return _deepClone(q);
-    }
-  }
-  throw new Error('Soru bulunamadı');
+  const question = await getQuestionById(questionId);
+  const newRule = { id: _ruleIdSeq++, ...ruleData };
+  const updatedRules = [...(question.match_rules ?? []), newRule];
+  return updateQuestion(questionId, { match_rules: updatedRules });
 }
 
 /** Varolan bir kuralı günceller. */
 export async function updateMatchRule(questionId, ruleId, ruleData) {
-  await _delay(200);
-  for (const cat of _categories) {
-    const q = cat.questions.find((q) => q.id === questionId);
-    if (q) {
-      const idx = q.match_rules.findIndex((r) => r.id === ruleId);
-      if (idx !== -1) Object.assign(q.match_rules[idx], ruleData);
-      // Gerçek API: await http.patch(`/api/products/questions/${questionId}/`, { match_rules: q.match_rules });
-      return _deepClone(q);
-    }
-  }
-  throw new Error('Soru veya kural bulunamadı');
+  const question = await getQuestionById(questionId);
+  const updatedRules = (question.match_rules ?? []).map((r) =>
+    r.id === ruleId ? { ...r, ...ruleData } : r,
+  );
+  return updateQuestion(questionId, { match_rules: updatedRules });
 }
 
 /** Kuralı siler. */
 export async function deleteMatchRule(questionId, ruleId) {
-  await _delay(200);
-  for (const cat of _categories) {
-    const q = cat.questions.find((q) => q.id === questionId);
-    if (q) {
-      q.match_rules = q.match_rules.filter((r) => r.id !== ruleId);
-      // Gerçek API: await http.patch(`/api/products/questions/${questionId}/`, { match_rules: q.match_rules });
-      return;
-    }
-  }
+  const question = await getQuestionById(questionId);
+  const updatedRules = (question.match_rules ?? []).filter((r) => r.id !== ruleId);
+  await updateQuestion(questionId, { match_rules: updatedRules });
+}
+
+/** Tek soruyu id ile getirir. */
+async function getQuestionById(id) {
+  const { data } = await http.get(`/api/products/questions/${id}/`);
+  return mapQuestionFromApi(data);
 }
 
 // ─── Etken Madde Servisleri ───────────────────────────────────────────────────
 
-/**
- * Tüm etken maddeleri listeler.
- * Gerçek API: return http.get('/api/products/active-ingredients/').then(r => r.data);
- */
+/** Tüm etken maddeleri listeler. */
 export async function getActiveIngredients() {
-  await _delay(150);
-  return _deepClone(_ingredients);
+  const { data } = await http.get('/api/products/ingredients/');
+  const items = Array.isArray(data) ? data : (data?.results ?? []);
+  return items.map(mapIngredientFromApi);
 }

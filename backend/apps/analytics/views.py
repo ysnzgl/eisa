@@ -243,3 +243,73 @@ class OturumLoguStatsView(APIView):
             }
         )
 
+
+class AdminDashboardView(APIView):
+    """GET /api/analytics/admin-dashboard/ — Süper admin genel bakış istatistikleri."""
+
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsSuperAdmin]
+
+    def get(self, request):
+        from apps.campaigns.models import Reklam
+        from apps.pharmacies.models import Eczane, Kiosk
+
+        now = timezone.now()
+        bugun_baslangic = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        yedi_gun_once = now - timedelta(days=7)
+
+        toplam_eczane = Eczane.objects.filter(aktif=True).count()
+        toplam_kiosk = Kiosk.objects.count()
+        aktif_kiosk = Kiosk.objects.filter(
+            son_goruldu__gte=now - timedelta(minutes=15)
+        ).count()
+        aktif_reklam = Reklam.objects.filter(
+            aktif=True, baslangic_tarihi__lte=now, bitis_tarihi__gte=now
+        ).count()
+        bugunki_oturum = OturumLogu.objects.filter(
+            olusturulma_tarihi__gte=bugun_baslangic
+        ).count()
+
+        # Son 7 günlük trend
+        haftalik = [
+            {"tarih": str(row["tarih"]), "sayi": row["count"]}
+            for row in (
+                OturumLogu.objects.filter(olusturulma_tarihi__gte=yedi_gun_once)
+                .annotate(tarih=TruncDate("olusturulma_tarihi"))
+                .values("tarih")
+                .annotate(count=Count("id"))
+                .order_by("tarih")
+            )
+        ]
+
+        # Kategori dağılımı
+        kategori_dagilim = [
+            {"ad": row["kategori__ad"], "slug": row["kategori__slug"], "sayi": row["count"]}
+            for row in (
+                OturumLogu.objects.values("kategori__ad", "kategori__slug")
+                .annotate(count=Count("id"))
+                .order_by("-count")[:5]
+            )
+        ]
+
+        # Son reklamlar
+        son_reklamlar = list(
+            Reklam.objects.filter(aktif=True)
+            .values("id", "ad", "musteri", "baslangic_tarihi", "bitis_tarihi")
+            .order_by("-olusturulma_tarihi")[:5]
+        )
+
+        return Response(
+            {
+                "toplam_eczane": toplam_eczane,
+                "toplam_kiosk": toplam_kiosk,
+                "aktif_kiosk": aktif_kiosk,
+                "cevrimdisi_kiosk": toplam_kiosk - aktif_kiosk,
+                "aktif_reklam": aktif_reklam,
+                "bugunki_oturum": bugunki_oturum,
+                "haftalik_trend": haftalik,
+                "kategori_dagilim": kategori_dagilim,
+                "son_reklamlar": son_reklamlar,
+            }
+        )
+

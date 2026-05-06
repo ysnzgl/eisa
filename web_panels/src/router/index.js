@@ -15,11 +15,11 @@ const routes = [
     meta: { roles: ['superadmin'] },
     children: [
       { path: '', component: () => import('../views/admin/Dashboard.vue') },
-      { path: 'campaigns', component: () => import('../views/admin/Campaigns.vue') },
       { path: 'devices',        component: () => import('../views/admin/DeviceManagement.vue') },
       { path: 'medical-logic',      component: () => import('../views/admin/MedicalLogic.vue') },
-      { path: 'campaign-manager',    component: () => import('../views/admin/CampaignManager.vue') },
-      { path: 'campaign-scheduler',  component: () => import('../views/admin/CampaignScheduler.vue') }
+      { path: 'ad-manager',    component: () => import('../views/admin/CampaignManager.vue') },
+      { path: 'scheduler',     component: () => import('../views/admin/CampaignScheduler.vue') },
+      { path: 'users',         component: () => import('../views/admin/UserManagement.vue') },
     ]
   },
   {

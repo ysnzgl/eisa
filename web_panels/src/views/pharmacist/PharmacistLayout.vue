@@ -13,45 +13,46 @@ async function logout() {
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-50 flex">
-    <!-- Kenar çubuğu -->
-    <aside class="w-56 bg-teal-800 text-white flex flex-col">
-      <div class="px-6 py-5 border-b border-teal-700">
-        <span class="text-xl font-bold tracking-tight">e-<span class="text-green-400">İSA</span></span>
-        <p class="text-xs text-teal-300 mt-0.5">Eczacı Paneli</p>
+  <div class="pharm-shell">
+    <aside class="pharm-sidebar">
+      <!-- Brand -->
+      <div class="admin-brand">
+        <span class="admin-brand-name">e-<span>İSA</span></span>
+        <span class="admin-brand-sub">Eczacı Paneli</span>
       </div>
-      <nav class="flex-1 px-3 py-4 space-y-1">
-        <RouterLink
-          to="/pharmacist"
-          :class="$route.path === '/pharmacist' ? 'bg-teal-600' : ''"
-          class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium hover:bg-teal-700 transition"
-        >
-          📊 Ana Sayfa
+
+      <!-- Navigation -->
+      <nav class="admin-nav">
+        <RouterLink to="/pharmacist" class="admin-nav-link" :class="{ 'is-active': $route.path === '/pharmacist' }">
+          <i class="fa-solid fa-house admin-nav-icon"></i>
+          <span class="admin-nav-name">Ana Sayfa</span>
         </RouterLink>
-        <RouterLink
-          to="/pharmacist/inbox"
-          class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium hover:bg-teal-700 transition"
-          active-class="bg-teal-600"
-        >
-          🔔 Gelen Kutusu
+        <RouterLink to="/pharmacist/inbox" class="admin-nav-link" active-class="is-active">
+          <i class="fa-solid fa-bell admin-nav-icon"></i>
+          <span class="admin-nav-name">Gelen Kutusu</span>
         </RouterLink>
-        <RouterLink
-          to="/pharmacist/qr"
-          class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium hover:bg-teal-700 transition"
-          active-class="bg-teal-600"
-        >
-          🔍 QR Okutma
+        <RouterLink to="/pharmacist/qr" class="admin-nav-link" active-class="is-active">
+          <i class="fa-solid fa-qrcode admin-nav-icon"></i>
+          <span class="admin-nav-name">QR Okutma</span>
         </RouterLink>
       </nav>
-      <div class="px-4 py-4 border-t border-teal-700">
-        <button @click="logout" class="w-full text-left text-xs text-teal-300 hover:text-white transition">
-          Çıkış Yap
+
+      <!-- Footer -->
+      <div class="admin-footer">
+        <div class="pharm-avatar">
+          <span>{{ auth.user?.first_name?.[0] ?? auth.user?.username?.[0] ?? 'E' }}</span>
+        </div>
+        <div class="admin-user">
+          <span class="admin-user-name">{{ auth.user?.first_name ?? auth.user?.username }}</span>
+          <span class="admin-user-role">Eczacı</span>
+        </div>
+        <button class="admin-logout" @click="logout" title="Çıkış Yap">
+          <i class="fa-solid fa-arrow-right-from-bracket"></i>
         </button>
       </div>
     </aside>
 
-    <!-- İçerik alanı -->
-    <main class="flex-1 overflow-auto">
+    <main class="pharm-main">
       <RouterView />
     </main>
   </div>

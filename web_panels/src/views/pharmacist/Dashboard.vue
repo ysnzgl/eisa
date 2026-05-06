@@ -1,7 +1,7 @@
 <script setup>
 /**
  * Eczacı Ana Sayfa — Kendine ait kiosklar, kategoriler, oturum ve kampanya
- * sayıları + kiosk health durumları.
+ * sayılar + kiosk health durumları.
  *
  * Endpoint: GET /api/pharmacies/me/dashboard/
  */
@@ -46,103 +46,122 @@ function fmtRel(iso) {
 }
 
 const HEALTH_LABEL = {
-  online: { text: 'Çevrimiçi', cls: 'bg-green-100 text-green-700', dot: 'bg-green-500' },
-  degraded: { text: 'Yavaş', cls: 'bg-yellow-100 text-yellow-700', dot: 'bg-yellow-500' },
-  offline: { text: 'Çevrimdışı', cls: 'bg-red-100 text-red-700', dot: 'bg-red-500' },
+  online:   { text: 'Çevrimiçi' },
+  degraded: { text: 'Yavaş' },
+  offline:  { text: 'Çevrimdışı' },
 };
 </script>
 
 <template>
-  <div class="p-6 space-y-6">
-    <div class="flex items-center justify-between">
-      <h1 class="text-2xl font-bold text-gray-800">📊 Ana Sayfa</h1>
-      <div v-if="data?.eczane" class="text-sm text-gray-500">
-        {{ data.eczane.ad }} — {{ data.eczane.ilce }} / {{ data.eczane.il }}
+  <div class="eisa-page pharm-page">
+
+    <!-- Page Header -->
+    <div class="eisa-page-header">
+      <div>
+        <p class="eisa-eyebrow">Eczacı / Ana Sayfa</p>
+        <h1 class="eisa-page-title">
+          {{ data?.eczane?.ad ?? 'Kontrol Paneli' }}
+        </h1>
+        <p v-if="data?.eczane" class="eisa-page-subtitle">
+          {{ data.eczane.ilce }} / {{ data.eczane.il }}
+        </p>
       </div>
     </div>
 
-    <div v-if="loading" class="text-gray-500">Yükleniyor…</div>
-    <div v-else-if="error" class="bg-red-50 text-red-700 border border-red-200 rounded-lg p-4">
+    <!-- Loading -->
+    <div v-if="loading" style="padding:3rem;text-align:center;color:#6B7280;">
+      <i class="fa-solid fa-circle-notch fa-spin" style="font-size:1.5rem;"></i>
+    </div>
+
+    <!-- Error -->
+    <div v-else-if="error" class="eisa-error-banner" style="margin-bottom:1.5rem;">
+      <i class="fa-solid fa-triangle-exclamation"></i>
       {{ error }}
     </div>
 
     <template v-else-if="data">
-      <div v-if="data.uyari" class="bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-lg p-3 text-sm">
-        ⚠️ {{ data.uyari }}
+      <!-- Warning -->
+      <div v-if="data.uyari" class="eisa-error-banner" style="margin-bottom:1.5rem;background:rgba(245,158,11,0.08);border-color:rgba(245,158,11,0.3);color:#92400E;">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+        {{ data.uyari }}
       </div>
 
-      <!-- KPI kartları -->
-      <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <div class="bg-white rounded-xl shadow p-5">
-          <p class="text-xs text-gray-500 uppercase">Kiosk Sayısı</p>
-          <p class="text-3xl font-bold text-teal-600 mt-1">{{ data.kiosk_sayisi }}</p>
-          <p class="text-xs text-gray-400 mt-1">{{ onlineCount }} çevrimiçi · {{ offlineCount }} çevrimdışı</p>
+      <!-- KPI Stats -->
+      <div class="pharm-stats">
+        <div class="pharm-stat-card">
+          <p class="pharm-stat-label">Kiosk Sayısı</p>
+          <p class="pharm-stat-value">{{ data.kiosk_sayisi }}</p>
+          <p class="pharm-stat-sub">{{ onlineCount }} Çevrimiçi — {{ offlineCount }} Çevrimdışı</p>
         </div>
-        <div class="bg-white rounded-xl shadow p-5">
-          <p class="text-xs text-gray-500 uppercase">Aktif Kategori</p>
-          <p class="text-3xl font-bold text-blue-600 mt-1">{{ data.kategori_sayisi }}</p>
+        <div class="pharm-stat-card">
+          <p class="pharm-stat-label">Aktif Kategori</p>
+          <p class="pharm-stat-value">{{ data.kategori_sayisi }}</p>
         </div>
-        <div class="bg-white rounded-xl shadow p-5">
-          <p class="text-xs text-gray-500 uppercase">Toplam İşlem</p>
-          <p class="text-3xl font-bold text-indigo-600 mt-1">{{ data.oturum_sayisi.toLocaleString('tr-TR') }}</p>
-          <p class="text-xs text-gray-400 mt-1">Bugün: {{ data.oturum_sayisi_bugun }}</p>
+        <div class="pharm-stat-card">
+          <p class="pharm-stat-label">Toplam İşlem</p>
+          <p class="pharm-stat-value">{{ data.oturum_sayisi?.toLocaleString('tr-TR') }}</p>
+          <p class="pharm-stat-sub">Bugün: {{ data.oturum_sayisi_bugun }}</p>
         </div>
-        <div class="bg-white rounded-xl shadow p-5">
-          <p class="text-xs text-gray-500 uppercase">Bugünkü İşlem</p>
-          <p class="text-3xl font-bold text-green-600 mt-1">{{ data.oturum_sayisi_bugun }}</p>
+        <div class="pharm-stat-card">
+          <p class="pharm-stat-label">Bugünkü İşlem</p>
+          <p class="pharm-stat-value">{{ data.oturum_sayisi_bugun }}</p>
         </div>
-        <div class="bg-white rounded-xl shadow p-5">
-          <p class="text-xs text-gray-500 uppercase">Yayındaki Kampanya</p>
-          <p class="text-3xl font-bold text-purple-600 mt-1">{{ data.reklam_sayisi }}</p>
+        <div class="pharm-stat-card">
+          <p class="pharm-stat-label">Yayındaki Kampanya</p>
+          <p class="pharm-stat-value">{{ data.reklam_sayisi }}</p>
         </div>
       </div>
 
-      <!-- Kiosk health tablosu -->
-      <div class="bg-white rounded-xl shadow">
-        <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-          <h2 class="font-semibold text-gray-700">Kiosk Durumları</h2>
-          <button @click="load" class="text-xs text-blue-600 hover:underline">Yenile</button>
+      <!-- Kiosk Health Panel -->
+      <div class="eisa-panel">
+        <div class="eisa-panel-header">
+          <div class="eisa-panel-title-wrap">
+            <i class="fa-solid fa-display" style="color:#0D9488;margin-right:0.5rem;"></i>
+            <span class="eisa-panel-title">Kiosk Durumları</span>
+          </div>
+          <button class="eisa-btn eisa-btn-ghost" @click="load">
+            <i class="fa-solid fa-rotate-right"></i>
+            Yenile
+          </button>
         </div>
-        <div v-if="kiosks.length === 0" class="px-5 py-10 text-center text-gray-400 text-sm">
-          Bu eczaneye kayıtlı kiosk bulunmuyor.
+
+        <div class="eisa-table-wrap">
+          <div v-if="kiosks.length === 0" class="empty-row">
+            Bu eczaneye kayıtlı kiosk bulunmuyor.
+          </div>
+          <table v-else class="eisa-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>MAC Adresi</th>
+                <th>Durum</th>
+                <th>Aktif</th>
+                <th>Son Bağlantı</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="k in kiosks" :key="k.id">
+                <td class="cell-muted">{{ k.id }}</td>
+                <td style="font-family:'DM Mono',monospace;font-size:0.8rem;">{{ k.mac_adresi }}</td>
+                <td>
+                  <span
+                    class="eisa-kiosk-status"
+                    :class="`eisa-kiosk-status--${k.durum}`"
+                  >
+                    <span class="eisa-kiosk-dot"></span>
+                    {{ HEALTH_LABEL[k.durum]?.text ?? k.durum }}
+                  </span>
+                </td>
+                <td>
+                  <span class="eisa-pill" :class="k.aktif ? 'eisa-pill-success' : 'eisa-pill-muted'">
+                    {{ k.aktif ? 'Aktif' : 'Pasif' }}
+                  </span>
+                </td>
+                <td class="cell-muted">{{ fmtRel(k.son_goruldu) }}</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
-        <table v-else class="w-full text-sm">
-          <thead class="bg-gray-50 text-gray-500">
-            <tr>
-              <th class="text-left px-5 py-2 font-medium">#</th>
-              <th class="text-left px-5 py-2 font-medium">MAC</th>
-              <th class="text-left px-5 py-2 font-medium">Durum</th>
-              <th class="text-left px-5 py-2 font-medium">Aktif</th>
-              <th class="text-left px-5 py-2 font-medium">Son Bağlantı</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="k in kiosks"
-              :key="k.id"
-              class="border-t border-gray-50"
-            >
-              <td class="px-5 py-3 text-gray-500">{{ k.id }}</td>
-              <td class="px-5 py-3 font-mono text-gray-700">{{ k.mac_adresi }}</td>
-              <td class="px-5 py-3">
-                <span
-                  class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold"
-                  :class="HEALTH_LABEL[k.durum]?.cls ?? 'bg-gray-100 text-gray-600'"
-                >
-                  <span class="w-2 h-2 rounded-full" :class="HEALTH_LABEL[k.durum]?.dot ?? 'bg-gray-400'" />
-                  {{ HEALTH_LABEL[k.durum]?.text ?? k.durum }}
-                </span>
-              </td>
-              <td class="px-5 py-3">
-                <span
-                  :class="k.aktif ? 'text-green-700' : 'text-gray-400'"
-                  class="text-xs"
-                >{{ k.aktif ? 'Evet' : 'Hayır' }}</span>
-              </td>
-              <td class="px-5 py-3 text-gray-500">{{ fmtRel(k.son_goruldu) }}</td>
-            </tr>
-          </tbody>
-        </table>
       </div>
     </template>
   </div>

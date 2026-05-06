@@ -16,9 +16,11 @@ class SoruSerializer(serializers.ModelSerializer):
     class Meta:
         model = Soru
         fields = [
-            "id", "kategori", "metin", "sira", "cevaplar",
+            "id", "kategori", "seed_id", "metin", "sira", "cevaplar",
+            "eslesme_kurallari",
             "hedef_cinsiyetler", "hedef_yas_araliklari",
         ]
+        read_only_fields = ("id",)
 
 
 class CevapWriteSerializer(serializers.ModelSerializer):

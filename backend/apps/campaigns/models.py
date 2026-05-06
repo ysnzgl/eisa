@@ -16,9 +16,13 @@ class Reklam(BaseModel):
     """DOOH idle reklami. Bos hedef_eczaneler = herkese goster."""
 
     ad = models.CharField(max_length=255)
+    musteri = models.CharField(max_length=255, blank=True, default="")
     medya_url = models.URLField(validators=[_https_url_validator])
+    sure_saniye = models.PositiveSmallIntegerField(default=15)
     baslangic_tarihi = models.DateTimeField()
     bitis_tarihi = models.DateTimeField()
+    yayin_baslangic = models.TimeField(null=True, blank=True, help_text="Günlük yayın başlangıç saati")
+    yayin_bitis = models.TimeField(null=True, blank=True, help_text="Günlük yayın bitiş saati")
 
     hedef_eczaneler = models.ManyToManyField(
         "pharmacies.Eczane", blank=True, related_name="reklamlar"

@@ -10,62 +10,54 @@ async function logout() {
   await auth.logout();
   router.push('/login');
 }
+
+const navItems = [
+  { to: '/admin',                exact: true, icon: 'fa-chart-line',     label: 'Dashboard' },
+  { to: '/admin/devices',        icon: 'fa-display',         label: 'Cihaz Yönetimi' },
+  { to: '/admin/medical-logic',  icon: 'fa-dna',             label: 'Algoritma Editörü' },
+  { to: '/admin/ad-manager',     icon: 'fa-bullhorn',        label: 'Reklam Yöneticisi' },
+  { to: '/admin/scheduler',      icon: 'fa-calendar-week',   label: 'Yayın Takvimi' },
+  { to: '/admin/users',          icon: 'fa-user-gear',       label: 'Kullanıcı Yönetimi' },
+];
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-50 flex">
-    <!-- Kenar çubuğu -->
-    <aside class="w-56 bg-blue-900 text-white flex flex-col">
-      <div class="px-6 py-5 border-b border-blue-800">
-        <span class="text-xl font-bold tracking-tight">e-<span class="text-green-400">İSA</span></span>
-        <p class="text-xs text-blue-300 mt-0.5">Süper Admin Paneli</p>
+  <div class="admin-shell">
+    <aside class="admin-sidebar">
+      <div class="brand">
+        <span class="brand-logo">e-<span class="brand-accent">İSA</span></span>
+        <p class="brand-sub">Admin Paneli</p>
       </div>
-      <nav class="flex-1 px-3 py-4 space-y-1">
+
+      <nav class="nav">
         <RouterLink
-          to="/admin"
-          class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium hover:bg-blue-800 transition"
-          active-class="bg-blue-700"
+          v-for="item in navItems"
+          :key="item.to"
+          :to="item.to"
+          class="nav-link"
+          :class="{ 'is-active': $route.path === item.to || (!item.exact && $route.path.startsWith(item.to) && item.to !== '/admin') }"
         >
-          📊 Dashboard
-        </RouterLink>
-        <RouterLink
-          to="/admin/campaigns"
-          class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium hover:bg-blue-800 transition"
-          active-class="bg-blue-700"
-        >
-          📺 Kampanyalar
-        </RouterLink>
-        <RouterLink
-          to="/admin/devices"
-          class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium hover:bg-blue-800 transition"
-          active-class="bg-blue-700"
-        >
-          🖥️ Cihaz Yönetimi
-        </RouterLink>
-        <RouterLink
-          to="/admin/medical-logic"
-          class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium hover:bg-blue-800 transition"
-          active-class="bg-blue-700"
-        >
-          🧬 Algoritma Editörü
-        </RouterLink>
-        <RouterLink
-          to="/admin/campaign-manager"
-          class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium hover:bg-blue-800 transition"
-          active-class="bg-blue-700"
-        >
-          📡 Kampanya Yöneticisi
+          <i class="fa-solid" :class="item.icon"></i>
+          <span>{{ item.label }}</span>
         </RouterLink>
       </nav>
-      <div class="px-4 py-4 border-t border-blue-800">
-        <button @click="logout" class="w-full text-left text-xs text-blue-300 hover:text-white transition">
-          Çıkış Yap
+
+      <div class="footer">
+        <div class="user">
+          <div class="avatar">{{ (auth.user?.first_name || auth.user?.username || '?')[0]?.toUpperCase() }}</div>
+          <div class="user-meta">
+            <span class="user-name">{{ auth.user?.first_name || auth.user?.username }}</span>
+            <span class="user-role">Süper Admin</span>
+          </div>
+        </div>
+        <button class="logout" @click="logout">
+          <i class="fa-solid fa-right-from-bracket"></i>
+          <span>Çıkış</span>
         </button>
       </div>
     </aside>
 
-    <!-- İçerik alanı -->
-    <main class="flex-1 overflow-auto">
+    <main class="admin-main">
       <RouterView />
     </main>
   </div>
