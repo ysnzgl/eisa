@@ -24,7 +24,7 @@ const routes = [
   },
   {
     path: '/pharmacist',
-    component: () => import('../views/pharmacist/PharmacistLayout.vue'),
+    component: () => import('../views/admin/AdminLayout.vue'),
     meta: { roles: ['pharmacist'] },
     children: [
       { path: '', component: () => import('../views/pharmacist/Dashboard.vue') },

@@ -23,9 +23,6 @@ if (!appKey || !mac) {
   );
 }
 
-// SEC-005: Eczacı uçbiriminden gelen istekler için kullanılan lokal Bearer
-// secret'ın boş olması kabul edilemez. Sadece dev modunda boş bırakılabilir
-// ki hızlı testler engellenmesin; bu durumda auth middleware zaten 503 döner.
 if (!devMode && !localApiSecret) {
   throw new Error(
     'EISA_LOCAL_API_SECRET zorunludur (dev modu dışında boş bırakılamaz).',

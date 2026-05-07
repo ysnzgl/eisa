@@ -1,4 +1,5 @@
 <script setup>
+import { computed } from 'vue';
 import { RouterView, RouterLink } from 'vue-router';
 import { useAuthStore } from '../../stores/auth';
 import { useRouter } from 'vue-router';
@@ -11,22 +12,34 @@ async function logout() {
   router.push('/login');
 }
 
-const navItems = [
-  { to: '/admin',                exact: true, icon: 'fa-chart-line',     label: 'Dashboard' },
-  { to: '/admin/devices',        icon: 'fa-display',         label: 'Cihaz Yönetimi' },
-  { to: '/admin/medical-logic',  icon: 'fa-dna',             label: 'Algoritma Editörü' },
-  { to: '/admin/ad-manager',     icon: 'fa-bullhorn',        label: 'Reklam Yöneticisi' },
-  { to: '/admin/scheduler',      icon: 'fa-calendar-week',   label: 'Yayın Takvimi' },
-  { to: '/admin/users',          icon: 'fa-user-gear',       label: 'Kullanıcı Yönetimi' },
+const isAdmin = computed(() => auth.role === 'superadmin');
+
+const adminNavItems = [
+  { to: '/admin',               exact: true, icon: 'fa-chart-line',   label: 'Dashboard' },
+  { to: '/admin/devices',                    icon: 'fa-display',       label: 'Cihaz Yönetimi' },
+  { to: '/admin/medical-logic',              icon: 'fa-dna',           label: 'Algoritma Editörü' },
+  { to: '/admin/ad-manager',                 icon: 'fa-bullhorn',      label: 'Reklam Yöneticisi' },
+  { to: '/admin/scheduler',                  icon: 'fa-calendar-week', label: 'Yayın Takvimi' },
+  { to: '/admin/users',                      icon: 'fa-user-gear',     label: 'Kullanıcı Yönetimi' },
 ];
+
+const pharmacistNavItems = [
+  { to: '/pharmacist',          exact: true, icon: 'fa-house',   label: 'Ana Sayfa' },
+  { to: '/pharmacist/inbox',                 icon: 'fa-bell',    label: 'Gelen Kutusu' },
+  { to: '/pharmacist/qr',                    icon: 'fa-qrcode',  label: 'QR Okutma' },
+];
+
+const navItems   = computed(() => isAdmin.value ? adminNavItems : pharmacistNavItems);
+const brandSub   = computed(() => isAdmin.value ? 'Yönetici Paneli' : 'Eczacı Paneli');
+const roleLabel  = computed(() => isAdmin.value ? 'Süper Admin' : 'Eczacı');
 </script>
 
 <template>
-  <div class="admin-shell">
+  <div class="admin-shell" :data-role="auth.role">
     <aside class="admin-sidebar">
       <div class="brand">
         <span class="brand-logo">e-<span class="brand-accent">İSA</span></span>
-        <p class="brand-sub">Yönetici Paneli</p>
+        <p class="brand-sub">{{ brandSub }}</p>
       </div>
 
       <nav class="nav">
@@ -35,7 +48,9 @@ const navItems = [
           :key="item.to"
           :to="item.to"
           class="nav-link"
-          :class="{ 'is-active': $route.path === item.to || (!item.exact && $route.path.startsWith(item.to) && item.to !== '/admin') }"
+          :class="{ 'is-active': item.exact
+            ? $route.path === item.to
+            : $route.path === item.to || $route.path.startsWith(item.to + '/') }"
         >
           <i class="fa-solid" :class="item.icon"></i>
           <span>{{ item.label }}</span>
@@ -43,10 +58,10 @@ const navItems = [
       </nav>
 
       <div class="footer">
-        <div class="user">          
+        <div class="user">
           <div class="user-meta">
             <span class="user-name">{{ auth.user?.first_name || auth.user?.username }}</span>
-            <span class="user-role">Süper Admin</span>
+            <span class="user-role">{{ roleLabel }}</span>
           </div>
         </div>
         <button class="logout" @click="logout">

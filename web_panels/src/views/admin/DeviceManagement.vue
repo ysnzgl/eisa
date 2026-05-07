@@ -207,16 +207,18 @@ function closeKioskModal() { kioskModalOpen.value = false; }
 
 async function saveKiosk() {
   const mac = kioskForm.value.mac.trim();
+  const ad = kioskForm.value.ad.trim();
   if (!mac) { kioskFormError.value = 'MAC adresi zorunludur.'; return; }
   // Basic MAC validation
   if (!/^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$/.test(mac)) {
     kioskFormError.value = 'Geçerli bir MAC adresi girin (örn: AA:BB:CC:DD:EE:FF).';
     return;
   }
+  if (!ad) { kioskFormError.value = 'Kiosk adı zorunludur.'; return; }
   kioskSaving.value    = true;
   kioskFormError.value = '';
   try {
-    await createKiosk({ pharmacyId: kioskModalPharm.value.id, mac });
+    await createKiosk({ pharmacyId: kioskModalPharm.value.id, mac,ad });
     await Promise.all([loadKiosks(), loadPharmacies()]);
     closeKioskModal();
   } catch {
@@ -413,7 +415,7 @@ async function confirmDeleteKiosk() {
             ></div>
             <div class="eisa-kiosk-card-body">
               <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:0.6rem;">
-                <span style="font-family:'DM Mono',monospace;font-size:0.8rem;font-weight:700;color:#111827;">{{ kiosk.id }}</span>
+                <span style="font-family:'DM Mono',monospace;font-size:0.8rem;font-weight:700;color:#111827;">{{ kiosk.ad }}</span>
                 <span
                   class="eisa-kiosk-status"
                   :class="isOnline(kiosk) ? 'eisa-kiosk-status--online' : 'eisa-kiosk-status--offline'"
@@ -618,6 +620,21 @@ async function confirmDeleteKiosk() {
                   v-model="kioskForm.mac"
                   type="text"
                   placeholder="AA:BB:CC:DD:EE:FF"
+                  class="eisa-field"
+                  style="font-family:'DM Mono',monospace;"
+                />
+                <p style="margin-top:0.35rem;font-size:0.75rem;color:#6B7280;">Kiosk cihazının fiziksel MAC adresi</p>
+              </div>
+                <div class="eisa-form-row">
+                <label for="kiosk-ad" class="eisa-field-label">
+                  Kiosk Adı <span style="color:#EF4444;">*</span>
+                </label>
+                <input
+                  id="kiosk-ad"
+                  name="ad"
+                  v-model="kioskForm.ad"
+                  type="text"
+                  placeholder="Eczane Önü Kiosk"
                   class="eisa-field"
                   style="font-family:'DM Mono',monospace;"
                 />

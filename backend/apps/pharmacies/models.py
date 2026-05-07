@@ -44,6 +44,7 @@ class Kiosk(BaseModel):
     eczane = models.ForeignKey(
         Eczane, on_delete=models.CASCADE, related_name="kiosklar"
     )
+    ad = models.CharField(max_length=50, unique=False, blank=False, null=False)
     mac_adresi = models.CharField(max_length=17, unique=True)
     uygulama_anahtari = models.CharField(max_length=128, unique=True)
     aktif = models.BooleanField(default=True)

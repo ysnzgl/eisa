@@ -170,11 +170,11 @@ body {
   }
 /* Legacy aliases for eyebrow/page-title */
 .eyebrow { font-family: 'Syne', sans-serif; font-size: 0.62rem; letter-spacing: 0.18em; color: #6B7280; margin: 0 0 0.4rem; text-transform: uppercase; font-weight: 600; }
-.page-title { font-family: 'Syne', sans-serif; font-size: 1.75rem; font-weight: 800; color: #111827; margin: 0; letter-spacing: -0.03em; }
+.page-title { font-family: 'Syne', sans-serif; font-size: 1.75rem; font-weight: 700; color: #111827; margin: 0; letter-spacing: -0.03em; }
   .eisa-page-title {
     font-family: 'Syne', sans-serif;
     font-size: 2rem;
-    font-weight: 800;
+    font-weight: 700;
     color: var(--text);
     margin: 0;
     letter-spacing: -0.03em;
@@ -208,7 +208,6 @@ body {
     border-bottom: 1px solid var(--border);
   }
   .eisa-panel-title {
-    font-family: 'Syne', sans-serif;
     font-size: 1.05rem;
     font-weight: 700;
     color: var(--text);
@@ -452,7 +451,7 @@ body {
 .eisa-stat-value {
   font-family: 'Syne', sans-serif;
   font-size: 1.6rem;
-  font-weight: 800;
+  font-weight: 700;
   color: #111827;
   line-height: 1.1;
 }
@@ -490,8 +489,7 @@ body {
 .eisa-table .cell-muted { color: #6B7280; font-size: 0.8rem; }
 .eisa-table .cell-actions { display: flex; gap: 0.35rem; }
 .eisa-table .actions-col { width: 140px; }
-.eisa-table .empty-row { text-align: center; padding: 2.5rem 1rem !important; color: #6B7280; }
-
+.empty-row { text-align: center; padding: 2.5rem 1rem !important; color: #6B7280; }
 /* ─── User Cell ───────────────────────────────────────────────── */
 .eisa-user-cell { display: flex; align-items: center; gap: 0.6rem; }
 .eisa-avatar {
@@ -915,7 +913,7 @@ body {
 .admin-sidebar .brand { padding: 1.4rem 1.5rem 1.1rem; border-bottom: 1px solid #EEEDE9; }
 .admin-sidebar .brand-logo {
   font-family: 'Syne', sans-serif;
-  font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em; color: #111827;
+  font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; color: #111827;
 }
 .admin-sidebar .brand-accent { color: #2563EB; }
 .admin-sidebar .brand-sub {
@@ -966,6 +964,14 @@ body {
 .admin-sidebar .logout:hover { background: #FEE2E2; color: #B91C1C; border-color: #FCA5A5; }
 .admin-main { flex: 1; overflow: auto; min-width: 0; }
 
+/* ── Pharmacist role overrides (teal accent) ──────────────────── */
+[data-role="pharmacist"] .admin-sidebar .brand-accent { color: #0D9488; }
+[data-role="pharmacist"] .admin-sidebar .nav-link:hover i { color: #0D9488; }
+[data-role="pharmacist"] .admin-sidebar .nav-link.is-active,
+[data-role="pharmacist"] .admin-sidebar .nav-link.router-link-exact-active { background: #F0FDFA; color: #0D9488; border-color: #0D9488; }
+[data-role="pharmacist"] .admin-sidebar .nav-link.is-active i,
+[data-role="pharmacist"] .admin-sidebar .nav-link.router-link-exact-active i { color: #0D9488; }
+
 /* ─── Pharmacist Layout ───────────────────────────────────────── */
 .pharm-shell {
   min-height: 100vh;
@@ -985,7 +991,7 @@ body {
   height: 100vh;
 }
 .pharm-sidebar .brand { padding: 1.3rem 1.25rem 1rem; border-bottom: 1px solid #EEEDE9; }
-.pharm-sidebar .brand-logo { font-family: 'Syne', sans-serif; font-size: 1.4rem; font-weight: 800; letter-spacing: -0.02em; color: #111827; }
+.pharm-sidebar .brand-logo { font-family: 'Syne', sans-serif; font-size: 1.4rem; font-weight: 700; letter-spacing: -0.02em; color: #111827; }
 .pharm-sidebar .brand-accent { color: #0D9488; }
 .pharm-sidebar .brand-sub { font-size: 0.68rem; color: #6B7280; margin: 0.1rem 0 0; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600; }
 .pharm-sidebar .nav { flex: 1; padding: 1rem 0.75rem; display: flex; flex-direction: column; gap: 2px; overflow-y: auto; }
@@ -1292,7 +1298,7 @@ body {
 }
 .user-mgmt .stat-value, .pharm-stat-value {
   font-family: 'Syne', sans-serif; font-size: 1.6rem;
-  font-weight: 800; color: #111827;
+  font-weight: 700; color: #111827;
 }
 .pharm-stat-sub { font-size: 0.72rem; color: #6B7280; }
 
@@ -1342,6 +1348,9 @@ body {
 .dash-kpi-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:1rem; margin-bottom:1.25rem; }
 @media(max-width:1100px){.dash-kpi-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:640px){.dash-kpi-grid{grid-template-columns:1fr}}
+/* 5-column override for pharmacist (inline style), keep responsive */
+@media(max-width:1300px){.dash-kpi-grid[style*="repeat(5"]{grid-template-columns:repeat(3,1fr) !important}}
+@media(max-width:900px){.dash-kpi-grid[style*="repeat(5"]{grid-template-columns:repeat(2,1fr) !important}}
 .dash-kpi-card { background:#fff; border:1px solid #E5E3DF; border-radius:0.875rem; overflow:hidden; display:flex; flex-direction:column; animation:dash-slide-up 0.4s ease both; }
 @keyframes dash-slide-up { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
 .dash-kpi-accent { height:3px; background:var(--kpi-c,#2563EB); }

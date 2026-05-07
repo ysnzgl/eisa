@@ -1,6 +1,3 @@
-// Push/Pull mantigi — Turkce sema, Turkce backend payload'lari.
-// PULL: kategori/soru/etken_madde + reklamlari merkezden cekip SQLite'a upsert eder.
-// PUSH: outbox'taki anonim loglari merkeze iter; idempotency_anahtari ile guvenli silme.
 import cron from 'node-cron';
 import { Agent, fetch } from 'undici';
 import { checkOutboxPressure } from './db.js';

@@ -57,6 +57,7 @@ export function mapKioskFromApi(k) {
     pharmacyId: k.eczane,
     pharmacyName: k.eczane_adi ?? '',
     mac: k.mac_adresi,
+    ad:k.ad,
     appKey: k.uygulama_anahtari,
     isActive: k.aktif !== false,
     lastPing: k.son_goruldu,
@@ -92,6 +93,7 @@ export async function deletePharmacy(id) {
 // ─── Kiosk Servisleri ───────────────────────────────────────────────────────
 
 export async function getKioskStatus(pharmacyId = null) {
+  debugger;
   const params = pharmacyId ? { eczane: pharmacyId } : {};
   const { data } = await http.get('/api/pharmacies/kiosks/', { params });
   const items = Array.isArray(data) ? data : (data?.results ?? []);
@@ -103,9 +105,11 @@ export async function getKioskStatus(pharmacyId = null) {
  * @param {{ pharmacyId: number, mac: string }} data
  */
 export async function createKiosk(data) {
+  debugger;
   const { data: created } = await http.post('/api/pharmacies/kiosks/', {
     eczane: data.pharmacyId,
     mac_adresi: data.mac,
+    ad:data.ad,
     aktif: true,
   });
   return mapKioskFromApi(created);

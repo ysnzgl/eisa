@@ -46,7 +46,7 @@ body {
 
 /* ─── Header ─── */
 .kiosk-header    { text-align: center; margin-bottom: 24px; }
-.kiosk-logo      { font-size: 34px; font-weight: 800; color: #1a2e44; letter-spacing: -1px; }
+.kiosk-logo      { font-size: 34px; font-weight: 700; color: #1a2e44; letter-spacing: -1px; }
 .kiosk-logo span { color: #22c55e; }
 .kiosk-subtitle  { font-size: 15px; color: #64748b; margin-top: 2px; }
 
@@ -186,7 +186,7 @@ body {
 .result-card.success          { border-top: 6px solid #22c55e; }
 .result-card.sensitive-result { border-top: 6px solid #ef4444; }
 .result-label           { font-size: 15px; color: #64748b; margin-bottom: 6px; }
-.result-ingredient-main { font-size: 28px; font-weight: 800; }
+.result-ingredient-main { font-size: 28px; font-weight: 700; }
 .result-ingredient-sub  { font-size: 19px; color: #64748b; font-weight: 600; margin-top: 8px; }
 .qr-box {
   width: 210px;
@@ -297,7 +297,7 @@ body {
   letter-spacing: 0.5px;
 }
 .sensitive-badge { background: #fff1f2; color: #991b1b; }
-.screen-title    { font-size: 22px; font-weight: 800; color: #1e293b; margin-bottom: 24px; }
+.screen-title    { font-size: 22px; font-weight: 700; color: #1e293b; margin-bottom: 24px; }
 .or-divider {
   display: flex;
   align-items: center;

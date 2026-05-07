@@ -52,6 +52,7 @@ class KioskSerializer(serializers.ModelSerializer):
             "id",
             "eczane",
             "eczane_adi",
+            "ad",
             "mac_adresi",
             "uygulama_anahtari",
             "aktif",

@@ -8,16 +8,36 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue';
 import { http } from '../../services/api';
 
-const data = ref(null);
+const data    = ref(null);
 const loading = ref(true);
-const error = ref('');
+const error   = ref('');
 let refreshTimer = null;
+
+// KPI count-up animated values
+const kpiValues = ref({ kiosks: '0', categories: '0', sessions: '0', todaySessions: '0', ads: '0' });
+
+function countUp(key, target, duration = 1500) {
+  const start = performance.now();
+  const tick  = (now) => {
+    const t    = Math.min((now - start) / duration, 1);
+    const ease = 1 - Math.pow(1 - t, 4);
+    kpiValues.value[key] = Math.round(ease * target).toLocaleString('tr-TR');
+    if (t < 1) requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
 
 async function load() {
   try {
     const res = await http.get('/api/pharmacies/me/dashboard/');
-    data.value = res.data;
+    data.value  = res.data;
     error.value = '';
+    // Trigger count-up animations
+    setTimeout(() => countUp('kiosks',        res.data.kiosk_sayisi        ?? 0),   0);
+    setTimeout(() => countUp('categories',    res.data.kategori_sayisi     ?? 0), 120);
+    setTimeout(() => countUp('sessions',      res.data.oturum_sayisi       ?? 0), 240);
+    setTimeout(() => countUp('todaySessions', res.data.oturum_sayisi_bugun ?? 0), 360);
+    setTimeout(() => countUp('ads',           res.data.reklam_sayisi       ?? 0), 480);
   } catch (e) {
     error.value = 'Veriler yüklenemedi. Bağlantınızı kontrol edin.';
   } finally {
@@ -27,22 +47,62 @@ async function load() {
 
 onMounted(() => {
   load();
-  // Kiosk health'in canlı kalması için 30 sn'de bir tazele.
   refreshTimer = setInterval(load, 30_000);
 });
 onUnmounted(() => clearInterval(refreshTimer));
 
-const kiosks = computed(() => data.value?.kiosklar ?? []);
+const kiosks      = computed(() => data.value?.kiosklar ?? []);
 const onlineCount = computed(() => kiosks.value.filter((k) => k.durum === 'online').length);
-const offlineCount = computed(() => kiosks.value.filter((k) => k.durum === 'offline').length);
+const offlineCount= computed(() => kiosks.value.filter((k) => k.durum === 'offline').length);
+
+const kpiCards = computed(() => [
+  {
+    id: 'kiosks',
+    label: 'Kiosk Sayısı',
+    valueKey: 'kiosks',
+    color: '#0D9488',
+    icon: 'fa-display',
+    sub: () => data.value ? `${onlineCount.value} Çevrimiçi — ${offlineCount.value} Çevrimdışı` : '',
+    subClass: offlineCount.value > 0 ? 'dash-kpi-sub--danger' : '',
+  },
+  {
+    id: 'categories',
+    label: 'Aktif Kategori',
+    valueKey: 'categories',
+    color: '#7C3AED',
+    icon: 'fa-tags',
+  },
+  {
+    id: 'sessions',
+    label: 'Toplam İşlem',
+    valueKey: 'sessions',
+    color: '#2563EB',
+    icon: 'fa-arrow-right-arrow-left',
+    sub: () => data.value ? `Bugün: ${data.value.oturum_sayisi_bugun}` : '',
+  },
+  {
+    id: 'todaySessions',
+    label: 'Bugünkü İşlem',
+    valueKey: 'todaySessions',
+    color: '#D97706',
+    icon: 'fa-calendar-day',
+  },
+  {
+    id: 'ads',
+    label: 'Yayındaki Kampanya',
+    valueKey: 'ads',
+    color: '#DB2777',
+    icon: 'fa-bullhorn',
+  },
+]);
 
 function fmtRel(iso) {
   if (!iso) return 'Hiç bağlanmadı';
   const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
-  if (diff < 60) return `${diff} sn önce`;
-  if (diff < 3600) return `${Math.floor(diff / 60)} dk önce`;
+  if (diff < 60)    return `${diff} sn önce`;
+  if (diff < 3600)  return `${Math.floor(diff / 60)} dk önce`;
   if (diff < 86400) return `${Math.floor(diff / 3600)} sa önce`;
-  return `${Math.floor(diff / 86400)} gün önce}`;
+  return `${Math.floor(diff / 86400)} gün önce`;
 }
 
 const HEALTH_LABEL = {
@@ -58,13 +118,19 @@ const HEALTH_LABEL = {
     <!-- Page Header -->
     <div class="eisa-page-header">
       <div>
-        <p class="eisa-eyebrow">Eczacı / Ana Sayfa</p>
+        <p class="eisa-eyebrow">ECZACI / ANA SAYFA</p>
         <h1 class="eisa-page-title">
           {{ data?.eczane?.ad ?? 'Kontrol Paneli' }}
         </h1>
         <p v-if="data?.eczane" class="eisa-page-subtitle">
           {{ data.eczane.ilce }} / {{ data.eczane.il }}
         </p>
+      </div>
+      <div class="eisa-header-actions">
+        <button class="eisa-btn eisa-btn-ghost" @click="load">
+          <i class="fa-solid fa-rotate-right"></i>
+          Yenile
+        </button>
       </div>
     </div>
 
@@ -86,29 +152,27 @@ const HEALTH_LABEL = {
         {{ data.uyari }}
       </div>
 
-      <!-- KPI Stats -->
-      <div class="pharm-stats">
-        <div class="pharm-stat-card">
-          <p class="pharm-stat-label">Kiosk Sayısı</p>
-          <p class="pharm-stat-value">{{ data.kiosk_sayisi }}</p>
-          <p class="pharm-stat-sub">{{ onlineCount }} Çevrimiçi — {{ offlineCount }} Çevrimdışı</p>
-        </div>
-        <div class="pharm-stat-card">
-          <p class="pharm-stat-label">Aktif Kategori</p>
-          <p class="pharm-stat-value">{{ data.kategori_sayisi }}</p>
-        </div>
-        <div class="pharm-stat-card">
-          <p class="pharm-stat-label">Toplam İşlem</p>
-          <p class="pharm-stat-value">{{ data.oturum_sayisi?.toLocaleString('tr-TR') }}</p>
-          <p class="pharm-stat-sub">Bugün: {{ data.oturum_sayisi_bugun }}</p>
-        </div>
-        <div class="pharm-stat-card">
-          <p class="pharm-stat-label">Bugünkü İşlem</p>
-          <p class="pharm-stat-value">{{ data.oturum_sayisi_bugun }}</p>
-        </div>
-        <div class="pharm-stat-card">
-          <p class="pharm-stat-label">Yayındaki Kampanya</p>
-          <p class="pharm-stat-value">{{ data.reklam_sayisi }}</p>
+      <!-- KPI Cards — same structure as admin dashboard -->
+      <div class="dash-kpi-grid" style="grid-template-columns:repeat(5,1fr);">
+        <div
+          v-for="(kpi, i) in kpiCards"
+          :key="kpi.id"
+          class="dash-kpi-card"
+          :style="{ '--kpi-c': kpi.color, animationDelay: (i * 90) + 'ms' }"
+        >
+          <div class="dash-kpi-accent"></div>
+          <div class="dash-kpi-body">
+            <div class="dash-kpi-top">
+              <span class="dash-kpi-label">{{ kpi.label }}</span>
+              <span class="dash-kpi-icon" :style="{ color: kpi.color }">
+                <i class="fa-solid" :class="kpi.icon"></i>
+              </span>
+            </div>
+            <div class="dash-kpi-number">{{ kpiValues[kpi.valueKey] }}</div>
+            <div v-if="kpi.sub" class="dash-kpi-sub" :class="kpi.subClass">
+              {{ kpi.sub() }}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -119,10 +183,6 @@ const HEALTH_LABEL = {
             <i class="fa-solid fa-display" style="color:#0D9488;margin-right:0.5rem;"></i>
             <span class="eisa-panel-title">Kiosk Durumları</span>
           </div>
-          <button class="eisa-btn eisa-btn-ghost" @click="load">
-            <i class="fa-solid fa-rotate-right"></i>
-            Yenile
-          </button>
         </div>
 
         <div class="eisa-table-wrap">
@@ -133,6 +193,7 @@ const HEALTH_LABEL = {
             <thead>
               <tr>
                 <th>#</th>
+                <th>Kiosk Adı</th>
                 <th>MAC Adresi</th>
                 <th>Durum</th>
                 <th>Aktif</th>
@@ -142,13 +203,13 @@ const HEALTH_LABEL = {
             <tbody>
               <tr v-for="k in kiosks" :key="k.id">
                 <td class="cell-muted">{{ k.id }}</td>
+                <td style="font-family:'DM Mono',monospace;font-size:0.8rem;">{{ k.ad }}</td>
                 <td style="font-family:'DM Mono',monospace;font-size:0.8rem;">{{ k.mac_adresi }}</td>
                 <td>
                   <span
                     class="eisa-kiosk-status"
                     :class="`eisa-kiosk-status--${k.durum}`"
                   >
-                    <span class="eisa-kiosk-dot"></span>
                     {{ HEALTH_LABEL[k.durum]?.text ?? k.durum }}
                   </span>
                 </td>

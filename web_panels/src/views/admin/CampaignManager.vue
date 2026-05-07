@@ -267,7 +267,7 @@ const TAB_CONFIG = [
 
 .eyebrow {
   font-size: 10px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: #2563EB;
@@ -286,7 +286,7 @@ const TAB_CONFIG = [
 }
 .kpi-num {
   font-size: 22px;
-  font-weight: 800;
+  font-weight: 700;
   color: #111827;
   line-height: 1;
 }
@@ -427,23 +427,6 @@ const TAB_CONFIG = [
   background: #FAFAF9;
 }
 
-/* ─── Step Dots ──────────────────────────────────────── */
-.step-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
-.step-dot-active {
-  background: #2563EB;
-  transform: scale(1.4);
-}
-.step-dot-done {
-  background: #10B981;
-}
-.step-dot-idle {
-  background: #D1D5DB;
-}
-
 /* ─── Error Banner ───────────────────────────────────── */
 .error-banner {
   background: #FEF2F2;
@@ -571,7 +554,7 @@ const TAB_CONFIG = [
 /* ─── Page Title & CTA ───────────────────────────────── */
 .page-title {
   font-size: 22px;
-  font-weight: 800;
+  font-weight: 700;
   color: #111827;
   line-height: 1.2;
   margin: 0;
@@ -596,7 +579,7 @@ const TAB_CONFIG = [
 /* ─── KPI Value / Skeleton ───────────────────────────── */
 .kpi-value {
   font-size: 22px;
-  font-weight: 800;
+  font-weight: 700;
   color: #111827;
   line-height: 1;
   margin-top: 2px;

@@ -54,6 +54,7 @@ class Command(BaseCommand):
             mac_adresi=mac_address,
             defaults={
                 "eczane": eczane,
+                "ad": "Demo Kiosk",
                 "uygulama_anahtari": app_key,
                 "aktif": True,
                 "son_goruldu": now(),

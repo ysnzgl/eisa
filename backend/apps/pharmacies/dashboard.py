@@ -69,13 +69,12 @@ class EczaciDashboardView(APIView):
         oturum_sayisi = oturum_qs.count()
         oturum_sayisi_bugun = oturum_qs.filter(olusturulma_tarihi__gte=bugun_basi).count()
 
-        # Eczanenin il/ilcesine hedeflenmis aktif reklamlar
+        # Bu eczaneye hedeflenmis aktif reklamlar:
+        # hedef_eczaneler bos (herkese goster) VEYA bu eczane hedefte yer aliyor
         reklam_qs = Reklam.objects.filter(
             aktif=True, baslangic_tarihi__lte=now, bitis_tarihi__gte=now
         ).filter(
-            Q(hedef_iller__isnull=True) | Q(hedef_iller=eczane.il)
-        ).filter(
-            Q(hedef_ilceler__isnull=True) | Q(hedef_ilceler=eczane.ilce)
+            Q(hedef_eczaneler__isnull=True) | Q(hedef_eczaneler=eczane)
         ).distinct()
         reklam_sayisi = reklam_qs.count()
 
@@ -84,6 +83,7 @@ class EczaciDashboardView(APIView):
         kiosklar_payload = [
             {
                 "id": k.id,
+                "ad":k.ad,
                 "mac_adresi": k.mac_adresi,
                 "aktif": k.aktif,
                 "son_goruldu": k.son_goruldu,

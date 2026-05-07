@@ -10,7 +10,7 @@
     <!-- Header -->
     <div class="header">
       <div class="header-left">
-        <div class="header-eyebrow">KAMPANYA KONTROL MERKEZİ</div>
+        <div class="header-eyebrow">REKLAM KONTROL MERKEZİ</div>
         <h1 class="header-title">Kiosk Zaman Çizelgesi</h1>
         <div class="header-sub">{{ currentDate }}</div>
       </div>
@@ -24,7 +24,7 @@
           >{{ v.label }}</button>
         </div>
         <button class="btn-add" @click="openAssignModal()">
-          <span class="btn-icon">+</span> Kampanya Ata
+          <span class="btn-icon">+</span> Reklam Ata
         </button>
       </div>
     </div>
@@ -175,7 +175,7 @@
     <transition name="drawer">
       <div v-if="selectedBlock" class="block-detail-panel">
         <button class="panel-close" @click="selectedBlock = null">✕</button>
-        <div class="panel-eyebrow">KAMPANYA DETAYI</div>
+        <div class="panel-eyebrow">REKLAM DETAYI</div>
         <h2 class="panel-title">{{ selectedBlock.name }}</h2>
         <div class="panel-color-bar" :style="{ background: selectedBlock.color }"></div>
         <div class="panel-rows">
@@ -204,10 +204,10 @@
       <div v-if="showAssignModal" class="modal-overlay" @click.self="showAssignModal = false">
         <div class="modal-box">
           <div class="modal-eyebrow">YENİ ATAMA</div>
-          <h3 class="modal-title">Kampanya Ata</h3>
+          <h3 class="modal-title">Reklam Ata</h3>
 
           <div class="form-group">
-            <label>Kampanya</label>
+            <label>Reklam</label>
             <select v-model="assignForm.campaignId" class="form-select">
               <option value="">— Seç —</option>
               <option v-for="c in campaigns" :key="c.id" :value="c.id">{{ c.name }}</option>
@@ -319,7 +319,7 @@ async function loadData() {
       kiosks: kioskByPharmacy[p.id] || [],
     })).filter(p => p.kiosks.length > 0)
 
-    // Mevcut kampanyalardan otomatik blok seed et: yayın saatleri × hedef eczane kiosk'ları
+    // Mevcut reklamlardan otomatik blok seed et: yayın saatleri × hedef eczane kiosk'ları
     blocks.value = []
     campaigns.value.forEach(c => {
       const [sH] = (c.broadcast_start || '08:00').split(':').map(Number)
@@ -388,11 +388,11 @@ const stats = computed(() => {
     ? Math.round(allKiosks.value.reduce((s, k) => s + fillRate(k.id), 0) / allKiosks.value.length)
     : 0
   return [
-    { label: 'Aktif Kampanya', value: activeBlocks.length },
+    { label: 'Aktif Reklam', value: activeBlocks.length },
     { label: 'Ortalama Doluluk', value: `${totalFill}%` },
     { label: 'Çakışmalı Kiosk', value: conflictKiosks.size },
     { label: 'Toplam Kiosk', value: allKiosks.value.length },
-    { label: 'Kampanya', value: campaigns.value.length },
+    { label: 'Reklam', value: campaigns.value.length },
   ]
 })
 
@@ -488,7 +488,7 @@ onMounted(loadData)
 .header-left { flex: 1; }
 .header-eyebrow {
   font-size: 10px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: #2563EB;
@@ -847,7 +847,7 @@ onMounted(loadData)
 }
 .stat-value {
   font-size: 20px;
-  font-weight: 800;
+  font-weight: 700;
   color: #111827;
   line-height: 1;
   font-family: 'Azeret Mono', monospace;
@@ -895,7 +895,7 @@ onMounted(loadData)
 .panel-close:hover { background: #F3F4F6; color: #111827; }
 .panel-eyebrow {
   font-size: 10px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.15em;
   text-transform: uppercase;
   color: #2563EB;
@@ -956,7 +956,7 @@ onMounted(loadData)
 }
 .modal-eyebrow {
   font-size: 10px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.15em;
   text-transform: uppercase;
   color: #2563EB;
@@ -1053,7 +1053,7 @@ onMounted(loadData)
 }
 .header-eyebrow {
   font-size: 10px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: #2563EB;
@@ -1061,7 +1061,7 @@ onMounted(loadData)
 }
 .header-title {
   font-size: 22px;
-  font-weight: 800;
+  font-weight: 700;
   color: #111827;
   line-height: 1.1;
 }
@@ -1441,7 +1441,7 @@ onMounted(loadData)
 }
 .stat-value {
   font-size: 20px;
-  font-weight: 800;
+  font-weight: 700;
   color: #111827;
   line-height: 1;
 }
@@ -1488,7 +1488,7 @@ onMounted(loadData)
 .panel-close:hover { background: #F3F4F6; color: #111827; }
 .panel-eyebrow {
   font-size: 10px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: #2563EB;
@@ -1496,7 +1496,7 @@ onMounted(loadData)
 }
 .panel-title {
   font-size: 16px;
-  font-weight: 800;
+  font-weight: 700;
   color: #111827;
   margin-bottom: 10px;
   line-height: 1.2;
@@ -1558,7 +1558,7 @@ onMounted(loadData)
 }
 .modal-eyebrow {
   font-size: 10px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: #2563EB;
@@ -1566,7 +1566,7 @@ onMounted(loadData)
 }
 .modal-title {
   font-size: 18px;
-  font-weight: 800;
+  font-weight: 700;
   color: #111827;
   margin-bottom: 16px;
 }
