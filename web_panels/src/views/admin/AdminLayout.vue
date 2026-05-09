@@ -20,6 +20,8 @@ const adminNavItems = [
   { to: '/admin/medical-logic',              icon: 'fa-dna',           label: 'Algoritma Editörü' },
   { to: '/admin/ad-manager',                 icon: 'fa-bullhorn',      label: 'Reklam Yöneticisi' },
   { to: '/admin/scheduler',                  icon: 'fa-calendar-week', label: 'Yayın Takvimi' },
+  { to: '/admin/timeline',                   icon: 'fa-stream',        label: 'Loop Timeline' },
+  { to: '/admin/pricing',                    icon: 'fa-coins',         label: 'Fiyat Matrisi' },
   { to: '/admin/users',                      icon: 'fa-user-gear',     label: 'Kullanıcı Yönetimi' },
 ];
 

@@ -5,6 +5,8 @@ from django.http import HttpResponse
 from django.urls import include, path
 from django.views import View
 
+from apps.campaigns.urls import inventory_urlpatterns, kiosk_v1_urlpatterns
+
 from .auth_views import (
     CookieLogoutView,
     CookieTokenObtainPairView,
@@ -34,6 +36,8 @@ urlpatterns = [
     path("api/products/", include("apps.products.urls")),
     path("api/analytics/", include("apps.analytics.urls")),
     path("api/campaigns/", include("apps.campaigns.urls")),
+    path("api/inventory/", include((inventory_urlpatterns, "inventory"))),
+    path("api/kiosk/v1/", include((kiosk_v1_urlpatterns, "kiosk_v1"))),
 ]
 
 # Swagger / ReDoc yalnızca geliştirme ortamında

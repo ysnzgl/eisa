@@ -19,6 +19,8 @@ const routes = [
       { path: 'medical-logic',      component: () => import('../views/admin/MedicalLogic.vue') },
       { path: 'ad-manager',    component: () => import('../views/admin/CampaignManager.vue') },
       { path: 'scheduler',     component: () => import('../views/admin/CampaignScheduler.vue') },
+      { path: 'timeline',      component: () => import('../views/admin/AdTimelineView.vue') },
+      { path: 'pricing',       component: () => import('../views/admin/PricingMatrixConfigurator.vue') },
       { path: 'users',         component: () => import('../views/admin/UserManagement.vue') },
     ]
   },
