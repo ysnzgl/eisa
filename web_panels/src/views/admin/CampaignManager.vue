@@ -82,6 +82,18 @@ async function doUpload(file) {
   }
 }
 
+function apiErrorMessage(error, fallback) {
+  const data = error?.response?.data;
+  if (data?.detail) return String(data.detail);
+  if (data?.error) return String(data.error);
+  if (data && typeof data === 'object') {
+    const [field, value] = Object.entries(data)[0] ?? [];
+    const message = Array.isArray(value) ? value[0] : value;
+    if (message) return field ? `${field}: ${message}` : String(message);
+  }
+  return fallback;
+}
+
 function isVideo(url) { return /\.(mp4|webm|ogg)(\?|$)/i.test(url); }
 
 //  Silme onay 
@@ -178,7 +190,7 @@ async function saveForm() {
     }
     await loadCampaigns();
     closeDrawer();
-  } catch { drawerError.value = 'Kayıt başarısız. Lütfen tekrar deneyin.'; }
+  } catch (error) { drawerError.value = apiErrorMessage(error, 'Kayıt başarısız. Lütfen tekrar deneyin.'); }
   finally { drawerSaving.value = false; }
 }
 

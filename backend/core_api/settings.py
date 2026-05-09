@@ -221,6 +221,15 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
+MINIO_ENDPOINT = config("MINIO_ENDPOINT", default="localhost:9000")
+MINIO_ACCESS_KEY = config("MINIO_ACCESS_KEY", default="admin")
+MINIO_SECRET_KEY = config("MINIO_SECRET_KEY", default="admin123")
+MINIO_BUCKET_NAME = config("MINIO_BUCKET_NAME", default="dev")
+MINIO_SECURE = config("MINIO_SECURE", default=False, cast=bool)
+MINIO_PRESIGNED_URL_TTL_MINUTES = config(
+    "MINIO_PRESIGNED_URL_TTL_MINUTES", default=60, cast=int
+)
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # ─── API Dokümantasyonu (yalnızca geliştirme ortamında) ─────────────────────

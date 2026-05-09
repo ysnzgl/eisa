@@ -93,7 +93,6 @@ export async function deletePharmacy(id) {
 // ─── Kiosk Servisleri ───────────────────────────────────────────────────────
 
 export async function getKioskStatus(pharmacyId = null) {
-  debugger;
   const params = pharmacyId ? { eczane: pharmacyId } : {};
   const { data } = await http.get('/api/pharmacies/kiosks/', { params });
   const items = Array.isArray(data) ? data : (data?.results ?? []);
@@ -105,7 +104,6 @@ export async function getKioskStatus(pharmacyId = null) {
  * @param {{ pharmacyId: number, mac: string }} data
  */
 export async function createKiosk(data) {
-  debugger;
   const { data: created } = await http.post('/api/pharmacies/kiosks/', {
     eczane: data.pharmacyId,
     mac_adresi: data.mac,

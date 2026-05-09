@@ -244,7 +244,12 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { getPharmacies, getKioskStatus } from '../../services/devices'
-import { getCampaigns } from '../../services/campaignManager'
+import {
+  createCampaignSchedule,
+  deleteCampaignSchedule,
+  getCampaigns,
+  getCampaignSchedules,
+} from '../../services/campaignManager'
 
 // --- CONFIG ---
 const cellWidth = 52   // px per hour
@@ -274,16 +279,16 @@ const loading = ref(false)
 // --- DATA loaded from API ---
 const campaigns = ref([])    // [{ id, name, color, client, mediaType, priority }]
 const pharmacies = ref([])   // [{ id, name, kiosks: [{id, name, online}] }]
-// Local-only campaign blocks (backend henüz scheduler persist endpoint'i sunmuyor)
 const blocks = ref([])
 
 async function loadData() {
   loading.value = true
   try {
-    const [camps, pharms, kiosks] = await Promise.all([
+    const [camps, pharms, kiosks, schedules] = await Promise.all([
       getCampaigns().catch(() => []),
       getPharmacies().catch(() => []),
       getKioskStatus().catch(() => []),
+      getCampaignSchedules().catch(() => []),
     ])
 
     // Campaign mapping: campaignManager service'i { id, name, client, ... } döndürür
@@ -319,29 +324,20 @@ async function loadData() {
       kiosks: kioskByPharmacy[p.id] || [],
     })).filter(p => p.kiosks.length > 0)
 
-    // Mevcut reklamlardan otomatik blok seed et: yayın saatleri × hedef eczane kiosk'ları
-    blocks.value = []
-    campaigns.value.forEach(c => {
-      const [sH] = (c.broadcast_start || '08:00').split(':').map(Number)
-      const [eH] = (c.broadcast_end || '22:00').split(':').map(Number)
-      const targetIds = (c.target_pharmacy_ids?.length ? c.target_pharmacy_ids : pharmacies.value.map(p => p.id))
-      pharmacies.value.forEach(p => {
-        if (!targetIds.includes(p.id)) return
-        p.kiosks.forEach(k => {
-          blocks.value.push({
-            id: `seed-${c.id}-${k.id}`,
-            kioskId: k.id,
-            campaignId: c.id,
-            name: c.name,
-            color: c.color,
-            start: sH,
-            end: eH,
-            client: c.client,
-            mediaType: c.mediaType,
-            priority: c.priority,
-          })
-        })
-      })
+    blocks.value = (schedules || []).filter(s => s.isActive !== false).map(s => {
+      const camp = campaigns.value.find(c => c.id === s.campaignId)
+      return {
+        id: s.id,
+        kioskId: s.kioskId,
+        campaignId: s.campaignId,
+        name: s.campaignName || camp?.name || `Reklam-${s.campaignId}`,
+        color: colorFor(s.campaignId),
+        start: s.start,
+        end: s.end,
+        client: s.client || camp?.client || '—',
+        mediaType: s.durationSec ? `Video ${s.durationSec}s` : camp?.mediaType || 'Medya',
+        priority: camp?.priority || 'Normal',
+      }
     })
   } finally {
     loading.value = false
@@ -424,7 +420,8 @@ function selectBlock(block) {
   selectedBlock.value = selectedBlock.value?.id === block.id ? null : block
 }
 
-function removeBlock(block) {
+async function removeBlock(block) {
+  await deleteCampaignSchedule(block.id)
   blocks.value = blocks.value.filter(b => b.id !== block.id)
   selectedBlock.value = null
 }
@@ -439,13 +436,23 @@ function openAssignModal(kiosk = null, hourIdx = null) {
   showAssignModal.value = true
 }
 
-function confirmAssign() {
-  const camp = campaigns.value.find(c => c.id === parseInt(assignForm.value.campaignId))
-  if (!camp || !assignForm.value.kioskId || assignForm.value.start >= assignForm.value.end) return
+async function confirmAssign() {
+  const campaignId = Number(assignForm.value.campaignId)
+  const kioskId = Number(assignForm.value.kioskId)
+  const camp = campaigns.value.find(c => c.id === campaignId)
+  if (!camp || !kioskId || assignForm.value.start >= assignForm.value.end) return
+
+  const created = await createCampaignSchedule({
+    campaignId,
+    kioskId,
+    start: assignForm.value.start,
+    end: assignForm.value.end,
+    isActive: true,
+  })
 
   blocks.value.push({
-    id: 'b' + Date.now(),
-    kioskId: assignForm.value.kioskId,
+    id: created.id,
+    kioskId,
     campaignId: camp.id,
     name: camp.name,
     color: camp.color,

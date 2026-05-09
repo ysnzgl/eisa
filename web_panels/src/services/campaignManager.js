@@ -14,11 +14,13 @@ import { http } from './api';
 
 function mapAdFromApi(r) {
   if (!r) return null;
+  const mediaUrl = r.medya_url ?? '';
   return {
     id: r.id,
     name: r.ad,
     client: r.musteri ?? '',
-    media_url: r.medya_url,
+    media_url: mediaUrl,
+    media_type: /\.(mp4|webm|ogg)(\?|$)/i.test(mediaUrl) ? 'video' : 'image',
     duration_sec: r.sure_saniye ?? 15,
     starts_at: r.baslangic_tarihi,
     ends_at: r.bitis_tarihi,
@@ -28,6 +30,35 @@ function mapAdFromApi(r) {
     is_active: r.aktif !== false,
     created_at: r.olusturulma_tarihi,
   };
+}
+
+function mapScheduleFromApi(item) {
+  if (!item) return null;
+  return {
+    id: item.id,
+    campaignId: item.reklam,
+    campaignName: item.reklam_adi,
+    client: item.musteri ?? '',
+    mediaUrl: item.medya_url ?? '',
+    durationSec: item.sure_saniye ?? 15,
+    kioskId: item.kiosk,
+    kioskName: item.kiosk_adi ?? '',
+    pharmacyId: item.eczane,
+    pharmacyName: item.eczane_adi ?? '',
+    start: item.baslangic_saat,
+    end: item.bitis_saat,
+    isActive: item.aktif !== false,
+  };
+}
+
+function mapScheduleToApi(data) {
+  const out = {};
+  if (data.campaignId !== undefined) out.reklam = data.campaignId;
+  if (data.kioskId !== undefined) out.kiosk = data.kioskId;
+  if (data.start !== undefined) out.baslangic_saat = data.start;
+  if (data.end !== undefined) out.bitis_saat = data.end;
+  if (data.isActive !== undefined) out.aktif = data.isActive;
+  return out;
 }
 
 function mapAdToApi(data) {
@@ -69,6 +100,28 @@ export async function updateCampaign(id, data) {
 /** Reklamı siler. */
 export async function deleteCampaign(id) {
   await http.delete(`/api/campaigns/${id}/`);
+}
+
+// ─── Takvim Atamaları ─────────────────────────────────────────────────────
+
+export async function getCampaignSchedules(params = {}) {
+  const { data } = await http.get('/api/campaigns/schedules/', { params });
+  const items = Array.isArray(data) ? data : (data?.results ?? []);
+  return items.map(mapScheduleFromApi);
+}
+
+export async function createCampaignSchedule(data) {
+  const { data: created } = await http.post('/api/campaigns/schedules/', mapScheduleToApi(data));
+  return mapScheduleFromApi(created);
+}
+
+export async function updateCampaignSchedule(id, data) {
+  const { data: updated } = await http.patch(`/api/campaigns/schedules/${id}/`, mapScheduleToApi(data));
+  return mapScheduleFromApi(updated);
+}
+
+export async function deleteCampaignSchedule(id) {
+  await http.delete(`/api/campaigns/schedules/${id}/`);
 }
 
 // ─── Hedefleme ─────────────────────────────────────────────────────────────

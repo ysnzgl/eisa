@@ -5,25 +5,28 @@ Admin: tam CRUD (super admin JWT, UoW ile).
 Kiosk: /sync/ endpoint'i — kioskun eczanesine hedeflenmis aktif reklamlar.
 Bos hedef_eczaneler = herkese goster (genel yayin).
 """
-import os
+import logging
 import uuid
 
-from django.conf import settings
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework_simplejwt.authentication import JWTAuthentication
+from core_api.cookie_jwt import JWTCookieAuthentication as JWTAuthentication
 
+from apps.core.services.minio_service import MinioService
 from apps.core.uow import UnitOfWork
 from apps.pharmacies.auth import KioskAppKeyAuthentication
 from apps.pharmacies.models import Kiosk
 from apps.pharmacies.permissions import IsKiosk, IsSuperAdmin
 
-from .models import Reklam
-from .serializers import ReklamSerializer
+from .models import Reklam, ReklamTakvim
+from .serializers import ReklamSerializer, ReklamTakvimSerializer
+
+
+logger = logging.getLogger(__name__)
 
 
 class ReklamViewSet(viewsets.ModelViewSet):
@@ -75,6 +78,19 @@ class ReklamViewSet(viewsets.ModelViewSet):
         eczane = kiosk.eczane
         now = timezone.now()
 
+        scheduled_ids = ReklamTakvim.objects.filter(
+            aktif=True,
+            kiosk=kiosk,
+            reklam__aktif=True,
+            reklam__baslangic_tarihi__lte=now,
+            reklam__bitis_tarihi__gte=now,
+            baslangic_saat__lte=now.hour,
+            bitis_saat__gt=now.hour,
+        ).values_list("reklam_id", flat=True)
+        if scheduled_ids.exists():
+            qs = Reklam.objects.filter(pk__in=scheduled_ids).distinct()
+            return Response(ReklamSerializer(qs, many=True).data)
+
         qs = Reklam.objects.filter(
             aktif=True, baslangic_tarihi__lte=now, bitis_tarihi__gte=now
         )
@@ -87,6 +103,43 @@ class ReklamViewSet(viewsets.ModelViewSet):
         qs = qs.distinct()
 
         return Response(ReklamSerializer(qs, many=True).data)
+
+
+class ReklamTakvimViewSet(viewsets.ModelViewSet):
+    queryset = ReklamTakvim.objects.select_related("reklam", "kiosk", "kiosk__eczane").all()
+    serializer_class = ReklamTakvimSerializer
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsSuperAdmin]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        reklam_id = self.request.query_params.get("reklam")
+        kiosk_id = self.request.query_params.get("kiosk")
+        eczane_id = self.request.query_params.get("eczane")
+        if reklam_id:
+            qs = qs.filter(reklam_id=reklam_id)
+        if kiosk_id:
+            qs = qs.filter(kiosk_id=kiosk_id)
+        if eczane_id:
+            qs = qs.filter(kiosk__eczane_id=eczane_id)
+        return qs
+
+    def perform_create(self, serializer):
+        instance = ReklamTakvim(**serializer.validated_data)
+        with UnitOfWork(user=self.request.user) as uow:
+            uow.add(instance)
+        serializer.instance = instance
+
+    def perform_update(self, serializer):
+        instance: ReklamTakvim = serializer.instance
+        for k, v in serializer.validated_data.items():
+            setattr(instance, k, v)
+        with UnitOfWork(user=self.request.user) as uow:
+            uow.update(instance)
+
+    def perform_destroy(self, instance):
+        with UnitOfWork(user=self.request.user) as uow:
+            uow.delete(instance)
 
 
 class MediaUploadView(APIView):
@@ -114,15 +167,21 @@ class MediaUploadView(APIView):
         if uploaded.size > self.MAX_SIZE:
             return Response({"error": "Dosya 100 MB'dan büyük olamaz."}, status=status.HTTP_400_BAD_REQUEST)
 
-        ext = os.path.splitext(uploaded.name)[1].lower() or ".bin"
-        filename = f"{uuid.uuid4().hex}{ext}"
-        save_dir = settings.MEDIA_ROOT / "ads"
-        save_dir.mkdir(parents=True, exist_ok=True)
+        ext = uploaded.name.rsplit(".", 1)[-1].lower() if "." in uploaded.name else "bin"
+        filename = f"{uuid.uuid4().hex}.{ext}"
 
-        dest_path = save_dir / filename
-        with open(dest_path, "wb+") as dest:
-            for chunk in uploaded.chunks():
-                dest.write(chunk)
+        try:
+            minio_service = MinioService()
+            object_name = minio_service.upload_file(uploaded, object_name=filename, prefix="ads")
+            url = minio_service.get_object_url(object_name)
+        except Exception:
+            logger.exception("Campaign media upload to MinIO failed")
+            return Response(
+                {"error": "Dosya MinIO'ya yüklenirken bir hata oluştu."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
-        url = request.build_absolute_uri(f"{settings.MEDIA_URL}ads/{filename}")
-        return Response({"url": url, "filename": filename})
+        return Response(
+            {"url": url, "filename": filename, "object_name": object_name},
+            status=status.HTTP_201_CREATED,
+        )
