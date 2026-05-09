@@ -8,12 +8,13 @@ from apps.core.uow import UnitOfWork
 from apps.pharmacies.auth import KioskAppKeyAuthentication
 from apps.pharmacies.permissions import IsKioskOrAuthenticated, IsSuperAdmin
 
-from .models import Cevap, EtkenMadde, Kategori, Soru
+from .models import Cevap, EtkenMadde, Kategori, Soru, SoruEtkenMadde
 from .serializers import (
     CevapWriteSerializer,
     EtkenMaddeSerializer,
     KategoriSerializer,
     KategoriSyncSerializer,
+    SoruEtkenMaddeSerializer,
     SoruSerializer,
 )
 
@@ -40,20 +41,21 @@ class _UoWWritableViewSet(viewsets.ModelViewSet):
 
 
 class UrunSyncView(APIView):
-    """GET /api/products/sync/ â€” kiosk yerel DB icin tam katalog."""
+    """GET /api/products/sync/ — kiosk yerel DB icin tam katalog."""
 
     authentication_classes = [JWTAuthentication, KioskAppKeyAuthentication]
     permission_classes = [IsKioskOrAuthenticated]
 
     def get(self, request):
-        kategoriler = Kategori.objects.filter(aktif=True).prefetch_related(
-            "sorular__cevaplar",
-            "sorular__hedef_cinsiyetler",
-            "sorular__hedef_yas_araliklari",
-            "hedef_cinsiyetler",
+        kategoriler = Kategori.objects.filter(aktif=True).select_related(
+            "hedef_cinsiyet",
+        ).prefetch_related(
             "hedef_yas_araliklari",
+            "sorular__cevaplar",
+            "sorular__hedef_yas_araliklari",
+            "sorular__etken_madde_baglantilari__etken_madde",
         )
-        etken_maddeler = EtkenMadde.objects.all()
+        etken_maddeler = EtkenMadde.objects.filter(aktif=True)
         return Response(
             {
                 "kategoriler": KategoriSyncSerializer(kategoriler, many=True).data,
@@ -63,9 +65,13 @@ class UrunSyncView(APIView):
 
 
 class _M2MHedeflemeViewSet(_UoWWritableViewSet):
-    """Cinsiyet/yas hedefleme M2M alanlarini UoW ile kaydeden ViewSet."""
+    """M2M hedefleme alanlarini UoW ile kaydeden ViewSet.
 
-    _M2M_FIELDS = ("hedef_cinsiyetler", "hedef_yas_araliklari")
+    Alt siniflar _M2M_FIELDS'i override ederek hangi alanlarin M2M oldugunu belirtir.
+    Through model kullanan M2M alanlar buraya EKLENMEZ; kendi ViewSet'leri vardir.
+    """
+
+    _M2M_FIELDS: tuple = ()
 
     def perform_create(self, serializer):
         m2m = {k: serializer.validated_data.pop(k, []) for k in self._M2M_FIELDS}
@@ -89,8 +95,11 @@ class _M2MHedeflemeViewSet(_UoWWritableViewSet):
 
 
 class KategoriViewSet(_M2MHedeflemeViewSet):
-    queryset = Kategori.objects.prefetch_related(
-        "hedef_cinsiyetler", "hedef_yas_araliklari"
+    _M2M_FIELDS = ("hedef_yas_araliklari",)
+    queryset = Kategori.objects.select_related(
+        "hedef_cinsiyet",
+    ).prefetch_related(
+        "hedef_yas_araliklari",
     ).all()
     serializer_class = KategoriSerializer
     authentication_classes = [JWTAuthentication]
@@ -98,12 +107,24 @@ class KategoriViewSet(_M2MHedeflemeViewSet):
 
 
 class SoruViewSet(_M2MHedeflemeViewSet):
-    queryset = Soru.objects.select_related("kategori").prefetch_related(
-        "cevaplar", "hedef_cinsiyetler", "hedef_yas_araliklari"
+    _M2M_FIELDS = ("hedef_yas_araliklari",)
+    queryset = Soru.objects.select_related(
+        "kategori", "hedef_cinsiyet",
+    ).prefetch_related(
+        "cevaplar",
+        "hedef_yas_araliklari",
+        "etken_madde_baglantilari__etken_madde",
     ).all()
     serializer_class = SoruSerializer
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsSuperAdmin]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        kategori_id = self.request.query_params.get("kategori")
+        if kategori_id:
+            qs = qs.filter(kategori_id=kategori_id)
+        return qs
 
 
 class CevapViewSet(_UoWWritableViewSet):
@@ -119,3 +140,28 @@ class EtkenMaddeViewSet(_UoWWritableViewSet):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsSuperAdmin]
 
+    def get_queryset(self):
+        qs = EtkenMadde.objects.all()
+        if self.action == 'list' and not self.request.query_params.get('include_inactive'):
+            qs = qs.filter(aktif=True)
+        return qs
+
+    def perform_destroy(self, instance):
+        instance.aktif = False
+        with UnitOfWork(user=self.request.user) as uow:
+            uow.update(instance)
+
+
+class SoruEtkenMaddeViewSet(_UoWWritableViewSet):
+    """Soru–EtkenMadde baglantisi CRUD — rol (ana/destekleyici) yonetimi.
+
+    Ayni soruya ayni etken maddeyi eklemek 400 hatasi dondurur.
+    Sadece rol guncellenmek istenirse PATCH kullanilabilir.
+    """
+
+    queryset = SoruEtkenMadde.objects.select_related(
+        "soru", "etken_madde"
+    ).all()
+    serializer_class = SoruEtkenMaddeSerializer
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsSuperAdmin]

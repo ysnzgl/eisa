@@ -12,13 +12,16 @@ import {
   createQuestion,
   updateQuestion,
   deleteQuestion,
-  addMatchRule,
-  updateMatchRule,
-  deleteMatchRule,
   getActiveIngredients,
+  addQuestionIngredient,
+  removeQuestionIngredient,
 } from '../../services/algorithm';
 import { getCinsiyetler, getYasAraliklari } from '../../services/lookups';
 import EisaDeleteConfirm from '../../components/shared/EisaDeleteConfirm.vue';
+import AlgorithmTargetBadges from '../../components/shared/AlgorithmTargetBadges.vue';
+import CategoryCard from '../../components/shared/CategoryCard.vue';
+import TargetGenderSelector from '../../components/shared/TargetGenderSelector.vue';
+import IngredientManager from '../../components/shared/IngredientManager.vue';
 
 //  Global Yükleme 
 const categories   = ref([]);
@@ -31,7 +34,7 @@ const loadingCats  = ref(true);
 const catModalOpen  = ref(false);
 const catModalMode  = ref('add');        // 'add' | 'edit'
 const catTarget     = ref(null);
-const EMPTY_CAT = () => ({ name: '', icon: '', is_sensitive: false, hedef_cinsiyetler: [], hedef_yas_araliklari: [] });
+const EMPTY_CAT = () => ({ name: '', icon: '', is_sensitive: false, target_gender: null, target_age_ranges: [] });
 const catForm       = ref(EMPTY_CAT());
 const catFormError  = ref('');
 const catSaving     = ref(false);
@@ -46,11 +49,11 @@ function openAddCategory() {
 
 function openEditCategory(cat) {
   catForm.value = {
-    name:                 cat.name,
-    icon:                 cat.icon,
-    is_sensitive:         cat.is_sensitive,
-    hedef_cinsiyetler:    [...(cat.hedef_cinsiyetler ?? [])],
-    hedef_yas_araliklari: [...(cat.hedef_yas_araliklari ?? [])],
+    name:             cat.name,
+    icon:             cat.icon,
+    is_sensitive:     cat.is_sensitive,
+    target_gender:    cat.target_gender ?? null,
+    target_age_ranges: [...(cat.target_age_ranges ?? [])],
   };
   catFormError.value = '';
   catModalMode.value = 'edit';
@@ -77,16 +80,10 @@ async function saveCategory() {
   finally { catSaving.value = false; }
 }
 
-function toggleCatGender(kodId) {
-  const idx = catForm.value.hedef_cinsiyetler.indexOf(kodId);
-  if (idx === -1) catForm.value.hedef_cinsiyetler.push(kodId);
-  else catForm.value.hedef_cinsiyetler.splice(idx, 1);
-}
-
-function toggleCatAge(kodId) {
-  const idx = catForm.value.hedef_yas_araliklari.indexOf(kodId);
-  if (idx === -1) catForm.value.hedef_yas_araliklari.push(kodId);
-  else catForm.value.hedef_yas_araliklari.splice(idx, 1);
+function toggleCatAge(id) {
+  const idx = catForm.value.target_age_ranges.indexOf(id);
+  if (idx === -1) catForm.value.target_age_ranges.push(id);
+  else catForm.value.target_age_ranges.splice(idx, 1);
 }
 
 //  Kategori Seçimi 
@@ -101,7 +98,7 @@ const expandedQId      = ref(null);      // Açık olan soru ID'si
 // Soru CRUD
 const qModalOpen  = ref(false);
 const qModalMode  = ref('add');          // 'add' | 'edit'
-const qForm       = ref({ text: '' });
+const qForm       = ref({ text: '', order: 0, target_gender: null, target_age_ranges: [] });
 const qTarget     = ref(null);
 const qSaving     = ref(false);
 const qFormError  = ref('');
@@ -110,25 +107,15 @@ const qDeleteOpen   = ref(false);
 const qDeleteTarget = ref(null);
 const qDeleting     = ref(false);
 
-//  Kural Drawer 
-const drawerOpen    = ref(false);
-const drawerMode    = ref('add');        // 'add' | 'edit'
-const drawerQuestion = ref(null);
-const drawerRuleId  = ref(null);
-const drawerSaving  = ref(false);
-const drawerError   = ref('');
+//  Etken Madde Yönetimi 
+const qIngModalOpen = ref(false);
+const qIngQuestion  = ref(null);
+const qIngForm      = ref({ ingredient_id: null, role: 'ana' });
+const qIngSaving    = ref(false);
+const qIngError     = ref('');
+const qIngDeleting  = ref(null);  // link id being deleted
 
-const EMPTY_RULE = () => ({
-  gender:     'all',
-  age_min:    18,
-  age_max:    65,
-  primary_id: null,
-  supportive_id: null,
-});
-const ruleForm = ref(EMPTY_RULE());
-
-// Kural Silme
-const ruleDeleting = ref(null);          // ruleId being deleted
+const ingManageOpen = ref(false);
 
 //  Yükleme 
 onMounted(async () => {
@@ -159,7 +146,7 @@ function toggleQuestion(id) {
 
 //  Soru CRUD 
 function openAddQuestion() {
-  qForm.value    = { text: '' };
+  qForm.value    = { text: '', order: questions.value.length, target_gender: null, target_age_ranges: [] };
   qFormError.value = '';
   qModalMode.value = 'add';
   qTarget.value    = null;
@@ -167,7 +154,12 @@ function openAddQuestion() {
 }
 
 function openEditQuestion(q) {
-  qForm.value    = { text: q.text };
+  qForm.value    = {
+    text:              q.text,
+    order:             q.order ?? 0,
+    target_gender:     q.target_gender ?? null,
+    target_age_ranges: [...(q.target_age_ranges ?? [])],
+  };
   qFormError.value = '';
   qModalMode.value = 'edit';
   qTarget.value    = q;
@@ -179,18 +171,30 @@ async function saveQuestion() {
   qSaving.value    = true;
   qFormError.value = '';
   try {
+    const payload = {
+      text:              qForm.value.text.trim(),
+      order:             qForm.value.order,
+      target_gender:     qForm.value.target_gender,
+      target_age_ranges: qForm.value.target_age_ranges,
+    };
     if (qModalMode.value === 'add') {
-      const newQ = await createQuestion(activeCatId.value, { text: qForm.value.text.trim() });
+      const newQ = await createQuestion(activeCatId.value, payload);
       questions.value.push(newQ);
       expandedQId.value = newQ.id;
     } else {
-      const updated = await updateQuestion(qTarget.value.id, { text: qForm.value.text.trim() });
+      const updated = await updateQuestion(qTarget.value.id, payload);
       const idx = questions.value.findIndex((q) => q.id === updated.id);
       if (idx !== -1) questions.value[idx] = updated;
     }
     qModalOpen.value = false;
   } catch { qFormError.value = 'İşlem başarısız.'; }
   finally { qSaving.value = false; }
+}
+
+function toggleQAge(id) {
+  const idx = qForm.value.target_age_ranges.indexOf(id);
+  if (idx === -1) qForm.value.target_age_ranges.push(id);
+  else qForm.value.target_age_ranges.splice(idx, 1);
 }
 
 function openDeleteQuestion(q) {
@@ -208,67 +212,41 @@ async function confirmDeleteQuestion() {
   } finally { qDeleting.value = false; }
 }
 
-//  Kural Drawer 
-function openAddRule(question) {
-  ruleForm.value    = EMPTY_RULE();
-  drawerError.value = '';
-  drawerMode.value  = 'add';
-  drawerQuestion.value = question;
-  drawerRuleId.value   = null;
-  drawerOpen.value  = true;
+//  Etken Madde Yönetimi 
+function openAddIngredient(question) {
+  qIngQuestion.value = question;
+  qIngForm.value     = { ingredient_id: null, role: 'ana' };
+  qIngError.value    = '';
+  qIngModalOpen.value = true;
 }
 
-function openEditRule(question, rule) {
-  ruleForm.value = {
-    gender:       rule.gender,
-    age_min:      rule.age_min,
-    age_max:      rule.age_max,
-    primary_id:   rule.primary_id,
-    supportive_id: rule.supportive_id,
-  };
-  drawerError.value    = '';
-  drawerMode.value     = 'edit';
-  drawerQuestion.value = question;
-  drawerRuleId.value   = rule.id;
-  drawerOpen.value     = true;
-}
-
-function closeDrawer() {
-  drawerOpen.value = false;
-}
-
-async function saveRule() {
-  if (!ruleForm.value.primary_id) { drawerError.value = 'Ana Öneri seçmelisiniz.'; return; }
-  if (ruleForm.value.age_min > ruleForm.value.age_max) { drawerError.value = 'Min yaş, Max yaştan büyük olamaz.'; return; }
-  drawerSaving.value = true;
-  drawerError.value  = '';
+async function saveQuestionIngredient() {
+  if (!qIngForm.value.ingredient_id) { qIngError.value = 'Etken madde seçin.'; return; }
+  qIngSaving.value = true;
+  qIngError.value  = '';
   try {
-    const q = drawerQuestion.value;
-    let updated;
-    if (drawerMode.value === 'add') {
-      updated = await addMatchRule(q.id, { ...ruleForm.value });
-    } else {
-      updated = await updateMatchRule(q.id, drawerRuleId.value, { ...ruleForm.value });
-    }
-    const idx = questions.value.findIndex((x) => x.id === q.id);
-    if (idx !== -1) questions.value[idx] = updated;
-    drawerOpen.value = false;
-  } catch { drawerError.value = 'Kural kaydedilemedi.'; }
-  finally { drawerSaving.value = false; }
+    const link = await addQuestionIngredient(
+      qIngQuestion.value.id,
+      qIngForm.value.ingredient_id,
+      qIngForm.value.role,
+    );
+    const idx = questions.value.findIndex((q) => q.id === qIngQuestion.value.id);
+    if (idx !== -1) questions.value[idx].hedef_etken_maddeler.push(link);
+    qIngModalOpen.value = false;
+  } catch { qIngError.value = 'Eklenemedi.'; }
+  finally { qIngSaving.value = false; }
 }
 
-async function removeRule(question, ruleId) {
-  ruleDeleting.value = ruleId;
+async function removeQuestionIngredientLink(question, linkId) {
+  qIngDeleting.value = linkId;
   try {
-    await deleteMatchRule(question.id, ruleId);
+    await removeQuestionIngredient(linkId);
     const idx = questions.value.findIndex((q) => q.id === question.id);
     if (idx !== -1) {
-      questions.value[idx] = {
-        ...questions.value[idx],
-        match_rules: questions.value[idx].match_rules.filter((r) => r.id !== ruleId),
-      };
+      questions.value[idx].hedef_etken_maddeler =
+        questions.value[idx].hedef_etken_maddeler.filter((e) => e.id !== linkId);
     }
-  } finally { ruleDeleting.value = null; }
+  } finally { qIngDeleting.value = null; }
 }
 
 //  Helpers 
@@ -277,16 +255,19 @@ function ingredientName(id) {
   return ingredients.value.find((i) => i.id === id)?.name ?? `#${id}`;
 }
 
-function genderLabel(g) {
-  return g === 'F' ? 'Kadın' : g === 'M' ? 'Erkek' : 'Tümü';
+function openIngredientManager() {
+  ingManageOpen.value = true;
 }
 
-function genderBadgeClass(g) {
-  return g === 'F'
-    ? 'bg-pink-50 text-pink-600 border border-pink-300'
-    : g === 'M'
-      ? 'bg-sky-50 text-sky-600 border border-sky-300'
-      : 'bg-gray-100 text-gray-500 border border-gray-300';
+async function onIngredientUpdated() {
+  // Soru etken madde seçici dropdown'larını güncel tut
+  ingredients.value = await getActiveIngredients();
+}
+
+function roleBadgeClass(role) {
+  return role === 'ana'
+    ? 'bg-emerald-50 text-emerald-700 border border-emerald-300'
+    : 'bg-sky-50 text-sky-700 border border-sky-300';
 }
 
 //  İkon Seçici 
@@ -328,10 +309,15 @@ const HEALTH_ICONS = [
 </script>
 
 <template>
-  <div class="medical-logic-root flex min-h-screen">
+  <div id="medical-logic-root" class="medical-logic-root flex min-h-screen">
 
     <!--  LEFT RAIL: Kategoriler  -->
-    <aside class="category-rail w-64 flex-shrink-0 flex flex-col border-r border-gray-200 sticky top-0 self-start" style="max-height: 100vh; overflow-y: auto;">
+    <aside
+      id="algorithm-sidebar"
+      name="algorithm-sidebar"
+      class="category-rail w-64 flex-shrink-0 flex flex-col border-r border-gray-200 sticky top-0 self-start"
+      style="max-height: 100vh; overflow-y: auto;"
+    >
       <div class="px-5 pt-6 pb-4 border-b border-gray-200">
         <p class="text-xs font-bold tracking-[0.15em] text-blue-600 uppercase mb-1">Şikayet Ağacı</p>
         <h2 class="text-base font-semibold text-gray-900 leading-tight">Kategoriler</h2>
@@ -344,51 +330,31 @@ const HEALTH_ICONS = [
         </button>
       </div>
 
-      <nav class="flex-1 px-3 py-3 space-y-0.5">
+      <nav class="flex-1 px-3 py-3 space-y-1.5">
         <div
           v-if="loadingCats"
           v-for="n in 5"
           :key="n"
-          class="h-10 bg-gray-100 rounded-lg animate-pulse mb-1"
+          class="h-14 bg-gray-100 rounded-xl animate-pulse"
         ></div>
 
-        <button
+        <CategoryCard
           v-for="cat in categories"
           :key="cat.id"
-          @click="selectCategory(cat.id)"
-          class="cat-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-150 group"
-          :class="activeCatId === cat.id
-            ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-300'
-            : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'"
-        >
-          <span class="w-5 text-center flex-shrink-0 text-lg leading-none"><i :class="cat.icon || 'fa-solid fa-pills'"></i></span>
-          <span class="flex-1 text-sm font-medium truncate">{{ cat.name }}</span>
-          <!-- Sensitive badge -->
-          <span v-if="cat.is_sensitive" class="text-[10px] font-bold text-rose-600 leading-none" title="Hassas Durum">⚠</span>
-          <!-- Active indicator -->
-          <span
-            class="w-1.5 h-1.5 rounded-full flex-shrink-0"
-            :class="activeCatId === cat.id ? 'bg-blue-600' : 'bg-transparent group-hover:bg-gray-300'"
-          ></span>
-          <!-- Edit button -->
-          <button
-            @click.stop="openEditCategory(cat)"
-            class="ml-auto p-0.5 text-gray-400 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition rounded flex-shrink-0"
-            title="Kategoriyi Düzenle"
-          >
-            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-            </svg>
-          </button>
-        </button>
+          :cat="cat"
+          :active="activeCatId === cat.id"
+          :cinsiyetler="cinsiyetler"
+          @select="selectCategory"
+          @edit="openEditCategory"
+        />
       </nav>
     </aside>
 
     <!--  MAIN PANEL: Sorular  -->
-    <main class="flex-1 overflow-y-auto flex flex-col">
+    <main id="algorithm-main" name="algorithm-main" class="flex-1 overflow-y-auto flex flex-col">
 
-      <!-- Balk Bar -->
-      <div class="sticky top-0 z-10 main-header px-8 py-5 border-b border-gray-200 flex items-center justify-between">
+      <!-- Header Bar -->
+      <div id="algorithm-header" class="sticky top-0 z-10 main-header px-8 py-5 border-b border-gray-200 flex items-center justify-between">
         <div>
           <div class="flex items-center gap-2 mb-0.5">
             <span class="text-xl"><i :class="activeCategory?.icon || 'fa-solid fa-pills'"></i></span>
@@ -402,23 +368,31 @@ const HEALTH_ICONS = [
           </div>
           <p class="text-xs text-gray-500 font-mono" v-if="activeCategory">
             {{ questions.length }} soru
-            — {{ questions.reduce((s, q) => s + q.match_rules.length, 0) }} kural tanımlı
+            — {{ questions.reduce((s, q) => s + q.hedef_etken_maddeler.length, 0) }} etken madde bağlantısı
           </p>
         </div>
-        <button
-          v-if="activeCategory"
-          @click="openAddQuestion"
-          class="eisa-btn eisa-btn-cta text-sm"
-        >
-          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
-          </svg>
-          Soru Ekle
-        </button>
+        <div v-if="activeCategory" class="flex items-center gap-2">
+          <button
+            @click="openIngredientManager"
+            class="eisa-btn text-sm"
+          >
+            <i class="fa-solid fa-capsules"></i>
+            Etken Maddeler
+          </button>
+          <button
+            @click="openAddQuestion"
+            class="eisa-btn eisa-btn-cta text-sm"
+          >
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+            </svg>
+            Soru Ekle
+          </button>
+        </div>
       </div>
 
       <!-- Sorular Listesi -->
-      <div class="flex-1 px-8 py-6 space-y-3">
+      <div id="algorithm-questions-list" class="flex-1 px-8 py-6 space-y-3">
 
         <!-- Yükleniyor -->
         <div v-if="loadingQuestions" class="space-y-3">
@@ -462,22 +436,20 @@ const HEALTH_ICONS = [
             @click="toggleQuestion(q.id)"
           >
             <!-- Sıra numarası -->
-            <span class="text-xs font-mono font-bold text-gray-500 w-5 text-center flex-shrink-0">{{ q.order + 1 }}</span>
+            <span class="text-xs font-mono font-bold text-gray-500 w-5 text-center flex-shrink-0">{{ q.order }}</span>
 
             <!-- Soru metni -->
             <p class="flex-1 text-sm font-medium text-gray-800 leading-snug">{{ q.text }}</p>
 
             <!-- Sağ taraf meta -->
             <div class="flex items-center gap-2 flex-shrink-0">            
-              <!-- Kural sayısı -->
-              <span
-                class="text-xs font-semibold px-2 py-0.5 rounded-full"
-                :class="q.match_rules.length
-                  ? 'bg-blue-50 text-blue-600 border border-blue-200'
-                  : 'bg-gray-100 text-gray-500'"
-              >
-                {{ q.match_rules.length }} kural
-              </span>
+              <!-- Hedefleme badge'leri -->
+              <AlgorithmTargetBadges
+                :target-gender="q.target_gender"
+                :target-age-ranges="q.target_age_ranges"
+                :ingredient-count="q.hedef_etken_maddeler.length"
+                :cinsiyetler="cinsiyetler"
+              />
               <!-- Düzenle / Sil -->
               <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity" @click.stop>
                 <button
@@ -510,95 +482,57 @@ const HEALTH_ICONS = [
             </div>
           </div>
 
-          <!-- Accordion Body: Kurallar -->
+              <!-- Accordion Body: Etken Maddeler -->
           <Transition name="accordion">
             <div v-if="expandedQId === q.id" class="rules-body border-t border-gray-200 bg-gray-50">
               <div class="px-5 py-4">
 
-                <!-- Kural Başlığı -->
+                <!-- Başlık -->
                 <div class="flex items-center justify-between mb-3">
-                  <h3 class="text-xs font-bold tracking-[0.12em] text-gray-600 uppercase">Eleme Kuralları</h3>
+                  <h3 class="text-xs font-bold tracking-[0.12em] text-gray-600 uppercase">Etken Maddeler</h3>
                   <button
-                    @click="openAddRule(q)"
+                    @click="openAddIngredient(q)"
                     class="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-2.5 py-1 rounded-md transition"
                   >
                     <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
                       <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
                     </svg>
-                    Kural Ekle
+                    Etken Madde Ekle
                   </button>
                 </div>
 
-                <!-- Kural Listesi -->
-                <div v-if="q.match_rules.length === 0" class="text-center py-5 text-gray-500 text-xs">
-                  Bu soruya henüz kural tanımlanmamış.
+                <!-- Etken Madde Listesi -->
+                <div v-if="q.hedef_etken_maddeler.length === 0" class="text-center py-5 text-gray-500 text-xs">
+                  Bu soruya henüz etken madde eklenmemiş.
                 </div>
 
                 <div v-else class="space-y-2">
                   <div
-                    v-for="rule in q.match_rules"
-                    :key="rule.id"
-                    class="rule-row flex items-center gap-3 bg-white border border-gray-200 rounded-lg px-4 py-3 group/rule hover:border-gray-300 transition"
+                    v-for="em in q.hedef_etken_maddeler"
+                    :key="em.id"
+                    class="rule-row flex items-center gap-3 bg-white border border-gray-200 rounded-lg px-4 py-3 group/em hover:border-gray-300 transition"
                   >
-                    <!-- Rule ID -->
-                    <span class="text-[10px] font-mono text-gray-400 w-12 flex-shrink-0">#{{ rule.id }}</span>
-
-                    <!-- Cinsiyet -->
-                    <span class="text-xs font-semibold px-2 py-0.5 rounded" :class="genderBadgeClass(rule.gender)">
-                      {{ genderLabel(rule.gender) }}
+                    <span
+                      class="text-xs font-semibold px-2 py-0.5 rounded"
+                      :class="roleBadgeClass(em.role)"
+                    >
+                      {{ em.role === 'ana' ? 'Ana' : 'Destekleyici' }}
                     </span>
-
-                    <!-- Yaş aralığı -->
-                    <span class="flex items-center gap-1 text-xs text-gray-600 font-mono bg-gray-100 px-2 py-0.5 rounded">
-                      <span class="text-gray-500">yaş</span>
-                      {{ rule.age_min }}–{{ rule.age_max }}
-                    </span>
-
-                    <!-- Öneri okları -->
-                    <div class="flex items-center gap-1.5 flex-1 min-w-0">
-                      <div class="flex items-center gap-1 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs px-2 py-1 rounded truncate max-w-[180px]">
-                        <svg class="w-3 h-3 flex-shrink-0 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                          <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                        </svg>
-                        <span class="truncate font-medium">{{ ingredientName(rule.primary_id) }}</span>
-                      </div>
-                      <svg v-if="rule.supportive_id" class="w-3 h-3 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+                    <span class="flex-1 text-sm text-gray-800 font-medium">{{ em.ingredient_name }}</span>
+                    <button
+                      @click="removeQuestionIngredientLink(q, em.id)"
+                      :disabled="qIngDeleting === em.id"
+                      class="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded transition disabled:opacity-40 opacity-0 group-hover/em:opacity-100"
+                      title="Bağlantıyı Sil"
+                    >
+                      <svg v-if="qIngDeleting === em.id" class="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
                       </svg>
-                      <div v-if="rule.supportive_id" class="flex items-center gap-1 bg-sky-50 border border-sky-200 text-sky-700 text-xs px-2 py-1 rounded truncate max-w-[160px]">
-                        <svg class="w-3 h-3 flex-shrink-0 text-sky-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                          <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
-                        </svg>
-                        <span class="truncate">{{ ingredientName(rule.supportive_id) }}</span>
-                      </div>
-                    </div>
-
-                    <!-- Aksiyon düğmeleri -->
-                    <div class="flex items-center gap-0.5 opacity-0 group-hover/rule:opacity-100 transition-opacity flex-shrink-0">
-                      <button
-                        @click="openEditRule(q, rule)"
-                        class="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition"
-                        title="Kural Düzenle"
-                      >
-                        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                          <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-                        </svg>
-                      </button>
-                      <button
-                        @click="removeRule(q, rule.id)"
-                        :disabled="ruleDeleting === rule.id"
-                        class="p-1.5 text-gray-500 hover:text-rose-600 hover:bg-rose-50 rounded transition disabled:opacity-40"
-                        title="Kural Sil"
-                      >
-                        <svg v-if="ruleDeleting === rule.id" class="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
-                          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-                          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
-                        </svg>
-                        <svg v-else class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                          <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                        </svg>
-                      </button>
-                    </div>
+                      <svg v-else class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                      </svg>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -609,198 +543,73 @@ const HEALTH_ICONS = [
     </main>
 
     <!--  -->
-    <!-- KURAL DRAWER                                                         -->
+    <!-- Etken Madde Yönetim Bileşeni                                         -->
+    <!--  -->
+    <IngredientManager
+      v-if="ingManageOpen"
+      @close="ingManageOpen = false"
+      @updated="onIngredientUpdated"
+    />
+
+    <!--  -->
+    <!-- Etken Madde Ekle Mini Modal                                          -->
     <!--  -->
     <Teleport to="body">
-      <!-- Backdrop -->
       <Transition name="backdrop">
         <div
-          v-if="drawerOpen"
-          class="fixed inset-0 bg-black/60 z-40"
-          @click="closeDrawer"
-        ></div>
-      </Transition>
-
-      <!-- Panel -->
-      <Transition name="drawer">
-        <aside
-          v-if="drawerOpen"
-          class="fixed right-0 top-0 h-full w-[420px] drawer-panel z-50 flex flex-col shadow-2xl"
+          v-if="qIngModalOpen"
+          class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4"
+          @click.self="qIngModalOpen = false"
         >
-          <!-- Drawer Başlığı -->
-          <div class="px-6 py-5 border-b border-gray-200 flex items-start justify-between flex-shrink-0">
-            <div>
-              <p class="text-xs font-bold tracking-[0.15em] text-blue-600 uppercase mb-1">
-                {{ drawerMode === 'add' ? 'Yeni Kural' : 'Kural Düzenle' }}
-              </p>
-              <h3 class="text-sm font-semibold text-gray-900 leading-snug max-w-[300px] line-clamp-2">
-                {{ drawerQuestion?.text }}
-              </h3>
-            </div>
-            <button
-              @click="closeDrawer"
-              class="mt-0.5 p-1.5 text-gray-500 hover:text-gray-900 hover:bg-gray-200 rounded-lg transition flex-shrink-0"
-            >
-              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
-              </svg>
-            </button>
-          </div>
-
-          <!-- Form -->
-          <div class="flex-1 overflow-y-auto px-6 py-6 space-y-6">
-
-            <!-- Hata -->
-            <div v-if="drawerError" class="flex items-start gap-2 bg-rose-50 border border-rose-200 text-rose-600 text-sm px-4 py-3 rounded-lg">
-              <svg class="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-              </svg>
-              {{ drawerError }}
-            </div>
-
-            <!-- 1. Cinsiyet -->
-            <div class="form-group">
-              <label class="drawer-label">Cinsiyet</label>
-              <div class="grid grid-cols-3 gap-2 mt-2">
-                <button
-                  v-for="opt in [{ v: 'all', l: 'Tümü', icon: '⚥' }, { v: 'F', l: 'Kadın', icon: '♀' }, { v: 'M', l: 'Erkek', icon: '♂' }]"
-                  :key="opt.v"
-                  @click="ruleForm.gender = opt.v"
-                  type="button"
-                  class="gender-btn flex flex-col items-center gap-1 py-3 rounded-lg border text-sm font-semibold transition-all duration-150"
-                  :class="ruleForm.gender === opt.v
-                    ? opt.v === 'F'
-                      ? 'bg-pink-100 border-pink-400 text-pink-700'
-                      : opt.v === 'M'
-                        ? 'bg-sky-100 border-sky-400 text-sky-700'
-                        : 'bg-blue-50 border-blue-500 text-blue-800'
-                    : 'bg-white border-gray-300 text-gray-600 hover:border-gray-400 hover:text-gray-700'"
-                >
-                  <span class="text-base">{{ opt.icon }}</span>
-                  <span class="text-xs">{{ opt.l }}</span>
+          <Transition name="modal" appear>
+            <div v-if="qIngModalOpen" class="question-modal w-full max-w-md rounded-2xl overflow-hidden shadow-2xl">
+              <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                <div>
+                  <h3 class="text-sm font-bold text-gray-900">Etken Madde Ekle</h3>
+                  <p class="text-xs text-gray-500 mt-0.5 line-clamp-1">{{ qIngQuestion?.text }}</p>
+                </div>
+                <button @click="qIngModalOpen = false" class="p-1.5 text-gray-500 hover:text-gray-900 hover:bg-gray-200 rounded-lg transition">
+                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+              </div>
+              <div class="px-6 py-5 space-y-4">
+                <div v-if="qIngError" class="text-sm text-rose-600 bg-rose-50 border border-rose-200 px-3 py-2.5 rounded-lg">{{ qIngError }}</div>
+                <div>
+                  <label class="drawer-label mb-2 block">Etken Madde <span class="text-rose-600">*</span></label>
+                  <select v-model.number="qIngForm.ingredient_id" class="drawer-input w-full">
+                    <option :value="null" disabled>— Seçin —</option>
+                    <option v-for="ing in ingredients" :key="ing.id" :value="ing.id">{{ ing.name }}</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="drawer-label mb-2 block">Rol</label>
+                  <div class="grid grid-cols-2 gap-2">
+                    <button
+                      v-for="opt in [{ v: 'ana', l: 'Ana' }, { v: 'destekleyici', l: 'Destekleyici' }]"
+                      :key="opt.v"
+                      type="button"
+                      @click="qIngForm.role = opt.v"
+                      class="py-2.5 rounded-lg border text-sm font-semibold transition"
+                      :class="qIngForm.role === opt.v
+                        ? 'bg-blue-100 border-blue-500 text-blue-800'
+                        : 'bg-white border-gray-300 text-gray-600 hover:border-gray-400'"
+                    >{{ opt.l }}</button>
+                  </div>
+                </div>
+              </div>
+              <div class="px-6 py-4 border-t border-gray-200 flex gap-2.5">
+                <button @click="qIngModalOpen = false" :disabled="qIngSaving" class="eisa-btn flex-1 disabled:opacity-50">İptal</button>
+                <button @click="saveQuestionIngredient" :disabled="qIngSaving" class="eisa-btn eisa-btn-cta flex-1 disabled:opacity-60">
+                  <svg v-if="qIngSaving" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+                  </svg>
+                  {{ qIngSaving ? 'Ekleniyor…' : 'Ekle' }}
                 </button>
               </div>
             </div>
-
-            <!-- 2. Yaş Aralığı -->
-            <div class="form-group">
-              <label class="drawer-label">Yaş Aralığı</label>
-              <div class="grid grid-cols-2 gap-3 mt-2">
-                <div>
-                  <label class="text-[11px] text-gray-500 font-medium block mb-1">Min Yaş</label>
-                  <input
-                    v-model.number="ruleForm.age_min"
-                    type="number" min="0" max="120"
-                    class="drawer-input w-full"
-                    placeholder="0"
-                  />
-                </div>
-                <div>
-                  <label class="text-[11px] text-gray-500 font-medium block mb-1">Max Yaş</label>
-                  <input
-                    v-model.number="ruleForm.age_max"
-                    type="number" min="0" max="120"
-                    class="drawer-input w-full"
-                    placeholder="99"
-                  />
-                </div>
-              </div>
-              <!-- Yaş görselleştirme bar -->
-              <div class="mt-2 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                <div
-                  class="h-full bg-blue-600 rounded-full transition-all duration-200"
-                  :style="{
-                    marginLeft: `${(ruleForm.age_min / 120) * 100}%`,
-                    width: `${Math.max(0, ((ruleForm.age_max - ruleForm.age_min) / 120) * 100)}%`
-                  }"
-                ></div>
-              </div>
-              <div class="flex justify-between text-[10px] text-gray-400 mt-1 font-mono">
-                <span>0</span><span>30</span><span>60</span><span>90</span><span>120</span>
-              </div>
-            </div>
-
-            <!-- 3. Ana Öneri -->
-            <div class="form-group">
-              <label class="drawer-label">
-                Ana Öneri (Primary)
-                <span class="text-rose-600 ml-0.5">*</span>
-              </label>
-              <p class="text-[11px] text-gray-500 mt-0.5 mb-2">Hastaya Öncelikli önerilecek etken madde</p>
-              <select v-model.number="ruleForm.primary_id" class="drawer-input w-full">
-                <option :value="null" disabled>— Seçin —</option>
-                <option v-for="ing in ingredients" :key="ing.id" :value="ing.id">{{ ing.name }}</option>
-              </select>
-              <!-- Seçili Öneri göstergesi -->
-              <div v-if="ruleForm.primary_id" class="mt-2 flex items-center gap-2 bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-lg">
-                <svg class="w-4 h-4 text-emerald-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                </svg>
-                <span class="text-sm font-semibold text-emerald-700">{{ ingredientName(ruleForm.primary_id) }}</span>
-              </div>
-            </div>
-
-            <!-- 4. Destekleyici Öneri -->
-            <div class="form-group">
-              <label class="drawer-label">Destekleyici Öneri (Supportive)</label>
-              <p class="text-[11px] text-gray-500 mt-0.5 mb-2">İsteğe bağlı — ek destek etken maddesi</p>
-              <select v-model.number="ruleForm.supportive_id" class="drawer-input w-full">
-                <option :value="null">— Yok —</option>
-                <option
-                  v-for="ing in ingredients.filter(i => i.id !== ruleForm.primary_id)"
-                  :key="ing.id"
-                  :value="ing.id"
-                >{{ ing.name }}</option>
-              </select>
-              <div v-if="ruleForm.supportive_id" class="mt-2 flex items-center gap-2 bg-sky-50 border border-sky-200 px-3 py-2 rounded-lg">
-                <svg class="w-4 h-4 text-sky-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
-                </svg>
-                <span class="text-sm font-medium text-sky-700">{{ ingredientName(ruleForm.supportive_id) }}</span>
-              </div>
-            </div>
-
-            <!-- Özet Önizleme -->
-            <div v-if="ruleForm.primary_id" class="rule-preview rounded-xl border border-gray-200 bg-gray-50 p-4">
-              <p class="text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-2">Kural Özeti</p>
-              <div class="flex flex-wrap gap-1.5 text-xs">
-                <span class="px-2 py-1 rounded bg-gray-200 text-gray-700 font-mono">{{ genderLabel(ruleForm.gender) }}</span>
-                <span class="px-2 py-1 rounded bg-gray-200 text-gray-700 font-mono">{{ ruleForm.age_min }}–{{ ruleForm.age_max }} yaş</span>
-                <svg class="w-3 h-3 self-center text-blue-600" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L12.586 11H5a1 1 0 110-2h7.586l-2.293-2.293a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
-                <span class="px-2 py-1 rounded bg-emerald-100 text-emerald-700 font-medium">{{ ingredientName(ruleForm.primary_id) }}</span>
-                <template v-if="ruleForm.supportive_id">
-                  <span class="text-gray-500 self-center">+</span>
-                  <span class="px-2 py-1 rounded bg-sky-100 text-sky-700">{{ ingredientName(ruleForm.supportive_id) }}</span>
-                </template>
-              </div>
-            </div>
-          </div>
-
-          <!-- Drawer Footer -->
-          <div class="px-6 py-4 border-t border-gray-200 flex items-center gap-3 flex-shrink-0">
-            <button
-              @click="closeDrawer"
-              :disabled="drawerSaving"
-              class="eisa-btn flex-1 disabled:opacity-50"
-            >
-              İptal
-            </button>
-            <button
-              @click="saveRule"
-              :disabled="drawerSaving || !ruleForm.primary_id"
-              class="eisa-btn eisa-btn-cta flex-1 disabled:opacity-60"
-            >
-              <svg v-if="drawerSaving" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
-              </svg>
-              <svg v-else class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
-              </svg>
-              {{ drawerSaving ? 'Kaydediliyor…' : (drawerMode === 'add' ? 'Kural Kaydet' : 'Güncelle') }}
-            </button>
-          </div>
-        </aside>
+          </Transition>
+        </div>
       </Transition>
     </Teleport>
 
@@ -826,17 +635,59 @@ const HEALTH_ICONS = [
                   </svg>
                 </button>
               </div>
-              <div class="px-6 py-5">
-                <div v-if="qFormError" class="text-sm text-rose-600 bg-rose-50 border border-rose-200 px-3 py-2.5 rounded-lg mb-4">
+              <div class="px-6 py-5 space-y-4 max-h-[70vh] overflow-y-auto">
+                <div v-if="qFormError" class="text-sm text-rose-600 bg-rose-50 border border-rose-200 px-3 py-2.5 rounded-lg">
                   {{ qFormError }}
                 </div>
-                <label class="drawer-label mb-2 block">Soru Metni <span class="text-rose-600">*</span></label>
-                <textarea
-                  v-model="qForm.text"
-                  rows="3"
-                  placeholder="Hastaya sorulacak soru metnini girin…"
-                  class="drawer-input w-full resize-none"
-                ></textarea>
+                <!-- Soru Metni + Sıra -->
+                <div class="grid grid-cols-4 gap-3">
+                  <div class="col-span-3">
+                    <label class="drawer-label mb-2 block">Soru Metni <span class="text-rose-600">*</span></label>
+                    <textarea
+                      v-model="qForm.text"
+                      rows="3"
+                      placeholder="Hastaya sorulacak soru metnini girin…"
+                      class="drawer-input w-full resize-none"
+                    ></textarea>
+                  </div>
+                  <div>
+                    <label class="drawer-label mb-2 block">Sıra</label>
+                    <input
+                      v-model.number="qForm.order"
+                      type="number"
+                      min="0"
+                      class="drawer-input w-full"
+                      placeholder="0"
+                    />
+                    <p class="mt-1 text-[10px] text-gray-500">1'den başlar. Kategori içinde benzersiz olmalı.</p>
+                  </div>
+                </div>
+                <!-- Hedef Cinsiyet -->
+                <div>
+                  <label class="block text-xs font-semibold text-gray-600 mb-2">Hedef Cinsiyet</label>
+                  <TargetGenderSelector
+                    v-model="qForm.target_gender"
+                    :cinsiyetler="cinsiyetler"
+                    all-label="Tümü"
+                  />
+                  <p class="mt-1 text-[10px] text-gray-500">Boş = tüm cinsiyetlere göster.</p>
+                </div>
+                <!-- Hedef Yaş Aralıkları -->
+                <div>
+                  <label class="block text-xs font-semibold text-gray-600 mb-2">Hedef Yaş Aralıkları</label>
+                  <div class="flex flex-wrap gap-2">
+                    <button
+                      v-for="y in yasAraliklari" :key="y.id"
+                      type="button"
+                      @click="toggleQAge(y.id)"
+                      class="px-3 py-1 text-xs font-semibold rounded-full border transition"
+                      :class="qForm.target_age_ranges.includes(y.id)
+                        ? 'bg-blue-100 text-blue-700 border-blue-400'
+                        : 'bg-white text-gray-500 border-gray-300 hover:border-gray-400'"
+                    >{{ y.ad }}</button>
+                  </div>
+                  <p class="mt-1 text-[10px] text-gray-500">Boş = herkese göster.</p>
+                </div>
               </div>
               <div class="px-6 py-4 border-t border-gray-200 flex items-center gap-3">
                 <button @click="qModalOpen = false" :disabled="qSaving" class="eisa-btn flex-1 disabled:opacity-50">
@@ -873,7 +724,7 @@ const HEALTH_ICONS = [
                   </svg>
                 </div>
                 <h3 class="text-sm font-semibold text-gray-900 mb-1">Soruyu Sil</h3>
-                <p class="text-xs text-gray-600">Bu soru ve bağlı <span class="text-rose-600 font-semibold">{{ qDeleteTarget?.match_rules?.length ?? 0 }} kural</span> kalıcı olarak silinecek.</p>
+                <p class="text-xs text-gray-600">Bu soru ve bağlı <span class="text-rose-600 font-semibold">{{ qDeleteTarget?.hedef_etken_maddeler?.length ?? 0 }} etken madde</span> bağlantısı kalıcı olarak silinecek.</p>
               </div>
               <div class="px-6 pb-5 flex gap-2.5">
                 <button @click="qDeleteOpen = false" :disabled="qDeleting" class="eisa-btn flex-1 disabled:opacity-50">Vazgeç</button>
@@ -950,20 +801,14 @@ const HEALTH_ICONS = [
                 <label for="cat-hassas" class="text-sm text-gray-700 cursor-pointer">Hassas kategori <span class="text-gray-500 text-xs">(Özel danışmanlık gerektirir)</span></label>
               </div>
 
-              <!-- Hedef Cinsiyetler -->
+              <!-- Hedef Cinsiyet (tek seçim) -->
               <div>
-                <label class="block text-xs font-semibold text-gray-600 mb-2">Hedef Cinsiyetler</label>
-                <div class="flex flex-wrap gap-2">
-                  <button
-                    v-for="c in cinsiyetler" :key="c.id"
-                    type="button"
-                    @click="toggleCatGender(c.id)"
-                    class="px-3 py-1 text-xs font-semibold rounded-full border transition"
-                    :class="catForm.hedef_cinsiyetler.includes(c.id)
-                      ? 'bg-blue-100 text-blue-700 border-blue-400'
-                      : 'bg-white text-gray-500 border-gray-300 hover:border-gray-400'"
-                  >{{ c.ad }}</button>
-                </div>
+                <label class="block text-xs font-semibold text-gray-600 mb-2">Hedef Cinsiyet</label>
+                <TargetGenderSelector
+                  v-model="catForm.target_gender"
+                  :cinsiyetler="cinsiyetler"
+                  all-label="Tümü"
+                />
                 <p class="mt-1 text-[10px] text-gray-500">Boş bırakırsanız tüm cinsiyetler hedeflenir.</p>
               </div>
 
@@ -976,7 +821,7 @@ const HEALTH_ICONS = [
                     type="button"
                     @click="toggleCatAge(y.id)"
                     class="px-3 py-1 text-xs font-semibold rounded-full border transition"
-                    :class="catForm.hedef_yas_araliklari.includes(y.id)
+                    :class="catForm.target_age_ranges.includes(y.id)
                       ? 'bg-blue-100 text-blue-700 border-blue-400'
                       : 'bg-white text-gray-500 border-gray-300 hover:border-gray-400'"
                   >{{ y.ad }}</button>

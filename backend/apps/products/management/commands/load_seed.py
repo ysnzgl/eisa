@@ -8,7 +8,7 @@ from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
 
-from apps.products.models import EtkenMadde, Kategori, Soru
+from apps.products.models import EtkenMadde, Kategori, Soru, SoruEtkenMadde
 
 # Hassas kategori slug'lari
 HASSAS_SLUGLAR = {"cinsel", "hemoroid", "koku", "mantar", "sac", "ishal"}
@@ -61,29 +61,36 @@ class Command(BaseCommand):
                 kat_guncellenen += 1
 
             for q in entry.get("questions", []):
-                _, q_created = Soru.objects.update_or_create(
+                soru, q_created = Soru.objects.update_or_create(
                     kategori=kat,
                     sira=q.get("priority", 0),
-                    defaults={
-                        "seed_id": q.get("id"),
-                        "metin": q["text"],
-                        "eslesme_kurallari": q.get("match_rules", []),
-                    },
+                    defaults={"metin": q["text"]},
                 )
                 if q_created:
                     soru_olusan += 1
                 else:
                     soru_guncellenen += 1
 
+                # Etken maddeleri match_rules'tan çıkar ve through model ile bağla
                 for rule in q.get("match_rules", []):
-                    for em_ad in [rule.get("primary"), rule.get("supportive")]:
-                        if em_ad:
-                            _, em_created = EtkenMadde.objects.get_or_create(
-                                ad=em_ad,
-                                defaults={"aciklama": ""},
-                            )
-                            if em_created:
-                                em_olusan += 1
+                    for rol_key, rol_deger in [
+                        ("primary", SoruEtkenMadde.ROL_ANA),
+                        ("supportive", SoruEtkenMadde.ROL_DESTEKLEYICI),
+                    ]:
+                        em_ad = rule.get(rol_key)
+                        if not em_ad:
+                            continue
+                        em, em_created = EtkenMadde.objects.get_or_create(
+                            ad=em_ad,
+                            defaults={"aciklama": ""},
+                        )
+                        if em_created:
+                            em_olusan += 1
+                        SoruEtkenMadde.objects.update_or_create(
+                            soru=soru,
+                            etken_madde=em,
+                            defaults={"rol": rol_deger},
+                        )
 
         self.stdout.write("")
         self.stdout.write(self.style.SUCCESS("Seed yukleme tamamlandi:"))

@@ -20,9 +20,10 @@ class Kategori(BaseModel):
     )
     aktif = models.BooleanField(default=True)
 
-    hedef_cinsiyetler = models.ManyToManyField(
-        "lookups.Cinsiyet", blank=True, related_name="hedef_kategoriler",
-        help_text="Bos = herkese goster.",
+    hedef_cinsiyet = models.ForeignKey(
+        "lookups.Cinsiyet", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="hedef_kategoriler",
+        help_text="Bos = tum cinsiyetlere goster.",
     )
     hedef_yas_araliklari = models.ManyToManyField(
         "lookups.YasAraligi", blank=True, related_name="hedef_kategoriler",
@@ -43,23 +44,28 @@ class Soru(BaseModel):
     kategori = models.ForeignKey(
         Kategori, on_delete=models.CASCADE, related_name="sorular"
     )
-    seed_id = models.CharField(max_length=32, unique=True, null=True, blank=True)
     metin = models.TextField()
-    sira = models.PositiveSmallIntegerField(default=0)
-    eslesme_kurallari = models.JSONField(default=list, blank=True)
+    sira = models.PositiveSmallIntegerField(default=1)
 
-    hedef_cinsiyetler = models.ManyToManyField(
-        "lookups.Cinsiyet", blank=True, related_name="hedef_sorular",
-        help_text="Bos = herkese goster.",
+    hedef_cinsiyet = models.ForeignKey(
+        "lookups.Cinsiyet", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="hedef_sorular",
+        help_text="Bos = tum cinsiyetlere goster.",
     )
     hedef_yas_araliklari = models.ManyToManyField(
         "lookups.YasAraligi", blank=True, related_name="hedef_sorular",
+        help_text="Bos = herkese goster.",
+    )
+    hedef_etken_maddeler = models.ManyToManyField(
+        "EtkenMadde", blank=True, through="SoruEtkenMadde",
+        related_name="hedef_sorular",
         help_text="Bos = herkese goster.",
     )
 
     class Meta:
         db_table = "sorular"
         ordering = ("kategori__ad", "sira")
+        unique_together = [("kategori", "sira")]
         verbose_name = "Soru"
         verbose_name_plural = "Sorular"
 
@@ -85,8 +91,9 @@ class Cevap(BaseModel):
 class EtkenMadde(BaseModel):
     """Etken madde (Magnezyum, B12 vb.). Marka onerisi YASAKTIR."""
 
-    ad = models.CharField(max_length=128, unique=True)
+    ad = models.CharField(max_length=250, unique=True)
     aciklama = models.TextField(blank=True, default="")
+    aktif = models.BooleanField(default=True)
 
     class Meta:
         db_table = "etken_maddeler"
@@ -96,3 +103,34 @@ class EtkenMadde(BaseModel):
 
     def __str__(self) -> str:
         return self.ad
+
+
+class SoruEtkenMadde(models.Model):
+    """Soru ile EtkenMadde arasındaki ilişki — rol bilgisi içerir.
+
+    unique_together garantisi: aynı soruya aynı etken madde bir kez eklenebilir.
+    """
+
+    ROL_ANA = "ana"
+    ROL_DESTEKLEYICI = "destekleyici"
+    ROL_SECENEKLER = [
+        (ROL_ANA, "Ana"),
+        (ROL_DESTEKLEYICI, "Destekleyici"),
+    ]
+
+    soru = models.ForeignKey(
+        Soru, on_delete=models.CASCADE, related_name="etken_madde_baglantilari"
+    )
+    etken_madde = models.ForeignKey(
+        EtkenMadde, on_delete=models.CASCADE, related_name="soru_baglantilari"
+    )
+    rol = models.CharField(max_length=16, choices=ROL_SECENEKLER, default=ROL_ANA)
+
+    class Meta:
+        db_table = "soru_etken_maddeler"
+        unique_together = (("soru", "etken_madde"),)
+        verbose_name = "Soru Etken Madde"
+        verbose_name_plural = "Soru Etken Maddeler"
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"{self.soru_id} — {self.etken_madde.ad} ({self.rol})"
