@@ -3,7 +3,7 @@ from rest_framework import serializers
 
 from apps.lookups.models import Cinsiyet, YasAraligi
 
-from .models import OturumLogu, ReklamGosterim
+from .models import OturumLogu
 
 
 class OturumLoguItemSerializer(serializers.Serializer):
@@ -22,15 +22,6 @@ class OturumLoguItemSerializer(serializers.Serializer):
     cevaplar = serializers.JSONField(default=dict)
     onerilen_etken_maddeler = serializers.JSONField(default=list)
     olusturulma_tarihi = serializers.DateTimeField(required=False, allow_null=True)
-
-
-class ReklamGosterimItemSerializer(serializers.Serializer):
-    """Kiosk'tan gelen tek reklam gosterim kaydi."""
-
-    idempotency_anahtari = serializers.UUIDField()
-    reklam_id = serializers.IntegerField()
-    gosterilme_tarihi = serializers.DateTimeField()
-    sure_ms = serializers.IntegerField(min_value=0, default=0)
 
 
 class OturumLoguSerializer(serializers.ModelSerializer):

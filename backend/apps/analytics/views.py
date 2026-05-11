@@ -25,11 +25,10 @@ from apps.pharmacies.auth import KioskAppKeyAuthentication
 from apps.pharmacies.permissions import IsEczaci, IsKiosk, IsSuperAdmin
 from apps.products.models import Kategori
 
-from .models import OturumLogu, ReklamGosterim
+from .models import OturumLogu
 from .serializers import (
     OturumLoguItemSerializer,
     OturumLoguSerializer,
-    ReklamGosterimItemSerializer,
 )
 
 
@@ -149,55 +148,6 @@ class OturumLoguView(APIView):
                         status=return_status)
 
 
-class ReklamGosterimBulkPushView(APIView):
-    """POST /api/analytics/impressions/ â€” Kiosk reklam gosterim toplu push."""
-
-    authentication_classes = [KioskAppKeyAuthentication]
-    permission_classes = [IsKiosk]
-
-    def post(self, request):
-        from apps.campaigns.models import Reklam
-
-        items = request.data.get("items", [])
-        if not isinstance(items, list):
-            return Response({"detail": "'items' alani bir liste olmalidir."},
-                            status=status.HTTP_400_BAD_REQUEST)
-
-        accepted = []
-        errors = []
-
-        for i, raw in enumerate(items):
-            ser = ReklamGosterimItemSerializer(data=raw)
-            if not ser.is_valid():
-                errors.append({"index": i, "errors": ser.errors})
-                continue
-            d = ser.validated_data
-            idem = d["idempotency_anahtari"]
-            if ReklamGosterim.objects.filter(idempotency_anahtari=idem).exists():
-                accepted.append(str(idem))
-                continue
-            try:
-                reklam = Reklam.objects.get(pk=d["reklam_id"])
-            except Reklam.DoesNotExist:
-                errors.append({"index": i, "idempotency_anahtari": str(idem),
-                              "errors": {"reklam_id": ["Reklam bulunamadi."]}})
-                continue
-            instance = ReklamGosterim(
-                idempotency_anahtari=idem,
-                kiosk=request.user,
-                reklam=reklam,
-                gosterilme_tarihi=d["gosterilme_tarihi"],
-                sure_ms=d.get("sure_ms", 0),
-            )
-            with UnitOfWork(user=None) as uow:
-                uow.add(instance)
-            accepted.append(str(idem))
-
-        return_status = status.HTTP_207_MULTI_STATUS if errors else status.HTTP_200_OK
-        return Response({"accepted": len(accepted), "accepted_keys": accepted, "errors": errors},
-                        status=return_status)
-
-
 class OturumLoguStatsView(APIView):
     """GET /api/analytics/sessions/stats/ â€” super admin istatistikleri."""
 
@@ -251,7 +201,7 @@ class AdminDashboardView(APIView):
     permission_classes = [IsSuperAdmin]
 
     def get(self, request):
-        from apps.campaigns.models import Reklam
+        from apps.campaigns.models import Campaign
         from apps.pharmacies.models import Eczane, Kiosk
 
         now = timezone.now()
@@ -263,8 +213,10 @@ class AdminDashboardView(APIView):
         aktif_kiosk = Kiosk.objects.filter(
             son_goruldu__gte=now - timedelta(minutes=15)
         ).count()
-        aktif_reklam = Reklam.objects.filter(
-            aktif=True, baslangic_tarihi__lte=now, bitis_tarihi__gte=now
+        aktif_reklam = Campaign.objects.filter(
+            status=Campaign.Status.ACTIVE,
+            start_date__lte=now,
+            end_date__gte=now,
         ).count()
         bugunki_oturum = OturumLogu.objects.filter(
             olusturulma_tarihi__gte=bugun_baslangic
@@ -292,12 +244,19 @@ class AdminDashboardView(APIView):
             )
         ]
 
-        # Son reklamlar
-        son_reklamlar = list(
-            Reklam.objects.filter(aktif=True)
-            .values("id", "ad", "musteri", "baslangic_tarihi", "bitis_tarihi")
+        # Son kampanyalar (DOOH v2)
+        son_reklamlar = [
+            {
+                "id": str(row["id"]),
+                "ad": row["name"],
+                "musteri": str(row["advertiser_id"]) if row["advertiser_id"] else "",
+                "baslangic_tarihi": row["start_date"],
+                "bitis_tarihi": row["end_date"],
+            }
+            for row in Campaign.objects.filter(status=Campaign.Status.ACTIVE)
+            .values("id", "name", "advertiser_id", "start_date", "end_date", "olusturulma_tarihi")
             .order_by("-olusturulma_tarihi")[:5]
-        )
+        ]
 
         return Response(
             {

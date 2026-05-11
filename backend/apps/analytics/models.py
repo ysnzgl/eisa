@@ -36,25 +36,3 @@ class OturumLogu(BaseModel):
         indexes = [models.Index(fields=["olusturulma_tarihi", "kiosk"])]
         verbose_name = "Oturum Logu"
         verbose_name_plural = "Oturum Loglari"
-
-
-class ReklamGosterim(BaseModel):
-    """DOOH idle moddaki reklam gosterim logu."""
-
-    idempotency_anahtari = models.UUIDField(
-        default=uuid.uuid4, editable=False, unique=True, db_index=True
-    )
-    kiosk = models.ForeignKey(
-        "pharmacies.Kiosk", on_delete=models.CASCADE, related_name="reklam_gosterimleri"
-    )
-    reklam = models.ForeignKey(
-        "campaigns.Reklam", on_delete=models.CASCADE, related_name="gosterimler"
-    )
-    gosterilme_tarihi = models.DateTimeField()
-    sure_ms = models.PositiveIntegerField(default=0)
-
-    class Meta:
-        db_table = "reklam_gosterimleri"
-        ordering = ("-gosterilme_tarihi",)
-        verbose_name = "Reklam Gosterim"
-        verbose_name_plural = "Reklam Gosterimleri"

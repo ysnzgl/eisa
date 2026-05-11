@@ -17,9 +17,9 @@ const routes = [
       { path: '', component: () => import('../views/admin/Dashboard.vue') },
       { path: 'devices',        component: () => import('../views/admin/DeviceManagement.vue') },
       { path: 'medical-logic',      component: () => import('../views/admin/MedicalLogic.vue') },
-      { path: 'ad-manager',    component: () => import('../views/admin/CampaignManager.vue') },
-      { path: 'scheduler',     component: () => import('../views/admin/CampaignScheduler.vue') },
+      { path: 'campaigns',     component: () => import('../views/admin/CampaignWizard.vue') },
       { path: 'timeline',      component: () => import('../views/admin/AdTimelineView.vue') },
+      { path: 'playlists',     component: () => import('../views/admin/PlaylistEditor.vue') },
       { path: 'pricing',       component: () => import('../views/admin/PricingMatrixConfigurator.vue') },
       { path: 'users',         component: () => import('../views/admin/UserManagement.vue') },
     ]

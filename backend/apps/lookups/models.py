@@ -15,7 +15,7 @@ from apps.core.models import LookupModel
 
 
 class Il(LookupModel):
-    """Sehirler (Iller) — Eczane.il, Reklam.hedef_iller (M2M) referansi."""
+    """Sehirler (Iller) — Eczane.il referansi."""
 
     ad = models.CharField(max_length=64, unique=True)
     plaka = models.PositiveSmallIntegerField(unique=True, null=True, blank=True)
@@ -31,7 +31,7 @@ class Il(LookupModel):
 
 
 class Ilce(LookupModel):
-    """Ilceler — Eczane.ilce ve Reklam.hedef_ilceler referansi."""
+    """Ilceler — Eczane.ilce referansi."""
 
     il = models.ForeignKey(Il, on_delete=models.PROTECT, related_name="ilceler")
     ad = models.CharField(max_length=64)

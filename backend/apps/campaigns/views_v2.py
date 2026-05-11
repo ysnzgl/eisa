@@ -39,6 +39,7 @@ from core_api.cookie_jwt import JWTCookieAuthentication as JWTAuthentication
 
 from .models import (
     Campaign,
+    CampaignTarget,
     Creative,
     HouseAd,
     PlayLog,
@@ -48,6 +49,7 @@ from .models import (
 )
 from .serializers import (
     CampaignSerializer,
+    CampaignTargetSerializer,
     CreativeSerializer,
     HouseAdSerializer,
     KioskCreativeSyncSerializer,
@@ -58,7 +60,7 @@ from .serializers import (
     ProofOfPlayBulkSerializer,
     ScheduleRuleSerializer,
 )
-from .services.scheduler import available_seconds, generate_for_kiosk
+from .services.scheduler import available_seconds, generate_for_kiosk, simulate_campaign_capacity
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +80,9 @@ def _parse_date(raw: str | None) -> _dt.date:
 
 
 class CampaignViewSet(viewsets.ModelViewSet):
-    queryset = Campaign.objects.prefetch_related("creatives", "schedule_rules", "target_pharmacies")
+    queryset = Campaign.objects.prefetch_related(
+        "creatives", "target_pharmacies", "targets__il", "targets__ilce", "targets__eczane"
+    ).select_related("schedule_rule")
     serializer_class = CampaignSerializer
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsSuperAdmin]
@@ -105,36 +109,217 @@ class CampaignViewSet(viewsets.ModelViewSet):
         with UnitOfWork(user=self.request.user) as uow:
             uow.delete(instance)
 
-    # ── Frekans matrisi (kurallar) ──
-    @action(detail=True, methods=["get", "post"], url_path="rules")
-    def rules(self, request, pk=None):
-        campaign = self.get_object()
-        if request.method == "GET":
-            qs = campaign.schedule_rules.all()
-            return Response(ScheduleRuleSerializer(qs, many=True).data)
+    # ── Toplu işlem (bulk action) ──
+    @action(detail=False, methods=["post"], url_path="bulk-action")
+    def bulk_action(self, request):
+        """``POST /api/campaigns/v2/campaigns/bulk-action/``
 
-        # POST — single rule veya rule listesi (campaign URL'den, body'de gerekmez)
-        payload = request.data
-        many = isinstance(payload, list)
-        if many:
-            data = [{**dict(p), "campaign": str(campaign.pk)} for p in payload]
-        else:
-            data = {**dict(payload), "campaign": str(campaign.pk)}
-        serializer = ScheduleRuleSerializer(data=data, many=many)
-        serializer.is_valid(raise_exception=True)
-        items = serializer.validated_data if many else [serializer.validated_data]
+        Body::
+
+            { "action": "delete" | "pause" | "activate", "ids": ["uuid", ...] }
+
+        Returns ``{ "updated": <int>, "action": <str> }``.
+        """
+        action_name = (request.data.get("action") or "").lower()
+        ids = request.data.get("ids") or []
+        if action_name not in {"delete", "pause", "activate"}:
+            return Response(
+                {"error": "action must be one of: delete | pause | activate"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not isinstance(ids, list) or not ids:
+            return Response(
+                {"error": "ids must be a non-empty array"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        qs = Campaign.objects.filter(pk__in=ids)
+        updated = 0
+        with UnitOfWork(user=request.user) as uow:
+            if action_name == "delete":
+                for c in list(qs):
+                    uow.delete(c)
+                    updated += 1
+            else:
+                new_status = (
+                    Campaign.Status.PAUSED if action_name == "pause"
+                    else Campaign.Status.ACTIVE
+                )
+                for c in list(qs):
+                    if c.status != new_status:
+                        c.status = new_status
+                        uow.update(c)
+                    updated += 1
+        return Response({"updated": updated, "action": action_name})
+
+    # ── CampaignTarget (IL/ILCE/ECZANE hiyerarşik hedefleme) ──
+    @action(detail=True, methods=["get", "post"], url_path="targets")
+    def targets(self, request, pk=None):
+        """``GET``: kampanyanın hedef listesini döner.
+        ``POST``: hedef listesini TAMAMEN YENİDEN YAZAR (replace semantics).
+
+        Body örneği::
+
+            [
+              {"target_type": "IL",     "il": 6},
+              {"target_type": "ILCE",   "ilce": 42},
+              {"target_type": "ECZANE", "eczane": 99}
+            ]
+        """
+        campaign = self.get_object()
+
+        if request.method == "GET":
+            qs = campaign.targets.select_related("il", "ilce", "eczane").all()
+            return Response(CampaignTargetSerializer(qs, many=True).data)
+
+        # POST — replace all targets
+        if not isinstance(request.data, list):
+            return Response(
+                {"error": "Hedef listesi JSON dizi (array) olmalıdır."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        ser = CampaignTargetSerializer(
+            data=[{**item, "campaign": str(campaign.pk)} for item in request.data],
+            many=True,
+        )
+        ser.is_valid(raise_exception=True)
 
         with UnitOfWork(user=request.user) as uow:
-            created = []
-            for item in items:
-                # Sabit binding: URL param campaign
-                item["campaign"] = campaign
-                rule = ScheduleRule(**item)
-                uow.add(rule)
-                created.append(rule)
+            campaign.targets.all().delete()
+            for validated in ser.validated_data:
+                validated["campaign"] = campaign
+                obj = CampaignTarget(**validated)
+                uow.add(obj)
+
+        qs = campaign.targets.select_related("il", "ilce", "eczane").all()
         return Response(
-            ScheduleRuleSerializer(created, many=True).data,
+            CampaignTargetSerializer(qs, many=True).data,
             status=status.HTTP_201_CREATED,
+        )
+
+    # ── Kapasite önizleme (Before / After) ──
+    @action(detail=False, methods=["post"], url_path="preview")
+    def preview(self, request):
+        """``POST /api/campaigns/v2/campaigns/preview/``
+
+        Yeni bir kural eklemeden ÖNCE kapasite etkisini hesaplar.
+        Kayıt yapmaz, sadece simülasyon sonucunu döner.
+
+        Body::
+
+            {
+              "kiosk": 12,
+              "date": "2026-05-15",
+              "creative_duration": 15,
+              "frequency_type": "PER_LOOP",
+              "frequency_value": 2,
+              "target_hours": [9,10,11,17,18]  // null = tüm gün
+            }
+
+        Yanıt::
+
+            {
+              "date": "2026-05-15",
+              "kiosk": 12,
+              "hours": [
+                {"hour": 9, "before_available": 45, "after_available": 15, "has_conflict": false},
+                ...
+              ]
+            }
+        """
+        kiosk_id = request.data.get("kiosk")
+        if kiosk_id:
+            try:
+                kiosk = Kiosk.objects.get(pk=kiosk_id)
+            except Kiosk.DoesNotExist:
+                return Response({"error": f"Kiosk bulunamadı: {kiosk_id}"},
+                                status=status.HTTP_404_NOT_FOUND)
+        else:
+            # Kiosk belirtilmemişse ilk aktif kiosku kullan
+            kiosk = Kiosk.objects.filter(aktif=True).first()
+            if not kiosk:
+                try:
+                    target_date = _parse_date(request.data.get("date"))
+                except ValueError:
+                    target_date = timezone.now().date()
+                return Response({
+                    "date": str(target_date), "kiosk": None,
+                    "loop_duration_seconds": 60, "hours": [],
+                    "note": "Sistemde aktif kiosk bulunamadı.",
+                })
+        try:
+            target_date = _parse_date(request.data.get("date"))
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            creative_duration = int(request.data.get("creative_duration", 15))
+            frequency_type = str(request.data.get("frequency_type", "PER_LOOP"))
+            frequency_value = int(request.data.get("frequency_value", 1))
+        except (TypeError, ValueError) as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        target_hours = request.data.get("target_hours")  # None = all day
+
+        result = simulate_campaign_capacity(
+            kiosk=kiosk,
+            target_date=target_date,
+            creative_duration=creative_duration,
+            frequency_type=frequency_type,
+            frequency_value=frequency_value,
+            target_hours=target_hours,
+        )
+
+        return Response({
+            "date": str(target_date),
+            "kiosk": int(kiosk.pk),
+            "loop_duration_seconds": 60,
+            "hours": list(result.values()),
+        })
+
+    # ── Frekans kuralı (tek kural per kampanya) ──
+    @action(detail=True, methods=["get", "post", "put", "delete"], url_path="rules")
+    def rules(self, request, pk=None):
+        campaign = self.get_object()
+
+        if request.method == "GET":
+            rule = getattr(campaign, "schedule_rule", None)
+            if rule is None:
+                return Response(None)
+            return Response(ScheduleRuleSerializer(rule).data)
+
+        if request.method == "DELETE":
+            rule = getattr(campaign, "schedule_rule", None)
+            if rule is not None:
+                with UnitOfWork(user=request.user) as uow:
+                    uow.delete(rule)
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        # POST/PUT — upsert: tek kural; varsa günceller, yoksa oluşturur
+        payload = request.data
+        if isinstance(payload, list):
+            return Response(
+                {"error": "Bir kampanyanın yalnızca tek frekans kuralı olabilir. Liste değil tek nesne gönderin."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        data = {**dict(payload), "campaign": str(campaign.pk)}
+        existing = getattr(campaign, "schedule_rule", None)
+        serializer = ScheduleRuleSerializer(instance=existing, data=data)
+        serializer.is_valid(raise_exception=True)
+        validated = serializer.validated_data
+        validated["campaign"] = campaign
+
+        with UnitOfWork(user=request.user) as uow:
+            if existing is None:
+                rule = ScheduleRule(**validated)
+                uow.add(rule)
+            else:
+                for k, v in validated.items():
+                    setattr(existing, k, v)
+                uow.update(existing)
+                rule = existing
+        return Response(
+            ScheduleRuleSerializer(rule).data,
+            status=status.HTTP_201_CREATED if existing is None else status.HTTP_200_OK,
         )
 
     # ── Admin Timeline View ──
@@ -166,6 +351,70 @@ class CampaignViewSet(viewsets.ModelViewSet):
         if playlist is None:
             return Response({"playlist": None, "items": []})
         return Response(PlaylistAdminSerializer(playlist).data)
+
+    # ── Haftalık takvim ısı haritası (lightweight) ──
+    @action(detail=False, methods=["get"], url_path="calendar")
+    def calendar(self, request):
+        """``GET /api/campaigns/v2/campaigns/calendar/?kiosk=<id>&start=YYYY-MM-DD[&days=7]``
+
+        Bir kiosk için ``start`` tarihinden itibaren ``days`` gün boyunca,
+        her (gün × saat) hücresi için: doluluk yüzdesi + farklı kampanya
+        sayısı + ilk 3 kampanya adı döner. DB'ye yeni tablo gerekmez —
+        mevcut Playlist + PlaylistItem üzerinden hesaplanır.
+        """
+        kiosk_id = request.query_params.get("kiosk")
+        if not kiosk_id:
+            return Response({"error": "kiosk parametresi zorunludur."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            start_date = _parse_date(request.query_params.get("start"))
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            days = max(1, min(31, int(request.query_params.get("days", 7))))
+        except (TypeError, ValueError):
+            days = 7
+        end_date = start_date + _dt.timedelta(days=days - 1)
+
+        playlists = (
+            Playlist.objects
+            .filter(kiosk_id=kiosk_id, target_date__gte=start_date, target_date__lte=end_date)
+            .prefetch_related("items__creative__campaign", "items__house_ad")
+        )
+
+        # cells[date_str][hour] = {used, free, campaigns: set, top: [name1,...]}
+        cells: dict = {}
+        for pl in playlists:
+            day_key = str(pl.target_date)
+            cells.setdefault(day_key, {})
+            loop_sec = pl.loop_duration_seconds or 60
+            used = 0
+            campaign_seconds: dict = {}
+            for it in pl.items.all():
+                dur = (it.creative.duration_seconds if it.creative_id
+                       else it.house_ad.duration_seconds if it.house_ad_id else 0)
+                used += dur or 0
+                if it.creative_id and it.creative.campaign_id:
+                    name = it.creative.campaign.name
+                    campaign_seconds[name] = campaign_seconds.get(name, 0) + dur
+            # Loop sayısını hesapla (saat 3600 sn / 60 sn = 60 loop)
+            loops_in_hour = max(1, 3600 // loop_sec)
+            total_capacity = loops_in_hour * loop_sec
+            top = sorted(campaign_seconds.items(), key=lambda kv: -kv[1])[:3]
+            cells[day_key][pl.target_hour] = {
+                "used_seconds": used,
+                "capacity_seconds": total_capacity,
+                "fill_pct": round(100 * used / total_capacity, 1) if total_capacity else 0,
+                "campaign_count": len(campaign_seconds),
+                "top_campaigns": [{"name": n, "seconds": s} for n, s in top],
+            }
+        return Response({
+            "kiosk": int(kiosk_id),
+            "start": str(start_date),
+            "end": str(end_date),
+            "days": days,
+            "cells": cells,
+        })
 
 
 class CreativeViewSet(viewsets.ModelViewSet):
@@ -377,7 +626,7 @@ class PlaylistGenerateView(APIView):
             if raw_date:
                 target_date = _dt.datetime.strptime(raw_date, "%Y-%m-%d").date()
             else:
-                target_date = (timezone.now() + _dt.timedelta(days=1)).date()
+                target_date = timezone.now().date()
         except ValueError:
             return Response(
                 {"error": f"Gecersiz tarih: {raw_date} (YYYY-MM-DD bekleniyor)"},
@@ -511,6 +760,59 @@ class KioskPlaylistView(APIView):
             "target_date": str(target_date),
             "loop_duration_seconds": 60,
             "playlists": KioskPlaylistSerializer(playlists, many=True).data,
+        })
+
+
+class KioskPingView(APIView):
+    """``GET /api/kiosk/v1/{kiosk_id}/ping/``
+
+    Heartbeat (Ping-Pong) endpoint. Kiosk bu endpoint'i periyodik olarak cagirir.
+    Yanit olarak o kiosk icin bugunun playlist versiyon numarasini doner.
+
+    Kiosk, kendi versiyonu ile gelen versiyonu karsilastirir:
+      - Eger yeni versiyon varsa => /playlist/ endpoint'ini cagirarak
+        guncellenmis playlist'i indirir (Delta Sync).
+      - Ayni versiyon ise => hicbir islem yapmaz, yerel playlist'i oynatir.
+
+    Yani doner::
+
+        {
+          "kiosk_id": 12,
+          "date": "2026-05-15",
+          "playlist_version": 7,
+          "updated_at": "2026-05-15T03:00:00Z",
+          "server_time": "2026-05-15T14:22:01Z"
+        }
+    """
+
+    authentication_classes = [KioskAppKeyAuthentication]
+    permission_classes = [IsKiosk]
+
+    def get(self, request, kiosk_id):
+        guard = _ensure_kiosk_match(request, kiosk_id)
+        if guard is not None:
+            return guard
+        kiosk: Kiosk = request.user
+        now = timezone.now()
+        today = now.date()
+
+        # Bugunun playlist versiyonunu doner (en guncellenmis saat'in versiyonu)
+        from django.db.models import Max
+        agg = (
+            Playlist.objects
+            .filter(kiosk=kiosk, target_date=today)
+            .aggregate(max_version=Max("version"), max_updated=Max("guncellenme_tarihi"))
+        )
+
+        # Kiosun son-goruldu zamanini guncelle (heartbeat kaydı)
+        Kiosk.objects.filter(pk=kiosk.pk).update(son_goruldu=now)
+
+        return Response({
+            "kiosk_id": int(kiosk.pk),
+            "date": str(today),
+            "playlist_version": agg["max_version"] or 0,
+            "updated_at": agg["max_updated"].isoformat() if agg["max_updated"] else None,
+            "server_time": now.isoformat(),
         })
 
 

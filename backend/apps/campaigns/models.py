@@ -1,12 +1,8 @@
-"""DOOH reklam (kampanya) modelleri — eczane hedefli.
+"""DOOH reklam (kampanya) modelleri.
 
-Bu modul iki kusak modeli barindirir:
-
-* **Legacy**: ``Reklam`` ve ``ReklamTakvim`` — basit saat-araligi tabanli yayin
-  takvimi (geriye donuk uyumluluk icin korunur).
-* **DOOH v2**: ``Campaign`` / ``Creative`` / ``ScheduleRule`` / ``Playlist`` /
-  ``PlaylistItem`` / ``PlayLog`` / ``HouseAd`` / ``PricingMatrix`` — merkezi,
-  60sn loop tabanli, on-hesaplanmis playlist mimarisi.
+DOOH v2: ``Campaign`` / ``Creative`` / ``ScheduleRule`` / ``Playlist`` /
+``PlaylistItem`` / ``PlayLog`` / ``HouseAd`` / ``PricingMatrix`` — merkezi,
+60sn loop tabanli, on-hesaplanmis playlist mimarisi.
 """
 import uuid
 
@@ -21,67 +17,6 @@ def _https_url_validator(value: str) -> None:
     lower = (value or "").lower()
     if not (lower.startswith("https://") or lower.startswith("http://")):
         raise ValidationError("medya_url yalnizca http veya https olabilir.")
-
-
-class Reklam(BaseModel):
-    """DOOH idle reklami. Bos hedef_eczaneler = herkese goster."""
-
-    ad = models.CharField(max_length=255)
-    musteri = models.CharField(max_length=255, blank=True, default="")
-    medya_url = models.URLField(max_length=2048, validators=[_https_url_validator])
-    sure_saniye = models.PositiveSmallIntegerField(default=15)
-    baslangic_tarihi = models.DateTimeField()
-    bitis_tarihi = models.DateTimeField()
-    yayin_baslangic = models.TimeField(null=True, blank=True, help_text="Günlük yayın başlangıç saati")
-    yayin_bitis = models.TimeField(null=True, blank=True, help_text="Günlük yayın bitiş saati")
-
-    hedef_eczaneler = models.ManyToManyField(
-        "pharmacies.Eczane", blank=True, related_name="reklamlar"
-    )
-
-    aktif = models.BooleanField(default=True)
-
-    class Meta:
-        db_table = "reklamlar"
-        ordering = ("-olusturulma_tarihi",)
-        verbose_name = "Reklam"
-        verbose_name_plural = "Reklamlar"
-
-    def __str__(self) -> str:
-        return self.ad
-
-
-class ReklamTakvim(BaseModel):
-    """Reklamin belirli bir kioskta gun ici hangi saatlerde yayinlanacagini tutar."""
-
-    reklam = models.ForeignKey(
-        Reklam, on_delete=models.CASCADE, related_name="takvim_atamalari"
-    )
-    kiosk = models.ForeignKey(
-        "pharmacies.Kiosk", on_delete=models.CASCADE, related_name="reklam_takvimi"
-    )
-    baslangic_saat = models.PositiveSmallIntegerField()
-    bitis_saat = models.PositiveSmallIntegerField()
-    aktif = models.BooleanField(default=True)
-
-    class Meta:
-        db_table = "reklam_takvimi"
-        ordering = ("kiosk_id", "baslangic_saat", "bitis_saat")
-        verbose_name = "Reklam Takvim Ataması"
-        verbose_name_plural = "Reklam Takvim Atamaları"
-        constraints = [
-            models.CheckConstraint(
-                check=models.Q(baslangic_saat__gte=0)
-                & models.Q(baslangic_saat__lte=23)
-                & models.Q(bitis_saat__gte=1)
-                & models.Q(bitis_saat__lte=24)
-                & models.Q(baslangic_saat__lt=models.F("bitis_saat")),
-                name="reklam_takvimi_saat_araligi_gecerli",
-            ),
-        ]
-
-    def __str__(self) -> str:
-        return f"{self.reklam} -> {self.kiosk} ({self.baslangic_saat}-{self.bitis_saat})"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -100,16 +35,32 @@ class Campaign(BaseModel):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     advertiser_id = models.UUIDField(
-        help_text="Reklamveren (advertiser) UUID'si — harici sistem kimligi."
+        null=True, blank=True,
+        help_text="Reklamveren (advertiser) UUID'si — harici sistem kimligi (opsiyonel)."
+    )
+    advertiser_name = models.CharField(
+        max_length=255, blank=True, default="",
+        help_text="Reklamveren adi (admin panel icin serbest metin)."
     )
     name = models.CharField(max_length=255)
     start_date = models.DateTimeField()
     end_date = models.DateTimeField()
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.ACTIVE)
 
+    # Pacing alanları
+    impression_goal = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Toplam gösterim hedefi (opsiyonel). Örn: 5000 kez göster.",
+    )
+    frequency_cap_per_hour = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text="Saatte maksimum gösterim sayısı (opsiyonel). Örn: saatte en fazla 2 kez çıksın.",
+    )
+
+    # Legacy M2M (geriye dönük uyumluluk; yeni kampanyalar CampaignTarget kullanır)
     target_pharmacies = models.ManyToManyField(
         "pharmacies.Eczane", blank=True, related_name="dooh_campaigns",
-        help_text="Bos liste = tum eczanelere yayinla.",
+        help_text="[Eski] Bos liste = tum eczanelere yayinla. Yeni kampanyalar CampaignTarget kullanir.",
     )
 
     class Meta:
@@ -129,6 +80,64 @@ class Campaign(BaseModel):
             self.status == self.Status.ACTIVE
             and self.start_date <= when <= self.end_date
         )
+
+
+class CampaignTarget(BaseModel):
+    """Kampanya lokasyon hedefi (Il / Ilce / Eczane hiyerarsisi).
+
+    Bir kampanya; il, ilce veya spesifik eczane seviyesinde hedeflenebilir.
+    Scheduler bu kayitlari cozumleyerek hangi eczanelerin etkilendigini bulur.
+
+    Ornekler:
+      - type=IL,    il=Ankara_id        => Ankara'nin tum eczaneleri
+      - type=ILCE,  ilce=Melikgazi_id   => Melikgazi'nin tum eczaneleri
+      - type=ECZANE,eczane=xyz_id       => Tek spesifik eczane
+    """
+
+    class TargetType(models.TextChoices):
+        IL = "IL", "İl (Tüm ilçe ve eczaneler)"
+        ILCE = "ILCE", "İlçe (Tüm eczaneler)"
+        ECZANE = "ECZANE", "Spesifik Eczane"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    campaign = models.ForeignKey(
+        Campaign, on_delete=models.CASCADE, related_name="targets"
+    )
+    target_type = models.CharField(max_length=8, choices=TargetType.choices)
+    il = models.ForeignKey(
+        "lookups.Il", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="+",
+    )
+    ilce = models.ForeignKey(
+        "lookups.Ilce", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="+",
+    )
+    eczane = models.ForeignKey(
+        "pharmacies.Eczane", on_delete=models.CASCADE, null=True, blank=True,
+        related_name="+",
+    )
+
+    class Meta:
+        db_table = "dooh_campaign_targets"
+        ordering = ("campaign_id", "target_type")
+        verbose_name = "Campaign Target"
+        verbose_name_plural = "Campaign Targets"
+
+    def clean(self) -> None:
+        super().clean()
+        if self.target_type == self.TargetType.IL and not self.il_id:
+            raise ValidationError({"il": "IL hedefi için il alanı zorunludur."})
+        if self.target_type == self.TargetType.ILCE and not self.ilce_id:
+            raise ValidationError({"ilce": "ILCE hedefi için ilce alanı zorunludur."})
+        if self.target_type == self.TargetType.ECZANE and not self.eczane_id:
+            raise ValidationError({"eczane": "ECZANE hedefi için eczane alanı zorunludur."})
+
+    def __str__(self) -> str:
+        if self.target_type == self.TargetType.IL:
+            return f"IL:{self.il}"
+        if self.target_type == self.TargetType.ILCE:
+            return f"ILCE:{self.ilce}"
+        return f"ECZANE:{self.eczane}"
 
 
 class Creative(BaseModel):
@@ -175,8 +184,8 @@ class ScheduleRule(BaseModel):
         PER_DAY = "PER_DAY", "Per day"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    campaign = models.ForeignKey(
-        Campaign, on_delete=models.CASCADE, related_name="schedule_rules"
+    campaign = models.OneToOneField(
+        Campaign, on_delete=models.CASCADE, related_name="schedule_rule"
     )
     frequency_type = models.CharField(max_length=16, choices=FrequencyType.choices)
     frequency_value = models.PositiveSmallIntegerField()
@@ -220,6 +229,10 @@ class Playlist(BaseModel):
     target_date = models.DateField()
     target_hour = models.PositiveSmallIntegerField()
     loop_duration_seconds = models.PositiveSmallIntegerField(default=60)
+    version = models.PositiveIntegerField(
+        default=1,
+        help_text="Her üretimde artan versiyon numarası. Kiosk ping ile karşılaştırır.",
+    )
 
     class Meta:
         db_table = "dooh_playlists"
@@ -249,11 +262,11 @@ class PlaylistItem(BaseModel):
         Playlist, on_delete=models.CASCADE, related_name="items"
     )
     creative = models.ForeignKey(
-        Creative, on_delete=models.PROTECT, related_name="playlist_items",
+        Creative, on_delete=models.CASCADE, related_name="playlist_items",
         null=True, blank=True,
     )
     house_ad = models.ForeignKey(
-        "campaigns.HouseAd", on_delete=models.PROTECT, related_name="playlist_items",
+        "campaigns.HouseAd", on_delete=models.CASCADE, related_name="playlist_items",
         null=True, blank=True,
         help_text="Filler (Pass 4) icin; creative NULL olur.",
     )

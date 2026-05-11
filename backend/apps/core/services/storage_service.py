@@ -1,4 +1,4 @@
-"""Singleton MinIO servisi."""
+"""Singleton RustFS depolama servisi."""
 
 from __future__ import annotations
 
@@ -12,13 +12,13 @@ from django.conf import settings
 from minio import Minio
 
 
-class MinioService:
-    """Uygulama yaşam döngüsünde tek MinIO client örneği üretir."""
+class StorageService:
+    """Uygulama yaşam döngüsünde tek RustFS client örneği üretir."""
 
-    _instance: "MinioService | None" = None
+    _instance: "StorageService | None" = None
     _lock = threading.Lock()
 
-    def __new__(cls) -> "MinioService":
+    def __new__(cls) -> "StorageService":
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
@@ -29,11 +29,11 @@ class MinioService:
         if getattr(self, "_initialized", False):
             return
 
-        self.endpoint = settings.MINIO_ENDPOINT
-        self.access_key = settings.MINIO_ACCESS_KEY
-        self.secret_key = settings.MINIO_SECRET_KEY
-        self.bucket_name = settings.MINIO_BUCKET_NAME
-        self.secure = settings.MINIO_SECURE
+        self.endpoint = settings.RUSTFS_ENDPOINT
+        self.access_key = settings.RUSTFS_ACCESS_KEY
+        self.secret_key = settings.RUSTFS_SECRET_KEY
+        self.bucket_name = settings.RUSTFS_BUCKET_NAME
+        self.secure = settings.RUSTFS_SECURE
 
         self.client = Minio(
             endpoint=self.endpoint,
@@ -50,7 +50,7 @@ class MinioService:
             self.client.make_bucket(self.bucket_name)
 
     def upload_file(self, uploaded_file, object_name: str | None = None, prefix: str = "") -> str:
-        """Django uploaded file nesnesini MinIO'ya yükler."""
+        """Django uploaded file nesnesini RustFS'e yükler."""
         ext = os.path.splitext(uploaded_file.name)[1].lower() or ".bin"
         if not object_name:
             object_name = f"{uuid.uuid4().hex}{ext}"
@@ -75,7 +75,7 @@ class MinioService:
         object_name: str,
         content_type: str = "application/octet-stream",
     ) -> str:
-        """Bytes verisini MinIO'ya yükler."""
+        """Bytes verisini RustFS'e yükler."""
         byte_stream = io.BytesIO(data)
         self.client.put_object(
             bucket_name=self.bucket_name,
@@ -101,7 +101,7 @@ class MinioService:
 
     def get_object_url(self, object_name: str, expires_minutes: int | None = None) -> str:
         """Objeye erişim için presigned URL üretir."""
-        ttl_minutes = expires_minutes or settings.MINIO_PRESIGNED_URL_TTL_MINUTES
+        ttl_minutes = expires_minutes or settings.RUSTFS_PRESIGNED_URL_TTL_MINUTES
         return self.client.presigned_get_object(
             bucket_name=self.bucket_name,
             object_name=object_name,

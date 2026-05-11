@@ -218,18 +218,33 @@ def test_admin_create_campaign_201(admin_client):
 
 @pytest.mark.django_db
 def test_admin_post_rules_for_campaign(admin_client, active_campaign):
-    payload = [
-        {"frequency_type": "PER_LOOP", "frequency_value": 2},
-        {"frequency_type": "PER_HOUR", "frequency_value": 3, "target_hours": [17, 18, 19]},
-    ]
-    r = admin_client.post(
+    """Tek kural upsert: önce oluşturur, ikinci POST günceller."""
+    # 1) İlk kural oluştur
+    r1 = admin_client.post(
         f"/api/campaigns/v2/campaigns/{active_campaign.pk}/rules/",
-        payload, format="json",
+        {"frequency_type": "PER_LOOP", "frequency_value": 2}, format="json",
     )
-    assert r.status_code == 201, r.content
-    data = r.json()
-    assert len(data) == 2
-    assert ScheduleRule.objects.filter(campaign=active_campaign).count() == 2
+    assert r1.status_code == 201, r1.content
+    assert ScheduleRule.objects.filter(campaign=active_campaign).count() == 1
+
+    # 2) Aynı endpoint'e tekrar POST → upsert (yeni kayıt değil)
+    r2 = admin_client.post(
+        f"/api/campaigns/v2/campaigns/{active_campaign.pk}/rules/",
+        {"frequency_type": "PER_HOUR", "frequency_value": 3, "target_hours": [17, 18, 19]},
+        format="json",
+    )
+    assert r2.status_code == 200, r2.content
+    assert ScheduleRule.objects.filter(campaign=active_campaign).count() == 1
+    rule = ScheduleRule.objects.get(campaign=active_campaign)
+    assert rule.frequency_type == "PER_HOUR"
+    assert rule.frequency_value == 3
+
+    # 3) Liste gönderme reddedilmeli
+    r3 = admin_client.post(
+        f"/api/campaigns/v2/campaigns/{active_campaign.pk}/rules/",
+        [{"frequency_type": "PER_DAY", "frequency_value": 5}], format="json",
+    )
+    assert r3.status_code == 400
 
 
 @pytest.mark.django_db

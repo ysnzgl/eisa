@@ -43,7 +43,11 @@ class EczaneViewSet(viewsets.ModelViewSet):
     authentication_classes = [JWTAuthentication]
 
     def get_queryset(self):
-        return super().get_queryset().annotate(kiosk_sayisi=Count("kiosklar"))
+        qs = super().get_queryset().annotate(kiosk_sayisi=Count("kiosklar"))
+        ilce_id = self.request.query_params.get("ilce")
+        if ilce_id:
+            qs = qs.filter(ilce_id=ilce_id)
+        return qs
 
     def get_permissions(self):
         from rest_framework.permissions import IsAuthenticated
@@ -99,6 +103,13 @@ class KioskViewSet(viewsets.ModelViewSet):
     queryset = Kiosk.objects.select_related("eczane").all()
     serializer_class = KioskSerializer
     authentication_classes = [JWTAuthentication, KioskAppKeyAuthentication]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        eczane_id = self.request.query_params.get("eczane")
+        if eczane_id:
+            qs = qs.filter(eczane_id=eczane_id)
+        return qs
 
     def get_permissions(self):
         if self.action == "me":

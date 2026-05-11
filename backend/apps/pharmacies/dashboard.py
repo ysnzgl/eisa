@@ -13,7 +13,7 @@ from rest_framework.views import APIView
 from core_api.cookie_jwt import JWTCookieAuthentication as JWTAuthentication
 
 from apps.analytics.models import OturumLogu
-from apps.campaigns.models import Reklam
+from apps.campaigns.models import Campaign
 from apps.products.models import Kategori
 
 from .models import Kiosk
@@ -69,12 +69,14 @@ class EczaciDashboardView(APIView):
         oturum_sayisi = oturum_qs.count()
         oturum_sayisi_bugun = oturum_qs.filter(olusturulma_tarihi__gte=bugun_basi).count()
 
-        # Bu eczaneye hedeflenmis aktif reklamlar:
-        # hedef_eczaneler bos (herkese goster) VEYA bu eczane hedefte yer aliyor
-        reklam_qs = Reklam.objects.filter(
-            aktif=True, baslangic_tarihi__lte=now, bitis_tarihi__gte=now
+        # Bu eczaneye hedeflenmis aktif kampanyalar (DOOH v2):
+        # target_pharmacies bos (herkese goster) VEYA bu eczane hedefte yer aliyor
+        reklam_qs = Campaign.objects.filter(
+            status=Campaign.Status.ACTIVE,
+            start_date__lte=now,
+            end_date__gte=now,
         ).filter(
-            Q(hedef_eczaneler__isnull=True) | Q(hedef_eczaneler=eczane)
+            Q(target_pharmacies__isnull=True) | Q(target_pharmacies=eczane)
         ).distinct()
         reklam_sayisi = reklam_qs.count()
 

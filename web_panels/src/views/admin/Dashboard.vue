@@ -3,8 +3,10 @@
  * Admin Dashboard — Genel Bakış Ekranı.
  * Gerçek veriler: GET /api/analytics/admin-dashboard/
  */
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { http } from '../../services/api';
+import { getPharmacies, getKioskStatus } from '../../services/devices';
+import EisaLookup from '../../components/shared/EisaLookup.vue';
 
 //  Constants 
 const CIRC        = 2 * Math.PI * 70
@@ -153,6 +155,33 @@ const kpiCards = [
   },
 ];
 
+//  Pharmacy Filter + Kiosk List 
+const pharmacies      = ref([]);
+const selectedPharmacy = ref(null);
+const filteredKiosks  = ref([]);
+const kiosksLoading   = ref(false);
+
+const pharmacyOptions = computed(() =>
+  pharmacies.value.map((p) => ({
+    id: p.id,
+    label: p.name,
+    sub: `${p.ilAdi || ''}${p.ilceAdi ? ' / ' + p.ilceAdi : ''}`,
+  }))
+);
+
+watch(selectedPharmacy, async (val) => {
+  filteredKiosks.value = [];
+  if (!val) return;
+  kiosksLoading.value = true;
+  try { filteredKiosks.value = await getKioskStatus(val); }
+  catch { /* ignore */ }
+  finally { kiosksLoading.value = false; }
+});
+
+async function loadPharmacies() {
+  try { pharmacies.value = await getPharmacies(); } catch { /* ignore */ }
+}
+
 //  Data Loading 
 onMounted(async () => {
   try {
@@ -168,6 +197,7 @@ onMounted(async () => {
   } finally {
     loading.value = false;
   }
+  await loadPharmacies();
 });
 </script>
 
@@ -310,7 +340,7 @@ onMounted(async () => {
             <p class="eisa-eyebrow" style="font-size:0.65rem;">SON EKLENENLER</p>
             <h2 class="eisa-panel-title">Reklamlar</h2>
           </div>
-          <router-link to="/admin/ad-manager" class="dash-see-all">Tümünü Gör →</router-link>
+          <router-link to="/admin/campaigns" class="dash-see-all">Tümünü Gör →</router-link>
         </div>
         <div class="eisa-table-wrap">
           <div v-if="loading" class="empty-row">Yükleniyor…</div>
@@ -383,6 +413,51 @@ onMounted(async () => {
       </div>
 
     </div>
+    <!-- /dash-bottom-grid -->
+
+    <!-- Eczane Kiosk Filtresi -->
+    <div class="eisa-panel" style="margin-top:1.5rem;">
+      <div class="eisa-panel-header">
+        <div>
+          <p class="eisa-eyebrow" style="font-size:0.65rem;">ECZANE FİLTRESİ</p>
+          <h2 class="eisa-panel-title">Eczane Kiosklarını Görüntüle</h2>
+        </div>
+      </div>
+      <div style="padding:0 1.25rem 0.75rem; max-width:360px;">
+        <EisaLookup
+          v-model="selectedPharmacy"
+          :options="pharmacyOptions"
+          placeholder="Eczane ara (ad / il / ilçe)…"
+        />
+      </div>
+      <div v-if="kiosksLoading" class="empty-row">Yükleniyor…</div>
+      <div v-else-if="selectedPharmacy && !filteredKiosks.length" class="empty-row">
+        Bu eczaneye ait kiosk bulunamadı.
+      </div>
+      <div v-else-if="filteredKiosks.length" class="eisa-table-wrap">
+        <table class="eisa-table">
+          <thead>
+            <tr><th>Kiosk</th><th>MAC</th><th>Durum</th><th>Son Görülme</th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="k in filteredKiosks" :key="k.id">
+              <td>{{ k.ad || `#${k.id}` }}</td>
+              <td class="cell-muted">{{ k.mac || '—' }}</td>
+              <td>
+                <span class="eisa-pill" :class="k.isActive ? 'eisa-pill-success' : 'eisa-pill-danger'">
+                  {{ k.isActive ? 'Aktif' : 'Pasif' }}
+                </span>
+              </td>
+              <td class="cell-muted">
+                {{ k.lastPing ? new Date(k.lastPing).toLocaleString('tr-TR') : '—' }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div v-else class="empty-row" style="color:#94a3b8;">Eczane seçin</div>
+    </div>
+
   </div>
 
 </template>

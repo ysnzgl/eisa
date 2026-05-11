@@ -18,9 +18,9 @@ const adminNavItems = [
   { to: '/admin',               exact: true, icon: 'fa-chart-line',   label: 'Dashboard' },
   { to: '/admin/devices',                    icon: 'fa-display',       label: 'Cihaz Yönetimi' },
   { to: '/admin/medical-logic',              icon: 'fa-dna',           label: 'Algoritma Editörü' },
-  { to: '/admin/ad-manager',                 icon: 'fa-bullhorn',      label: 'Reklam Yöneticisi' },
-  { to: '/admin/scheduler',                  icon: 'fa-calendar-week', label: 'Yayın Takvimi' },
+  { to: '/admin/campaigns',                  icon: 'fa-bullhorn',      label: 'Kampanyalar' },
   { to: '/admin/timeline',                   icon: 'fa-stream',        label: 'Loop Timeline' },
+  { to: '/admin/playlists',                  icon: 'fa-list-ol',       label: 'Playlist Editörü' },
   { to: '/admin/pricing',                    icon: 'fa-coins',         label: 'Fiyat Matrisi' },
   { to: '/admin/users',                      icon: 'fa-user-gear',     label: 'Kullanıcı Yönetimi' },
 ];

@@ -1,133 +1,22 @@
-"""Reklam (kampanya) serileştiricisi.
+"""Reklam (kampanya) serileştiricisi — DOOH v2.
 
-Legacy: ``ReklamSerializer`` / ``ReklamTakvimSerializer``.
-DOOH v2: ``CampaignSerializer`` / ``CreativeSerializer`` / ``ScheduleRuleSerializer``
-ve kiosk-edge DTO'lari (``KioskSyncSerializer``, ``KioskPlaylistSerializer``,
-``ProofOfPlaySerializer``).
+``CampaignSerializer`` / ``CreativeSerializer`` / ``ScheduleRuleSerializer``
+ve kiosk-edge DTO'lari (``KioskCreativeSyncSerializer``,
+``KioskPlaylistSerializer``, ``ProofOfPlay*Serializer``).
 """
 from rest_framework import serializers
 
 from .models import (
     Campaign,
+    CampaignTarget,
     Creative,
     HouseAd,
     PlayLog,
     Playlist,
     PlaylistItem,
     PricingMatrix,
-    Reklam,
-    ReklamTakvim,
     ScheduleRule,
 )
-
-
-class ReklamSerializer(serializers.ModelSerializer):
-    """
-    hedef_eczaneler: M2M Eczane id listesi.
-    Yazarken: integer id listesi gonder. Okurken: aynen id listesi doner.
-    Bos liste = herkese goster.
-    """
-
-    class Meta:
-        model = Reklam
-        fields = [
-            "id",
-            "ad",
-            "musteri",
-            "medya_url",
-            "sure_saniye",
-            "baslangic_tarihi",
-            "bitis_tarihi",
-            "yayin_baslangic",
-            "yayin_bitis",
-            "hedef_eczaneler",
-            "aktif",
-            "olusturulma_tarihi",
-            "guncellenme_tarihi",
-            "surum",
-        ]
-        read_only_fields = ("id", "olusturulma_tarihi", "guncellenme_tarihi", "surum")
-
-    def validate(self, attrs):
-        baslangic = attrs.get("baslangic_tarihi", getattr(self.instance, "baslangic_tarihi", None))
-        bitis = attrs.get("bitis_tarihi", getattr(self.instance, "bitis_tarihi", None))
-        if baslangic and bitis and baslangic >= bitis:
-            raise serializers.ValidationError(
-                {"bitis_tarihi": "Bitiş tarihi başlangıçtan sonra olmalıdır."}
-            )
-
-        sure = attrs.get("sure_saniye", getattr(self.instance, "sure_saniye", None))
-        if sure is not None and not 5 <= sure <= 60:
-            raise serializers.ValidationError(
-                {"sure_saniye": "Yayın süresi 5 ile 60 saniye arasında olmalıdır."}
-            )
-
-        return attrs
-
-
-class ReklamTakvimSerializer(serializers.ModelSerializer):
-    reklam_adi = serializers.CharField(source="reklam.ad", read_only=True)
-    musteri = serializers.CharField(source="reklam.musteri", read_only=True)
-    medya_url = serializers.URLField(source="reklam.medya_url", read_only=True)
-    sure_saniye = serializers.IntegerField(source="reklam.sure_saniye", read_only=True)
-    kiosk_adi = serializers.CharField(source="kiosk.ad", read_only=True)
-    eczane = serializers.IntegerField(source="kiosk.eczane_id", read_only=True)
-    eczane_adi = serializers.CharField(source="kiosk.eczane.ad", read_only=True)
-
-    class Meta:
-        model = ReklamTakvim
-        fields = [
-            "id",
-            "reklam",
-            "reklam_adi",
-            "musteri",
-            "medya_url",
-            "sure_saniye",
-            "kiosk",
-            "kiosk_adi",
-            "eczane",
-            "eczane_adi",
-            "baslangic_saat",
-            "bitis_saat",
-            "aktif",
-            "olusturulma_tarihi",
-            "guncellenme_tarihi",
-            "surum",
-        ]
-        read_only_fields = (
-            "id",
-            "reklam_adi",
-            "musteri",
-            "medya_url",
-            "sure_saniye",
-            "kiosk_adi",
-            "eczane",
-            "eczane_adi",
-            "olusturulma_tarihi",
-            "guncellenme_tarihi",
-            "surum",
-        )
-
-    def validate(self, attrs):
-        baslangic = attrs.get("baslangic_saat", getattr(self.instance, "baslangic_saat", None))
-        bitis = attrs.get("bitis_saat", getattr(self.instance, "bitis_saat", None))
-        if baslangic is None or bitis is None:
-            return attrs
-        if baslangic < 0 or baslangic > 23 or bitis < 1 or bitis > 24 or baslangic >= bitis:
-            raise serializers.ValidationError(
-                {"bitis_saat": "Saat aralığı 00-24 içinde olmalı ve bitiş başlangıçtan sonra gelmelidir."}
-            )
-
-        reklam = attrs.get("reklam", getattr(self.instance, "reklam", None))
-        kiosk = attrs.get("kiosk", getattr(self.instance, "kiosk", None))
-        if reklam and kiosk:
-            hedefler = reklam.hedef_eczaneler.all()
-            if hedefler.exists() and not hedefler.filter(pk=kiosk.eczane_id).exists():
-                raise serializers.ValidationError(
-                    {"kiosk": "Seçilen kiosk reklamın hedef eczaneleri içinde değil."}
-                )
-
-        return attrs
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -147,17 +36,52 @@ class CreativeSerializer(serializers.ModelSerializer):
         return value
 
 
+class CampaignTargetSerializer(serializers.ModelSerializer):
+    """Kampanya lokasyon hedefi (IL / ILCE / ECZANE)."""
+
+    il_ad = serializers.SerializerMethodField()
+    ilce_ad = serializers.SerializerMethodField()
+    eczane_ad = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CampaignTarget
+        fields = ["id", "campaign", "target_type", "il", "ilce", "eczane",
+                  "il_ad", "ilce_ad", "eczane_ad"]
+        read_only_fields = ("id",)
+
+    def get_il_ad(self, obj):
+        return obj.il.ad if obj.il_id else None
+
+    def get_ilce_ad(self, obj):
+        return obj.ilce.ad if obj.ilce_id else None
+
+    def get_eczane_ad(self, obj):
+        return obj.eczane.ad if obj.eczane_id else None
+
+    def validate(self, attrs):
+        tt = attrs.get("target_type")
+        if tt == CampaignTarget.TargetType.IL and not attrs.get("il"):
+            raise serializers.ValidationError({"il": "IL hedefi için il zorunludur."})
+        if tt == CampaignTarget.TargetType.ILCE and not attrs.get("ilce"):
+            raise serializers.ValidationError({"ilce": "ILCE hedefi için ilce zorunludur."})
+        if tt == CampaignTarget.TargetType.ECZANE and not attrs.get("eczane"):
+            raise serializers.ValidationError({"eczane": "ECZANE hedefi için eczane zorunludur."})
+        return attrs
+
+
 class CampaignSerializer(serializers.ModelSerializer):
     creatives = CreativeSerializer(many=True, read_only=True)
+    targets = CampaignTargetSerializer(many=True, read_only=True)
 
     class Meta:
         model = Campaign
         fields = [
-            "id", "advertiser_id", "name", "start_date", "end_date",
-            "status", "target_pharmacies", "creatives",
+            "id", "advertiser_id", "advertiser_name", "name", "start_date", "end_date",
+            "status", "target_pharmacies", "targets", "creatives",
+            "impression_goal", "frequency_cap_per_hour",
             "olusturulma_tarihi", "guncellenme_tarihi", "surum",
         ]
-        read_only_fields = ("id", "creatives", "olusturulma_tarihi",
+        read_only_fields = ("id", "creatives", "targets", "olusturulma_tarihi",
                             "guncellenme_tarihi", "surum")
 
     def validate(self, attrs):
@@ -241,11 +165,12 @@ class KioskPlaylistItemSerializer(serializers.ModelSerializer):
     duration_seconds = serializers.SerializerMethodField()
     asset_id = serializers.SerializerMethodField()
     asset_type = serializers.SerializerMethodField()
+    campaign_name = serializers.SerializerMethodField()
 
     class Meta:
         model = PlaylistItem
         fields = [
-            "id", "asset_id", "asset_type", "media_url",
+            "id", "asset_id", "asset_type", "campaign_name", "media_url",
             "duration_seconds", "playback_order",
             "estimated_start_offset_seconds",
         ]
@@ -270,6 +195,13 @@ class KioskPlaylistItemSerializer(serializers.ModelSerializer):
     def get_asset_type(self, obj):
         return "creative" if obj.creative_id else "house_ad"
 
+    def get_campaign_name(self, obj):
+        if obj.creative_id and obj.creative.campaign_id:
+            return obj.creative.campaign.name
+        if obj.house_ad_id:
+            return obj.house_ad.name or "Eczane İçeriği"
+        return None
+
 
 class KioskPlaylistSerializer(serializers.ModelSerializer):
     items = KioskPlaylistItemSerializer(many=True, read_only=True)
@@ -278,8 +210,11 @@ class KioskPlaylistSerializer(serializers.ModelSerializer):
         model = Playlist
         fields = [
             "id", "kiosk", "target_date", "target_hour",
-            "loop_duration_seconds", "items",
+            "loop_duration_seconds", "version", "items",
         ]
+
+
+
 
 
 class ProofOfPlayItemSerializer(serializers.Serializer):
@@ -318,5 +253,5 @@ class PlaylistAdminSerializer(serializers.ModelSerializer):
         model = Playlist
         fields = [
             "id", "kiosk", "target_date", "target_hour",
-            "loop_duration_seconds", "items",
+            "loop_duration_seconds", "version", "items",
         ]

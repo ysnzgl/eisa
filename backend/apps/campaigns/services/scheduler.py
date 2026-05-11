@@ -12,6 +12,10 @@ Kapasite kuralı (her loop için):
 
     S_available = T_loop - sum(d_i * f_i)         (i = creative_i, f_i = freq)
 
+Versiyonlama:
+  Her üretimde Playlist.version, o kiosk için mevcut maksimum versiyonun +1'i
+  olarak set edilir. Kiosk /ping endpoint'i ile kendi versiyonunu karşılaştırır.
+
 Bu algoritma kiosk uzerinde calismaz; merkezi bir worker tarafindan gunluk
 calistirilir (bkz. management/commands/generate_playlists.py).
 """
@@ -28,6 +32,7 @@ from django.utils import timezone
 
 from apps.campaigns.models import (
     Campaign,
+    CampaignTarget,
     Creative,
     HouseAd,
     Playlist,
@@ -168,6 +173,10 @@ class PlaylistGenerator:
                 continue
             d = int(creative.duration_seconds)
             f = max(1, int(rule.frequency_value))
+            # frequency_cap_per_hour kısıtı: kampanyanın kendi cap'i varsa f'yi limitler
+            cap = rule.campaign.frequency_cap_per_hour
+            if cap is not None:
+                f = min(f, int(cap))
             for hour in self._rule_hours(rule):
                 candidates = [l for l in self.plan[hour].loops if l.fits(d)]
                 self.rng.shuffle(candidates)
@@ -225,6 +234,11 @@ class PlaylistGenerator:
 
     @transaction.atomic
     def _persist(self) -> List[Playlist]:
+        # Versiyonlama: bu kiosk için mevcut max version + 1
+        from django.db.models import Max
+        agg = Playlist.objects.filter(kiosk=self.kiosk).aggregate(mv=Max("version"))
+        next_version = (agg["mv"] or 0) + 1
+
         Playlist.objects.filter(
             kiosk=self.kiosk, target_date=self.target_date
         ).delete()
@@ -237,6 +251,7 @@ class PlaylistGenerator:
                 target_date=self.target_date,
                 target_hour=h,
                 loop_duration_seconds=self.loop_seconds,
+                version=next_version,
             )
             playlists.append(playlist)
 
@@ -267,6 +282,7 @@ class PlaylistGenerator:
         naive_noon = datetime.combine(self.target_date, time(12, 0))
         when = timezone.make_aware(naive_noon) if timezone.is_naive(naive_noon) else naive_noon
         eczane_id = self.kiosk.eczane_id
+
         qs = (
             ScheduleRule.objects
             .select_related("campaign")
@@ -276,13 +292,49 @@ class PlaylistGenerator:
                 campaign__end_date__gte=when,
             )
         )
+
         rules: List[ScheduleRule] = []
         for r in qs:
-            targets = r.campaign.target_pharmacies.all()
-            if targets.exists() and not targets.filter(pk=eczane_id).exists():
-                continue
-            rules.append(r)
+            if self._campaign_targets_eczane(r.campaign, eczane_id):
+                rules.append(r)
         return rules
+
+    def _campaign_targets_eczane(self, campaign: Campaign, eczane_id: int) -> bool:
+        """Kampanyanin bu eczaneyi hedefliyip hedeflemedigini doner.
+
+        Oncelik sirasi:
+          1. Yeni CampaignTarget kayitlari (IL / ILCE / ECZANE)
+          2. Legacy target_pharmacies M2M (geri donus uyumlulugu)
+          3. Hic hedef tanimlanmamissa => tum eczaneleri hedefler (True)
+        """
+        new_targets = list(campaign.targets.all())
+
+        if new_targets:
+            from apps.pharmacies.models import Eczane
+            try:
+                eczane = Eczane.objects.select_related("il", "ilce").get(pk=eczane_id)
+            except Eczane.DoesNotExist:
+                return False
+
+            for t in new_targets:
+                if t.target_type == CampaignTarget.TargetType.IL:
+                    if t.il_id == eczane.il_id:
+                        return True
+                elif t.target_type == CampaignTarget.TargetType.ILCE:
+                    if t.ilce_id == eczane.ilce_id:
+                        return True
+                elif t.target_type == CampaignTarget.TargetType.ECZANE:
+                    if t.eczane_id == eczane_id:
+                        return True
+            return False
+
+        # Legacy M2M fallback
+        legacy = campaign.target_pharmacies.all()
+        if legacy.exists():
+            return legacy.filter(pk=eczane_id).exists()
+
+        # Hedef tanimlanmamis => tum eczaneler
+        return True
 
     def _rule_hours(self, rule: ScheduleRule) -> List[int]:
         if rule.target_hours:
@@ -324,3 +376,49 @@ def available_seconds(kiosk: Kiosk, target_date: date, hour: int) -> int:
     if not per_loop_used:
         return loop_seconds
     return max(0, loop_seconds - max(per_loop_used.values()))
+
+
+def simulate_campaign_capacity(
+    kiosk: Kiosk,
+    target_date: date,
+    creative_duration: int,
+    frequency_type: str,
+    frequency_value: int,
+    target_hours: Optional[List[int]] = None,
+) -> dict:
+    """Yeni bir kural eklendiginde kapasite etkisini hesaplar (commit ETMEZ).
+
+    Before/After onizleme icin kullanilir. Her hedef saat icin:
+      - before_available: Mevcut durum
+      - after_available:  Kural eklendikten sonra beklenen durum
+      - has_conflict:     after_available < 0 ise True (kirmizi)
+
+    Donen dict: { hour: {before, after, conflict}, ... }
+    """
+    hours = target_hours or list(range(24))
+    result = {}
+
+    for h in hours:
+        before = available_seconds(kiosk, target_date, h)
+        if frequency_type == "PER_LOOP":
+            # Her loop'a d*f saniye eklenir
+            cost = creative_duration * frequency_value
+            after = before - cost
+        elif frequency_type == "PER_HOUR":
+            # frequency_value adet loop'a d saniye eklenir; kaba tahmin
+            cost = creative_duration  # en kötü durum: en dolu loop seçilir
+            after = before - cost
+        else:  # PER_DAY
+            # O saatte olmayabilir; en kötü durum 1 loop'a eklenir
+            cost = creative_duration
+            after = before - cost
+
+        result[h] = {
+            "hour": h,
+            "before_available": before,
+            "after_available": after,
+            "has_conflict": after < 0,
+        }
+
+    return result
+
