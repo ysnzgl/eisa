@@ -1161,3 +1161,16 @@ INSERT INTO public.ilceler (id,ad,il_id) VALUES
 	 (2105,'Kemalpaşa / Artvin',8),
 	 (2106,'Sultanhanı',68),
 	 (2107,'Derecik',30);
+
+
+INSERT INTO public.cinsiyetler (id,kod,ad) VALUES
+	 (1,'F','Kadin'),
+	 (2,'M','Erkek');
+
+INSERT INTO public.yas_araliklari (id,kod,ad,alt_sinir,ust_sinir) VALUES
+	 (1,'0-17','0-17',0,17),
+	 (2,'18-25','18-25',18,25),
+	 (3,'26-35','26-35',26,35),
+	 (4,'36-50','36-50',36,50),
+	 (5,'51-65','51-65',51,65),
+	 (6,'65+','65+',65,NULL);
