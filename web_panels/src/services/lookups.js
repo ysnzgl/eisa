@@ -7,7 +7,7 @@ import { http } from './api';
 /** Tüm illeri döner. */
 export async function getIller() {
   const r = await http.get('/api/lookups/iller/');
-  return r.data; // [{ id, ad, plaka }]
+  return r.data; // [{ id, ad }]
 }
 
 /**

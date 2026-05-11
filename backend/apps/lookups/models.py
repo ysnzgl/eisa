@@ -18,7 +18,6 @@ class Il(LookupModel):
     """Sehirler (Iller) — Eczane.il referansi."""
 
     ad = models.CharField(max_length=64, unique=True)
-    plaka = models.PositiveSmallIntegerField(unique=True, null=True, blank=True)
 
     class Meta:
         db_table = "iller"

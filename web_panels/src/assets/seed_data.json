@@ -133,7 +133,7 @@
   {
     "category_slug": "sindirim",
     "title": "Sindirim & Bağırsak",
-    "icon": "fa-stomach",
+    "icon": "fa-lungs-virus",
     "questions": [
       {
         "id": "si_q1",

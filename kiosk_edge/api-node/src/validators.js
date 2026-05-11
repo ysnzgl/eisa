@@ -24,7 +24,8 @@ export const oturumGonderSchema = z.object({
 });
 
 export const reklamGosterimSchema = z.object({
-  reklam_id: z.number().int().min(1),
-  gosterilme_tarihi: z.string().max(64),
-  sure_ms: z.number().int().min(0).max(24 * 60 * 60 * 1000).default(0),
+  asset_id: z.string().uuid(),
+  asset_type: z.enum(['creative', 'house_ad']),
+  played_at: z.string().max(64),
+  duration_played: z.number().int().min(0).max(24 * 60 * 60).default(0),
 });

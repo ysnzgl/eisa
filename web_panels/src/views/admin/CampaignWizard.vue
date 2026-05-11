@@ -38,7 +38,7 @@ const empty = () => ({
   status: 'ACTIVE',
   impression_goal: null,
   creatives: [],
-  rule: { frequency_type: 'PER_LOOP', frequency_value: 1, target_hours: null },
+  rule: { frequency_type: 'PER_LOOP', frequency_value: 1, target_hours: null, target_days: null },
 });
 const form = reactive(empty());
 
@@ -196,6 +196,14 @@ function toggleHour(rule, h) {
   if (i >= 0) arr.splice(i, 1); else arr.push(h);
   arr.sort((a, b) => a - b);
   rule.target_hours = arr.length ? arr : null;
+}
+
+function toggleDay(rule, d) {
+  const arr = Array.isArray(rule.target_days) ? [...rule.target_days] : [];
+  const i = arr.indexOf(d);
+  if (i >= 0) arr.splice(i, 1); else arr.push(d);
+  arr.sort((a, b) => a - b);
+  rule.target_days = arr.length ? arr : null;
 }
 
 // ── Per-step validation ───────────────────────────────────────────────────────
@@ -419,6 +427,15 @@ async function bulkRun(action) {
 }
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
+const DAYS_OF_WEEK = [
+  { value: 0, label: 'Pzt' },
+  { value: 1, label: 'Sal' },
+  { value: 2, label: 'Çar' },
+  { value: 3, label: 'Per' },
+  { value: 4, label: 'Cum' },
+  { value: 5, label: 'Cmt' },
+  { value: 6, label: 'Paz' },
+];
 const FREQ_TYPES = [
   { value: 'PER_LOOP', label: "Her loop'ta (60 sn)", help: "Değer=2 → her 60 saniyelik loop'ta 2 kez oynar." },
   { value: 'PER_HOUR', label: 'Saatte N kez',        help: 'Değer=4 → hedef saatlerde her saatte 4 kez oynar.' },
@@ -683,8 +700,7 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
             <!-- ─── FREQUENCY MODE ─────────────────────────────────────── -->
             <template v-if="pacingMode === 'FREQUENCY'">
               <p class="step-help">
-                Bir kampanyaya <strong>yalnızca tek</strong> kural atanır
-                (PER_LOOP / PER_HOUR / PER_DAY birbirinin alternatifidir).
+                Bir kampanyaya <strong>yalnızca tek</strong> kural atanır.
               </p>
               <div class="rule-card">
                 <div class="rule-grid">
@@ -723,6 +739,20 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
                     <button v-for="h in HOURS" :key="h" type="button" class="hr"
                             :class="{ active: form.rule.target_hours?.includes(h) }"
                             @click="toggleHour(form.rule, h)">{{ String(h).padStart(2,'0') }}</button>
+                  </div>
+                </div>
+
+                <div class="days" style="margin-top:1.5rem">
+                  <span class="muted small">
+                    Hedef günler ({{ form.rule.target_days?.length ? DAYS_OF_WEEK.filter(d => form.rule.target_days?.includes(d.value)).map(d => d.label).join(', ') : 'her gün' }}):
+                  </span>
+                  <div class="day-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:.4rem;margin-top:.5rem">
+                    <button v-for="d in DAYS_OF_WEEK" :key="d.value" type="button" class="day-btn"
+                            :class="{ active: form.rule.target_days?.includes(d.value) }"
+                            @click="toggleDay(form.rule, d.value)"
+                            style="padding:.5rem .4rem;border-radius:6px;border:1px solid #e2e8f0;background:#fff;cursor:pointer;font-size:.85rem;font-weight:500;transition:all .15s">
+                      {{ d.label }}
+                    </button>
                   </div>
                 </div>
               </div>
@@ -766,6 +796,20 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
                     <button v-for="h in HOURS" :key="h" type="button" class="hr"
                             :class="{ active: form.rule.target_hours?.includes(h) }"
                             @click="toggleHour(form.rule, h)">{{ String(h).padStart(2,'0') }}</button>
+                  </div>
+                </div>
+
+                <div class="days" style="margin-top:1.5rem">
+                  <span class="muted small">
+                    Hedef günler ({{ form.rule.target_days?.length ? DAYS_OF_WEEK.filter(d => form.rule.target_days?.includes(d.value)).map(d => d.label).join(', ') : 'her gün' }}):
+                  </span>
+                  <div class="day-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:.4rem;margin-top:.5rem">
+                    <button v-for="d in DAYS_OF_WEEK" :key="d.value" type="button" class="day-btn"
+                            :class="{ active: form.rule.target_days?.includes(d.value) }"
+                            @click="toggleDay(form.rule, d.value)"
+                            style="padding:.5rem .4rem;border-radius:6px;border:1px solid #e2e8f0;background:#fff;cursor:pointer;font-size:.85rem;font-weight:500;transition:all .15s">
+                      {{ d.label }}
+                    </button>
                   </div>
                 </div>
               </div>

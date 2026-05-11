@@ -53,7 +53,7 @@
     </button>
   </div>
 
-  <div class="mt-auto d-flex flex-column gap-3">
+  <div class="mt-auto d-flex flex-column gap-2">
     <button
       class="btn-touch btn-primary-touch"
       disabled={!demoReady}

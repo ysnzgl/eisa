@@ -16,7 +16,7 @@
   function dismiss() {
     const durationMs = shownAt ? Date.now() - new Date(shownAt).getTime() : 0;
     if (campaign) {
-      logAdImpression({ campaignId: campaign.id, shownAt, durationMs });
+      logAdImpression({ assetId: campaign.id, assetType: campaign.type, shownAt, durationMs });
     }
     // Sıradaki kampanyaya geç
     activeCampaignIndex.update(i => ($campaigns.length > 0 ? (i + 1) % $campaigns.length : 0));
@@ -27,11 +27,11 @@
 
 <div class="campaign-overlay" role="dialog" aria-modal="true">
   <div class="campaign-media-wrap">
-    {#if campaign?.medya_url}
-      {#if /\.(mp4|webm|ogg)$/i.test(campaign.medya_url)}
+    {#if campaign?.media_url}
+      {#if /\.(mp4|webm|ogg)$/i.test(campaign.media_url)}
         <!-- svelte-ignore a11y-media-has-caption -->
         <video
-          src={campaign.medya_url}
+          src={campaign.media_url}
           autoplay
           loop
           muted
@@ -39,12 +39,12 @@
           class="campaign-media"
         ></video>
       {:else}
-        <img src={campaign.medya_url} alt={campaign.ad} class="campaign-media" />
+        <img src={campaign.media_url} alt={campaign.name ?? 'Kampanya'} class="campaign-media" />
       {/if}
     {:else}
       <div class="campaign-placeholder">
         <i class="fa-solid fa-photo-film"></i>
-        <p>{campaign?.ad ?? 'Kampanya'}</p>
+        <p>{campaign?.name ?? 'Kampanya'}</p>
       </div>
     {/if}
   </div>

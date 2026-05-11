@@ -36,22 +36,19 @@ const IL_ILCE_SEED = {
 
 const DEMO_REKLAMLAR = [
   {
-    ad: 'Kis Bagisiklik Paketi',
-    medya_url:
+    id: 'demo-creative-001',
+    media_url:
       'https://images.unsplash.com/photo-1607619056574-7b8d3ee536b2?w=794&h=900&fit=crop',
-    hedefleme: { saat_baslangic: 8, saat_bitis: 22 },
   },
   {
-    ad: 'Omega-3 ve Beyin Sagligi',
-    medya_url:
+    id: 'demo-creative-002',
+    media_url:
       'https://images.unsplash.com/photo-1628771065518-0d82f1938462?w=794&h=900&fit=crop',
-    hedefleme: { saat_baslangic: 8, saat_bitis: 22 },
   },
   {
-    ad: 'Probiyotik — Bagirsak Dostunuz',
-    medya_url:
+    id: 'demo-creative-003',
+    media_url:
       'https://images.unsplash.com/photo-1543362906-acfc16c67564?w=794&h=900&fit=crop',
-    hedefleme: { saat_baslangic: 8, saat_bitis: 22 },
   },
 ];
 
@@ -146,24 +143,19 @@ export function seedKategorilerIfEmpty(db, seedPath = DEFAULT_SEED_PATH, logger 
 }
 
 export function seedReklamlarIfEmpty(db) {
-  const exists = db.prepare('SELECT 1 FROM reklamlar LIMIT 1').get();
+  const exists = db.prepare('SELECT 1 FROM creatives LIMIT 1').get();
   if (exists) return { skipped: true };
 
-  const now = new Date();
-  const farFuture = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
   const insert = db.prepare(
-    `INSERT INTO reklamlar (ad, medya_url, baslangic_tarihi, bitis_tarihi, hedefleme, aktif)
-     VALUES (@ad, @medya_url, @baslangic_tarihi, @bitis_tarihi, @hedefleme, 1)`,
+    `INSERT INTO creatives (id, media_url, duration_seconds, type, aktif)
+     VALUES (@id, @media_url, 15, 'creative', 1)`,
   );
 
   const tx = db.transaction(() => {
     for (const r of DEMO_REKLAMLAR) {
       insert.run({
-        ad: r.ad,
-        medya_url: r.medya_url,
-        baslangic_tarihi: now.toISOString(),
-        bitis_tarihi: farFuture.toISOString(),
-        hedefleme: JSON.stringify(r.hedefleme || {}),
+        id: r.id,
+        media_url: r.media_url,
       });
     }
   });

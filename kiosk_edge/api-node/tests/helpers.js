@@ -6,7 +6,7 @@ export function makeMemoryDb() {
   db.pragma('foreign_keys = ON');
   db.exec(`
     CREATE TABLE iller (
-      id INTEGER PRIMARY KEY, ad TEXT NOT NULL UNIQUE, plaka INTEGER);
+      id INTEGER PRIMARY KEY, ad TEXT NOT NULL UNIQUE);
     CREATE TABLE ilceler (
       id INTEGER PRIMARY KEY, il_id INTEGER NOT NULL REFERENCES iller(id), ad TEXT NOT NULL);
     CREATE TABLE cinsiyetler (

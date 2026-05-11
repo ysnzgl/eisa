@@ -11,7 +11,7 @@
     if (!qrCanvas) return;
     // Şifrelenmiş payload uzun olabileceği için Q yerine L, modül daha sık.
     QrCreator.render(
-      { text: code, radius: 0.4, ecLevel: 'L', fill: '#1a2e44', background: '#fff', size: 240 },
+      { text: code, radius: 0.4, ecLevel: 'L', fill: '#1a2e44', background: '#fff', size: 180 },
       qrCanvas,
     );
   }
@@ -20,7 +20,7 @@
 <div class="screen">
   <div class="kiosk-header"><div class="kiosk-logo">e-<span>İSA</span></div></div>
 
-  <div class="flex-grow-1 d-flex flex-column justify-content-center gap-3">
+  <div class="flex-grow-1 d-flex flex-column justify-content-center gap-2">
     <div
       class="result-card"
       class:success={!$result?.isSensitive}
@@ -50,7 +50,7 @@
       {/if}
     </div>
 
-    <div class="result-card" style="padding:24px; text-align:center;">
+    <div class="result-card" style="text-align:center;">
       <p class="qr-heading">
         <i class="fa-solid fa-ticket text-success"></i>
         Lütfen fişinizi/QR kodunuzu alınız

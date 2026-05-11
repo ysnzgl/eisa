@@ -222,8 +222,8 @@ MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
 RUSTFS_ENDPOINT = config("RUSTFS_ENDPOINT", default="localhost:9000")
-RUSTFS_ACCESS_KEY = config("RUSTFS_ACCESS_KEY", default="minioadmin")
-RUSTFS_SECRET_KEY = config("RUSTFS_SECRET_KEY", default="minioadmin")
+RUSTFS_ACCESS_KEY = config("RUSTFS_ACCESS_KEY", default="admin")
+RUSTFS_SECRET_KEY = config("RUSTFS_SECRET_KEY", default="admin1234")
 RUSTFS_BUCKET_NAME = config("RUSTFS_BUCKET_NAME", default="dev")
 RUSTFS_SECURE = config("RUSTFS_SECURE", default=False, cast=bool)
 RUSTFS_PRESIGNED_URL_TTL_MINUTES = config(

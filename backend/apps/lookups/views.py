@@ -20,7 +20,7 @@ class IllerView(APIView):
         qs = Il.objects
         if request.query_params.get("has_pharmacies"):
             qs = qs.filter(eczaneler__isnull=False).distinct()
-        return Response(list(qs.values("id", "ad", "plaka").order_by("ad")))
+        return Response(list(qs.values("id", "ad").order_by("ad")))
 
 
 class IlcelerView(APIView):

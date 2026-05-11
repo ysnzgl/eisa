@@ -98,14 +98,15 @@ export async function fetchActiveCampaigns() {
   return _request(`${API_BASE}/api/reklamlar/aktif`, { timeoutMs: 4000 });
 }
 
-export async function logAdImpression({ campaignId, shownAt, durationMs }) {
+export async function logAdImpression({ assetId, assetType, shownAt, durationMs }) {
   try {
     await _request(`${API_BASE}/api/reklam-gosterim`, {
       method: 'POST',
       body: {
-        reklam_id:         campaignId,
-        gosterilme_tarihi: shownAt,
-        sure_ms:           durationMs,
+        asset_id:       assetId,
+        asset_type:     assetType,
+        played_at:      shownAt,
+        duration_played: Math.round((durationMs || 0) / 1000),
       },
       timeoutMs: 3000,
     });

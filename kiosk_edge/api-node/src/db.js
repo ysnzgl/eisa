@@ -8,9 +8,9 @@ let _db = null;
 
 const DEFAULT_OUTBOX_MAX_ROWS = 10000;
 
-// Sema versiyonu — hedef_cinsiyetler/yas_araliklari kategoriler+sorular tablosuna eklendi;
-// reklamlar.hedefleme eczane bazina donusturuldu.
-const SCHEMA_VERSION = 3;
+// Sema versiyonu — creatives ve house_ads tablolari eklendi; reklamlar kaldirildi.
+// proof-of-play outbox payload guncellendi.
+const SCHEMA_VERSION = 4;
 
 export function openDb(sqlitePath, options = {}) {
   if (_db) return _db;
@@ -95,8 +95,7 @@ function initSchema(db, outboxMaxRows = DEFAULT_OUTBOX_MAX_ROWS) {
     -- LOOKUP TABLOLARI (audit kolonu YOK)
     CREATE TABLE IF NOT EXISTS iller (
       id    INTEGER PRIMARY KEY,
-      ad    TEXT    NOT NULL UNIQUE,
-      plaka INTEGER
+      ad    TEXT    NOT NULL UNIQUE
     );
     CREATE TABLE IF NOT EXISTS ilceler (
       id    INTEGER PRIMARY KEY,
@@ -158,17 +157,23 @@ function initSchema(db, outboxMaxRows = DEFAULT_OUTBOX_MAX_ROWS) {
       aciklama TEXT    NOT NULL DEFAULT ''
     );
 
-    CREATE TABLE IF NOT EXISTS reklamlar (
-      id                 INTEGER PRIMARY KEY,
-      ad                 TEXT    NOT NULL,
-      medya_url          TEXT    NOT NULL DEFAULT '',
-      baslangic_tarihi   TEXT    NOT NULL,
-      bitis_tarihi       TEXT    NOT NULL,
-      hedefleme          TEXT    NOT NULL DEFAULT '{}',
-      aktif              INTEGER NOT NULL DEFAULT 1,
-      surum              INTEGER NOT NULL DEFAULT 1,
-      olusturulma_tarihi TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-      guncellenme_tarihi TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    CREATE TABLE IF NOT EXISTS creatives (
+      id               TEXT    PRIMARY KEY,
+      media_url        TEXT    NOT NULL DEFAULT '',
+      duration_seconds INTEGER NOT NULL DEFAULT 15,
+      checksum         TEXT    NOT NULL DEFAULT '',
+      type             TEXT    NOT NULL DEFAULT 'creative',
+      aktif            INTEGER NOT NULL DEFAULT 1,
+      guncellenme_tarihi TEXT  NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
+    CREATE TABLE IF NOT EXISTS house_ads (
+      id               TEXT    PRIMARY KEY,
+      name             TEXT    NOT NULL DEFAULT '',
+      media_url        TEXT    NOT NULL DEFAULT '',
+      duration_seconds INTEGER NOT NULL DEFAULT 15,
+      type             TEXT    NOT NULL DEFAULT 'house_ad',
+      aktif            INTEGER NOT NULL DEFAULT 1,
+      guncellenme_tarihi TEXT  NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
     );
 
     -- OUTBOX
@@ -255,15 +260,26 @@ export function rowToSoru(row) {
   };
 }
 
-export function rowToReklam(row) {
+export function rowToCreative(row) {
   if (!row) return null;
   return {
     id: row.id,
-    ad: row.ad,
-    medya_url: row.medya_url,
-    baslangic_tarihi: row.baslangic_tarihi,
-    bitis_tarihi: row.bitis_tarihi,
-    hedefleme: safeJson(row.hedefleme, {}),
+    media_url: row.media_url,
+    duration_seconds: row.duration_seconds,
+    checksum: row.checksum,
+    type: row.type || 'creative',
+    aktif: !!row.aktif,
+  };
+}
+
+export function rowToHouseAd(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    name: row.name,
+    media_url: row.media_url,
+    duration_seconds: row.duration_seconds,
+    type: row.type || 'house_ad',
     aktif: !!row.aktif,
   };
 }

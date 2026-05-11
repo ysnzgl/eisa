@@ -1,4 +1,4 @@
-﻿<script>
+<script>
   import { tick } from 'svelte';
   import { getRecommendations, recsToIngredientList } from './lib/ingredients.js';
   import { fetchCategories, fetchQuestions, submitSession } from './lib/api.js';
@@ -9,17 +9,16 @@
     currentCategory, currentQuestions, currentAnswers, currentQIndex,
     catsLoading, questionsLoading,
     result,
-    showCampaignOverlay,
   } from './stores/kiosk.js';
 
-  import IdleScreen        from './components/IdleScreen.svelte';
+  import IdleScreen         from './components/IdleScreen.svelte';
   import DemographicsScreen from './components/DemographicsScreen.svelte';
-  import WelcomeScreen     from './components/WelcomeScreen.svelte';
-  import CategoryScreen    from './components/CategoryScreen.svelte';
-  import SensitiveScreen   from './components/SensitiveScreen.svelte';
-  import QuestionScreen    from './components/QuestionScreen.svelte';
-  import ResultScreen      from './components/ResultScreen.svelte';
-  import CampaignOverlay   from './components/CampaignOverlay.svelte';
+  import WelcomeScreen      from './components/WelcomeScreen.svelte';
+  import CategoryScreen     from './components/CategoryScreen.svelte';
+  import SensitiveScreen    from './components/SensitiveScreen.svelte';
+  import QuestionScreen     from './components/QuestionScreen.svelte';
+  import ResultScreen       from './components/ResultScreen.svelte';
+  import AdStrip            from './components/AdStrip.svelte';
 
   let resultScreenRef = null;
 
@@ -49,7 +48,7 @@
       }
       visibleCategories.set(cats.filter(c => c.hassas === sensitive));
     } catch (err) {
-      console.error('Kategori yÃ¼kleme hatasÄ±:', err);
+      console.error('Kategori yükleme hatası:', err);
     } finally {
       catsLoading.set(false);
     }
@@ -66,7 +65,7 @@
       const qs = await fetchQuestions(cat.slug);
       currentQuestions.set(qs);
     } catch (err) {
-      console.error('Soru yÃ¼kleme hatasÄ±:', err);
+      console.error('Soru yükleme hatası:', err);
       currentQuestions.set([]);
     } finally {
       questionsLoading.set(false);
@@ -161,33 +160,42 @@
 </script>
 
 <div class="kiosk">
-  {#if $showCampaignOverlay}
-    <CampaignOverlay on:start={() => { showCampaignOverlay.set(false); goTo('demographics'); }} />
-  {:else if $screen === 'idle'}
+  {#if $screen === 'idle'}
+    <!-- Idle / Screensaver: tam ekran -->
     <IdleScreen on:start={() => goTo('demographics')} />
-  {:else if $screen === 'demographics'}
-    <DemographicsScreen
-      on:next={() => goTo('welcome')}
-      on:cancel={resetToIdle}
-    />
-  {:else if $screen === 'welcome'}
-    <WelcomeScreen
-      on:flowA={() => loadCategories(false)}
-      on:flowB={() => loadCategories(true)}
-    />
-  {:else if $screen === 'category'}
-    <CategoryScreen
-      on:select={(e) => startQuestions(e.detail)}
-      on:back={() => goTo('welcome')}
-    />
-  {:else if $screen === 'sensitive'}
-    <SensitiveScreen
-      on:select={(e) => selectSensitive(e.detail)}
-      on:back={() => goTo('welcome')}
-    />
-  {:else if $screen === 'question'}
-    <QuestionScreen on:answer={(e) => handleAnswer(e.detail)} />
-  {:else if $screen === 'result'}
-    <ResultScreen bind:this={resultScreenRef} on:done={resetToIdle} />
+  {:else}
+    <!-- Anket bölgesi: 3/4 üst -->
+    <div class="kiosk-main">
+      {#if $screen === 'demographics'}
+        <DemographicsScreen
+          on:next={() => goTo('welcome')}
+          on:cancel={resetToIdle}
+        />
+      {:else if $screen === 'welcome'}
+        <WelcomeScreen
+          on:flowA={() => loadCategories(false)}
+          on:flowB={() => loadCategories(true)}
+        />
+      {:else if $screen === 'category'}
+        <CategoryScreen
+          on:select={(e) => startQuestions(e.detail)}
+          on:back={() => goTo('welcome')}
+        />
+      {:else if $screen === 'sensitive'}
+        <SensitiveScreen
+          on:select={(e) => selectSensitive(e.detail)}
+          on:back={() => goTo('welcome')}
+        />
+      {:else if $screen === 'question'}
+        <QuestionScreen on:answer={(e) => handleAnswer(e.detail)} />
+      {:else if $screen === 'result'}
+        <ResultScreen bind:this={resultScreenRef} on:done={resetToIdle} />
+      {/if}
+    </div>
   {/if}
+
+  <!-- Reklam bandı: her zaman mount, idle'da gizli -->
+  <div class="ad-strip-host" class:ad-strip-host--hidden={$screen === 'idle'}>
+    <AdStrip />
+  </div>
 </div>

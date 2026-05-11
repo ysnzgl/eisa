@@ -3,7 +3,7 @@
 import crypto from 'node:crypto';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
-import { rowToReklam, rowToKategori, rowToSoru, safeJson } from './db.js';
+import { rowToKategori, rowToSoru, safeJson } from './db.js';
 import {
   ALLOWED_YAS_ARALIKLARI,
   ALLOWED_CINSIYETLER,
@@ -26,7 +26,14 @@ export async function buildServer({ db, settings, logger }) {
   const app = Fastify({ logger: loggerOption });
 
   await app.register(cors, {
-    origin: ['http://localhost', 'http://127.0.0.1', 'http://localhost:5173'],
+    origin: (origin, cb) => {
+      // Allow any localhost / 127.0.0.1 origin regardless of port (dev kiosk UI)
+      if (!origin || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+        cb(null, true);
+      } else {
+        cb(new Error('CORS: not allowed'), false);
+      }
+    },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: '*',
   });
@@ -63,7 +70,7 @@ export async function buildServer({ db, settings, logger }) {
   });
 
   app.get('/api/lookups/iller', async () => {
-    return db.prepare('SELECT id, ad, plaka FROM iller ORDER BY ad').all();
+    return db.prepare('SELECT id, ad FROM iller ORDER BY ad').all();
   });
 
   app.get('/api/lookups/iller/:ilId/ilceler', async (req) => {
@@ -210,53 +217,32 @@ export async function buildServer({ db, settings, logger }) {
     },
   );
 
-  // ── reklamlar ──────────────────────────────────────────────────────────
+  // ── reklamlar / DOOH assets ────────────────────────────────────────────
   app.get('/api/reklamlar/aktif', async () => {
-    const now = new Date();
-    const rows = db
-      .prepare(
-        `SELECT id, ad, medya_url, baslangic_tarihi, bitis_tarihi, hedefleme
-           FROM reklamlar WHERE aktif = 1`,
-      )
+    const creatives = db
+      .prepare('SELECT id, media_url, duration_seconds, type FROM creatives WHERE aktif = 1')
       .all();
-
-    const out = [];
-    for (const r of rows) {
-      const starts = new Date(r.baslangic_tarihi);
-      const ends = new Date(r.bitis_tarihi);
-      if (!(starts <= now && now <= ends)) continue;
-
-      const hedefleme = safeJson(r.hedefleme, {});
-      const hs = hedefleme.saat_baslangic;
-      const he = hedefleme.saat_bitis;
-      if (hs != null && he != null) {
-        const h = now.getHours();
-        if (!(h >= hs && h < he)) continue;
-      }
-      out.push({
-        id: r.id,
-        ad: r.ad,
-        medya_url: r.medya_url,
-        hedefleme,
-      });
-    }
-    return out;
+    const houseAds = db
+      .prepare('SELECT id, name, media_url, duration_seconds, type FROM house_ads WHERE aktif = 1')
+      .all();
+    return [
+      ...creatives.map((c) => ({ id: c.id, media_url: c.media_url, duration_seconds: c.duration_seconds, type: c.type })),
+      ...houseAds.map((h) => ({ id: h.id, name: h.name, media_url: h.media_url, duration_seconds: h.duration_seconds, type: h.type })),
+    ];
   });
 
-  // ── reklam gosterim ────────────────────────────────────────────────────
+  // ── reklam gosterim (proof-of-play) ──────────────────────────────────────
   app.post('/api/reklam-gosterim', async (req, reply) => {
     const body = parseBody(reklamGosterimSchema, req.body, reply);
     if (!body) return;
-    const idempotencyAnahtari = crypto.randomUUID();
     db.prepare(
-      'INSERT INTO reklam_gosterim_outbox (idempotency_anahtari, payload) VALUES (?, ?)',
+      'INSERT INTO reklam_gosterim_outbox (payload) VALUES (?)',
     ).run(
-      idempotencyAnahtari,
       JSON.stringify({
-        idempotency_anahtari: idempotencyAnahtari,
-        reklam_id: body.reklam_id,
-        gosterilme_tarihi: body.gosterilme_tarihi,
-        sure_ms: body.sure_ms,
+        asset_id: body.asset_id,
+        asset_type: body.asset_type,
+        played_at: body.played_at,
+        duration_played: body.duration_played,
       }),
     );
     reply.code(201);
@@ -264,7 +250,6 @@ export async function buildServer({ db, settings, logger }) {
   });
 
   // unused-import suppression
-  void rowToReklam;
   void rowToKategori;
   void rowToSoru;
   void ALLOWED_YAS_ARALIKLARI;

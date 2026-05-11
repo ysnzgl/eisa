@@ -139,35 +139,38 @@ function upsertEtkenMadde(db, em) {
   ).run({ id: em.id, ad: em.ad, aciklama: em.aciklama || '' });
 }
 
-function upsertReklam(db, r) {
-  // Backend: hedef_eczaneler id listesi doner; bos = herkese goster.
-  const hedefleme = {
-    eczaneler: r.hedef_eczaneler ?? [],
-  };
-  const exists = db.prepare('SELECT id FROM reklamlar WHERE id = ?').get(r.id);
-  const params = {
-    id: r.id,
-    ad: r.ad,
-    medya_url: r.medya_url || '',
-    baslangic_tarihi: r.baslangic_tarihi,
-    bitis_tarihi: r.bitis_tarihi,
-    hedefleme: JSON.stringify(hedefleme),
-    aktif: r.aktif === false ? 0 : 1,
-  };
-  if (exists) {
-    db.prepare(
-      `UPDATE reklamlar SET ad=@ad, medya_url=@medya_url,
-              baslangic_tarihi=@baslangic_tarihi, bitis_tarihi=@bitis_tarihi,
-              hedefleme=@hedefleme, aktif=@aktif,
-              guncellenme_tarihi=strftime('%Y-%m-%dT%H:%M:%fZ','now')
-        WHERE id=@id`,
-    ).run(params);
-  } else {
-    db.prepare(
-      `INSERT INTO reklamlar (id, ad, medya_url, baslangic_tarihi, bitis_tarihi, hedefleme, aktif)
-       VALUES (@id, @ad, @medya_url, @baslangic_tarihi, @bitis_tarihi, @hedefleme, @aktif)`,
-    ).run(params);
-  }
+function upsertCreative(db, c) {
+  db.prepare(
+    `INSERT INTO creatives (id, media_url, duration_seconds, checksum, type, aktif)
+     VALUES (@id, @media_url, @duration_seconds, @checksum, 'creative', 1)
+     ON CONFLICT(id) DO UPDATE SET
+       media_url=excluded.media_url,
+       duration_seconds=excluded.duration_seconds,
+       checksum=excluded.checksum,
+       guncellenme_tarihi=strftime('%Y-%m-%dT%H:%M:%fZ','now')`,
+  ).run({
+    id: String(c.id),
+    media_url: c.media_url || '',
+    duration_seconds: c.duration_seconds ?? 15,
+    checksum: c.checksum || '',
+  });
+}
+
+function upsertHouseAd(db, h) {
+  db.prepare(
+    `INSERT INTO house_ads (id, name, media_url, duration_seconds, type, aktif)
+     VALUES (@id, @name, @media_url, @duration_seconds, 'house_ad', 1)
+     ON CONFLICT(id) DO UPDATE SET
+       name=excluded.name,
+       media_url=excluded.media_url,
+       duration_seconds=excluded.duration_seconds,
+       guncellenme_tarihi=strftime('%Y-%m-%dT%H:%M:%fZ','now')`,
+  ).run({
+    id: String(h.id),
+    name: h.name || '',
+    media_url: h.media_url || '',
+    duration_seconds: h.duration_seconds ?? 15,
+  });
 }
 
 // ── PULL ─────────────────────────────────────────────────────────────────
@@ -193,17 +196,19 @@ export async function pullFromCentral(db, settings, log = console) {
       log.warn?.(`PULL products/sync HTTP ${r1.status}`);
     }
 
-    // 2) campaigns/sync — Reklam[]
-    const r2 = await requestWithRetry(settings, 'GET', '/api/campaigns/sync/', undefined, log);
+    // 2) kiosk/v1/{id}/sync — { creatives: [...], house_ads: [...] }
+    const kioskId = settings.kioskId;
+    const r2 = await requestWithRetry(settings, 'GET', `/api/kiosk/v1/${kioskId}/sync/`, undefined, log);
     if (r2.ok) {
-      const reklamlar = await r2.json();
-      const tx = db.transaction((items) => {
-        for (const r of items) upsertReklam(db, r);
+      const data = await r2.json();
+      const tx = db.transaction((payload) => {
+        for (const c of payload.creatives || []) upsertCreative(db, c);
+        for (const h of payload.house_ads || []) upsertHouseAd(db, h);
       });
-      tx(reklamlar);
-      log.info?.(`PULL: ${reklamlar.length} reklam guncellendi`);
+      tx(data);
+      log.info?.(`PULL: ${(data.creatives || []).length} creative, ${(data.house_ads || []).length} house_ad guncellendi`);
     } else {
-      log.warn?.(`PULL campaigns/sync HTTP ${r2.status}`);
+      log.warn?.(`PULL kiosk/v1/sync HTTP ${r2.status}`);
     }
   } catch (err) {
     log.error?.({ err: err.message || String(err) }, 'PULL basarisiz (offline mod)');
@@ -232,22 +237,37 @@ export async function pushToCentral(db, settings, log = console) {
       }
     }
 
-    // 2) reklam_gosterim_outbox → /api/analytics/impressions/
+    // 2) reklam_gosterim_outbox → /api/kiosk/v1/{id}/proof-of-play/
     const gosterimler = db
       .prepare(
-        `SELECT id, idempotency_anahtari, payload FROM reklam_gosterim_outbox
+        `SELECT id, payload FROM reklam_gosterim_outbox
           WHERE gonderilme_tarihi IS NULL LIMIT 100`,
       )
       .all();
     if (gosterimler.length) {
       try {
+        const logs = gosterimler.map((i) => {
+          const p = JSON.parse(i.payload);
+          const entry = { played_at: p.played_at, duration_played: p.duration_played ?? 0 };
+          if (p.asset_type === 'house_ad') entry.house_ad_id = p.asset_id;
+          else entry.creative_id = p.asset_id;
+          return entry;
+        });
+        const kioskId = settings.kioskId;
         const r = await requestWithRetry(
-          settings, 'POST', '/api/analytics/impressions/',
-          { items: gosterimler.map((i) => JSON.parse(i.payload)) }, log,
+          settings, 'POST', `/api/kiosk/v1/${kioskId}/proof-of-play/`,
+          { logs }, log,
         );
-        await consumeBulkPushResponse(db, 'reklam_gosterim_outbox', gosterimler, r, log, 'impressions');
+        if (r.status === 201) {
+          const del = db.prepare('DELETE FROM reklam_gosterim_outbox WHERE id = ?');
+          const tx = db.transaction((items) => { for (const it of items) del.run(it.id); });
+          tx(gosterimler);
+          log.info?.(`PUSH proof-of-play: ${gosterimler.length} kayit gonderildi`);
+        } else {
+          log.warn?.(`PUSH proof-of-play HTTP ${r.status}; kayitlar saklaniyor`);
+        }
       } catch (err) {
-        log.warn?.({ err: err.message }, 'PUSH impressions kalici hata; kayitlar saklaniyor');
+        log.warn?.({ err: err.message }, 'PUSH proof-of-play kalici hata; kayitlar saklaniyor');
       }
     }
   } catch (err) {
