@@ -21,10 +21,10 @@
 
       <div class="or-divider">VEYA</div>
 
-      <button class="btn-touch btn-danger-touch" on:click={() => dispatch('flowB')}>
-        <i class="fa-solid fa-user-doctor"></i>
-        Eczacıya Özel Danış
-        <span class="btn-sub">Hassas şikayetler — sessizce ilet</span>
+      <button class="btn-touch btn-consult-touch" on:click={() => dispatch('flowConsult')}>
+        <i class="fa-solid fa-comments"></i>
+        Eczacınıza Danışın
+        <span class="btn-sub">Danışma konusu seçin — eczacı sizi karşılasın</span>
       </button>
     </div>
   </div>

@@ -63,6 +63,16 @@ services:
       - traefik.http.middlewares.sec-headers.headers.referrerPolicy=strict-origin-when-cross-origin
       - traefik.http.routers.backend.middlewares=sec-headers@docker
 
+  scheduler:
+    build: ./backend
+    restart: unless-stopped
+    command: python manage.py run_scheduler
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [internal]
+
   panels:
     build: ./web_panels
     restart: unless-stopped

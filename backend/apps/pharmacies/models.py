@@ -49,6 +49,8 @@ class Kiosk(BaseModel):
     uygulama_anahtari = models.CharField(max_length=128, unique=True)
     aktif = models.BooleanField(default=True)
     son_goruldu = models.DateTimeField(null=True, blank=True)
+    is_online = models.BooleanField(default=False)
+    last_playlist_version = models.PositiveIntegerField(null=True, blank=True)
 
     class Meta:
         db_table = "kiosklar"

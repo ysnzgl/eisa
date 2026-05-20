@@ -57,6 +57,16 @@ class Campaign(BaseModel):
         help_text="Saatte maksimum gösterim sayısı (opsiyonel). Örn: saatte en fazla 2 kez çıksın.",
     )
 
+    # Öncelik & güvence
+    priority = models.PositiveSmallIntegerField(
+        default=50,
+        help_text="Slot çakışmasında öncelik (1=en yüksek, 100=en düşük). Düşük değer önce yerleşir.",
+    )
+    is_guaranteed = models.BooleanField(
+        default=False,
+        help_text="True ise kapasite dolsa bile hiç atlanmaz; Pass 4 filler'dan yer açılır.",
+    )
+
     # Legacy M2M (geriye dönük uyumluluk; yeni kampanyalar CampaignTarget kullanır)
     target_pharmacies = models.ManyToManyField(
         "pharmacies.Eczane", blank=True, related_name="dooh_campaigns",
@@ -382,3 +392,175 @@ class PricingMatrix(BaseModel):
             return float(self.frequency_multipliers.get(frequency_type, 1.0))
         except (TypeError, ValueError):
             return 1.0
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Playlist Şablon — elle tasarlanmış loop yapısını saklar
+# ─────────────────────────────────────────────────────────────────────────────
+
+class PlaylistTemplate(BaseModel):
+    """Görsel editörde tasarlanmış 60sn loop şablonu.
+
+    ``slots`` JSON alanı, her slot için offset/duration/campaign bilgisini saklar.
+    Şablon belirli bir kiosk/il/ilçe kırılımına uygulanarak Playlist üretimini tetikler.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=255)
+    loop_duration_seconds = models.PositiveSmallIntegerField(default=60)
+    slots = models.JSONField(
+        default=list,
+        help_text=(
+            "[{campaign_id, creative_id, offset_seconds, duration_seconds}, ...] "
+            "seklinde 60sn slot listesi."
+        ),
+    )
+    target_hours = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Bu sablonun aktif oldugu saat dilimleri (0-23). Bos = herhangi bir saat kurali tanimlanmamis.",
+    )
+    description = models.TextField(blank=True, default="")
+
+    class Meta:
+        db_table = "dooh_playlist_templates"
+        ordering = ("-olusturulma_tarihi",)
+        verbose_name = "Playlist Template"
+        verbose_name_plural = "Playlist Templates"
+
+    def __str__(self) -> str:
+        return self.name
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# HourPlan — 1 saatlik yayın planı (LoopTemplate sekansı)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class HourPlan(BaseModel):
+    """Bir saatlik yayın planı. Birden fazla 60sn LoopTemplate'i sırayla tanımlar.
+
+    ``slots`` JSON alanı, her slot için dakika ofseti, süre ve hangi LoopTemplate
+    kullanılacağını saklar::
+
+        [
+          {"offset_minutes": 0, "duration_minutes": 30, "loop_template_id": "<uuid>"},
+          {"offset_minutes": 30, "duration_minutes": 30, "loop_template_id": "<uuid>"},
+        ]
+
+    Toplam duration_minutes <= 60 olmalıdır.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True, default="")
+    slots = models.JSONField(
+        default=list,
+        help_text=(
+            "[{offset_minutes, duration_minutes, loop_template_id}, ...] "
+            "seklinde 60 dakikalik slot listesi."
+        ),
+    )
+
+    class Meta:
+        db_table = "dooh_hour_plans"
+        ordering = ("-olusturulma_tarihi",)
+        verbose_name = "Hour Plan"
+        verbose_name_plural = "Hour Plans"
+
+    def __str__(self) -> str:
+        return self.name
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DayPlan — 24 saatlik günlük yayın planı (HourPlan haritası)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class DayPlan(BaseModel):
+    """24 saatlik günlük yayın planı. Her saate bir HourPlan atar.
+
+    ``slots`` JSON alanı::
+
+        [
+          {"hour": 0, "hour_plan_id": "<uuid>"},
+          {"hour": 8, "hour_plan_id": "<uuid>"},
+          ...
+        ]
+
+    Aynı saat birden fazla kez tanımlanamaz. Tanımlanmayan saatler otomatik
+    üretimde atlanır (boş kalır).
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True, default="")
+    slots = models.JSONField(
+        default=list,
+        help_text=(
+            "[{hour: 0..23, hour_plan_id: uuid}, ...] "
+            "seklinde 24 saatlik HourPlan atamalari."
+        ),
+    )
+
+    class Meta:
+        db_table = "dooh_day_plans"
+        ordering = ("-olusturulma_tarihi",)
+        verbose_name = "Day Plan"
+        verbose_name_plural = "Day Plans"
+
+    def __str__(self) -> str:
+        return self.name
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Generation Job — asenkron playlist üretim işi (APScheduler + PostgreSQL)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class GenerationJob(BaseModel):
+    """Bir playlist üretim işinin durumu.
+
+    Admin panel bu tabloyu poll ederek progress bar ve sonuç özeti gösterir.
+    APScheduler nightly job veya manuel tetikleme her ikisi de bu kaydı oluşturur.
+    """
+
+    class JobStatus(models.TextChoices):
+        PENDING = "PENDING", "Bekliyor"
+        RUNNING = "RUNNING", "Çalışıyor"
+        DONE = "DONE", "Tamamlandı"
+        FAILED = "FAILED", "Başarısız"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    target_date = models.DateField(db_index=True)
+    kiosk = models.ForeignKey(
+        "pharmacies.Kiosk", on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="generation_jobs",
+        help_text="NULL ise tüm aktif kiosklar için üretim yapılır.",
+    )
+    status = models.CharField(
+        max_length=10, choices=JobStatus.choices, default=JobStatus.PENDING, db_index=True
+    )
+    total_kiosks = models.PositiveIntegerField(default=0)
+    done_kiosks = models.PositiveIntegerField(default=0)
+    failed_kiosks = models.PositiveIntegerField(default=0)
+    playlists_generated = models.PositiveIntegerField(default=0)
+    triggered_by = models.CharField(
+        max_length=64, default="manual",
+        help_text="'manual' | 'nightly' | 'campaign_change'",
+    )
+    error_detail = models.TextField(blank=True, default="")
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "dooh_generation_jobs"
+        ordering = ("-olusturulma_tarihi",)
+        verbose_name = "Generation Job"
+        verbose_name_plural = "Generation Jobs"
+
+    def __str__(self) -> str:
+        return f"GenerationJob[{self.target_date} {self.status} {self.triggered_by}]"
+
+    @property
+    def progress_pct(self) -> int:
+        if not self.total_kiosks:
+            return 0
+        return int(100 * self.done_kiosks / self.total_kiosks)

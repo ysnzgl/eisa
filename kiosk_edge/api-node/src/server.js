@@ -3,7 +3,7 @@
 import crypto from 'node:crypto';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
-import { rowToKategori, rowToSoru, safeJson } from './db.js';
+import { rowToKategori, rowToDanismaKategori, rowToSoru, safeJson } from './db.js';
 import {
   ALLOWED_YAS_ARALIKLARI,
   ALLOWED_CINSIYETLER,
@@ -83,7 +83,7 @@ export async function buildServer({ db, settings, logger }) {
   app.get('/api/kategoriler', async () => {
     const rows = db
       .prepare(
-        `SELECT id, slug, ad, ikon, hassas, aktif,
+        `SELECT id, slug, ad, ikon, bagli_kategori_id, aktif,
                 hedef_cinsiyetler, hedef_yas_araliklari
            FROM kategoriler WHERE aktif = 1 ORDER BY id`,
       )
@@ -93,9 +93,28 @@ export async function buildServer({ db, settings, logger }) {
       slug: r.slug,
       ad: r.ad,
       ikon: r.ikon,
-      hassas: !!r.hassas,
+      bagli_kategori_id: r.bagli_kategori_id ?? null,
       hedef_cinsiyetler: safeJson(r.hedef_cinsiyetler, []),
       hedef_yas_araliklari: safeJson(r.hedef_yas_araliklari, []),
+    }));
+  });
+
+  app.get('/api/danisma-kategorileri', async () => {
+    const rows = db
+      .prepare(
+        `SELECT id, slug, ad, ikon, ust_kategori_id, aktif
+           FROM danisma_kategorileri WHERE aktif = 1 ORDER BY id`,
+      )
+      .all();
+    const toplevel = rows.filter((r) => r.ust_kategori_id === null);
+    return toplevel.map((parent) => ({
+      id: parent.id,
+      slug: parent.slug,
+      ad: parent.ad,
+      ikon: parent.ikon,
+      alt_kategoriler: rows
+        .filter((r) => r.ust_kategori_id === parent.id)
+        .map((c) => ({ id: c.id, slug: c.slug, ad: c.ad, ikon: c.ikon })),
     }));
   });
 
@@ -217,7 +236,7 @@ export async function buildServer({ db, settings, logger }) {
     },
   );
 
-  // ── reklamlar / DOOH assets ────────────────────────────────────────────
+  // ── reklamlar / DOOH assets (geriye dönük uyumluluk) ─────────────────────
   app.get('/api/reklamlar/aktif', async () => {
     const creatives = db
       .prepare('SELECT id, media_url, duration_seconds, type FROM creatives WHERE aktif = 1')
@@ -229,6 +248,85 @@ export async function buildServer({ db, settings, logger }) {
       ...creatives.map((c) => ({ id: c.id, media_url: c.media_url, duration_seconds: c.duration_seconds, type: c.type })),
       ...houseAds.map((h) => ({ id: h.id, name: h.name, media_url: h.media_url, duration_seconds: h.duration_seconds, type: h.type })),
     ];
+  });
+
+  // ── playlist — bugünün aktif saati için sıralı oynatma listesi ──────────
+  /**
+   * GET /api/playlist/current?hour=<0-23>
+   *
+   * hour verilmezse şu anki saat kullanılır.
+   * Playlist yoksa → fallback: /api/reklamlar/aktif ile aynı veri.
+   *
+   * Döner:
+   *   { version, target_date, target_hour, loop_duration_seconds, items: [...] }
+   */
+  app.get('/api/playlist/current', async (req) => {
+    const now     = new Date();
+    const today   = now.toISOString().slice(0, 10);
+    const hour    = req.query.hour !== undefined
+      ? parseInt(req.query.hour, 10)
+      : now.getUTCHours();
+
+    const playlist = db
+      .prepare('SELECT * FROM playlists WHERE target_date = ? AND target_hour = ?')
+      .get(today, hour);
+
+    if (!playlist) {
+      // Fallback: yapılandırılmamış tüm asset'ler
+      const creatives = db
+        .prepare('SELECT id, media_url, duration_seconds, type FROM creatives WHERE aktif = 1')
+        .all();
+      const houseAds  = db
+        .prepare('SELECT id, name, media_url, duration_seconds, type FROM house_ads WHERE aktif = 1')
+        .all();
+      const fallbackItems = [
+        ...creatives.map((c, i) => ({
+          id: `fallback-c-${c.id}`,
+          playback_order: i,
+          asset_id: c.id,
+          asset_type: 'creative',
+          media_url: c.media_url,
+          duration_seconds: c.duration_seconds,
+          estimated_start_offset_seconds: 0,
+        })),
+        ...houseAds.map((h, i) => ({
+          id: `fallback-h-${h.id}`,
+          playback_order: creatives.length + i,
+          asset_id: h.id,
+          asset_type: 'house_ad',
+          media_url: h.media_url,
+          duration_seconds: h.duration_seconds,
+          estimated_start_offset_seconds: 0,
+        })),
+      ];
+      return {
+        version: 0,
+        target_date: today,
+        target_hour: hour,
+        loop_duration_seconds: 60,
+        is_fallback: true,
+        items: fallbackItems,
+      };
+    }
+
+    const items = db
+      .prepare(
+        `SELECT id, playback_order, asset_id, asset_type,
+                media_url, duration_seconds, estimated_start_offset_seconds
+           FROM playlist_items
+          WHERE playlist_id = ?
+          ORDER BY playback_order`,
+      )
+      .all(playlist.id);
+
+    return {
+      version: playlist.version,
+      target_date: playlist.target_date,
+      target_hour: playlist.target_hour,
+      loop_duration_seconds: playlist.loop_duration_seconds,
+      is_fallback: false,
+      items,
+    };
   });
 
   // ── reklam gosterim (proof-of-play) ──────────────────────────────────────

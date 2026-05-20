@@ -9,9 +9,7 @@ import {
   deactivateUser, activateUser, resetPassword,
 } from '../../services/users';
 import { getPharmacies } from '../../services/devices';
-import { useToastStore } from '../../stores/toast';
-
-const toast = useToastStore();
+import { toast } from 'vue-sonner';
 const users = ref([]);
 const pharmacies = ref([]);
 const loading = ref(false);
@@ -91,6 +89,7 @@ async function save() {
   const f = editing.value;
   if (!f.username.trim()) { toast.error('Kullanıcı adı zorunlu'); return; }
   if (!f.id && !f.password) { toast.error('Parola zorunlu'); return; }
+  if (!f.id && f.password.length < 10) { toast.error('Parola en az 10 karakter olmalı'); return; }
   try {
     if (f.id) {
       const payload = {
@@ -138,8 +137,8 @@ function openReset(u) {
 }
 
 async function doReset() {
-  if (!newPassword.value || newPassword.value.length < 6) {
-    toast.error('Parola en az 6 karakter olmalı');
+  if (!newPassword.value || newPassword.value.length < 10) {
+    toast.error('Parola en az 10 karakter olmalı');
     return;
   }
   try {
@@ -166,7 +165,7 @@ onMounted(load);
         <h1 class="eisa-page-title">Kullanıcı Yönetimi</h1>
         <p class="eisa-page-subtitle">Eczaneye bağlı kullanıcıları oluştur, düzenle, parolayı sıfırla.</p>
       </div>
-      <div class="header-actions">
+      <div class="eisa-header-actions">
         <button class="eisa-btn" @click="load" :disabled="loading">
           <i class="fa-solid fa-rotate" :class="{ 'fa-spin': loading }"></i>
           Yenile
@@ -178,29 +177,29 @@ onMounted(load);
       </div>
     </header>
 
-    <section class="stats">
-      <div class="stat-card"><span class="stat-label">Toplam</span><span class="stat-value">{{ stats.total }}</span></div>
-      <div class="stat-card"><span class="stat-label">Aktif</span><span class="stat-value">{{ stats.active }}</span></div>
-      <div class="stat-card"><span class="stat-label">Süper Admin</span><span class="stat-value">{{ stats.admins }}</span></div>
-      <div class="stat-card"><span class="stat-label">Eczacı</span><span class="stat-value">{{ stats.pharmacists }}</span></div>
+    <section class="eisa-stats">
+      <div class="eisa-stat-card"><span class="eisa-stat-label">Toplam</span><span class="eisa-stat-value">{{ stats.total }}</span></div>
+      <div class="eisa-stat-card"><span class="eisa-stat-label">Aktif</span><span class="eisa-stat-value">{{ stats.active }}</span></div>
+      <div class="eisa-stat-card"><span class="eisa-stat-label">Süper Admin</span><span class="eisa-stat-value">{{ stats.admins }}</span></div>
+      <div class="eisa-stat-card"><span class="eisa-stat-label">Eczacı</span><span class="eisa-stat-value">{{ stats.pharmacists }}</span></div>
     </section>
 
     <section class="eisa-panel toolbar-panel">
-      <div class="toolbar">
-        <div class="search-wrap">
+      <div class="eisa-toolbar">
+        <div class="eisa-search-wrap">
           <i class="fa-solid fa-magnifying-glass"></i>
           <input
             v-model="search"
-            class="eisa-field search-field"
+            class="eisa-field eisa-search-field"
             placeholder="Kullanıcı adı, e-posta, eczane ara..."
           />
         </div>
-        <select v-model="filterRole" class="eisa-field filter">
+        <select v-model="filterRole" class="eisa-field eisa-filter">
           <option value="all">Tüm Roller</option>
           <option value="superadmin">Süper Admin</option>
           <option value="pharmacist">Eczacı</option>
         </select>
-        <select v-model="filterStatus" class="eisa-field filter">
+        <select v-model="filterStatus" class="eisa-field eisa-filter">
           <option value="all">Tüm Durumlar</option>
           <option value="active">Aktif</option>
           <option value="inactive">Pasif</option>
@@ -212,7 +211,7 @@ onMounted(load);
       <div class="eisa-panel-header">
         <h2 class="eisa-panel-title">Kullanıcılar ({{ filtered.length }})</h2>
       </div>
-      <div class="table-wrap">
+      <div style="overflow-x:auto;">
         <table class="eisa-table">
           <thead>
             <tr>
@@ -230,11 +229,11 @@ onMounted(load);
             <tr v-else-if="!filtered.length"><td colspan="7" class="empty-row">Kayıt bulunamadı</td></tr>
             <tr v-for="u in filtered" :key="u.id">
               <td>
-                <div class="user-cell">
-                  <div class="avatar">{{ (u.first_name || u.username)[0]?.toUpperCase() }}</div>
+                <div class="eisa-user-cell">
+                  <div class="eisa-avatar">{{ (u.first_name || u.username)[0]?.toUpperCase() }}</div>
                   <div>
-                    <div class="user-name">{{ u.full_name || u.username }}</div>
-                    <div class="user-handle">@{{ u.username }}</div>
+                    <div class="eisa-cell-name">{{ u.full_name || u.username }}</div>
+                    <div class="eisa-cell-sub">@{{ u.username }}</div>
                   </div>
                 </div>
               </td>
@@ -251,16 +250,16 @@ onMounted(load);
                   {{ u.is_active ? 'Aktif' : 'Pasif' }}
                 </span>
               </td>
-              <td class="muted">{{ formatDate(u.last_login) }}</td>
-              <td class="actions">
-                <button class="icon-btn" title="Düzenle" @click="openEdit(u)">
+              <td class="cell-muted">{{ formatDate(u.last_login) }}</td>
+              <td class="cell-actions">
+                <button class="eisa-icon-btn" title="Düzenle" @click="openEdit(u)">
                   <i class="fa-solid fa-pen"></i>
                 </button>
-                <button class="icon-btn" title="Parola Sıfırla" @click="openReset(u)">
+                <button class="eisa-icon-btn" title="Parola Sıfırla" @click="openReset(u)">
                   <i class="fa-solid fa-key"></i>
                 </button>
                 <button
-                  class="icon-btn"
+                  class="eisa-icon-btn"
                   :class="u.is_active ? 'danger' : 'success'"
                   :title="u.is_active ? 'Pasifleştir' : 'Aktifleştir'"
                   @click="toggleActive(u)"
@@ -279,46 +278,46 @@ onMounted(load);
       <div class="eisa-modal" style="max-width: 540px;">
         <div class="eisa-modal-header">
           <h3 class="eisa-modal-title">{{ editing.id ? 'Kullanıcıyı Düzenle' : 'Yeni Kullanıcı' }}</h3>
-          <button class="icon-btn" @click="showFormModal = false"><i class="fa-solid fa-xmark"></i></button>
+          <button class="eisa-icon-btn" @click="showFormModal = false"><i class="fa-solid fa-xmark"></i></button>
         </div>
         <div class="eisa-modal-body">
-          <div class="form-grid">
-            <div class="form-row">
+          <div class="eisa-form-grid">
+            <div class="eisa-form-row">
               <label class="eisa-field-label">Kullanıcı Adı *</label>
               <input v-model="editing.username" class="eisa-field" :disabled="!!editing.id" />
             </div>
-            <div class="form-row">
+            <div class="eisa-form-row">
               <label class="eisa-field-label">E-posta</label>
               <input v-model="editing.email" type="email" class="eisa-field" />
             </div>
-            <div class="form-row">
+            <div class="eisa-form-row">
               <label class="eisa-field-label">Ad</label>
               <input v-model="editing.first_name" class="eisa-field" />
             </div>
-            <div class="form-row">
+            <div class="eisa-form-row">
               <label class="eisa-field-label">Soyad</label>
               <input v-model="editing.last_name" class="eisa-field" />
             </div>
-            <div class="form-row">
+            <div class="eisa-form-row">
               <label class="eisa-field-label">Rol *</label>
               <select v-model="editing.rol" class="eisa-field">
                 <option value="pharmacist">Eczacı</option>
                 <option value="superadmin">Süper Admin</option>
               </select>
             </div>
-            <div class="form-row">
+            <div class="eisa-form-row">
               <label class="eisa-field-label">Eczane</label>
               <select v-model="editing.eczane" class="eisa-field" :disabled="editing.rol === 'superadmin'">
                 <option :value="null">— Seçilmedi —</option>
                 <option v-for="p in pharmacies" :key="p.id" :value="p.id">{{ p.name }}</option>
               </select>
             </div>
-            <div v-if="!editing.id" class="form-row form-row-full">
+            <div v-if="!editing.id" class="eisa-form-row eisa-form-row-full">
               <label class="eisa-field-label">Parola *</label>
-              <input v-model="editing.password" type="password" class="eisa-field" placeholder="En az 6 karakter" />
+              <input v-model="editing.password" type="password" class="eisa-field" placeholder="En az 10 karakter" />
             </div>
-            <div class="form-row form-row-full toggle-row">
-              <label class="toggle">
+            <div class="eisa-form-row eisa-form-row-full eisa-toggle-row">
+              <label class="eisa-toggle">
                 <input type="checkbox" v-model="editing.is_active" />
                 <span>Hesap aktif</span>
               </label>
@@ -340,10 +339,10 @@ onMounted(load);
       <div class="eisa-modal" style="max-width: 420px;">
         <div class="eisa-modal-header">
           <h3 class="eisa-modal-title">Parola Sıfırla</h3>
-          <button class="icon-btn" @click="showResetModal = false"><i class="fa-solid fa-xmark"></i></button>
+          <button class="eisa-icon-btn" @click="showResetModal = false"><i class="fa-solid fa-xmark"></i></button>
         </div>
         <div class="eisa-modal-body">
-          <p class="reset-info">
+          <p class="eisa-reset-info">
             <strong>{{ resetTarget?.username }}</strong> kullanıcısı için yeni parola belirleyin.
           </p>
           <label class="eisa-field-label">Yeni Parola</label>
@@ -351,7 +350,7 @@ onMounted(load);
             v-model="newPassword"
             type="password"
             class="eisa-field"
-            placeholder="En az 6 karakter"
+            placeholder="En az 10 karakter"
             @keyup.enter="doReset"
           />
         </div>

@@ -8,9 +8,11 @@ from apps.core.uow import UnitOfWork
 from apps.pharmacies.auth import KioskAppKeyAuthentication
 from apps.pharmacies.permissions import IsKioskOrAuthenticated, IsSuperAdmin
 
-from .models import Cevap, EtkenMadde, Kategori, Soru, SoruEtkenMadde
+from .models import Cevap, Danisma, EtkenMadde, Kategori, Soru, SoruEtkenMadde
 from .serializers import (
     CevapWriteSerializer,
+    DanismaSerializer,
+    DanismaSyncSerializer,
     EtkenMaddeSerializer,
     KategoriSerializer,
     KategoriSyncSerializer,
@@ -48,7 +50,7 @@ class UrunSyncView(APIView):
 
     def get(self, request):
         kategoriler = Kategori.objects.filter(aktif=True).select_related(
-            "hedef_cinsiyet",
+            "hedef_cinsiyet", "bagli_kategori",
         ).prefetch_related(
             "hedef_yas_araliklari",
             "sorular__cevaplar",
@@ -56,10 +58,14 @@ class UrunSyncView(APIView):
             "sorular__etken_madde_baglantilari__etken_madde",
         )
         etken_maddeler = EtkenMadde.objects.filter(aktif=True)
+        danisma_kategorileri = Danisma.objects.filter(
+            aktif=True, ust_kategori__isnull=True
+        ).prefetch_related("alt_kategoriler")
         return Response(
             {
                 "kategoriler": KategoriSyncSerializer(kategoriler, many=True).data,
                 "etken_maddeler": EtkenMaddeSerializer(etken_maddeler, many=True).data,
+                "danisma_kategorileri": DanismaSyncSerializer(danisma_kategorileri, many=True).data,
             }
         )
 
@@ -97,7 +103,7 @@ class _M2MHedeflemeViewSet(_UoWWritableViewSet):
 class KategoriViewSet(_M2MHedeflemeViewSet):
     _M2M_FIELDS = ("hedef_yas_araliklari",)
     queryset = Kategori.objects.select_related(
-        "hedef_cinsiyet",
+        "hedef_cinsiyet", "bagli_kategori",
     ).prefetch_related(
         "hedef_yas_araliklari",
     ).all()
@@ -165,3 +171,19 @@ class SoruEtkenMaddeViewSet(_UoWWritableViewSet):
     serializer_class = SoruEtkenMaddeSerializer
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsSuperAdmin]
+
+
+class DanismaViewSet(_UoWWritableViewSet):
+    """Danisma kategorileri CRUD."""
+
+    queryset = Danisma.objects.select_related("ust_kategori").all()
+    serializer_class = DanismaSerializer
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsSuperAdmin]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        sadece_kok = self.request.query_params.get("sadece_kok")
+        if sadece_kok:
+            qs = qs.filter(ust_kategori__isnull=True)
+        return qs

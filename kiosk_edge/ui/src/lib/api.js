@@ -61,6 +61,10 @@ export async function fetchCategories() {
   return _request(`${API_BASE}/api/kategoriler`, { timeoutMs: 4000 });
 }
 
+export async function fetchDanismaCategories() {
+  return _request(`${API_BASE}/api/danisma-kategorileri`, { timeoutMs: 4000 });
+}
+
 export async function fetchQuestions(categorySlug) {
   return _request(`${API_BASE}/api/kategoriler/${categorySlug}/sorular`, {
     timeoutMs: 4000,
@@ -96,6 +100,17 @@ export async function submitSession({ ageRange, gender, categorySlug, isSensitiv
 
 export async function fetchActiveCampaigns() {
   return _request(`${API_BASE}/api/reklamlar/aktif`, { timeoutMs: 4000 });
+}
+
+/**
+ * Bugünün belirtilen saatine ait playlist'i döner.
+ * @param {number} [hour]  — verilmezse api-node kendi saatini kullanır
+ * @returns {Promise<{version:number, target_date:string, target_hour:number,
+ *                    loop_duration_seconds:number, is_fallback:boolean, items:object[]}>}
+ */
+export async function fetchCurrentPlaylist(hour) {
+  const query = hour !== undefined ? `?hour=${hour}` : '';
+  return _request(`${API_BASE}/api/playlist/current${query}`, { timeoutMs: 4000 });
 }
 
 export async function logAdImpression({ assetId, assetType, shownAt, durationMs }) {

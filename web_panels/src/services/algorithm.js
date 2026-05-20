@@ -3,8 +3,9 @@
  * Kategori → Soru → EtkenMadde hiyerarşisini yönetir.
  *
  * Backend field mapping:
- *   Kategori: ad→name, ikon→icon, hassas→is_sensitive, aktif→is_active
+ *   Kategori: ad→name, ikon→icon, aktif→is_active
  *             hedef_cinsiyet→target_gender, hedef_yas_araliklari→target_age_ranges
+ *             bagli_kategori→bagli_kategori
  *   Soru: metin→text, sira→order, hedef_cinsiyet→target_gender,
  *         hedef_yas_araliklari→target_age_ranges,
  *         hedef_etken_maddeler→hedef_etken_maddeler (SoruEtkenMadde through model)
@@ -26,6 +27,10 @@
  *   DELETE /api/products/ingredients/{id}/
  *   POST   /api/products/question-ingredients/
  *   DELETE /api/products/question-ingredients/{id}/
+ *   GET    /api/products/danisma/
+ *   POST   /api/products/danisma/
+ *   PATCH  /api/products/danisma/{id}/
+ *   DELETE /api/products/danisma/{id}/
  */
 import { http } from './api';
 
@@ -38,10 +43,10 @@ function mapCategoryFromApi(c) {
     name: c.ad,
     slug: c.slug,
     icon: c.ikon,
-    is_sensitive: c.hassas,
     is_active: c.aktif,
     target_gender: c.hedef_cinsiyet ?? null,
     target_age_ranges: c.hedef_yas_araliklari ?? [],
+    bagli_kategori: c.bagli_kategori ?? null,
   };
 }
 
@@ -49,11 +54,11 @@ function mapCategoryToApi(data) {
   const out = {};
   if (data.name         !== undefined) out.ad                  = data.name;
   if (data.slug         !== undefined) out.slug                = data.slug;
-  if (data.icon         !== undefined) out.ikon                = data.icon;
-  if (data.is_sensitive !== undefined) out.hassas              = data.is_sensitive;
+  if (data.icon !== undefined && data.icon !== '') out.ikon = data.icon;
   if (data.is_active    !== undefined) out.aktif               = data.is_active;
   if (data.target_gender     !== undefined) out.hedef_cinsiyet      = data.target_gender;
   if (data.target_age_ranges !== undefined) out.hedef_yas_araliklari = data.target_age_ranges;
+  if (data.bagli_kategori    !== undefined) out.bagli_kategori       = data.bagli_kategori;
   return out;
 }
 
@@ -259,4 +264,67 @@ export async function reactivateIngredient(id) {
 /** Etken maddeyi soft-delete ile pasiflestirir. */
 export async function softDeleteIngredient(id) {
   await http.delete(`/api/products/ingredients/${id}/`);
+}
+
+// ─── Danışma Kategori Servisleri ─────────────────────────────────────────────
+
+function mapDanismaFromApi(d) {
+  if (!d) return null;
+  return {
+    id: d.id,
+    ad: d.ad,
+    slug: d.slug,
+    ikon: d.ikon,
+    aktif: d.aktif,
+    ust_kategori: d.ust_kategori ?? null,
+    ust_kategori_ad: d.ust_kategori_ad ?? null,
+  };
+}
+
+/** Tüm danışma kategorilerini listeler. */
+export async function getDanismaKategorileri() {
+  const { data } = await http.get('/api/products/danisma/');
+  const items = Array.isArray(data) ? data : (data?.results ?? []);
+  return items.map(mapDanismaFromApi);
+}
+
+/** Yeni danışma kategorisi oluşturur. */
+export async function createDanisma(data) {
+  if (!data.slug) {
+    data = {
+      ...data,
+      slug: data.ad
+        .toLowerCase()
+        .replace(/ğ/g, 'g').replace(/ü/g, 'u').replace(/ş/g, 's')
+        .replace(/ı/g, 'i').replace(/ö/g, 'o').replace(/ç/g, 'c')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$$/g, ''),
+    };
+  }
+  const payload = {
+    ad: data.ad,
+    slug: data.slug,
+    ikon: data.ikon ?? 'fa-comments',
+    aktif: data.aktif ?? true,
+    ust_kategori: data.ust_kategori ?? null,
+  };
+  const { data: created } = await http.post('/api/products/danisma/', payload);
+  return mapDanismaFromApi(created);
+}
+
+/** Danışma kategorisini günceller. */
+export async function updateDanisma(id, data) {
+  const payload = {};
+  if (data.ad          !== undefined) payload.ad           = data.ad;
+  if (data.slug        !== undefined) payload.slug         = data.slug;
+  if (data.ikon        !== undefined) payload.ikon         = data.ikon;
+  if (data.aktif       !== undefined) payload.aktif        = data.aktif;
+  if (data.ust_kategori !== undefined) payload.ust_kategori = data.ust_kategori;
+  const { data: updated } = await http.patch(`/api/products/danisma/${id}/`, payload);
+  return mapDanismaFromApi(updated);
+}
+
+/** Danışma kategorisini siler. */
+export async function deleteDanisma(id) {
+  await http.delete(`/api/products/danisma/${id}/`);
 }

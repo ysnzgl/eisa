@@ -65,7 +65,7 @@ function upsertKategori(db, c) {
     slug: c.slug,
     ad: c.ad,
     ikon: c.ikon || 'fa-circle',
-    hassas: c.hassas ? 1 : 0,
+    bagli_kategori_id: c.bagli_kategori ?? null,
     aktif: c.aktif === false ? 0 : 1,
     hedef_cinsiyetler: JSON.stringify(c.hedef_cinsiyetler ?? []),
     hedef_yas_araliklari: JSON.stringify(c.hedef_yas_araliklari ?? []),
@@ -73,7 +73,8 @@ function upsertKategori(db, c) {
   if (exists) {
     db.prepare(
       `UPDATE kategoriler
-          SET slug=@slug, ad=@ad, ikon=@ikon, hassas=@hassas, aktif=@aktif,
+          SET slug=@slug, ad=@ad, ikon=@ikon,
+              bagli_kategori_id=@bagli_kategori_id, aktif=@aktif,
               hedef_cinsiyetler=@hedef_cinsiyetler,
               hedef_yas_araliklari=@hedef_yas_araliklari,
               guncellenme_tarihi=strftime('%Y-%m-%dT%H:%M:%fZ','now')
@@ -82,11 +83,29 @@ function upsertKategori(db, c) {
   } else {
     db.prepare(
       `INSERT INTO kategoriler
-         (id, slug, ad, ikon, hassas, aktif, hedef_cinsiyetler, hedef_yas_araliklari)
-       VALUES (@id, @slug, @ad, @ikon, @hassas, @aktif,
+         (id, slug, ad, ikon, bagli_kategori_id, aktif, hedef_cinsiyetler, hedef_yas_araliklari)
+       VALUES (@id, @slug, @ad, @ikon, @bagli_kategori_id, @aktif,
                @hedef_cinsiyetler, @hedef_yas_araliklari)`,
     ).run(params);
   }
+}
+
+function upsertDanismaKategori(db, d) {
+  db.prepare(
+    `INSERT INTO danisma_kategorileri (id, slug, ad, ikon, ust_kategori_id, aktif)
+     VALUES (@id, @slug, @ad, @ikon, @ust_kategori_id, @aktif)
+     ON CONFLICT(id) DO UPDATE SET
+       slug=excluded.slug, ad=excluded.ad, ikon=excluded.ikon,
+       ust_kategori_id=excluded.ust_kategori_id, aktif=excluded.aktif,
+       guncellenme_tarihi=strftime('%Y-%m-%dT%H:%M:%fZ','now')`,
+  ).run({
+    id: d.id,
+    slug: d.slug,
+    ad: d.ad,
+    ikon: d.ikon || 'fa-comments',
+    ust_kategori_id: d.ust_kategori ?? null,
+    aktif: d.aktif === false ? 0 : 1,
+  });
 }
 
 function upsertSoru(db, q, kategoriId) {
@@ -173,6 +192,32 @@ function upsertHouseAd(db, h) {
   });
 }
 
+function upsertLookups(db, lookups) {
+  if (!lookups) return;
+
+  const insCinsiyet = db.prepare(
+    'INSERT INTO cinsiyetler (id, kod, ad) VALUES (@id, @kod, @ad) ON CONFLICT(id) DO UPDATE SET kod=excluded.kod, ad=excluded.ad',
+  );
+  const insYas = db.prepare(
+    `INSERT INTO yas_araliklari (id, kod, ad, alt_sinir, ust_sinir) VALUES (@id, @kod, @ad, @alt_sinir, @ust_sinir)
+     ON CONFLICT(id) DO UPDATE SET kod=excluded.kod, ad=excluded.ad, alt_sinir=excluded.alt_sinir, ust_sinir=excluded.ust_sinir`,
+  );
+  const insIl = db.prepare(
+    'INSERT INTO iller (id, ad) VALUES (@id, @ad) ON CONFLICT(id) DO UPDATE SET ad=excluded.ad',
+  );
+  const insIlce = db.prepare(
+    'INSERT INTO ilceler (id, il_id, ad) VALUES (@id, @il_id, @ad) ON CONFLICT(id) DO UPDATE SET il_id=excluded.il_id, ad=excluded.ad',
+  );
+
+  const tx = db.transaction((l) => {
+    for (const c of l.cinsiyetler ?? []) insCinsiyet.run(c);
+    for (const y of l.yas_araliklari ?? []) insYas.run(y);
+    for (const il of l.iller ?? []) insIl.run(il);
+    for (const ilce of l.ilceler ?? []) insIlce.run(ilce);
+  });
+  tx(lookups);
+}
+
 // ── PULL ─────────────────────────────────────────────────────────────────
 export async function pullFromCentral(db, settings, log = console) {
   try {
@@ -189,29 +234,148 @@ export async function pullFromCentral(db, settings, log = console) {
           }
         }
         for (const em of payload.etken_maddeler || []) upsertEtkenMadde(db, em);
+        for (const d of payload.danisma_kategorileri || []) {
+          upsertDanismaKategori(db, d);
+          for (const alt of d.alt_kategoriler || []) upsertDanismaKategori(db, { ...alt, ust_kategori: d.id });
+        }
       });
       tx(data);
-      log.info?.(`PULL: ${(data.kategoriler || []).length} kategori, ${(data.etken_maddeler || []).length} etken madde guncellendi`);
+      log.info?.(`PULL: ${(data.kategoriler || []).length} kategori, ${(data.etken_maddeler || []).length} etken madde, ${(data.danisma_kategorileri || []).length} danisma guncellendi`);
     } else {
       log.warn?.(`PULL products/sync HTTP ${r1.status}`);
     }
 
-    // 2) kiosk/v1/{id}/sync — { creatives: [...], house_ads: [...] }
+    // 2) kiosk/v1/{id}/sync — { creatives: [...], house_ads: [...], lookups: {...} }
     const kioskId = settings.kioskId;
     const r2 = await requestWithRetry(settings, 'GET', `/api/kiosk/v1/${kioskId}/sync/`, undefined, log);
     if (r2.ok) {
       const data = await r2.json();
       const tx = db.transaction((payload) => {
+        upsertLookups(db, payload.lookups);
         for (const c of payload.creatives || []) upsertCreative(db, c);
         for (const h of payload.house_ads || []) upsertHouseAd(db, h);
       });
       tx(data);
-      log.info?.(`PULL: ${(data.creatives || []).length} creative, ${(data.house_ads || []).length} house_ad guncellendi`);
+      log.info?.(`PULL: ${(data.creatives || []).length} creative, ${(data.house_ads || []).length} house_ad, ${(data.lookups?.iller || []).length} il guncellendi`);
     } else {
       log.warn?.(`PULL kiosk/v1/sync HTTP ${r2.status}`);
     }
   } catch (err) {
     log.error?.({ err: err.message || String(err) }, 'PULL basarisiz (offline mod)');
+  }
+}
+
+// ── PING + PLAYLIST SYNC ─────────────────────────────────────────────────
+/**
+ * 1) /api/kiosk/v1/{id}/ping/ → sunucudan bugünkü playlist versiyonunu al.
+ * 2) Yerel kayıtlı versiyondan farklıysa → playlist'i çek ve SQLite'a yaz.
+ *
+ * Kiosk offline ise hata yutulur; mevcut yerel playlist oynatılmaya devam eder.
+ */
+export async function pingAndSyncPlaylist(db, settings, log = console) {
+  const kioskId = settings.kioskId;
+  if (!kioskId) return;
+
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const pingRes = await requestWithRetry(
+      settings, 'GET', `/api/kiosk/v1/${kioskId}/ping/`, undefined, log,
+    );
+    if (!pingRes.ok) {
+      log.warn?.(`PING HTTP ${pingRes.status}`);
+      return;
+    }
+    const ping = await pingRes.json();
+    const serverVersion = ping.playlist_version ?? 0;
+
+    // Yerel versiyonu oku
+    const metaRow = db
+      .prepare("SELECT value FROM kiosk_meta WHERE key = 'playlist_version'")
+      .get();
+    const localVersion = metaRow ? parseInt(metaRow.value, 10) : 0;
+
+    if (serverVersion === 0) {
+      log.debug?.('PING: sunucuda henuz playlist yok');
+      return;
+    }
+
+    if (serverVersion <= localVersion) {
+      log.debug?.(`PING: playlist guncel (v${localVersion})`);
+      return;
+    }
+
+    log.info?.(`PING: yeni playlist versiyonu ${localVersion} → ${serverVersion}; indiriliyor…`);
+
+    // Bugün için tüm saatleri çek (tek istek — ?date=YYYY-MM-DD)
+    const plRes = await requestWithRetry(
+      settings, 'GET',
+      `/api/kiosk/v1/${kioskId}/playlist/?date=${today}`,
+      undefined, log,
+    );
+    if (!plRes.ok) {
+      log.warn?.(`PLAYLIST çekme HTTP ${plRes.status}`);
+      return;
+    }
+    const body = await plRes.json();
+    // Backend { kiosk_id, target_date, loop_duration_seconds, playlists: [...] } döner
+    const playlists = Array.isArray(body) ? body : (body.playlists ?? []);
+
+    const upsertPlaylist = db.prepare(`
+      INSERT INTO playlists (id, target_date, target_hour, loop_duration_seconds, version)
+      VALUES (@id, @target_date, @target_hour, @loop_duration_seconds, @version)
+      ON CONFLICT(target_date, target_hour) DO UPDATE SET
+        id=excluded.id,
+        loop_duration_seconds=excluded.loop_duration_seconds,
+        version=excluded.version,
+        synced_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+    `);
+
+    const delItems  = db.prepare('DELETE FROM playlist_items WHERE playlist_id = ?');
+    const insItem   = db.prepare(`
+      INSERT OR REPLACE INTO playlist_items
+        (id, playlist_id, playback_order, asset_id, asset_type,
+         media_url, duration_seconds, estimated_start_offset_seconds)
+      VALUES
+        (@id, @playlist_id, @playback_order, @asset_id, @asset_type,
+         @media_url, @duration_seconds, @estimated_start_offset_seconds)
+    `);
+
+    const upsertMeta = db.prepare(`
+      INSERT INTO kiosk_meta (key, value) VALUES (?, ?)
+      ON CONFLICT(key) DO UPDATE SET value=excluded.value
+    `);
+
+    const tx = db.transaction((list) => {
+      for (const pl of list) {
+        upsertPlaylist.run({
+          id: String(pl.id),
+          target_date: pl.target_date,
+          target_hour: pl.target_hour,
+          loop_duration_seconds: pl.loop_duration_seconds ?? 60,
+          version: pl.version,
+        });
+        delItems.run(String(pl.id));
+        for (const item of pl.items ?? []) {
+          insItem.run({
+            id: String(item.id),
+            playlist_id: String(pl.id),
+            playback_order: item.playback_order ?? 0,
+            asset_id: String(item.asset_id),
+            asset_type: item.asset_type ?? 'creative',
+            media_url: item.media_url ?? '',
+            duration_seconds: item.duration_seconds ?? 15,
+            estimated_start_offset_seconds: item.estimated_start_offset_seconds ?? 0,
+          });
+        }
+      }
+      upsertMeta.run('playlist_version', String(serverVersion));
+      upsertMeta.run('playlist_date', today);
+    });
+    tx(playlists);
+
+    log.info?.(`PLAYLIST sync tamam: ${playlists.length} saat kaydedildi (v${serverVersion})`);
+  } catch (err) {
+    log.warn?.({ err: err.message }, 'PING/PLAYLIST sync basarisiz (offline mod)');
   }
 }
 
@@ -318,18 +482,26 @@ export function startScheduler(db, settings, log = console) {
   if (_tasks.length) return;
   const pullEvery = settings.pullIntervalSec * 1000;
   const pushEvery = settings.pushIntervalSec * 1000;
+  const pingEvery = (settings.pingIntervalSec ?? 60) * 1000;
 
-  const pullTimer = setInterval(() => pullFromCentral(db, settings, log), pullEvery);
-  const pushTimer = setInterval(() => pushToCentral(db, settings, log), pushEvery);
+  const pullTimer    = setInterval(() => pullFromCentral(db, settings, log), pullEvery);
+  const pushTimer    = setInterval(() => pushToCentral(db, settings, log), pushEvery);
+  const pingTimer    = setInterval(() => pingAndSyncPlaylist(db, settings, log), pingEvery);
   const pressureTimer = setInterval(() => {
     try { checkOutboxPressure(log, settings.outboxMaxRows); }
     catch (err) { log?.warn?.({ err: err?.message }, 'Outbox basinc kontrolu basarisiz'); }
   }, pushEvery);
-  pullTimer.unref?.(); pushTimer.unref?.(); pressureTimer.unref?.();
-  _tasks.push(pullTimer, pushTimer, pressureTimer);
+  pullTimer.unref?.();
+  pushTimer.unref?.();
+  pingTimer.unref?.();
+  pressureTimer.unref?.();
+  _tasks.push(pullTimer, pushTimer, pingTimer, pressureTimer);
+
+  // İlk açılışta hemen bir ping yap
+  pingAndSyncPlaylist(db, settings, log);
 
   log.info?.(
-    `Scheduler baslatildi — pull:${settings.pullIntervalSec}s push:${settings.pushIntervalSec}s`,
+    `Scheduler baslatildi — pull:${settings.pullIntervalSec}s push:${settings.pushIntervalSec}s ping:${settings.pingIntervalSec ?? 60}s`,
   );
 }
 

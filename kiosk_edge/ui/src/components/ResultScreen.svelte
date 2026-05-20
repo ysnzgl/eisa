@@ -11,7 +11,7 @@
     if (!qrCanvas) return;
     // Şifrelenmiş payload uzun olabileceği için Q yerine L, modül daha sık.
     QrCreator.render(
-      { text: code, radius: 0.4, ecLevel: 'L', fill: '#1a2e44', background: '#fff', size: 180 },
+      { text: code, radius: 0.4, ecLevel: 'L', fill: '#111827', background: '#fff', size: 180 },
       qrCanvas,
     );
   }

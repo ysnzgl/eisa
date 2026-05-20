@@ -202,10 +202,10 @@ onMounted(load);
 .field input, .field select { padding: .45rem .6rem; border: 1px solid #cbd5e1; border-radius: 6px; }
 .hour-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: .25rem; }
 .hour-cell { background: #f1f5f9; border: 1px solid transparent; border-radius: 6px; padding: .35rem; cursor: pointer; font-size: .8rem; }
-.hour-cell.active { background: #2563eb; color: white; }
+.hour-cell.active { background: #B1121B; color: white; }
 .preview .total { margin-top: .5rem; font-size: 1.1rem; }
 .badge { background: #fbbf24; color: #78350f; padding: .15rem .5rem; border-radius: 999px; font-size: .7rem; margin-left: .5rem; }
 .actions { display: flex; justify-content: flex-end; }
-.btn.primary { padding: .55rem 1.4rem; background: #2563eb; color: white; border: 0; border-radius: 6px; cursor: pointer; }
+.btn.primary { padding: .55rem 1.4rem; background: #B1121B; color: white; border: 0; border-radius: 6px; cursor: pointer; }
 .btn.primary:disabled { opacity: .6; cursor: not-allowed; }
 </style>

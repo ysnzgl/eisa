@@ -45,6 +45,10 @@ class KioskSerializer(serializers.ModelSerializer):
     """Kiosk serileştiricisi. uygulama_anahtari salt-okunur (server uretir)."""
 
     eczane_adi = serializers.CharField(source="eczane.ad", read_only=True)
+    il_id      = serializers.IntegerField(source="eczane.il_id", read_only=True)
+    il_adi     = serializers.CharField(source="eczane.il.ad", read_only=True)
+    ilce_id    = serializers.IntegerField(source="eczane.ilce_id", read_only=True)
+    ilce_adi   = serializers.CharField(source="eczane.ilce.ad", read_only=True)
 
     class Meta:
         model = Kiosk
@@ -52,11 +56,16 @@ class KioskSerializer(serializers.ModelSerializer):
             "id",
             "eczane",
             "eczane_adi",
+            "il_id",
+            "il_adi",
+            "ilce_id",
+            "ilce_adi",
             "ad",
             "mac_adresi",
             "uygulama_anahtari",
             "aktif",
             "son_goruldu",
+            "is_online",
             "olusturulma_tarihi",
             "guncellenme_tarihi",
             "surum",
@@ -69,4 +78,5 @@ class KioskSerializer(serializers.ModelSerializer):
             "guncellenme_tarihi",
             "surum",
             "eczane_adi",
+            "il_id", "il_adi", "ilce_id", "ilce_adi",
         )

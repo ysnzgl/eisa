@@ -27,6 +27,14 @@ services:
     labels: []
     networks: [edge, internal]
 
+  scheduler:
+    command: python manage.py run_scheduler
+    environment:
+      POSTGRES_HOST: postgres
+    volumes:
+      - ./backend:/app
+    networks: [internal]
+
   panels:
     ports:
       - "8080:80"

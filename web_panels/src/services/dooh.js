@@ -77,6 +77,66 @@ export const updatePricingMatrix = (data) =>
 export const generatePlaylists = (payload = {}) =>
   http.post('/api/campaigns/v2/playlists/generate/', payload);
 
+// ── Generation Jobs (progress tracking) ──
+export const listGenerationJobs = () =>
+  http.get('/api/campaigns/v2/playlists/jobs/');
+
+export const getGenerationJob = (id) =>
+  http.get(`/api/campaigns/v2/playlists/jobs/${id}/`);
+
+// ── Playlist Templates ──
+export const listPlaylistTemplates = () =>
+  http.get('/api/campaigns/v2/playlist-templates/');
+
+export const createPlaylistTemplate = (data) =>
+  http.post('/api/campaigns/v2/playlist-templates/', data);
+
+export const updatePlaylistTemplate = (id, data) =>
+  http.patch(`/api/campaigns/v2/playlist-templates/${id}/`, data);
+
+export const deletePlaylistTemplate = (id) =>
+  http.delete(`/api/campaigns/v2/playlist-templates/${id}/`);
+
+// ── Hour Plans ──
+export const listHourPlans = () =>
+  http.get('/api/campaigns/v2/hour-plans/');
+
+export const createHourPlan = (data) =>
+  http.post('/api/campaigns/v2/hour-plans/', data);
+
+export const updateHourPlan = (id, data) =>
+  http.patch(`/api/campaigns/v2/hour-plans/${id}/`, data);
+
+export const deleteHourPlan = (id) =>
+  http.delete(`/api/campaigns/v2/hour-plans/${id}/`);
+
+// ── Day Plans ──
+export const listDayPlans = () =>
+  http.get('/api/campaigns/v2/day-plans/');
+
+export const createDayPlan = (data) =>
+  http.post('/api/campaigns/v2/day-plans/', data);
+
+export const updateDayPlan = (id, data) =>
+  http.patch(`/api/campaigns/v2/day-plans/${id}/`, data);
+
+export const deleteDayPlan = (id) =>
+  http.delete(`/api/campaigns/v2/day-plans/${id}/`);
+
+// ── Kiosk listesi (playlist hedefleme icin) ──
+export const listKiosks = (params = {}) =>
+  http.get('/api/pharmacies/kiosks/', { params });
+
+// ── Kiosk Sağlık Durumu ──
+export const getKioskHealth = () =>
+  http.get('/api/pharmacies/kiosks/health/');
+
+export const forceRegenerateKiosk = (kioskId, targetDate = null) =>
+  http.post('/api/campaigns/v2/playlists/generate/', {
+    kiosk: kioskId,
+    ...(targetDate ? { date: targetDate } : {}),
+  });
+
 // ── Medya upload (creative + house ad ortak) ──
 export async function uploadMedia(file) {
   const fd = new FormData();

@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue';
 import { useAuthStore } from '../stores/auth';
 import { useRouter } from 'vue-router';
+import logoUrl from '../assets/eisa_logo.svg';
 
 const username = ref('');
 const password = ref('');
@@ -56,6 +57,7 @@ async function submit() {
 
       <!-- Brand content -->
       <div class="brand-body" :class="{ 'is-visible': isVisible }">
+        <img :src="logoUrl" alt="E-ISA logo" />
         <div class="brand-wordmark">
           <span class="wm-e">e</span><span class="wm-dash">-</span><span class="wm-isa">İSA</span>
         </div>
@@ -100,7 +102,7 @@ async function submit() {
         <!-- Card header -->
         <header class="fc-header">
           <div class="fc-logo">
-            <span class="fcl-e">e</span><span class="fcl-dash">-</span><span class="fcl-isa">İSA</span>
+            <img :src="logoUrl" alt="E-ISA logo" />
           </div>
           <h2 class="fc-title">Panel Girişi</h2>
           <p class="fc-subtitle">Devam etmek için hesabınıza giriş yapın</p>

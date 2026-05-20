@@ -3,6 +3,7 @@ import { computed } from 'vue';
 import { RouterView, RouterLink } from 'vue-router';
 import { useAuthStore } from '../../stores/auth';
 import { useRouter } from 'vue-router';
+import logoUrl from '../../assets/eisa_logo.svg';
 
 const auth = useAuthStore();
 const router = useRouter();
@@ -18,8 +19,8 @@ const adminNavItems = [
   { to: '/admin',               exact: true, icon: 'fa-chart-line',   label: 'Dashboard' },
   { to: '/admin/devices',                    icon: 'fa-display',       label: 'Cihaz Yönetimi' },
   { to: '/admin/medical-logic',              icon: 'fa-dna',           label: 'Algoritma Editörü' },
+  { to: '/admin/danisma',                    icon: 'fa-comments',      label: 'Danışma Kategorileri' },
   { to: '/admin/campaigns',                  icon: 'fa-bullhorn',      label: 'Kampanyalar' },
-  { to: '/admin/timeline',                   icon: 'fa-stream',        label: 'Loop Timeline' },
   { to: '/admin/playlists',                  icon: 'fa-list-ol',       label: 'Playlist Editörü' },
   { to: '/admin/pricing',                    icon: 'fa-coins',         label: 'Fiyat Matrisi' },
   { to: '/admin/users',                      icon: 'fa-user-gear',     label: 'Kullanıcı Yönetimi' },
@@ -40,7 +41,7 @@ const roleLabel  = computed(() => isAdmin.value ? 'Süper Admin' : 'Eczacı');
   <div class="admin-shell" :data-role="auth.role">
     <aside class="admin-sidebar">
       <div class="brand">
-        <span class="brand-logo">e-<span class="brand-accent">İSA</span></span>
+        <img :src="logoUrl" alt="E-ISA logo" />        
         <p class="brand-sub">{{ brandSub }}</p>
       </div>
 

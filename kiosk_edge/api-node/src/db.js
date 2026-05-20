@@ -8,9 +8,8 @@ let _db = null;
 
 const DEFAULT_OUTBOX_MAX_ROWS = 10000;
 
-// Sema versiyonu — creatives ve house_ads tablolari eklendi; reklamlar kaldirildi.
-// proof-of-play outbox payload guncellendi.
-const SCHEMA_VERSION = 4;
+// Sema versiyonu — playlists/playlist_items/kiosk_meta tablolari eklendi.
+const SCHEMA_VERSION = 7;
 
 export function openDb(sqlitePath, options = {}) {
   if (_db) return _db;
@@ -121,13 +120,24 @@ function initSchema(db, outboxMaxRows = DEFAULT_OUTBOX_MAX_ROWS) {
       slug                 TEXT    NOT NULL UNIQUE,
       ad                   TEXT    NOT NULL,
       ikon                 TEXT    NOT NULL DEFAULT 'fa-circle',
-      hassas               INTEGER NOT NULL DEFAULT 0,
+      bagli_kategori_id    INTEGER REFERENCES kategoriler(id),
       aktif                INTEGER NOT NULL DEFAULT 1,
       surum                INTEGER NOT NULL DEFAULT 1,
       hedef_cinsiyetler    TEXT    NOT NULL DEFAULT '[]',
       hedef_yas_araliklari TEXT    NOT NULL DEFAULT '[]',
       olusturulma_tarihi   TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
       guncellenme_tarihi   TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS danisma_kategorileri (
+      id                 INTEGER PRIMARY KEY,
+      slug               TEXT    NOT NULL UNIQUE,
+      ad                 TEXT    NOT NULL,
+      ikon               TEXT    NOT NULL DEFAULT 'fa-comments',
+      ust_kategori_id    INTEGER REFERENCES danisma_kategorileri(id),
+      aktif              INTEGER NOT NULL DEFAULT 1,
+      olusturulma_tarihi TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      guncellenme_tarihi TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
     );
 
     CREATE TABLE IF NOT EXISTS sorular (
@@ -195,8 +205,36 @@ function initSchema(db, outboxMaxRows = DEFAULT_OUTBOX_MAX_ROWS) {
     CREATE INDEX IF NOT EXISTS sorular_kategori_idx  ON sorular(kategori_id);
     CREATE INDEX IF NOT EXISTS cevaplar_soru_idx     ON cevaplar(soru_id);
     CREATE INDEX IF NOT EXISTS ilceler_il_idx        ON ilceler(il_id);
+    CREATE INDEX IF NOT EXISTS danisma_ust_idx       ON danisma_kategorileri(ust_kategori_id);
     CREATE INDEX IF NOT EXISTS oturum_outbox_pending ON oturum_outbox(gonderilme_tarihi);
     CREATE INDEX IF NOT EXISTS reklam_outbox_pending ON reklam_gosterim_outbox(gonderilme_tarihi);
+
+    -- DOOH PLAYLIST (merkezi scheduler'dan cekilir)
+    CREATE TABLE IF NOT EXISTS kiosk_meta (
+      key   TEXT PRIMARY KEY,
+      value TEXT NOT NULL DEFAULT ''
+    );
+    CREATE TABLE IF NOT EXISTS playlists (
+      id                    TEXT    PRIMARY KEY,
+      target_date           TEXT    NOT NULL,
+      target_hour           INTEGER NOT NULL,
+      loop_duration_seconds INTEGER NOT NULL DEFAULT 60,
+      version               INTEGER NOT NULL DEFAULT 1,
+      synced_at             TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      UNIQUE(target_date, target_hour)
+    );
+    CREATE TABLE IF NOT EXISTS playlist_items (
+      id                             TEXT    PRIMARY KEY,
+      playlist_id                    TEXT    NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+      playback_order                 INTEGER NOT NULL DEFAULT 0,
+      asset_id                       TEXT    NOT NULL,
+      asset_type                     TEXT    NOT NULL CHECK(asset_type IN ('creative','house_ad')),
+      media_url                      TEXT    NOT NULL DEFAULT '',
+      duration_seconds               INTEGER NOT NULL DEFAULT 15,
+      estimated_start_offset_seconds INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS playlist_items_playlist_idx ON playlist_items(playlist_id, playback_order);
+    CREATE INDEX IF NOT EXISTS playlists_date_hour_idx     ON playlists(target_date, target_hour);
   `);
 
   const meta = db.prepare('SELECT version FROM schema_meta LIMIT 1').get();
@@ -239,10 +277,22 @@ export function rowToKategori(row) {
     slug: row.slug,
     ad: row.ad,
     ikon: row.ikon,
-    hassas: !!row.hassas,
+    bagli_kategori_id: row.bagli_kategori_id ?? null,
     aktif: !!row.aktif,
     hedef_cinsiyetler: safeJson(row.hedef_cinsiyetler, []),
     hedef_yas_araliklari: safeJson(row.hedef_yas_araliklari, []),
+  };
+}
+
+export function rowToDanismaKategori(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    slug: row.slug,
+    ad: row.ad,
+    ikon: row.ikon,
+    ust_kategori_id: row.ust_kategori_id ?? null,
+    aktif: !!row.aktif,
   };
 }
 

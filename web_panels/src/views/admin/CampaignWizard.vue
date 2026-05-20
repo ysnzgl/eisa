@@ -452,7 +452,7 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
         <h1 class="eisa-page-title">Kampanyalar</h1>
         <p class="eisa-page-subtitle">DOOH reklam kampanyalarını oluştur ve frekansını ayarla.</p>
       </div>
-      <div class="header-actions">
+      <div class="eisa-header-actions">
         <button class="eisa-btn" @click="refresh" :disabled="loading">
           <i class="fa-solid fa-rotate" :class="{ 'fa-spin': loading }"></i> Yenile
         </button>
@@ -462,15 +462,15 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
       </div>
     </header>
 
-    <section class="stats">
-      <div class="stat-card"><span class="stat-label">Toplam</span><span class="stat-value">{{ stats.total }}</span></div>
-      <div class="stat-card"><span class="stat-label">Aktif</span><span class="stat-value">{{ stats.active }}</span></div>
-      <div class="stat-card"><span class="stat-label">Duraklatıldı</span><span class="stat-value">{{ stats.paused }}</span></div>
-      <div class="stat-card"><span class="stat-label">Tamamlandı</span><span class="stat-value">{{ stats.completed }}</span></div>
+    <section class="eisa-stats">
+      <div class="eisa-stat-card"><span class="eisa-stat-label">Toplam</span><span class="eisa-stat-value">{{ stats.total }}</span></div>
+      <div class="eisa-stat-card"><span class="eisa-stat-label">Aktif</span><span class="eisa-stat-value">{{ stats.active }}</span></div>
+      <div class="eisa-stat-card"><span class="eisa-stat-label">Duraklatıldı</span><span class="eisa-stat-value">{{ stats.paused }}</span></div>
+      <div class="eisa-stat-card"><span class="eisa-stat-label">Tamamlandı</span><span class="eisa-stat-value">{{ stats.completed }}</span></div>
     </section>
 
     <section class="eisa-panel toolbar-panel">
-      <div class="toolbar" style="display:flex;flex-wrap:wrap;gap:.75rem;align-items:center">
+      <div class="eisa-toolbar">
         <div class="eisa-search" style="flex:1;min-width:240px;position:relative">
           <i class="fa-solid fa-magnifying-glass" style="position:absolute;left:.75rem;top:50%;transform:translateY(-50%);color:#94a3b8"></i>
           <input
@@ -584,8 +584,8 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
                   <span v-else>Tüm eczaneler</span>
                 </td>
                 <td class="actions">
-                  <button class="icon-btn" title="Düzenle" @click="openEdit(c)"><i class="fa-solid fa-pen"></i></button>
-                  <button class="icon-btn danger" title="Sil" @click="remove(c)"><i class="fa-solid fa-trash"></i></button>
+                  <button class="eisa-icon-btn" title="Düzenle" @click="openEdit(c)"><i class="fa-solid fa-pen"></i></button>
+                  <button class="eisa-icon-btn danger" title="Sil" @click="remove(c)"><i class="fa-solid fa-trash"></i></button>
                 </td>
               </tr>
             </tbody>
@@ -603,7 +603,7 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
               <b>{{ i }}</b> {{ STEP_LABELS[i-1] }}
             </span>
           </div>
-          <button class="icon-btn" @click="close"><i class="fa-solid fa-xmark"></i></button>
+          <button class="eisa-icon-btn" @click="close"><i class="fa-solid fa-xmark"></i></button>
         </div>
 
         <div class="eisa-modal-body">
@@ -612,18 +612,18 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
           <section v-if="step === 1" class="step-pane">
             <h3 class="step-title">Kampanya bilgileri</h3>
             <p class="step-help">Reklamveren adı, kampanyanın yayında olacağı tarih aralığı ve durumu.</p>
-            <div class="form-grid">
-              <div class="form-row form-row-full">
+            <div class="eisa-form-grid">
+              <div class="eisa-form-row eisa-form-row-full">
                 <label class="eisa-field-label">Kampanya adı *</label>
                 <input v-model="form.name" class="eisa-field" placeholder="Örn. Aspirin Yaz Kampanyası" />
               </div>
-              <div class="form-row form-row-full">
+              <div class="eisa-form-row eisa-form-row-full">
                 <label class="eisa-field-label">Reklamveren adı</label>
                 <input v-model="form.advertiser_name" class="eisa-field" placeholder="Örn. Bayer İlaç" />
               </div>
 
               <!-- Compact single-row date + duration picker -->
-              <div class="form-row form-row-full">
+              <div class="eisa-form-row eisa-form-row-full">
                 <DateRangePicker
                   :start="form.start_date"
                   :end="form.end_date"
@@ -632,7 +632,7 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
                 />
               </div>
 
-              <div class="form-row form-row-full">
+              <div class="eisa-form-row eisa-form-row-full">
                 <label class="eisa-field-label">Durum</label>
                 <select v-model="form.status" class="eisa-field">
                   <option value="ACTIVE">Aktif</option>
@@ -662,7 +662,7 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
                 </div>
                 <div class="cmeta">
                   <strong>{{ c.name }}</strong>
-                  <div class="form-row">
+                  <div class="eisa-form-row">
                     <label class="eisa-field-label">Ekran süresi</label>
                     <select v-model.number="c.duration_seconds" class="eisa-field" :disabled="!!c.id">
                       <option :value="5">5 sn</option>
@@ -673,7 +673,7 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
                     </select>
                   </div>
                 </div>
-                <button v-if="!c.id" class="icon-btn danger" title="Kaldır" @click="removeCreative(idx)">
+                <button v-if="!c.id" class="eisa-icon-btn danger" title="Kaldır" @click="removeCreative(idx)">
                   <i class="fa-solid fa-trash"></i>
                 </button>
               </div>
@@ -704,13 +704,13 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
               </p>
               <div class="rule-card">
                 <div class="rule-grid">
-                  <div class="form-row">
+                  <div class="eisa-form-row">
                     <label class="eisa-field-label">Tip</label>
                     <select v-model="form.rule.frequency_type" class="eisa-field">
                       <option v-for="t in FREQ_TYPES" :key="t.value" :value="t.value">{{ t.label }}</option>
                     </select>
                   </div>
-                  <div class="form-row">
+                  <div class="eisa-form-row">
                     <label class="eisa-field-label">Değer (kaç kez?)</label>
                     <input v-model.number="form.rule.frequency_value"
                            type="number" min="1" class="eisa-field" />
@@ -771,7 +771,7 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
                 Gösterim hesabı için önce <strong>Adım 1'de tarih aralığını</strong> girin.
               </div>
 
-              <div class="form-row" style="max-width:360px">
+              <div class="eisa-form-row" style="max-width:360px">
                 <label class="eisa-field-label">Toplam gösterim hedefi *</label>
                 <input v-model.number="form.impression_goal" type="number" min="1" class="eisa-field"
                        placeholder="Örn. 5000" />
@@ -959,7 +959,7 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
 /* Target chips */
 .target-chips { display:flex; flex-wrap:wrap; gap:.4rem; margin-bottom:.75rem; }
 .target-chip  { display:inline-flex; align-items:center; gap:.35rem; cursor:default; }
-.chip-il     { background:#eff6ff; color:#1d4ed8; }
+.chip-il     { background:#FEF2F2; color:#B1121B; }
 .chip-ilce   { background:#f0fdf4; color:#166534; }
 .chip-eczane { background:#faf5ff; color:#7c3aed; }
 .chip-remove { background:none; border:none; cursor:pointer; padding:0 .1rem; color:inherit; opacity:.7; line-height:1; }

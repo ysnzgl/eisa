@@ -73,7 +73,7 @@ const yGrid = computed(() => {
 });
 
 //  Donut Chart 
-const DONUT_COLORS = ['#2563EB', '#7C3AED', '#DB2777', '#059669', '#F59E0B', '#0891B2'];
+const DONUT_COLORS = ['#B1121B', '#7C3AED', '#DB2777', '#059669', '#F59E0B', '#0891B2'];
 
 const donutSegments = computed(() => {
   const cats = dashData.value?.kategori_dagilim ?? [];
@@ -127,7 +127,7 @@ const kpiCards = [
     id: 'pharmacies',
     label: 'Toplam Eczane',
     valueKey: 'pharmacies',
-    color: '#2563EB',
+    color: '#B1121B',
     icon: 'fa-house-medical',
   },
   {

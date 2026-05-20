@@ -1,42 +1,91 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
-  import { campaigns, activeCampaignIndex } from '../stores/kiosk.js';
-  import { fetchActiveCampaigns, logAdImpression } from '../lib/api.js';
+  import {
+    playlistItems, playlistVersion, playlistHour, playlistIsFallback,
+    campaigns, activeCampaignIndex,
+  } from '../stores/kiosk.js';
+  import { fetchCurrentPlaylist, logAdImpression } from '../lib/api.js';
 
-  const AD_INTERVAL = 8000;
+  // Playlist yokken ya da yüklenmeden önce kullanılacak varsayılan süre (ms)
+  const FALLBACK_DURATION_MS = 8000;
+  // Playlist güncelleme kontrolü: her dakika hangi saat olduğunu kontrol et
+  const HOUR_CHECK_MS = 60_000;
 
-  let shownAt = new Date().toISOString();
-  let cycleTick;
-  let visible = true;
+  let currentIndex = 0;
+  let shownAt      = new Date().toISOString();
+  let visible      = true;
+  let cycleTick    = null;
+  let hourTick     = null;
 
-  $: asset = $campaigns[$activeCampaignIndex] ?? null;
+  // Güncel oynatma listesi (playlist varsa oradan, yoksa campaigns)
+  $: items = $playlistItems.length > 0 ? $playlistItems : $campaigns;
+  $: asset = items[currentIndex] ?? null;
+
+  function currentDurationMs() {
+    return ((asset?.duration_seconds ?? 0) * 1000) || FALLBACK_DURATION_MS;
+  }
+
+  function scheduleNext() {
+    if (cycleTick) clearTimeout(cycleTick);
+    cycleTick = setTimeout(advance, currentDurationMs());
+  }
 
   function advance() {
-    if (!$campaigns.length) return;
+    if (!items.length) { scheduleNext(); return; }
     const durationMs = Date.now() - new Date(shownAt).getTime();
     if (asset) {
-      logAdImpression({ assetId: asset.id, assetType: asset.type, shownAt, durationMs });
+      logAdImpression({
+        assetId:   asset.asset_id ?? asset.id,
+        assetType: asset.asset_type ?? asset.type ?? 'creative',
+        shownAt,
+        durationMs,
+      });
     }
     visible = false;
     setTimeout(() => {
-      activeCampaignIndex.update(i => (i + 1) % $campaigns.length);
+      currentIndex = (currentIndex + 1) % items.length;
+      // Playlist store'u güncelle (eski campaigns store ile uyumluluk)
+      activeCampaignIndex.set(currentIndex);
       shownAt = new Date().toISOString();
       visible = true;
+      scheduleNext();
     }, 400);
+  }
+
+  async function loadPlaylist() {
+    const nowHour = new Date().getUTCHours();
+    try {
+      const pl = await fetchCurrentPlaylist();
+      playlistItems.set(pl.items ?? []);
+      playlistVersion.set(pl.version);
+      playlistHour.set(pl.target_hour ?? nowHour);
+      playlistIsFallback.set(pl.is_fallback ?? true);
+      // Sırayı sıfırla
+      currentIndex = 0;
+      activeCampaignIndex.set(0);
+      scheduleNext();
+    } catch {
+      // Offline — mevcut state korunur
+    }
   }
 
   onMount(async () => {
     shownAt = new Date().toISOString();
-    try {
-      if (!$campaigns.length) {
-        const list = await fetchActiveCampaigns();
-        campaigns.set(list);
+    await loadPlaylist();
+
+    // Her dakika saat değişti mi kontrol et → playlist güncelle
+    hourTick = setInterval(async () => {
+      const nowHour = new Date().getUTCHours();
+      if (nowHour !== $playlistHour) {
+        await loadPlaylist();
       }
-    } catch { /* offline */ }
-    cycleTick = setInterval(advance, AD_INTERVAL);
+    }, HOUR_CHECK_MS);
   });
 
-  onDestroy(() => clearInterval(cycleTick));
+  onDestroy(() => {
+    clearTimeout(cycleTick);
+    clearInterval(hourTick);
+  });
 </script>
 
 <div class="ad-strip">
@@ -62,8 +111,8 @@
     flex: 1;
     height: 100%;
     min-height: 0;
-    background: #0f172a;
-    border-top: 3px solid #22c55e;
+    background: #111827;
+    border-top: 3px solid #B1121B;
     position: relative;
     overflow: hidden;
     display: flex;
@@ -90,13 +139,13 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    color: #64748b;
+    color: #6B7280;
     font-size: 16px;
     font-style: italic;
   }
 
   .ad-strip-default i {
     font-size: 1.5rem;
-    color: #22c55e;
+    color: #B1121B;
   }
 </style>

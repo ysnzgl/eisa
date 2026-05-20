@@ -115,7 +115,7 @@
         <p class="idle-ad-label">ECZANE SAĞLIK KİOSKU</p>
         <p class="idle-ad-text">
           Sağlığınıza önem veriyorsanız,<br>
-          <span style="color:#22c55e;">bizimle başlayın.</span>
+          <span style="color:#B1121B;">bizimle başlayın.</span>
         </p>
       </div>
 

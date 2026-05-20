@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
     "drf_spectacular",
+    "django_apscheduler",
     # Yerel uygulamalar
     "apps.core",
     "apps.lookups",
@@ -391,3 +392,6 @@ LOGGING = {
     },
 }
 
+# ── APScheduler (django-apscheduler) ─────────────────────────────────────────
+APSCHEDULER_DATETIME_FORMAT = "N j, Y, f:s a"
+APSCHEDULER_RUN_NOW_TIMEOUT = 25  # saniye

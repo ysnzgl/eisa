@@ -52,6 +52,7 @@ export const settings = Object.freeze({
   localApiSecret,
   pullIntervalSec: readInt(process.env.EISA_PULL_INTERVAL_SEC, 900),
   pushIntervalSec: readInt(process.env.EISA_PUSH_INTERVAL_SEC, 300),
+  pingIntervalSec: readInt(process.env.EISA_PING_INTERVAL_SEC, 60),
   verifyTls: readBool(process.env.EISA_VERIFY_TLS, true),
   devMode,
   host: process.env.EISA_HOST || '127.0.0.1',

@@ -3,7 +3,7 @@
  * Cihaz Yönetimi — Eczane Listesi + Kiosk İzleme Paneli
  * Modül 1: Süper Admin Device Management
  */
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, watch, nextTick } from 'vue';
 import {
   getPharmacies,
   createPharmacy,
@@ -131,7 +131,7 @@ function openAdd() {
   modalOpen.value   = true;
 }
 
-function openEdit(pharmacy) {
+async function openEdit(pharmacy) {
   form.value = {
     name:       pharmacy.name,
     il:         pharmacy.il,
@@ -147,6 +147,9 @@ function openEdit(pharmacy) {
   modalTarget.value = pharmacy;
   loadIlceler(pharmacy.il);
   modalOpen.value   = true;
+  // watch fires on il change and resets ilce; restore it on next tick
+  await nextTick();
+  form.value.ilce = pharmacy.ilce;
 }
 
 function closeModal() { modalOpen.value = false; }
@@ -274,7 +277,7 @@ async function confirmDeleteKiosk() {
       <div class="eisa-panel-header">
         <div>
           <h2 class="eisa-panel-title">
-            <i class="fa-solid fa-hospital" style="color:#2563EB;margin-right:0.4rem;"></i>
+            <i class="fa-solid fa-hospital" style="color:#B1121B;margin-right:0.4rem;"></i>
             Eczane Listesi
           </h2>
           <p class="eisa-stat-sub" style="margin-top:0.15rem;">
@@ -317,7 +320,7 @@ async function confirmDeleteKiosk() {
             <tbody>
               <tr v-if="loadingPharm">
                 <td colspan="7" class="empty-row">
-                  <i class="fa-solid fa-circle-notch fa-spin" style="margin-right:0.5rem;color:#2563EB;"></i>
+                  <i class="fa-solid fa-circle-notch fa-spin" style="margin-right:0.5rem;color:#B1121B;"></i>
                   Yükleniyor…
                 </td>
               </tr>

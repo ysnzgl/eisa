@@ -37,13 +37,19 @@ from apps.pharmacies.models import Kiosk
 from apps.pharmacies.permissions import IsKiosk, IsSuperAdmin
 from core_api.cookie_jwt import JWTCookieAuthentication as JWTAuthentication
 
+import threading
+
 from .models import (
     Campaign,
     CampaignTarget,
     Creative,
+    DayPlan,
+    GenerationJob,
     HouseAd,
+    HourPlan,
     PlayLog,
     Playlist,
+    PlaylistTemplate,
     PricingMatrix,
     ScheduleRule,
 )
@@ -51,11 +57,15 @@ from .serializers import (
     CampaignSerializer,
     CampaignTargetSerializer,
     CreativeSerializer,
+    DayPlanSerializer,
+    GenerationJobSerializer,
     HouseAdSerializer,
+    HourPlanSerializer,
     KioskCreativeSyncSerializer,
     KioskHouseAdSyncSerializer,
     KioskPlaylistSerializer,
     PlaylistAdminSerializer,
+    PlaylistTemplateSerializer,
     PricingMatrixSerializer,
     ProofOfPlayBulkSerializer,
     ScheduleRuleSerializer,
@@ -606,15 +616,122 @@ class InventoryAvailabilityView(APIView):
         })
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# DayPlan tabanlı Playlist üretimi (yardımcı)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _generate_from_day_plan(kiosk, target_date, day_plan) -> list:
+    """DayPlan hiyerarşisini kullanarak bir kiosk için Playlist kayıtları üretir.
+
+    DayPlan → HourPlan → PlaylistTemplate (LoopTemplate) → PlaylistItem zincirine
+    göre her atanmış saat için bir Playlist üretir.
+
+    Returns:
+        Üretilen/güncellenen Playlist nesnelerinin listesi.
+    """
+    from django.db import transaction
+    from apps.campaigns.models import (
+        Creative, DayPlan as _DayPlan, HourPlan as _HourPlan,
+        PlaylistTemplate as _PT, Playlist, PlaylistItem,
+    )
+    from django.db.models import Max
+
+    # Mevcut max versiyon
+    agg = Playlist.objects.filter(kiosk=kiosk, target_date=target_date).aggregate(mv=Max("version"))
+    next_version = (agg["mv"] or 0) + 1
+
+    produced = []
+    hour_plan_cache: dict = {}
+    loop_template_cache: dict = {}
+    creative_cache: dict = {}
+
+    with transaction.atomic():
+        for slot in (day_plan.slots or []):
+            hour = int(slot["hour"])
+            hour_plan_id = str(slot["hour_plan_id"])
+
+            # HourPlan yükle (önbellek)
+            if hour_plan_id not in hour_plan_cache:
+                try:
+                    hour_plan_cache[hour_plan_id] = _HourPlan.objects.get(pk=hour_plan_id)
+                except _HourPlan.DoesNotExist:
+                    logger.warning("HourPlan bulunamadi: %s (saat %d atlanıyor)", hour_plan_id, hour)
+                    continue
+            hour_plan = hour_plan_cache[hour_plan_id]
+
+            if not hour_plan.slots:
+                continue
+
+            # Saati temsil eden Playlist'i upsert et
+            playlist, created = Playlist.objects.update_or_create(
+                kiosk=kiosk,
+                target_date=target_date,
+                target_hour=hour,
+                defaults={
+                    "loop_duration_seconds": 60,
+                    "version": next_version,
+                },
+            )
+            if not created:
+                playlist.version = next_version
+                playlist.save(update_fields=["version"])
+
+            # Eski PlaylistItem'ları temizle
+            PlaylistItem.objects.filter(playlist=playlist).delete()
+
+            # HourPlan'ın ilk slot'undaki LoopTemplate'den item'ları oluştur
+            # (birden fazla slot varsa offset_minutes'e göre sırayla ekle)
+            playback_order = 0
+            cumulative_offset = 0
+
+            for lslot in sorted(hour_plan.slots, key=lambda x: int(x.get("offset_minutes", 0))):
+                loop_tpl_id = str(lslot["loop_template_id"])
+                if loop_tpl_id not in loop_template_cache:
+                    try:
+                        loop_template_cache[loop_tpl_id] = _PT.objects.get(pk=loop_tpl_id)
+                    except _PT.DoesNotExist:
+                        logger.warning("LoopTemplate bulunamadi: %s", loop_tpl_id)
+                        continue
+                loop_tpl = loop_template_cache[loop_tpl_id]
+
+                for item_slot in (loop_tpl.slots or []):
+                    creative_id = item_slot.get("creative_id")
+                    if not creative_id:
+                        continue
+                    if creative_id not in creative_cache:
+                        try:
+                            creative_cache[creative_id] = Creative.objects.get(pk=creative_id)
+                        except Creative.DoesNotExist:
+                            logger.warning("Creative bulunamadi: %s", creative_id)
+                            continue
+                    PlaylistItem.objects.create(
+                        playlist=playlist,
+                        creative=creative_cache[creative_id],
+                        playback_order=playback_order,
+                        estimated_start_offset_seconds=cumulative_offset,
+                    )
+                    playback_order += 1
+                    cumulative_offset += int(item_slot.get("duration_seconds", 5))
+
+            produced.append(playlist)
+
+    return produced
+
+
 class PlaylistGenerateView(APIView):
     """``POST /api/campaigns/v2/playlists/generate/``
 
-    Admin panelden tetiklenen manuel playlist uretimi. Body opsiyonel::
+    Admin panelden tetiklenen manuel playlist uretimi. Body::
 
-        { "date": "2026-05-11", "kiosk": 12 }
-
-    - ``date`` verilmezse YARIN (UTC) varsayilir.
-    - ``kiosk`` verilmezse TUM aktif kiosklar icin uretim yapilir.
+        {
+          "date": "2026-05-11",          # opsiyonel; verilmezse bugun
+          "day_plan_id": "<uuid>",        # opsiyonel; DayPlan hiyerarsisi kullanilir
+          "scope": "all"|"il"|"ilce"|"kiosks",  # opsiyonel; default "all"
+          "il_id": 34,                   # scope="il" veya "ilce" ise zorunlu
+          "ilce_id": 1020,               # scope="ilce" ise zorunlu
+          "kiosk_ids": [1, 2, 3]         # scope="kiosks" ise zorunlu
+        }
     """
 
     authentication_classes = [JWTAuthentication]
@@ -633,43 +750,166 @@ class PlaylistGenerateView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        kiosk_id = request.data.get("kiosk")
-        kiosks_qs = Kiosk.objects.filter(aktif=True)
-        if kiosk_id is not None:
-            kiosks_qs = kiosks_qs.filter(pk=kiosk_id)
-            if not kiosks_qs.exists():
+        day_plan_id = request.data.get("day_plan_id")
+        day_plan = None
+        if day_plan_id:
+            try:
+                day_plan = DayPlan.objects.get(pk=day_plan_id)
+            except DayPlan.DoesNotExist:
                 return Response(
-                    {"error": f"Aktif kiosk bulunamadi: {kiosk_id}"},
-                    status=status.HTTP_404_NOT_FOUND,
+                    {"error": f"DayPlan bulunamadi: {day_plan_id}"},
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
 
-        results = []
-        total = 0
-        for kiosk in kiosks_qs:
-            try:
-                playlists = generate_for_kiosk(kiosk, target_date)
-            except Exception as exc:
-                logger.exception("Playlist uretimi basarisiz kiosk=%s", kiosk.pk)
-                results.append({
-                    "kiosk_id": int(kiosk.pk),
-                    "ok": False,
-                    "error": str(exc),
-                    "playlists": 0,
-                })
-                continue
-            total += len(playlists)
-            results.append({
-                "kiosk_id": int(kiosk.pk),
-                "ok": True,
-                "playlists": len(playlists),
-            })
+        scope      = request.data.get("scope", "all")
+        il_id      = request.data.get("il_id")
+        ilce_id    = request.data.get("ilce_id")
+        kiosk_ids  = request.data.get("kiosk_ids")
 
-        return Response({
-            "target_date": str(target_date),
-            "kiosk_count": len(results),
-            "playlists_generated": total,
-            "results": results,
-        }, status=status.HTTP_200_OK)
+        kiosks_qs = Kiosk.objects.filter(aktif=True).select_related("eczane")
+
+        if scope == "il" and il_id is not None:
+            kiosks_qs = kiosks_qs.filter(eczane__il_id=il_id)
+        elif scope == "ilce" and ilce_id is not None:
+            kiosks_qs = kiosks_qs.filter(eczane__ilce_id=ilce_id)
+        elif scope == "kiosks" and kiosk_ids:
+            kiosks_qs = kiosks_qs.filter(pk__in=kiosk_ids)
+
+        kiosk_id = None  # kept for GenerationJob FK (NULL = multi-kiosk run)
+
+        kiosks = list(kiosks_qs)
+        job = GenerationJob.objects.create(
+            target_date=target_date,
+            kiosk_id=kiosk_id,
+            total_kiosks=len(kiosks),
+            triggered_by="manual",
+            status=GenerationJob.JobStatus.PENDING,
+        )
+
+        def _run(j_pk, kiosk_list, t_date, dp):
+            from django.utils import timezone as _tz
+            from apps.campaigns.models import GenerationJob as GJ
+            GJ.objects.filter(pk=j_pk).update(
+                status=GJ.JobStatus.RUNNING, started_at=_tz.now()
+            )
+            done = failed = total = 0
+            for k in kiosk_list:
+                try:
+                    if dp is not None:
+                        playlists = _generate_from_day_plan(k, t_date, dp)
+                    else:
+                        playlists = generate_for_kiosk(k, t_date)
+                    total += len(playlists)
+                    done += 1
+                except Exception:
+                    failed += 1
+                    logger.exception("Playlist uretimi basarisiz kiosk=%s", k.pk)
+                GJ.objects.filter(pk=j_pk).update(
+                    done_kiosks=done, failed_kiosks=failed, playlists_generated=total
+                )
+            final = GJ.JobStatus.DONE if done > 0 else GJ.JobStatus.FAILED
+            GJ.objects.filter(pk=j_pk).update(
+                status=final, finished_at=_tz.now()
+            )
+
+        threading.Thread(
+            target=_run,
+            args=(str(job.pk), kiosks, target_date, day_plan),
+            daemon=True,
+            name=f"gen-{job.pk}",
+        ).start()
+
+        return Response(
+            {"job_id": str(job.pk), "total_kiosks": len(kiosks),
+             "target_date": str(target_date)},
+            status=status.HTTP_202_ACCEPTED,
+        )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GenerationJob izleme
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class GenerationJobView(APIView):
+    """``GET /api/campaigns/v2/playlists/jobs/{id}/``
+
+    İş durumunu sorgular. Admin panel progress bar için poll eder.
+    """
+
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsSuperAdmin]
+
+    def get(self, request, job_id: str):
+        job = get_object_or_404(GenerationJob, pk=job_id)
+        return Response(GenerationJobSerializer(job).data)
+
+
+class GenerationJobListView(APIView):
+    """``GET /api/campaigns/v2/playlists/jobs/``
+
+    Son 50 generation job'ını listeler.
+    """
+
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsSuperAdmin]
+
+    def get(self, request):
+        qs = GenerationJob.objects.select_related("kiosk").order_by("-olusturulma_tarihi")[:50]
+        return Response(GenerationJobSerializer(qs, many=True).data)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PlaylistTemplate CRUD
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class PlaylistTemplateViewSet(viewsets.ModelViewSet):
+    """``/api/campaigns/v2/playlist-templates/``
+
+    Elle tasarlanan 60sn loop şablonlarını yönetir.
+    """
+
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsSuperAdmin]
+    serializer_class = PlaylistTemplateSerializer
+    queryset = PlaylistTemplate.objects.all().order_by("-olusturulma_tarihi")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# HourPlan CRUD
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class HourPlanViewSet(viewsets.ModelViewSet):
+    """``/api/campaigns/v2/hour-plans/``
+
+    1 saatlik yayın planlarını yönetir. Her plan, sıralı LoopTemplate
+    referanslarından oluşur.
+    """
+
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsSuperAdmin]
+    serializer_class = HourPlanSerializer
+    queryset = HourPlan.objects.all().order_by("-olusturulma_tarihi")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DayPlan CRUD
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class DayPlanViewSet(viewsets.ModelViewSet):
+    """``/api/campaigns/v2/day-plans/``
+
+    24 saatlik günlük yayın planlarını yönetir. Her plan, 0-23 saatler için
+    HourPlan ataması içerir.
+    """
+
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsSuperAdmin]
+    serializer_class = DayPlanSerializer
+    queryset = DayPlan.objects.all().order_by("-olusturulma_tarihi")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -722,11 +962,19 @@ class KioskSyncView(APIView):
             creative_payload.append(KioskCreativeSyncSerializer(c).data)
 
         house_ads = HouseAd.objects.filter(aktif=True)
+
+        from apps.lookups.models import Cinsiyet, Il, Ilce, YasAraligi
         return Response({
             "kiosk_id": int(kiosk.pk),
             "generated_at": now.isoformat(),
             "creatives": creative_payload,
             "house_ads": KioskHouseAdSyncSerializer(house_ads, many=True).data,
+            "lookups": {
+                "cinsiyetler": list(Cinsiyet.objects.values("id", "kod", "ad").order_by("id")),
+                "yas_araliklari": list(YasAraligi.objects.values("id", "kod", "ad", "alt_sinir", "ust_sinir").order_by("id")),
+                "iller": list(Il.objects.values("id", "ad").order_by("ad")),
+                "ilceler": list(Ilce.objects.values("id", "il_id", "ad").order_by("il_id", "ad")),
+            },
         })
 
 
@@ -804,8 +1052,8 @@ class KioskPingView(APIView):
             .aggregate(max_version=Max("version"), max_updated=Max("guncellenme_tarihi"))
         )
 
-        # Kiosun son-goruldu zamanini guncelle (heartbeat kaydı)
-        Kiosk.objects.filter(pk=kiosk.pk).update(son_goruldu=now)
+        # Kiosun son-goruldu zamanini ve online durumunu guncelle
+        Kiosk.objects.filter(pk=kiosk.pk).update(son_goruldu=now, is_online=True)
 
         return Response({
             "kiosk_id": int(kiosk.pk),

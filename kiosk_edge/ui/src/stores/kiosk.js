@@ -15,6 +15,11 @@ export const currentQuestions = writable([]);
 export const currentAnswers  = writable([]);
 export const currentQIndex   = writable(0);
 
+// Danışma akışı
+export const danismaCategories = writable([]);
+export const danismaLoading    = writable(false);
+export const selectedDanismaParent = writable(null);
+
 // Yükleme durumları
 export const catsLoading     = writable(false);
 export const questionsLoading = writable(false);
@@ -26,3 +31,9 @@ export const result = writable(null);
 export const campaigns = writable([]);
 export const showCampaignOverlay = writable(false);
 export const activeCampaignIndex = writable(0);
+
+// Playlist state'i (DOOH — api-node'dan gelir)
+export const playlistItems        = writable([]);   // [ { id, asset_id, asset_type, media_url, duration_seconds, ... } ]
+export const playlistVersion      = writable(0);    // son yüklenen versiyon
+export const playlistHour         = writable(-1);   // hangi saat için yüklendi
+export const playlistIsFallback   = writable(true); // gerçek playlist mi, fallback mı

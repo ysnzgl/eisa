@@ -10,10 +10,14 @@ from .models import (
     Campaign,
     CampaignTarget,
     Creative,
+    DayPlan,
+    GenerationJob,
     HouseAd,
+    HourPlan,
     PlayLog,
     Playlist,
     PlaylistItem,
+    PlaylistTemplate,
     PricingMatrix,
     ScheduleRule,
 )
@@ -79,6 +83,7 @@ class CampaignSerializer(serializers.ModelSerializer):
             "id", "advertiser_id", "advertiser_name", "name", "start_date", "end_date",
             "status", "target_pharmacies", "targets", "creatives",
             "impression_goal", "frequency_cap_per_hour",
+            "priority", "is_guaranteed",
             "olusturulma_tarihi", "guncellenme_tarihi", "surum",
         ]
         read_only_fields = ("id", "creatives", "targets", "olusturulma_tarihi",
@@ -255,3 +260,116 @@ class PlaylistAdminSerializer(serializers.ModelSerializer):
             "id", "kiosk", "target_date", "target_hour",
             "loop_duration_seconds", "version", "items",
         ]
+
+
+# ── GenerationJob + PlaylistTemplate ─────────────────────────────────────────
+
+class GenerationJobSerializer(serializers.ModelSerializer):
+    progress_pct = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = GenerationJob
+        fields = [
+            "id", "target_date", "kiosk", "status", "triggered_by",
+            "total_kiosks", "done_kiosks", "failed_kiosks", "playlists_generated",
+            "progress_pct", "error_detail", "started_at", "finished_at",
+            "olusturulma_tarihi",
+        ]
+        read_only_fields = fields
+
+
+class PlaylistTemplateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PlaylistTemplate
+        fields = [
+            "id", "name", "loop_duration_seconds", "slots", "target_hours",
+            "description", "olusturulma_tarihi", "guncellenme_tarihi",
+        ]
+        read_only_fields = ("id", "olusturulma_tarihi", "guncellenme_tarihi")
+
+    def validate_slots(self, value):
+        if not isinstance(value, list):
+            raise serializers.ValidationError("slots bir liste olmalidir.")
+        required = {"duration_seconds"}
+        for i, slot in enumerate(value):
+            missing = required - set(slot.keys())
+            if missing:
+                raise serializers.ValidationError(
+                    f"slots[{i}]: eksik alan(lar) {missing}"
+                )
+            if not 1 <= int(slot["duration_seconds"]) <= 60:
+                raise serializers.ValidationError(
+                    f"slots[{i}].duration_seconds 1..60 arasinda olmalidir."
+                )
+        return value
+
+
+# ── HourPlan + DayPlan ────────────────────────────────────────────────────────
+
+class HourPlanSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = HourPlan
+        fields = [
+            "id", "name", "description", "slots",
+            "olusturulma_tarihi", "guncellenme_tarihi",
+        ]
+        read_only_fields = ("id", "olusturulma_tarihi", "guncellenme_tarihi")
+
+    def validate_slots(self, value):
+        if not isinstance(value, list):
+            raise serializers.ValidationError("slots bir liste olmalidir.")
+        total_minutes = 0
+        for i, slot in enumerate(value):
+            for required_field in ("offset_minutes", "duration_minutes", "loop_template_id"):
+                if required_field not in slot:
+                    raise serializers.ValidationError(
+                        f"slots[{i}]: '{required_field}' alani eksik."
+                    )
+            offset = int(slot["offset_minutes"])
+            duration = int(slot["duration_minutes"])
+            if not 0 <= offset <= 59:
+                raise serializers.ValidationError(
+                    f"slots[{i}].offset_minutes 0..59 arasinda olmalidir."
+                )
+            if duration < 1:
+                raise serializers.ValidationError(
+                    f"slots[{i}].duration_minutes en az 1 olmalidir."
+                )
+            total_minutes += duration
+        if total_minutes > 60:
+            raise serializers.ValidationError(
+                f"Toplam duration_minutes ({total_minutes}) 60 dakikayi gecemez."
+            )
+        return value
+
+
+class DayPlanSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DayPlan
+        fields = [
+            "id", "name", "description", "slots",
+            "olusturulma_tarihi", "guncellenme_tarihi",
+        ]
+        read_only_fields = ("id", "olusturulma_tarihi", "guncellenme_tarihi")
+
+    def validate_slots(self, value):
+        if not isinstance(value, list):
+            raise serializers.ValidationError("slots bir liste olmalidir.")
+        seen_hours = set()
+        for i, slot in enumerate(value):
+            for required_field in ("hour", "hour_plan_id"):
+                if required_field not in slot:
+                    raise serializers.ValidationError(
+                        f"slots[{i}]: '{required_field}' alani eksik."
+                    )
+            hour = int(slot["hour"])
+            if not 0 <= hour <= 23:
+                raise serializers.ValidationError(
+                    f"slots[{i}].hour 0..23 arasinda olmalidir."
+                )
+            if hour in seen_hours:
+                raise serializers.ValidationError(
+                    f"Saat {hour} birden fazla kez tanimlanmis."
+                )
+            seen_hours.add(hour)
+        return value

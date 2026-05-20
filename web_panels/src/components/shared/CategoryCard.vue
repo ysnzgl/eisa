@@ -3,11 +3,11 @@
  * CategoryCard
  * Sidebar için iki satırlık kategori kartı.
  *
- * Satır 1: ikon + ad + hassas rozeti + düzenle butonu
+ * Satır 1: ikon + ad + düzenle butonu
  * Satır 2: AlgorithmTargetBadges (cinsiyet + yaş aralığı)
  *
  * Props:
- *   cat        – { id, name, icon, is_sensitive, target_gender, target_age_ranges }
+ *   cat        – { id, name, icon, is_active, target_gender, target_age_ranges, bagli_kategori }
  *   active     – boolean — seçili mi?
  *   cinsiyetler – { id, kod, ad }[]
  */
@@ -31,7 +31,7 @@ defineEmits(['select', 'edit']);
     :name="`cat-card-${cat.id}`"
     class="cat-item w-full text-left rounded-xl border transition-all duration-150 group"
     :class="active
-      ? 'bg-blue-50 border-blue-300 ring-1 ring-blue-300 text-blue-800'
+      ? 'bg-eisa-50 border-eisa-200 ring-1 ring-eisa-200 text-eisa-800'
       : 'bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-700'"
     @click="$emit('select', cat.id)"
   >
@@ -40,7 +40,7 @@ defineEmits(['select', 'edit']);
       <!-- ikon -->
       <span
         class="w-6 h-6 flex items-center justify-center rounded-md flex-shrink-0 text-sm"
-        :class="active ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-500'"
+        :class="active ? 'bg-eisa-100 text-eisa-600' : 'bg-gray-100 text-gray-500'"
       >
         <i :class="cat.icon || 'fa-solid fa-pills'"></i>
       </span>
@@ -52,7 +52,7 @@ defineEmits(['select', 'edit']);
       <button
         type="button"
         @click.stop="$emit('edit', cat)"
-        class="flex-shrink-0 p-1 rounded text-gray-400 hover:text-blue-600 hover:bg-blue-100 opacity-0 group-hover:opacity-100 transition"
+        class="flex-shrink-0 p-1 rounded text-gray-400 hover:text-eisa-600 hover:bg-eisa-100 opacity-0 group-hover:opacity-100 transition"
         title="Düzenle"
       >
         <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
@@ -68,12 +68,6 @@ defineEmits(['select', 'edit']);
         :target-age-ranges="cat.target_age_ranges"
         :cinsiyetler="cinsiyetler"
       />      
-       <!-- hassas rozeti -->
-      <span
-        v-if="cat.is_sensitive"
-        class="flex-shrink-0 w-5 h-5 inline-flex items-center justify-center rounded-full bg-rose-100 text-rose-600 border border-rose-200"
-        title="Hassas Durum"
-      ><i class="fa-solid fa-circle-exclamation text-[11px]"></i></span>      
     </div>
   </button>
 </template>

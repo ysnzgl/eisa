@@ -1,5 +1,5 @@
 """
-Sikayet kategorileri, sorular, cevaplar ve etken madde onerileri.
+Sikayet kategorileri, sorular, cevaplar, etken madde onerileri ve danisma kategorileri.
 
 Marka onerisi YASAKTIR — yalnizca jenerik etken maddeler.
 """
@@ -9,15 +9,11 @@ from apps.core.models import BaseModel
 
 
 class Kategori(BaseModel):
-    """Sikayet kategorisi (Uyku, Enerji, Bagisiklik vb.) veya 'Hassas Durum'."""
+    """Sikayet kategorisi (Uyku, Enerji, Bagisiklik vb.)"""
 
     ad = models.CharField(max_length=128, unique=True)
     slug = models.SlugField(unique=True)
     ikon = models.CharField(max_length=64, default="fa-circle")
-    hassas = models.BooleanField(
-        default=False,
-        help_text="Sessiz triyaj akisi (Akis B) icin isaretle.",
-    )
     aktif = models.BooleanField(default=True)
 
     hedef_cinsiyet = models.ForeignKey(
@@ -30,11 +26,44 @@ class Kategori(BaseModel):
         help_text="Bos = herkese goster.",
     )
 
+    bagli_kategori = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="alt_kategoriler",
+        help_text="Bu kategorinin bagli oldugu ust/ilgili kategori.",
+    )
+
     class Meta:
         db_table = "kategoriler"
         ordering = ("ad",)
         verbose_name = "Kategori"
         verbose_name_plural = "Kategoriler"
+
+    def __str__(self) -> str:
+        return self.ad
+
+
+class Danisma(BaseModel):
+    """Eczaciya danisma kategorisi — yas/cinsiyet/soru gerekmez.
+
+    Kioskta 'Eczaciniza Danisin' butonuna basininca cikan kategorilerdir.
+    """
+
+    ad = models.CharField(max_length=128, unique=True)
+    slug = models.SlugField(unique=True)
+    ikon = models.CharField(max_length=64, default="fa-comments")
+    aktif = models.BooleanField(default=True)
+
+    ust_kategori = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="alt_kategoriler",
+        help_text="Ust danisma kategorisi. Bos = kok seviyesi.",
+    )
+
+    class Meta:
+        db_table = "danisma_kategorileri"
+        ordering = ("ad",)
+        verbose_name = "Danisma Kategorisi"
+        verbose_name_plural = "Danisma Kategorileri"
 
     def __str__(self) -> str:
         return self.ad
@@ -113,9 +142,11 @@ class SoruEtkenMadde(models.Model):
 
     ROL_ANA = "ana"
     ROL_DESTEKLEYICI = "destekleyici"
+    ROL_TAMAMLAYICI = "tamamlayici"
     ROL_SECENEKLER = [
         (ROL_ANA, "Ana"),
         (ROL_DESTEKLEYICI, "Destekleyici"),
+        (ROL_TAMAMLAYICI, "Tamamlayici"),
     ]
 
     soru = models.ForeignKey(

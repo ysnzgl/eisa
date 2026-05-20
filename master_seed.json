@@ -1,822 +1,1730 @@
 [
-	{
-		"category_slug": "enerji",
-		"title": "Enerji & Halsizlik",
-		"icon": "fa-battery-quarter",
-		"questions": [
-			{
-				"id": "en_q1",
-				"priority": 1,
-				"text": "Sabahları uykunuzu almış olsanız bile yorgun mu uyanıyorsunuz?",
-				"match_rules": [
-					{
-						"gender": [
-							"F"
-						],
-						"age_min": 18,
-						"age_max": 49,
-						"primary": "Demir (Ferritin ölçümü önerisiyle)",
-						"supportive": "C Vitamini"
-					},
-					{
-						"gender": [
-							"M"
-						],
-						"age_min": 18,
-						"age_max": 49,
-						"primary": "B-Kompleks Vitamini",
-						"supportive": "C Vitamini"
-					},
-					{
-						"gender": [
-							"M",
-							"F"
-						],
-						"age_min": 50,
-						"age_max": 120,
-						"primary": "Koenzim Q10",
-						"supportive": "B12 Vitamini"
-					}
-				]
-			},
-			{
-				"id": "en_q2",
-				"priority": 2,
-				"text": "Gün içinde (özellikle öğleden sonraları) enerjiniz aniden düşüyor mu?",
-				"match_rules": [
-					{
-						"gender": [
-							"M",
-							"F"
-						],
-						"age_min": 18,
-						"age_max": 120,
-						"primary": "Magnezyum Malat",
-						"supportive": "B12 (Metilkobalamin)"
-					}
-				]
-			},
-			{
-				"id": "en_q3",
-				"priority": 3,
-				"text": "Fiziksel bir efor sarf etmediğiniz halde kendinizi bitkin hissediyor musunuz?",
-				"match_rules": [
-					{
-						"gender": [
-							"M",
-							"F"
-						],
-						"age_min": 18,
-						"age_max": 49,
-						"primary": "Ginseng Ekstresi",
-						"supportive": "L-Karnitin"
-					},
-					{
-						"gender": [
-							"M",
-							"F"
-						],
-						"age_min": 50,
-						"age_max": 120,
-						"primary": "Koenzim Q10",
-						"supportive": "Ginseng Ekstresi"
-					}
-				]
-			}
-		]
-	},
-	{
-		"category_slug": "bagisiklik",
-		"title": "Bağışıklık Sistemi",
-		"icon": "fa-shield-halved",
-		"questions": [
-			{
-				"id": "ba_q1",
-				"priority": 1,
-				"text": "Sık sık soğuk algınlığı, nezle veya enfeksiyon geçirir misiniz?",
-				"match_rules": [
-					{
-						"gender": [
-							"M",
-							"F"
-						],
-						"age_min": 18,
-						"age_max": 120,
-						"primary": "C Vitamini (1000mg)",
-						"supportive": "Çinko"
-					}
-				]
-			},
-			{
-				"id": "ba_q2",
-				"priority": 2,
-				"text": "Mevsim geçişlerinde vücudunuzda genel bir kırgınlık ve halsizlik olur mu?",
-				"match_rules": [
-					{
-						"gender": [
-							"M",
-							"F"
-						],
-						"age_min": 18,
-						"age_max": 49,
-						"primary": "Kara Mürver (Sambucus Nigra)",
-						"supportive": "Pelargonium (Umca)"
-					},
-					{
-						"gender": [
-							"M",
-							"F"
-						],
-						"age_min": 50,
-						"age_max": 120,
-						"primary": "Beta Glukan",
-						"supportive": "D3+K2 Vitamini"
-					}
-				]
-			},
-			{
-				"id": "ba_q3",
-				"priority": 3,
-				"text": "Kapalı, kalabalık ve havalandırması az olan ortamlarda uzun süre vakit geçiriyor musunuz?",
-				"match_rules": [
-					{
-						"gender": [
-							"M",
-							"F"
-						],
-						"age_min": 18,
-						"age_max": 120,
-						"primary": "D3+K2 Vitamini",
-						"supportive": "Propolis Ekstresi"
-					}
-				]
-			}
-		]
-	},
-	{
-		"category_slug": "uyku",
-		"title": "Uyku Problemleri",
-		"icon": "fa-moon",
-		"questions": [
-			{
-				"id": "uy_q1",
-				"priority": 1,
-				"text": "Yatağa yattıktan sonra uykuya dalmanız 30 dakikadan uzun sürüyor mu?",
-				"match_rules": [
-					{
-						"gender": [
-							"M",
-							"F"
-						],
-						"age_min": 18,
-						"age_max": 120,
-						"primary": "Melatonin",
-						"supportive": "Kediotu Kökü (Valerian)"
-					}
-				]
-			},
-			{
-				"id": "uy_q2",
-				"priority": 2,
-				"text": "Geceleri sık sık uyanıp tekrar uykuya dalmakta zorlanıyor musunuz?",
-				"match_rules": [
-					{
-						"gender": [
-							"M",
-							"F"
-						],
-						"age_min": 18,
-						"age_max": 49,
-						"primary": "Passiflora (Çarkıfelek)",
-						"supportive": "5-HTP"
-					},
-					{
-						"gender": [
-							"M",
-							"F"
-						],
-						"age_min": 50,
-						"age_max": 120,
-						"primary": "Melatonin (Yavaş Salınımlı)",
-						"supportive": "Magnezyum"
-					}
-				]
-			},
-			{
-				"id": "uy_q3",
-				"priority": 3,
-				"text": "Sabahları yataktan kasılmış, dişlerinizi sıkmış veya dinlenmemiş olarak mı kalkıyorsunuz?",
-				"match_rules": [
-					{
-						"gender": [
-							"M",
-							"F"
-						],
-						"age_min": 18,
-						"age_max": 120,
-						"primary": "Magnezyum Bisglisinat",
-						"supportive": "Papatya / Melisa Ekstresi"
-					}
-				]
-			}
-		]
-	},
-	{
-		"category_slug": "stres",
-		"title": "Stres & Anksiyete",
-		"icon": "fa-brain",
-		"questions": [
-			{
-				"id": "st_q1",
-				"priority": 1,
-				"text": "Gün içinde kendinizi sürekli gergin, aceleci veya huzursuz hissediyor musunuz?",
-				"match_rules": [
-					{
-						"gender": [
-							"F"
-						],
-						"age_min": 18,
-						"age_max": 50,
-						"primary": "Ashwagandha (Kortizol dengeleyici)",
-						"supportive": "B6 Vitamini"
-					},
-					{
-						"gender": [
-							"M"
-						],
-						"age_min": 18,
-						"age_max": 50,
-						"primary": "L-Teanin",
-						"supportive": "Magnezyum Bisglisinat"
-					},
-					{
-						"gender": [
-							"M",
-							"F"
-						],
-						"age_min": 51,
-						"age_max": 120,
-						"primary": "Passiflora",
-						"supportive": "B-Kompleks"
-					}
-				]
-			},
-			{
-				"id": "st_q2",
-				"priority": 2,
-				"text": "Stres veya heyecan durumlarında mide/bağırsak sorunları (kramp, gaz) yaşıyor musunuz?",
-				"match_rules": [
-					{
-						"gender": [
-							"M",
-							"F"
-						],
-						"age_min": 18,
-						"age_max": 120,
-						"primary": "Probiyotik (Stres spesifik suşlar)",
-						"supportive": "Nane Yağı Kapsülü"
-					}
-				]
-			},
-			{
-				"id": "st_q3",
-				"priority": 3,
-				"text": "Rahatlamak, sakinleşmek ve kafanızdaki düşünceleri susturmakta zorlanıyor musunuz?",
-				"match_rules": [
-					{
-						"gender": [
-							"M",
-							"F"
-						],
-						"age_min": 18,
-						"age_max": 120,
-						"primary": "Rhodiola Rosea",
-						"supportive": "Magnezyum"
-					}
-				]
-			}
-		]
-	},
-	{
-		"category_slug": "sindirim",
-		"title": "Sindirim & Bağırsak",
-		"icon": "fa-lungs-virus",
-		"questions": [
-			{
-				"id": "si_q1",
-				"priority": 1,
-				"text": "Yemeklerden sonra rahatsız edici düzeyde şişkinlik veya gaz sorunu yaşıyor musunuz?",
-				"match_rules": [
-					{
-						"gender": [
-							"M",
-							"F"
-						],
-						"age_min": 18,
-						"age_max": 49,
-						"primary": "Sindirim Enzimleri (Bromelain/Papain)",
-						"supportive": "Rezene Ekstresi"
-					},
-					{
-						"gender": [
-							"M",
-							"F"
-						],
-						"age_min": 50,
-						"age_max": 120,
-						"primary": "Betain HCL (Mide Asidi Desteği)",
-						"supportive": "Sindirim Enzimleri"
-					}
-				]
-			},
-			{
-				"id": "si_q2",
-				"priority": 2,
-				"text": "Düzensiz tuvalet alışkanlığınız (sık sık kabızlık veya ishal döngüsü) var mı?",
-				"match_rules": [
-					{
-						"gender": [
-							"M",
-							"F"
-						],
-						"age_min": 18,
-						"age_max": 120,
-						"primary": "Geniş Spektrumlu Probiyotik",
-						"supportive": "Prebiyotik Lif (İnülin)"
-					}
-				]
-			},
-			{
-				"id": "si_q3",
-				"priority": 3,
-				"text": "Son 6 ay içinde hiç antibiyotik kullandınız mı?",
-				"match_rules": [
-					{
-						"gender": [
-							"M",
-							"F"
-						],
-						"age_min": 18,
-						"age_max": 120,
-						"primary": "Yüksek Milyarlı Probiyotik",
-						"supportive": "Saccharomyces Boulardii"
-					}
-				]
-			}
-		]
-	},
-	{
-		"category_slug": "eklem",
-		"title": "Eklem, Kemik & Kas",
-		"icon": "fa-bone",
-		"questions": [
-			{
-				"id": "ek_q1",
-				"priority": 1,
-				"text": "Merdiven inip çıkarken veya çömelirken dizlerinizde ağrı veya ses (çıtırdama) oluyor mu?",
-				"match_rules": [
-					{
-						"gender": [
-							"M",
-							"F"
-						],
-						"age_min": 18,
-						"age_max": 39,
-						"primary": "Tip-2 Kolajen",
-						"supportive": "Hyalüronik Asit"
-					},
-					{
-						"gender": [
-							"M",
-							"F"
-						],
-						"age_min": 40,
-						"age_max": 120,
-						"primary": "Glukozamin & Kondroitin & MSM",
-						"supportive": "Tip-2 Kolajen"
-					}
-				]
-			},
-			{
-				"id": "ek_q2",
-				"priority": 2,
-				"text": "Sabah uyandığınızda eklemlerinizde (eller, dizler) tutukluk ve sertlik yaşıyor musunuz?",
-				"match_rules": [
-					{
-						"gender": [
-							"M",
-							"F"
-						],
-						"age_min": 18,
-						"age_max": 120,
-						"primary": "Curcumin (Zerdeçal Ekstresi)",
-						"supportive": "Boswellia (Akgünlük Ekstresi)"
-					}
-				]
-			},
-			{
-				"id": "ek_q3",
-				"priority": 3,
-				"text": "Spor veya yoğun fiziksel hareket sonrasında kas ağrılarınızın geçmesi uzun sürüyor mu?",
-				"match_rules": [
-					{
-						"gender": [
-							"M",
-							"F"
-						],
-						"age_min": 18,
-						"age_max": 120,
-						"primary": "Magnezyum (Sitrat/Malat)",
-						"supportive": "Yüksek EPA oranlı Omega-3"
-					}
-				]
-			}
-		]
-	},
-	{
-		"category_slug": "guzellik",
-		"title": "Saç, Cilt & Tırnak",
-		"icon": "fa-spa",
-		"questions": [
-			{
-				"id": "gu_q1",
-				"priority": 1,
-				"text": "Saçlarınızda normalden fazla dökülme, incelme veya cansızlık var mı?",
-				"match_rules": [
-					{
-						"gender": [
-							"M"
-						],
-						"age_min": 18,
-						"age_max": 120,
-						"primary": "Cüce Palmiye (Saw Palmetto)",
-						"supportive": "Çinko & Biotin"
-					},
-					{
-						"gender": [
-							"F"
-						],
-						"age_min": 18,
-						"age_max": 120,
-						"primary": "Biotin (B7 Vitamini) & Çinko",
-						"supportive": "Keratin Kompleks"
-					}
-				]
-			},
-			{
-				"id": "gu_q2",
-				"priority": 2,
-				"text": "Tırnaklarınız çok çabuk kırılıyor veya üzerinde beyaz lekeler oluşuyor mu?",
-				"match_rules": [
-					{
-						"gender": [
-							"M",
-							"F"
-						],
-						"age_min": 18,
-						"age_max": 120,
-						"primary": "Çinko",
-						"supportive": "Kalsiyum & Magnezyum"
-					}
-				]
-			},
-			{
-				"id": "gu_q3",
-				"priority": 3,
-				"text": "Cildinizde kuruluk, elastikiyet kaybı veya solgun bir görünüm hissediyor musunuz?",
-				"match_rules": [
-					{
-						"gender": [
-							"F"
-						],
-						"age_min": 18,
-						"age_max": 39,
-						"primary": "Tip 1 ve 3 Kolajen Peptitleri",
-						"supportive": "C Vitamini"
-					},
-					{
-						"gender": [
-							"F"
-						],
-						"age_min": 40,
-						"age_max": 120,
-						"primary": "Hyalüronik Asit",
-						"supportive": "E Vitamini"
-					},
-					{
-						"gender": [
-							"M"
-						],
-						"age_min": 18,
-						"age_max": 120,
-						"primary": "Kolajen Peptitleri",
-						"supportive": "E Vitamini"
-					}
-				]
-			}
-		]
-	},
-	{
-		"category_slug": "odaklanma",
-		"title": "Odaklanma & Hafıza",
-		"icon": "fa-lightbulb",
-		"questions": [
-			{
-				"id": "od_q1",
-				"priority": 1,
-				"text": "Son zamanlarda isimleri, kelimeleri veya eşyaların yerini sık sık unutuyor musunuz?",
-				"match_rules": [
-					{
-						"gender": [
-							"M",
-							"F"
-						],
-						"age_min": 18,
-						"age_max": 49,
-						"primary": "Sitikolin veya L-Tirozin",
-						"supportive": "B12 Vitamini"
-					},
-					{
-						"gender": [
-							"M",
-							"F"
-						],
-						"age_min": 50,
-						"age_max": 120,
-						"primary": "Ginkgo Biloba Ekstresi",
-						"supportive": "Omega-3 (Balık Yağı)"
-					}
-				]
-			},
-			{
-				"id": "od_q2",
-				"priority": 2,
-				"text": "Ekran başında çalışırken veya okurken uzun süre odaklanmakta zorlanıyor musunuz?",
-				"match_rules": [
-					{
-						"gender": [
-							"M",
-							"F"
-						],
-						"age_min": 18,
-						"age_max": 120,
-						"primary": "Omega-3 (Yüksek DHA oranlı)",
-						"supportive": "L-Teanin"
-					}
-				]
-			},
-			{
-				"id": "od_q3",
-				"priority": 3,
-				"text": "Zihinsel olarak kendinizi bulanık (beyin sisi) veya çabuk yorulmuş hissediyor musunuz?",
-				"match_rules": [
-					{
-						"gender": [
-							"M",
-							"F"
-						],
-						"age_min": 18,
-						"age_max": 120,
-						"primary": "B-Kompleks Vitamini",
-						"supportive": "Koenzim Q10"
-					}
-				]
-			}
-		]
-	},
-	{
-		"category_slug": "kadin_sagligi",
-		"title": "Kadın Sağlığı",
-		"icon": "fa-venus",
-		"questions": [
-			{
-				"id": "ks_q1",
-				"priority": 1,
-				"text": "Regl (adet) dönemleriniz çok ağrılı, sancılı veya aşırı gergin geçiyor mu?",
-				"match_rules": [
-					{
-						"gender": [
-							"F"
-						],
-						"age_min": 18,
-						"age_max": 55,
-						"primary": "Çuha Çiçeği Yağı (Evening Primrose)",
-						"supportive": "Magnezyum Bisglisinat"
-					}
-				]
-			},
-			{
-				"id": "ks_q2",
-				"priority": 2,
-				"text": "Sıcak basması, gece terlemesi veya ani duygu değişimleri (Menopoz belirtisi) yaşıyor musunuz?",
-				"match_rules": [
-					{
-						"gender": [
-							"F"
-						],
-						"age_min": 40,
-						"age_max": 120,
-						"primary": "Karayılan Otu (Black Cohosh)",
-						"supportive": "Kalsiyum & D3 Vitamini"
-					}
-				]
-			},
-			{
-				"id": "ks_q3",
-				"priority": 3,
-				"text": "Sık sık idrar yolu hassasiyeti (yanma, sık idrara çıkma) yaşar mısınız?",
-				"match_rules": [
-					{
-						"gender": [
-							"F"
-						],
-						"age_min": 18,
-						"age_max": 120,
-						"primary": "Turna Yemişi (Cranberry) Ekstresi",
-						"supportive": "D-Mannose"
-					}
-				]
-			}
-		]
-	},
-	{
-		"category_slug": "erkek_sagligi",
-		"title": "Erkek Sağlığı",
-		"icon": "fa-mars",
-		"questions": [
-			{
-				"id": "es_q1",
-				"priority": 1,
-				"text": "Geceleri sık sık idrara çıkma ihtiyacı ile uyanıyor musunuz?",
-				"match_rules": [
-					{
-						"gender": [
-							"M"
-						],
-						"age_min": 40,
-						"age_max": 120,
-						"primary": "Cüce Palmiye (Saw Palmetto)",
-						"supportive": "Kabak Çekirdeği Ekstresi & Çinko"
-					}
-				]
-			},
-			{
-				"id": "es_q2",
-				"priority": 2,
-				"text": "Günlük fiziksel performansınızda, gücünüzde veya dayanıklılığınızda düşüş hissediyor musunuz?",
-				"match_rules": [
-					{
-						"gender": [
-							"M"
-						],
-						"age_min": 18,
-						"age_max": 49,
-						"primary": "L-Arginin",
-						"supportive": "Maca Kökü Ekstresi"
-					},
-					{
-						"gender": [
-							"M"
-						],
-						"age_min": 50,
-						"age_max": 120,
-						"primary": "Tribulus Terrestris",
-						"supportive": "Ginseng Ekstresi"
-					}
-				]
-			},
-			{
-				"id": "es_q3",
-				"priority": 3,
-				"text": "Ağır spor yapıyor veya kas kütlenizi korumakta zorlanıyor musunuz?",
-				"match_rules": [
-					{
-						"gender": [
-							"M"
-						],
-						"age_min": 18,
-						"age_max": 120,
-						"primary": "ZMA (Çinko, Magnezyum, B6)",
-						"supportive": "L-Glutamin"
-					}
-				]
-			}
-		]
-	},
-	{
-		"category_slug": "goz_sagligi",
-		"title": "Göz Sağlığı",
-		"icon": "fa-eye",
-		"questions": [
-			{
-				"id": "gz_q1",
-				"priority": 1,
-				"text": "Gözlerinizde sık sık kuruluk, yanma veya batma hissediyor musunuz?",
-				"match_rules": [
-					{
-						"gender": [
-							"M",
-							"F"
-						],
-						"age_min": 18,
-						"age_max": 120,
-						"primary": "Omega-3 (Balık Yağı)",
-						"supportive": "Lutein"
-					}
-				]
-			},
-			{
-				"id": "gz_q2",
-				"priority": 2,
-				"text": "Uzun süre ekrana (telefon, bilgisayar) bakmaktan dolayı baş veya göz yorgunluğu yaşıyor musunuz?",
-				"match_rules": [
-					{
-						"gender": [
-							"M",
-							"F"
-						],
-						"age_min": 18,
-						"age_max": 120,
-						"primary": "Lutein ve Zeaksantin",
-						"supportive": "Yaban Mersini (Bilberry) Ekstresi"
-					}
-				]
-			},
-			{
-				"id": "gz_q3",
-				"priority": 3,
-				"text": "Gece görüşünüzde zayıflama veya bulanıklaşma fark ettiniz mi?",
-				"match_rules": [
-					{
-						"gender": [
-							"M",
-							"F"
-						],
-						"age_min": 40,
-						"age_max": 120,
-						"primary": "A Vitamini",
-						"supportive": "Lutein"
-					}
-				]
-			}
-		]
-	},
-	{
-		"category_slug": "metabolizma",
-		"title": "Kilo Kontrolü & Ödem",
-		"icon": "fa-weight-scale",
-		"questions": [
-			{
-				"id": "me_q1",
-				"priority": 1,
-				"text": "Tatlı krizleri yaşıyor veya iştahınızı kontrol etmekte zorlanıyor musunuz?",
-				"match_rules": [
-					{
-						"gender": [
-							"M",
-							"F"
-						],
-						"age_min": 18,
-						"age_max": 120,
-						"primary": "Krom Pikolinat",
-						"supportive": "Elma Sirkesi Ekstresi"
-					}
-				]
-			},
-			{
-				"id": "me_q2",
-				"priority": 2,
-				"text": "Diyet yapmanıza rağmen kilo vermekte veya vücudunuzdaki ödemi atmakta zorluk çekiyor musunuz?",
-				"match_rules": [
-					{
-						"gender": [
-							"M",
-							"F"
-						],
-						"age_min": 18,
-						"age_max": 120,
-						"primary": "Bromelain",
-						"supportive": "Yeşil Çay Ekstresi"
-					}
-				]
-			},
-			{
-				"id": "me_q3",
-				"priority": 3,
-				"text": "Yemeklerden sonra aşırı ağırlık çökmesi veya uyku hali oluyor mu?",
-				"match_rules": [
-					{
-						"gender": [
-							"M",
-							"F"
-						],
-						"age_min": 18,
-						"age_max": 120,
-						"primary": "Tarçın Ekstresi",
-						"supportive": "Krom"
-					}
-				]
-			}
-		]
-	}
+  {
+    "ana_kategori": "Enerji & Uyku",
+    "ana_ikon": "fa-solid fa-bolt",
+    "alt_kategori": "Yorgunluk",
+    "alt_ikon": "fa-solid fa-battery-quarter",
+    "soru": "Sabahları uykunuzu almış olsanız bile yataktan yorgun mu uyanıyorsunuz?",
+    "cinsiyet": "Kadın",
+    "yas_grubu": "18-49",
+    "asil_takviye": "Demir (Ferritin)",
+    "destekleyici": "Magnezyum Malat",
+    "tamamlayici": "B-Kompleks"
+  },
+  {
+    "ana_kategori": "Enerji & Uyku",
+    "ana_ikon": "fa-solid fa-bolt",
+    "alt_kategori": "Yorgunluk",
+    "alt_ikon": "fa-solid fa-battery-quarter",
+    "soru": "Sabahları uykunuzu almış olsanız bile yataktan yorgun mu uyanıyorsunuz?",
+    "cinsiyet": "Erkek",
+    "yas_grubu": "18-49",
+    "asil_takviye": "B-Kompleks",
+    "destekleyici": "Magnezyum Malat",
+    "tamamlayici": "C Vitamini"
+  },
+  {
+    "ana_kategori": "Enerji & Uyku",
+    "ana_ikon": "fa-solid fa-bolt",
+    "alt_kategori": "Yorgunluk",
+    "alt_ikon": "fa-solid fa-battery-quarter",
+    "soru": "Gün içinde (özellikle öğleden sonraları) enerjiniz aniden düşüyor mu?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Magnezyum",
+    "destekleyici": "Omega-3",
+    "tamamlayici": "Ginseng Ekstresi"
+  },
+  {
+    "ana_kategori": "Enerji & Uyku",
+    "ana_ikon": "fa-solid fa-bolt",
+    "alt_kategori": "Yorgunluk",
+    "alt_ikon": "fa-solid fa-battery-quarter",
+    "soru": "Fiziksel bir efor sarf etmediğiniz halde kendinizi bitkin hissediyor musunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Magnezyum",
+    "destekleyici": "C Vitamini",
+    "tamamlayici": "Yulaf Samanı Kürü (Saraçoğlu)"
+  },
+  {
+    "ana_kategori": "Enerji & Uyku",
+    "ana_ikon": "fa-solid fa-bolt",
+    "alt_kategori": "Yorgunluk",
+    "alt_ikon": "fa-solid fa-battery-quarter",
+    "soru": "Sabahları uyanmakta zorlanıyor ve alarmı sürekli erteliyor musunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "B12 Vitamini",
+    "destekleyici": "D3K2 Vitamini",
+    "tamamlayici": "Ginseng Ekstresi"
+  },
+  {
+    "ana_kategori": "Enerji & Uyku",
+    "ana_ikon": "fa-solid fa-bolt",
+    "alt_kategori": "Yorgunluk",
+    "alt_ikon": "fa-solid fa-battery-quarter",
+    "soru": "Merdiven çıkarken veya hafif yürüyüşlerde hemen enerjiniz tükeniyor mu?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "40-120",
+    "asil_takviye": "Koenzim Q10",
+    "destekleyici": "L-Karnitin",
+    "tamamlayici": "Demir"
+  },
+  {
+    "ana_kategori": "Enerji & Uyku",
+    "ana_ikon": "fa-solid fa-bolt",
+    "alt_kategori": "Uyku",
+    "alt_ikon": "fa-solid fa-moon",
+    "soru": "Yatağa yattıktan sonra uykuya dalmanız 30 dakikadan uzun sürüyor mu?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Passiflora",
+    "destekleyici": "Kediotu Kökü",
+    "tamamlayici": "Melisa Çayı (Saraçoğlu)"
+  },
+  {
+    "ana_kategori": "Enerji & Uyku",
+    "ana_ikon": "fa-solid fa-bolt",
+    "alt_kategori": "Uyku",
+    "alt_ikon": "fa-solid fa-moon",
+    "soru": "Geceleri sık sık uyanıp tekrar uykuya dalmakta zorlanıyor musunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Magnezyum Bisglisinat",
+    "destekleyici": "Karabaş Otu Kürü (Saraçoğlu)",
+    "tamamlayici": "Papatya Çayı"
+  },
+  {
+    "ana_kategori": "Enerji & Uyku",
+    "ana_ikon": "fa-solid fa-bolt",
+    "alt_kategori": "Uyku",
+    "alt_ikon": "fa-solid fa-moon",
+    "soru": "Sabahları yataktan kasılmış dişlerinizi sıkmış olarak mı kalkıyorsunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Magnezyum Bisglisinat",
+    "destekleyici": "Sarı Kantaron",
+    "tamamlayici": "L-Teanin"
+  },
+  {
+    "ana_kategori": "Enerji & Uyku",
+    "ana_ikon": "fa-solid fa-bolt",
+    "alt_kategori": "Uyku",
+    "alt_ikon": "fa-solid fa-moon",
+    "soru": "Rüyalarınız çok karmaşık ve sabah kalktığınızda beyniniz yorulmuş oluyor mu?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "L-Teanin",
+    "destekleyici": "B6 Vitamini",
+    "tamamlayici": "Passiflora"
+  },
+  {
+    "ana_kategori": "Enerji & Uyku",
+    "ana_ikon": "fa-solid fa-bolt",
+    "alt_kategori": "Uyku",
+    "alt_ikon": "fa-solid fa-moon",
+    "soru": "Gece bacaklarınızda huzursuzluk hissi (karıncalanma çekilme) yaşıyor musunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Magnezyum Sitrat",
+    "destekleyici": "Demir",
+    "tamamlayici": "B-Kompleks"
+  },
+  {
+    "ana_kategori": "Sindirim & Bağırsak",
+    "ana_ikon": "fa-solid fa-leaf",
+    "alt_kategori": "Mide",
+    "alt_ikon": "fa-solid fa-burger",
+    "soru": "Yemeklerden sonra rahatsız edici düzeyde şişkinlik veya gaz sorunu yaşıyor musunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Sindirim Enzimleri",
+    "destekleyici": "Rezene Çayı",
+    "tamamlayici": "Probiyotik"
+  },
+  {
+    "ana_kategori": "Sindirim & Bağırsak",
+    "ana_ikon": "fa-solid fa-leaf",
+    "alt_kategori": "Mide",
+    "alt_ikon": "fa-solid fa-burger",
+    "soru": "Midenizde yanma ekşime veya ağza acı su gelmesi (reflü) şikayetiniz var mı?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Kudret Narı",
+    "destekleyici": "Meyan Kökü",
+    "tamamlayici": "Sarı Kantaron Yağı"
+  },
+  {
+    "ana_kategori": "Sindirim & Bağırsak",
+    "ana_ikon": "fa-solid fa-leaf",
+    "alt_kategori": "Mide",
+    "alt_ikon": "fa-solid fa-burger",
+    "soru": "Stresli olduğunuzda midenize kramplar giriyor veya iştahınız kapanıyor mu?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Melisa Çayı (Saraçoğlu)",
+    "destekleyici": "Magnezyum Oksit",
+    "tamamlayici": "Probiyotik"
+  },
+  {
+    "ana_kategori": "Sindirim & Bağırsak",
+    "ana_ikon": "fa-solid fa-leaf",
+    "alt_kategori": "Mide",
+    "alt_ikon": "fa-solid fa-burger",
+    "soru": "Çiğ sebze veya meyve yediğinizde uzun süren bir hazımsızlık oluyor mu?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Betain HCL (Mide Asidi)",
+    "destekleyici": "Sindirim Enzimleri",
+    "tamamlayici": "Papatya Çayı"
+  },
+  {
+    "ana_kategori": "Sindirim & Bağırsak",
+    "ana_ikon": "fa-solid fa-leaf",
+    "alt_kategori": "Mide",
+    "alt_ikon": "fa-solid fa-burger",
+    "soru": "Yemek yerken çok çabuk doyma hissi ve sonrasında mide gerginliği yaşıyor musunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Anason Çayı",
+    "destekleyici": "Sindirim Enzimleri",
+    "tamamlayici": "Zencefil Ekstresi"
+  },
+  {
+    "ana_kategori": "Sindirim & Bağırsak",
+    "ana_ikon": "fa-solid fa-leaf",
+    "alt_kategori": "Bağırsak",
+    "alt_ikon": "fa-solid fa-bacteria",
+    "soru": "Düzensiz tuvalet alışkanlığınız (kabızlık veya ishal döngüsü) var mı?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Geniş Spektrumlu Probiyotik",
+    "destekleyici": "Lif (Fiber)",
+    "tamamlayici": "L-Glutamin"
+  },
+  {
+    "ana_kategori": "Sindirim & Bağırsak",
+    "ana_ikon": "fa-solid fa-leaf",
+    "alt_kategori": "Bağırsak",
+    "alt_ikon": "fa-solid fa-bacteria",
+    "soru": "Son 6 ay içinde hiç antibiyotik kullandınız mı?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Saccharomyces Boulardii",
+    "destekleyici": "L-Glutamin",
+    "tamamlayici": "Kefir"
+  },
+  {
+    "ana_kategori": "Sindirim & Bağırsak",
+    "ana_ikon": "fa-solid fa-leaf",
+    "alt_kategori": "Bağırsak",
+    "alt_ikon": "fa-solid fa-bacteria",
+    "soru": "Süt ve süt ürünleri tükettiğinizde bağırsaklarınızda gaz ve kramp oluşuyor mu?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Laktaz Enzimi",
+    "destekleyici": "Probiyotik",
+    "tamamlayici": "Nane Yağı"
+  },
+  {
+    "ana_kategori": "Sindirim & Bağırsak",
+    "ana_ikon": "fa-solid fa-leaf",
+    "alt_kategori": "Bağırsak",
+    "alt_ikon": "fa-solid fa-bacteria",
+    "soru": "Karnınızın alt bölgesinde sürekli bir şişlik ve hassasiyet hissediyor musunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "L-Glutamin",
+    "destekleyici": "Probiyotik",
+    "tamamlayici": "Biberiye Çayı (Saraçoğlu)"
+  },
+  {
+    "ana_kategori": "Sindirim & Bağırsak",
+    "ana_ikon": "fa-solid fa-leaf",
+    "alt_kategori": "Bağırsak",
+    "alt_ikon": "fa-solid fa-bacteria",
+    "soru": "Tuvalete çıktıktan sonra tam boşalamama hissi yaşıyor musunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Magnezyum Sitrat",
+    "destekleyici": "Lif Desteği",
+    "tamamlayici": "Probiyotik"
+  },
+  {
+    "ana_kategori": "Sindirim & Bağırsak",
+    "ana_ikon": "fa-solid fa-leaf",
+    "alt_kategori": "Metabolizma",
+    "alt_ikon": "fa-solid fa-fire",
+    "soru": "Tatlı krizleri yaşıyor veya iştahınızı kontrol etmekte zorlanıyor musunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Krom Pikolinat",
+    "destekleyici": "Tarçın Ekstresi",
+    "tamamlayici": "Lif Desteği"
+  },
+  {
+    "ana_kategori": "Sindirim & Bağırsak",
+    "ana_ikon": "fa-solid fa-leaf",
+    "alt_kategori": "Metabolizma",
+    "alt_ikon": "fa-solid fa-fire",
+    "soru": "Diyet yapmanıza rağmen kilo vermekte veya ödem atmakta zorluk çekiyor musunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Bromelain",
+    "destekleyici": "Yeşil Çay",
+    "tamamlayici": "Kiraz Sapı Kürü (Saraçoğlu)"
+  },
+  {
+    "ana_kategori": "Sindirim & Bağırsak",
+    "ana_ikon": "fa-solid fa-leaf",
+    "alt_kategori": "Metabolizma",
+    "alt_ikon": "fa-solid fa-fire",
+    "soru": "Sabahları ellerinizde ayaklarınızda veya yüzünüzde belirgin bir şişlik oluyor mu?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Kiraz Sapı Çayı",
+    "destekleyici": "Bromelain",
+    "tamamlayici": "Magnezyum"
+  },
+  {
+    "ana_kategori": "Sindirim & Bağırsak",
+    "ana_ikon": "fa-solid fa-leaf",
+    "alt_kategori": "Metabolizma",
+    "alt_ikon": "fa-solid fa-fire",
+    "soru": "Sık sık acıkıyor ve öğün atladığınızda ellerinizde titreme hissediyor musunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Krom Pikolinat",
+    "destekleyici": "Alfa Lipoik Asit",
+    "tamamlayici": "Tarçın"
+  },
+  {
+    "ana_kategori": "Sindirim & Bağırsak",
+    "ana_ikon": "fa-solid fa-leaf",
+    "alt_kategori": "Metabolizma",
+    "alt_ikon": "fa-solid fa-fire",
+    "soru": "Kilo verirken özellikle göbek çevresindeki yağları eritmekte zorlanıyor musunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "L-Karnitin",
+    "destekleyici": "Yeşil Çay Ekstresi",
+    "tamamlayici": "Lahana Kürü (Saraçoğlu)"
+  },
+  {
+    "ana_kategori": "Karaciğer & Detoks",
+    "ana_ikon": "fa-solid fa-filter",
+    "alt_kategori": "Arınma",
+    "alt_ikon": "fa-solid fa-glass-water",
+    "soru": "Vücudunuzu toksinlerden arındırmak veya karaciğerinizi yoracak alışkanlıklarınız var mı?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Deve Dikeni Ekstresi",
+    "destekleyici": "Enginar Ekstresi",
+    "tamamlayici": "Lavanta Kürü (Saraçoğlu)"
+  },
+  {
+    "ana_kategori": "Karaciğer & Detoks",
+    "ana_ikon": "fa-solid fa-filter",
+    "alt_kategori": "Arınma",
+    "alt_ikon": "fa-solid fa-glass-water",
+    "soru": "Sık sık hazır/işlenmiş gıda tüketiyor veya uzun süreli ilaç kullanıyor musunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Karahindiba Çayı",
+    "destekleyici": "TUDCA",
+    "tamamlayici": "Probiyotik"
+  },
+  {
+    "ana_kategori": "Karaciğer & Detoks",
+    "ana_ikon": "fa-solid fa-filter",
+    "alt_kategori": "Arınma",
+    "alt_ikon": "fa-solid fa-glass-water",
+    "soru": "Alkol tüketimi veya ağır yağlı beslenme sonrası toparlanmanız uzun sürüyor mu?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Glutatyon",
+    "destekleyici": "Deve Dikeni",
+    "tamamlayici": "B-Kompleks"
+  },
+  {
+    "ana_kategori": "Karaciğer & Detoks",
+    "ana_ikon": "fa-solid fa-filter",
+    "alt_kategori": "Arınma",
+    "alt_ikon": "fa-solid fa-glass-water",
+    "soru": "Vücudunuzda nedensiz yere kaşıntılar veya isilik benzeri döküntüler çıkıyor mu?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Süpürge Tohumu Kürü (Saraçoğlu)",
+    "destekleyici": "Glutatyon",
+    "tamamlayici": "C Vitamini"
+  },
+  {
+    "ana_kategori": "Karaciğer & Detoks",
+    "ana_ikon": "fa-solid fa-filter",
+    "alt_kategori": "Arınma",
+    "alt_ikon": "fa-solid fa-glass-water",
+    "soru": "Sabahları ağzınızda acı bir tatla uyanıyor veya cildinizde nedensiz matlık yaşıyor musunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Enginar Yaprağı Ekstresi",
+    "destekleyici": "Alfa Lipoik Asit",
+    "tamamlayici": "Karahindiba"
+  },
+  {
+    "ana_kategori": "Karaciğer & Detoks",
+    "ana_ikon": "fa-solid fa-filter",
+    "alt_kategori": "Safra/Karaciğer",
+    "alt_ikon": "fa-solid fa-vial",
+    "soru": "Yağlı yiyecekler tükettiğinizde midenizde bulantı veya sağ kaburga altında ağrı oluyor mu?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Sindirim Enzimleri (Safra Destekli)",
+    "destekleyici": "Karahindiba",
+    "tamamlayici": "Deve Dikeni"
+  },
+  {
+    "ana_kategori": "Karaciğer & Detoks",
+    "ana_ikon": "fa-solid fa-filter",
+    "alt_kategori": "Safra/Karaciğer",
+    "alt_ikon": "fa-solid fa-vial",
+    "soru": "Karaciğer yağlanması teşhisi kondu mu veya göbek çevrenizde hızlı yağlanma var mı?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Maydanoz Limon Kürü (Saraçoğlu)",
+    "destekleyici": "TUDCA",
+    "tamamlayici": "Enginar"
+  },
+  {
+    "ana_kategori": "Karaciğer & Detoks",
+    "ana_ikon": "fa-solid fa-filter",
+    "alt_kategori": "Safra/Karaciğer",
+    "alt_ikon": "fa-solid fa-vial",
+    "soru": "Cildinizde nedensiz sivilcelenmeler veya ayak altlarında yanma şikayetiniz var mı?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Lavanta Kürü (Saraçoğlu)",
+    "destekleyici": "Glutatyon",
+    "tamamlayici": "Alfa Lipoik Asit"
+  },
+  {
+    "ana_kategori": "Karaciğer & Detoks",
+    "ana_ikon": "fa-solid fa-filter",
+    "alt_kategori": "Safra/Karaciğer",
+    "alt_ikon": "fa-solid fa-vial",
+    "soru": "Kolesterol ilaçlarına bağlı karaciğer yorgunluğunuzu desteklemek istiyor musunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "40-120",
+    "asil_takviye": "Deve Dikeni (Silymarin)",
+    "destekleyici": "Koenzim Q10",
+    "tamamlayici": "Glutatyon"
+  },
+  {
+    "ana_kategori": "Karaciğer & Detoks",
+    "ana_ikon": "fa-solid fa-filter",
+    "alt_kategori": "Safra/Karaciğer",
+    "alt_ikon": "fa-solid fa-vial",
+    "soru": "Ağız kokusu veya dilde beyaz/sarı paslanma şikayetiniz sürekli var mı?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Karahindiba Çayı",
+    "destekleyici": "Probiyotik",
+    "tamamlayici": "Çinko"
+  },
+  {
+    "ana_kategori": "Bağışıklık & Solunum",
+    "ana_ikon": "fa-solid fa-shield-heart",
+    "alt_kategori": "Enfeksiyon",
+    "alt_ikon": "fa-solid fa-virus-slash",
+    "soru": "Sık sık soğuk algınlığı nezle veya enfeksiyon geçirir misiniz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "C Vitamini",
+    "destekleyici": "Çinko",
+    "tamamlayici": "D3K2 Vitamini"
+  },
+  {
+    "ana_kategori": "Bağışıklık & Solunum",
+    "ana_ikon": "fa-solid fa-shield-heart",
+    "alt_kategori": "Enfeksiyon",
+    "alt_ikon": "fa-solid fa-virus-slash",
+    "soru": "Mevsim geçişlerinde vücudunuzda genel bir kırgınlık ve halsizlik olur mu?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Kara Mürver (Sambucus)",
+    "destekleyici": "Beta Glukan",
+    "tamamlayici": "Propolis"
+  },
+  {
+    "ana_kategori": "Bağışıklık & Solunum",
+    "ana_ikon": "fa-solid fa-shield-heart",
+    "alt_kategori": "Enfeksiyon",
+    "alt_ikon": "fa-solid fa-virus-slash",
+    "soru": "Kapalı kalabalık ve havalandırması az olan ortamlarda uzun süre vakit geçiriyor musunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "C Vitamini",
+    "destekleyici": "D3K2 Vitamini",
+    "tamamlayici": "Propolis"
+  },
+  {
+    "ana_kategori": "Bağışıklık & Solunum",
+    "ana_ikon": "fa-solid fa-shield-heart",
+    "alt_kategori": "Enfeksiyon",
+    "alt_ikon": "fa-solid fa-virus-slash",
+    "soru": "Boğazınızda sürekli bir gıcık balgam veya bademcik hassasiyeti yaşar mısınız?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Adaçayı Gargarası (Saraçoğlu)",
+    "destekleyici": "Hatmi Çiçeği Çayı",
+    "tamamlayici": "Kekik Ekstresi"
+  },
+  {
+    "ana_kategori": "Bağışıklık & Solunum",
+    "ana_ikon": "fa-solid fa-shield-heart",
+    "alt_kategori": "Enfeksiyon",
+    "alt_ikon": "fa-solid fa-virus-slash",
+    "soru": "Hastalandığınızda iyileşme süreciniz normalden daha uzun mu sürüyor?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Beta Glukan",
+    "destekleyici": "Çinko",
+    "tamamlayici": "C Vitamini"
+  },
+  {
+    "ana_kategori": "Bağışıklık & Solunum",
+    "ana_ikon": "fa-solid fa-shield-heart",
+    "alt_kategori": "Enfeksiyon",
+    "alt_ikon": "fa-solid fa-virus-slash",
+    "soru": "Ağzınızda sık sık aft (yara) veya dudaklarınızda uçuk çıkıyor mu?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "L-Lizin",
+    "destekleyici": "B12 Vitamini",
+    "tamamlayici": "Çinko"
+  },
+  {
+    "ana_kategori": "Bağışıklık & Solunum",
+    "ana_ikon": "fa-solid fa-shield-heart",
+    "alt_kategori": "Alerji",
+    "alt_ikon": "fa-solid fa-head-side-cough",
+    "soru": "Mevsim geçişlerinde sık hapşırma burun tıkanıklığı veya alerjik reaksiyonlar yaşıyor musunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Kuersetin",
+    "destekleyici": "C Vitamini",
+    "tamamlayici": "Bromelain"
+  },
+  {
+    "ana_kategori": "Bağışıklık & Solunum",
+    "ana_ikon": "fa-solid fa-shield-heart",
+    "alt_kategori": "Alerji",
+    "alt_ikon": "fa-solid fa-head-side-cough",
+    "soru": "Bu alerjik durumlar nefes almanızı zorlaştırıyor veya göğsünüzde baskı yapıyor mu?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Keçiboynuzu Kürü (Saraçoğlu)",
+    "destekleyici": "Çörek Otu Yağı",
+    "tamamlayici": "Magnezyum"
+  },
+  {
+    "ana_kategori": "Bağışıklık & Solunum",
+    "ana_ikon": "fa-solid fa-shield-heart",
+    "alt_kategori": "Alerji",
+    "alt_ikon": "fa-solid fa-head-side-cough",
+    "soru": "Ev tozu polen veya hayvan tüyüne karşı aşırı hassasiyetiniz var mı?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Kuersetin",
+    "destekleyici": "Isırgan Otu Çayı (Saraçoğlu)",
+    "tamamlayici": "D3K2 Vitamini"
+  },
+  {
+    "ana_kategori": "Bağışıklık & Solunum",
+    "ana_ikon": "fa-solid fa-shield-heart",
+    "alt_kategori": "Alerji",
+    "alt_ikon": "fa-solid fa-head-side-cough",
+    "soru": "Sabahları uyandığınızda burnunuz tıkalı veya geniz akıntınız oluyor mu?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Çörek Otu Yağı",
+    "destekleyici": "C Vitamini",
+    "tamamlayici": "Bromelain"
+  },
+  {
+    "ana_kategori": "Bağışıklık & Solunum",
+    "ana_ikon": "fa-solid fa-shield-heart",
+    "alt_kategori": "Alerji",
+    "alt_ikon": "fa-solid fa-head-side-cough",
+    "soru": "Cildiniz güneşe veya rüzgara maruz kaldığında aşırı kızarıp kabarıyor mu?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Probiyotik",
+    "destekleyici": "Omega-3",
+    "tamamlayici": "Astaksantin"
+  },
+  {
+    "ana_kategori": "Kas & Eklem",
+    "ana_ikon": "fa-solid fa-bone",
+    "alt_kategori": "Kemik/Eklem",
+    "alt_ikon": "fa-solid fa-person-walking",
+    "soru": "Merdiven inip çıkarken veya çömelirken dizlerinizde ağrı veya çıtırdama oluyor mu?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Tip-2 Kolajen",
+    "destekleyici": "Hyalüronik Asit",
+    "tamamlayici": "Glukozamin & Kondroitin"
+  },
+  {
+    "ana_kategori": "Kas & Eklem",
+    "ana_ikon": "fa-solid fa-bone",
+    "alt_kategori": "Kemik/Eklem",
+    "alt_ikon": "fa-solid fa-person-walking",
+    "soru": "Sabah uyandığınızda eklemlerinizde (eller dizler) tutukluk ve sertlik yaşıyor musunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Curcumin (Zerdeçal)",
+    "destekleyici": "Çınar Yaprağı Kürü (Saraçoğlu)",
+    "tamamlayici": "Boswellia"
+  },
+  {
+    "ana_kategori": "Kas & Eklem",
+    "ana_ikon": "fa-solid fa-bone",
+    "alt_kategori": "Kemik/Eklem",
+    "alt_ikon": "fa-solid fa-person-walking",
+    "soru": "Kemik erimesine (osteoporoz) karşı kemik yoğunluğunuzu korumak istiyor musunuz?",
+    "cinsiyet": "Kadın",
+    "yas_grubu": "40-120",
+    "asil_takviye": "Kalsiyum",
+    "destekleyici": "D3K2 Vitamini",
+    "tamamlayici": "Magnezyum"
+  },
+  {
+    "ana_kategori": "Kas & Eklem",
+    "ana_ikon": "fa-solid fa-bone",
+    "alt_kategori": "Kemik/Eklem",
+    "alt_ikon": "fa-solid fa-person-walking",
+    "soru": "Oturduğunuz yerden kalkarken belinizde veya kalçanızda batma hissi oluyor mu?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Kırkkilit Otu Çayı (Saraçoğlu)",
+    "destekleyici": "Magnezyum Malat",
+    "tamamlayici": "D3K2 Vitamini"
+  },
+  {
+    "ana_kategori": "Kas & Eklem",
+    "ana_ikon": "fa-solid fa-bone",
+    "alt_kategori": "Kemik/Eklem",
+    "alt_ikon": "fa-solid fa-person-walking",
+    "soru": "Hava değişimlerinde eklemlerinizde sızlama veya romatizmal ağrılar hissediyor musunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Curcumin",
+    "destekleyici": "Omega-3",
+    "tamamlayici": "Boswellia"
+  },
+  {
+    "ana_kategori": "Kas & Eklem",
+    "ana_ikon": "fa-solid fa-bone",
+    "alt_kategori": "Kas/Spor",
+    "alt_ikon": "fa-solid fa-dumbbell",
+    "soru": "Spor veya yoğun fiziksel hareket sonrasında kas ağrılarınızın geçmesi uzun sürüyor mu?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Magnezyum (Sitrat/Malat)",
+    "destekleyici": "Çinko",
+    "tamamlayici": "B6 Vitamini"
+  },
+  {
+    "ana_kategori": "Kas & Eklem",
+    "ana_ikon": "fa-solid fa-bone",
+    "alt_kategori": "Kas/Spor",
+    "alt_ikon": "fa-solid fa-dumbbell",
+    "soru": "Boyun sırt veya bel bölgenizde kronikleşen kas spazmları yaşar mısınız?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Magnezyum Yağı (Lokal)",
+    "destekleyici": "Magnezyum Bisglisinat",
+    "tamamlayici": "Kediotu Kökü"
+  },
+  {
+    "ana_kategori": "Kas & Eklem",
+    "ana_ikon": "fa-solid fa-bone",
+    "alt_kategori": "Kas/Spor",
+    "alt_ikon": "fa-solid fa-dumbbell",
+    "soru": "Ağır spor yapıyor veya kas kütlenizi korumakta zorlanıyor musunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "L-Karnitin",
+    "destekleyici": "L-Glutamin",
+    "tamamlayici": "ZMA"
+  },
+  {
+    "ana_kategori": "Kas & Eklem",
+    "ana_ikon": "fa-solid fa-bone",
+    "alt_kategori": "Kas/Spor",
+    "alt_ikon": "fa-solid fa-dumbbell",
+    "soru": "Egzersiz sırasında kaslarınıza kramp giriyor veya kasılmalar yaşıyor musunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Magnezyum Sitrat",
+    "destekleyici": "Potasyum",
+    "tamamlayici": "Kalsiyum"
+  },
+  {
+    "ana_kategori": "Kas & Eklem",
+    "ana_ikon": "fa-solid fa-bone",
+    "alt_kategori": "Kas/Spor",
+    "alt_ikon": "fa-solid fa-dumbbell",
+    "soru": "Düzenli antrenman yapmanıza rağmen gücünüzde bir artış hissedemiyor musunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Kreatin Monohidrat",
+    "destekleyici": "L-Arginin",
+    "tamamlayici": "Omega-3"
+  },
+  {
+    "ana_kategori": "Güzellik & Kozmetik",
+    "ana_ikon": "fa-solid fa-spa",
+    "alt_kategori": "Yüz",
+    "alt_ikon": "fa-solid fa-face-smile",
+    "soru": "Cildinizde kuruluk elastikiyet kaybı veya solgun bir görünüm hissediyor musunuz?",
+    "cinsiyet": "Kadın",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Tip 1 ve 3 Kolajen",
+    "destekleyici": "Hyalüronik Asit",
+    "tamamlayici": "C Vitamini"
+  },
+  {
+    "ana_kategori": "Güzellik & Kozmetik",
+    "ana_ikon": "fa-solid fa-spa",
+    "alt_kategori": "Yüz",
+    "alt_ikon": "fa-solid fa-face-smile",
+    "soru": "Cildinizde geçmeyen akneler siyah noktalar veya hormonal lekelenmeler var mı?",
+    "cinsiyet": "Kadın",
+    "yas_grubu": "18-49",
+    "asil_takviye": "Lavanta Kürü (Saraçoğlu)",
+    "destekleyici": "Çinko",
+    "tamamlayici": "B5 Vitamini"
+  },
+  {
+    "ana_kategori": "Güzellik & Kozmetik",
+    "ana_ikon": "fa-solid fa-spa",
+    "alt_kategori": "Yüz",
+    "alt_ikon": "fa-solid fa-face-smile",
+    "soru": "Güneş lekeleri veya yaşlılığa bağlı cilt kararmaları şikayetiniz var mı?",
+    "cinsiyet": "Kadın",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Glutatyon",
+    "destekleyici": "C Vitamini",
+    "tamamlayici": "Üzüm Çekirdeği Ekstresi"
+  },
+  {
+    "ana_kategori": "Güzellik & Kozmetik",
+    "ana_ikon": "fa-solid fa-spa",
+    "alt_kategori": "Yüz",
+    "alt_ikon": "fa-solid fa-face-smile",
+    "soru": "Göz altlarınızda morluklar şişlikler veya ince kırışıklıklar belirginleşti mi?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "K Vitamini (Lokal/Sistemik)",
+    "destekleyici": "Kolajen",
+    "tamamlayici": "C Vitamini"
+  },
+  {
+    "ana_kategori": "Güzellik & Kozmetik",
+    "ana_ikon": "fa-solid fa-spa",
+    "alt_kategori": "Yüz",
+    "alt_ikon": "fa-solid fa-face-smile",
+    "soru": "Cildiniz çok mu yağlı ve gözenekleriniz genişlemiş durumda mı?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-49",
+    "asil_takviye": "Çinko",
+    "destekleyici": "Niasinamid (B3)",
+    "tamamlayici": "Yeşil Çay Ekstresi"
+  },
+  {
+    "ana_kategori": "Güzellik & Kozmetik",
+    "ana_ikon": "fa-solid fa-spa",
+    "alt_kategori": "Saç",
+    "alt_ikon": "fa-solid fa-scissors",
+    "soru": "Saçlarınızda normalden fazla dökülme incelme veya cansızlık var mı?",
+    "cinsiyet": "Kadın",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Biotin (B7)",
+    "destekleyici": "Kolajen Peptitleri",
+    "tamamlayici": "Demir"
+  },
+  {
+    "ana_kategori": "Güzellik & Kozmetik",
+    "ana_ikon": "fa-solid fa-spa",
+    "alt_kategori": "Saç",
+    "alt_ikon": "fa-solid fa-scissors",
+    "soru": "Saçlarınızda genetik dökülme veya tepe bölgesinde belirgin açılma fark ediyor musunuz?",
+    "cinsiyet": "Erkek",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Cüce Palmiye (Saw Palmetto)",
+    "destekleyici": "Biotin",
+    "tamamlayici": "Çinko"
+  },
+  {
+    "ana_kategori": "Güzellik & Kozmetik",
+    "ana_ikon": "fa-solid fa-spa",
+    "alt_kategori": "Saç",
+    "alt_ikon": "fa-solid fa-scissors",
+    "soru": "Saç diplerinizde kaşıntı kepeklenme veya egzama benzeri pullanmalar var mı?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Isırgan Otu Kürü (Saraçoğlu)",
+    "destekleyici": "Çinko",
+    "tamamlayici": "Omega-3"
+  },
+  {
+    "ana_kategori": "Güzellik & Kozmetik",
+    "ana_ikon": "fa-solid fa-spa",
+    "alt_kategori": "Saç",
+    "alt_ikon": "fa-solid fa-scissors",
+    "soru": "Saçlarınız çok yavaş mı uzuyor veya uçları sürekli kırılıyor mu?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Biotin (B7)",
+    "destekleyici": "Keratin",
+    "tamamlayici": "B-Kompleks"
+  },
+  {
+    "ana_kategori": "Güzellik & Kozmetik",
+    "ana_ikon": "fa-solid fa-spa",
+    "alt_kategori": "Saç",
+    "alt_ikon": "fa-solid fa-scissors",
+    "soru": "Saçlarınız yıkadıktan hemen sonra hızla yağlanıyor ve hacmini kaybediyor mu?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Lavanta Kürü (Lokal/Saraçoğlu)",
+    "destekleyici": "Çinko",
+    "tamamlayici": "B6 Vitamini"
+  },
+  {
+    "ana_kategori": "Güzellik & Kozmetik",
+    "ana_ikon": "fa-solid fa-spa",
+    "alt_kategori": "Tırnak",
+    "alt_ikon": "fa-solid fa-hand-dots",
+    "soru": "Tırnaklarınız çok çabuk kırılıyor veya üzerinde beyaz lekeler oluşuyor mu?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Çinko",
+    "destekleyici": "Biotin",
+    "tamamlayici": "Kalsiyum"
+  },
+  {
+    "ana_kategori": "Güzellik & Kozmetik",
+    "ana_ikon": "fa-solid fa-spa",
+    "alt_kategori": "Tırnak",
+    "alt_ikon": "fa-solid fa-hand-dots",
+    "soru": "Tırnak yüzeyinizde dalgalanmalar çizgiler veya sararmalar var mı?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "B-Kompleks",
+    "destekleyici": "Demir",
+    "tamamlayici": "Kolajen"
+  },
+  {
+    "ana_kategori": "Güzellik & Kozmetik",
+    "ana_ikon": "fa-solid fa-spa",
+    "alt_kategori": "Tırnak",
+    "alt_ikon": "fa-solid fa-hand-dots",
+    "soru": "Tırnak etleriniz sürekli kuruyor soyuluyor veya şeytantırnağı çıkıyor mu?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "E Vitamini",
+    "destekleyici": "Omega-3",
+    "tamamlayici": "C Vitamini"
+  },
+  {
+    "ana_kategori": "Güzellik & Kozmetik",
+    "ana_ikon": "fa-solid fa-spa",
+    "alt_kategori": "Tırnak",
+    "alt_ikon": "fa-solid fa-hand-dots",
+    "soru": "Tırnaklarınızın uzaması çok mu yavaş veya sürekli ince mi çıkıyor?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Biotin",
+    "destekleyici": "Tip 1 ve 3 Kolajen",
+    "tamamlayici": "Çinko"
+  },
+  {
+    "ana_kategori": "Güzellik & Kozmetik",
+    "ana_ikon": "fa-solid fa-spa",
+    "alt_kategori": "Tırnak",
+    "alt_ikon": "fa-solid fa-hand-dots",
+    "soru": "Ayak tırnaklarınızda kalınlaşma veya mantar benzeri renk değişimleri var mı?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Aynısefa Kürü (Saraçoğlu/Lokal)",
+    "destekleyici": "Çay Ağacı Yağı (Lokal)",
+    "tamamlayici": "Probiyotik"
+  },
+  {
+    "ana_kategori": "Kalp & Damar",
+    "ana_ikon": "fa-solid fa-heart-pulse",
+    "alt_kategori": "Dolaşım",
+    "alt_ikon": "fa-solid fa-droplet",
+    "soru": "Bacaklarınızda varis kılcal damar çatlamaları veya ağırlık hissi oluyor mu?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "At Kestanesi Ekstresi",
+    "destekleyici": "C Vitamini",
+    "tamamlayici": "Üzüm Çekirdeği Ekstresi"
+  },
+  {
+    "ana_kategori": "Kalp & Damar",
+    "ana_ikon": "fa-solid fa-heart-pulse",
+    "alt_kategori": "Dolaşım",
+    "alt_ikon": "fa-solid fa-droplet",
+    "soru": "Elleriniz ve ayaklarınız yaz kış sürekli soğuk mu olur?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Ginkgo Biloba",
+    "destekleyici": "Demir",
+    "tamamlayici": "B12 Vitamini"
+  },
+  {
+    "ana_kategori": "Kalp & Damar",
+    "ana_ikon": "fa-solid fa-heart-pulse",
+    "alt_kategori": "Dolaşım",
+    "alt_ikon": "fa-solid fa-droplet",
+    "soru": "Uzun süre ayakta kaldığınızda veya oturduğunuzda bacaklarınızda şişme oluyor mu?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Bromelain",
+    "destekleyici": "Magnezyum",
+    "tamamlayici": "At Kestanesi Ekstresi"
+  },
+  {
+    "ana_kategori": "Kalp & Damar",
+    "ana_ikon": "fa-solid fa-heart-pulse",
+    "alt_kategori": "Dolaşım",
+    "alt_ikon": "fa-solid fa-droplet",
+    "soru": "Çabuk yorulma veya efor sarf ederken (merdiven çıkarken) nefes nefese kalma durumu yaşıyor musunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "40-120",
+    "asil_takviye": "Koenzim Q10",
+    "destekleyici": "L-Karnitin",
+    "tamamlayici": "Demir"
+  },
+  {
+    "ana_kategori": "Kalp & Damar",
+    "ana_ikon": "fa-solid fa-heart-pulse",
+    "alt_kategori": "Dolaşım",
+    "alt_ikon": "fa-solid fa-droplet",
+    "soru": "Kılcal damar kanamaları veya cildinizde kolayca morarmalar oluyor mu?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "C Vitamini",
+    "destekleyici": "K Vitamini",
+    "tamamlayici": "Kuersetin"
+  },
+  {
+    "ana_kategori": "Kalp & Damar",
+    "ana_ikon": "fa-solid fa-heart-pulse",
+    "alt_kategori": "Kolesterol/Tansiyon",
+    "alt_ikon": "fa-solid fa-arrow-down-up-active",
+    "soru": "Tansiyon/kolesterol dengenizi desteklemek ve kalp sağlığınızı korumak istiyor musunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "40-120",
+    "asil_takviye": "Omega-3 (Yüksek EPA)",
+    "destekleyici": "Limon-Sarımsak Kürü (Saraçoğlu)",
+    "tamamlayici": "Koenzim Q10"
+  },
+  {
+    "ana_kategori": "Kalp & Damar",
+    "ana_ikon": "fa-solid fa-heart-pulse",
+    "alt_kategori": "Kolesterol/Tansiyon",
+    "alt_ikon": "fa-solid fa-arrow-down-up-active",
+    "soru": "Ailenizde kalp rahatsızlığı öyküsü var mı veya kan dolaşımınızı desteklemek ister misiniz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "40-120",
+    "asil_takviye": "Resveratrol",
+    "destekleyici": "Sarımsak Ekstresi",
+    "tamamlayici": "Omega-3"
+  },
+  {
+    "ana_kategori": "Kalp & Damar",
+    "ana_ikon": "fa-solid fa-heart-pulse",
+    "alt_kategori": "Kolesterol/Tansiyon",
+    "alt_ikon": "fa-solid fa-arrow-down-up-active",
+    "soru": "Kalp beyin ve genel hücre sağlığınız için temel bir antioksidan kalkanı oluşturmak ister misiniz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Omega-3 (Balık Yağı)",
+    "destekleyici": "Koenzim Q10",
+    "tamamlayici": "Glutatyon"
+  },
+  {
+    "ana_kategori": "Kalp & Damar",
+    "ana_ikon": "fa-solid fa-heart-pulse",
+    "alt_kategori": "Kolesterol/Tansiyon",
+    "alt_ikon": "fa-solid fa-arrow-down-up-active",
+    "soru": "Stresli anlarda çarpıntı kalp atışında hızlanma veya ritim bozukluğu hissediyor musunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Karabaş Otu Çayı (Saraçoğlu)",
+    "destekleyici": "Magnezyum Taurat",
+    "tamamlayici": "Alıç Ekstresi"
+  },
+  {
+    "ana_kategori": "Kalp & Damar",
+    "ana_ikon": "fa-solid fa-heart-pulse",
+    "alt_kategori": "Kolesterol/Tansiyon",
+    "alt_ikon": "fa-solid fa-arrow-down-up-active",
+    "soru": "Trigliserid veya kötü kolesterol (LDL) seviyeleriniz sınırda veya yüksek mi çıkıyor?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Omega-3 (EPA)",
+    "destekleyici": "Enginar Ekstresi",
+    "tamamlayici": "Yulaf Samanı Kürü (Saraçoğlu)"
+  },
+  {
+    "ana_kategori": "Beyin & Göz",
+    "ana_ikon": "fa-solid fa-brain",
+    "alt_kategori": "Hafıza/Odak",
+    "alt_ikon": "fa-solid fa-lightbulb",
+    "soru": "Son zamanlarda isimleri kelimeleri veya eşyaların yerini sık sık unutuyor musunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Ginkgo Biloba",
+    "destekleyici": "B12 Vitamini",
+    "tamamlayici": "Omega-3 (Yüksek DHA)"
+  },
+  {
+    "ana_kategori": "Beyin & Göz",
+    "ana_ikon": "fa-solid fa-brain",
+    "alt_kategori": "Hafıza/Odak",
+    "alt_ikon": "fa-solid fa-lightbulb",
+    "soru": "Zihinsel olarak kendinizi bulanık (beyin sisi) veya odaklanırken çabuk yorulmuş hissediyor musunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Sitikolin",
+    "destekleyici": "Magnezyum Treonat",
+    "tamamlayici": "B-Kompleks"
+  },
+  {
+    "ana_kategori": "Beyin & Göz",
+    "ana_ikon": "fa-solid fa-brain",
+    "alt_kategori": "Hafıza/Odak",
+    "alt_ikon": "fa-solid fa-lightbulb",
+    "soru": "Ekran başında çalışırken veya okurken uzun süre odaklanmakta zorlanıyor musunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Omega-3 (Yüksek DHA)",
+    "destekleyici": "Lutein",
+    "tamamlayici": "Fosfatidilserin"
+  },
+  {
+    "ana_kategori": "Beyin & Göz",
+    "ana_ikon": "fa-solid fa-brain",
+    "alt_kategori": "Hafıza/Odak",
+    "alt_ikon": "fa-solid fa-lightbulb",
+    "soru": "Yeni bir şeyler öğrenirken veya okuduğunuzu anlarken eskiye göre daha fazla mı zorlanıyorsunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Fosfatidilserin",
+    "destekleyici": "Ginkgo Biloba",
+    "tamamlayici": "Sitikolin"
+  },
+  {
+    "ana_kategori": "Beyin & Göz",
+    "ana_ikon": "fa-solid fa-brain",
+    "alt_kategori": "Hafıza/Odak",
+    "alt_ikon": "fa-solid fa-lightbulb",
+    "soru": "Kafanızın içi sürekli dolu gibi mi ve düşüncelerinizi toparlamakta güçlük mü çekiyorsunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Magnezyum Treonat",
+    "destekleyici": "L-Teanin",
+    "tamamlayici": "Omega-3"
+  },
+  {
+    "ana_kategori": "Beyin & Göz",
+    "ana_ikon": "fa-solid fa-brain",
+    "alt_kategori": "Göz",
+    "alt_ikon": "fa-solid fa-eye",
+    "soru": "Gözlerinizde sık sık kuruluk yanma veya batma hissediyor musunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Omega-3",
+    "destekleyici": "A Vitamini",
+    "tamamlayici": "Çinko"
+  },
+  {
+    "ana_kategori": "Beyin & Göz",
+    "ana_ikon": "fa-solid fa-brain",
+    "alt_kategori": "Göz",
+    "alt_ikon": "fa-solid fa-eye",
+    "soru": "Uzun süre ekrana bakmaktan dolayı baş veya göz yorgunluğu yaşıyor musunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Lutein ve Zeaksantin",
+    "destekleyici": "Yaban Mersini Ekstresi",
+    "tamamlayici": "A Vitamini"
+  },
+  {
+    "ana_kategori": "Beyin & Göz",
+    "ana_ikon": "fa-solid fa-brain",
+    "alt_kategori": "Göz",
+    "alt_ikon": "fa-solid fa-eye",
+    "soru": "Gece görüşünüzde zayıflama veya bulanıklaşma fark ettiniz mi?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "40-120",
+    "asil_takviye": "A Vitamini",
+    "destekleyici": "Beta Karoten",
+    "tamamlayici": "Lutein"
+  },
+  {
+    "ana_kategori": "Beyin & Göz",
+    "ana_ikon": "fa-solid fa-brain",
+    "alt_kategori": "Göz",
+    "alt_ikon": "fa-solid fa-eye",
+    "soru": "Gözünüzde sık sık seğirme (tik) veya ışığa karşı aşırı hassasiyet oluyor mu?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Magnezyum Sitrat",
+    "destekleyici": "B-Kompleks",
+    "tamamlayici": "A Vitamini"
+  },
+  {
+    "ana_kategori": "Beyin & Göz",
+    "ana_ikon": "fa-solid fa-brain",
+    "alt_kategori": "Göz",
+    "alt_ikon": "fa-solid fa-eye",
+    "soru": "Kitap okurken yazılar birbirine giriyor veya odaklanma sorunu yaşıyor musunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Lutein",
+    "destekleyici": "Omega-3 (DHA)",
+    "tamamlayici": "Çinko"
+  },
+  {
+    "ana_kategori": "Kadın Sağlığı",
+    "ana_ikon": "fa-solid fa-venus",
+    "alt_kategori": "Hormon/Adet",
+    "alt_ikon": "fa-solid fa-calendar-days",
+    "soru": "Regl (adet) dönemleriniz çok ağrılı sancılı veya aşırı gergin geçiyor mu?",
+    "cinsiyet": "Kadın",
+    "yas_grubu": "18-49",
+    "asil_takviye": "Civanperçemi Çayı (Saraçoğlu)",
+    "destekleyici": "Magnezyum",
+    "tamamlayici": "Çuha Çiçeği Yağı"
+  },
+  {
+    "ana_kategori": "Kadın Sağlığı",
+    "ana_ikon": "fa-solid fa-venus",
+    "alt_kategori": "Hormon/Adet",
+    "alt_ikon": "fa-solid fa-calendar-days",
+    "soru": "Adet düzensizliği tüylenme veya kist (PCOS) şikayetiniz var mı?",
+    "cinsiyet": "Kadın",
+    "yas_grubu": "18-49",
+    "asil_takviye": "Soğan Kürü (Saraçoğlu)",
+    "destekleyici": "İnositol",
+    "tamamlayici": "Aslanpençesi Çayı"
+  },
+  {
+    "ana_kategori": "Kadın Sağlığı",
+    "ana_ikon": "fa-solid fa-venus",
+    "alt_kategori": "Hormon/Adet",
+    "alt_ikon": "fa-solid fa-calendar-days",
+    "soru": "Adet öncesi (PMS) döneminde aşırı tatlı krizi veya duygusal dalgalanmalar yaşıyor musunuz?",
+    "cinsiyet": "Kadın",
+    "yas_grubu": "18-49",
+    "asil_takviye": "Krom Pikolinat",
+    "destekleyici": "Magnezyum",
+    "tamamlayici": "B6 Vitamini"
+  },
+  {
+    "ana_kategori": "Kadın Sağlığı",
+    "ana_ikon": "fa-solid fa-venus",
+    "alt_kategori": "Hormon/Adet",
+    "alt_ikon": "fa-solid fa-calendar-days",
+    "soru": "Göğüslerinizde adet öncesi şiddetli şişkinlik ve hassasiyet oluyor mu?",
+    "cinsiyet": "Kadın",
+    "yas_grubu": "18-49",
+    "asil_takviye": "Çuha Çiçeği Yağı",
+    "destekleyici": "E Vitamini",
+    "tamamlayici": "B6 Vitamini"
+  },
+  {
+    "ana_kategori": "Kadın Sağlığı",
+    "ana_ikon": "fa-solid fa-venus",
+    "alt_kategori": "Hormon/Adet",
+    "alt_ikon": "fa-solid fa-calendar-days",
+    "soru": "Adet kanamalarınız çok yoğun geçiyor ve buna bağlı kansızlık yaşıyor musunuz?",
+    "cinsiyet": "Kadın",
+    "yas_grubu": "18-49",
+    "asil_takviye": "Demir (Ferritin)",
+    "destekleyici": "C Vitamini",
+    "tamamlayici": "B12 Vitamini"
+  },
+  {
+    "ana_kategori": "Kadın Sağlığı",
+    "ana_ikon": "fa-solid fa-venus",
+    "alt_kategori": "Gebelik/Anne",
+    "alt_ikon": "fa-solid fa-person-breastfeeding",
+    "soru": "Şu anda hamilelik planlıyor hamile veya emzirme döneminde misiniz?",
+    "cinsiyet": "Kadın",
+    "yas_grubu": "18-49",
+    "asil_takviye": "Folik Asit (Aktif)",
+    "destekleyici": "İyot",
+    "tamamlayici": "Demir"
+  },
+  {
+    "ana_kategori": "Kadın Sağlığı",
+    "ana_ikon": "fa-solid fa-venus",
+    "alt_kategori": "Gebelik/Anne",
+    "alt_ikon": "fa-solid fa-person-breastfeeding",
+    "soru": "Bu dönemde bebeğin beyin gelişimi ve kendi depolarınız için ek destek arıyor musunuz?",
+    "cinsiyet": "Kadın",
+    "yas_grubu": "18-49",
+    "asil_takviye": "Anne Omega-3 / Kolin",
+    "destekleyici": "Kalsiyum",
+    "tamamlayici": "D3K2 Vitamini"
+  },
+  {
+    "ana_kategori": "Kadın Sağlığı",
+    "ana_ikon": "fa-solid fa-venus",
+    "alt_kategori": "Gebelik/Anne",
+    "alt_ikon": "fa-solid fa-person-breastfeeding",
+    "soru": "Emzirme döneminde süt miktarını ve kalitesini doğal yollardan artırmak istiyor musunuz?",
+    "cinsiyet": "Kadın",
+    "yas_grubu": "18-49",
+    "asil_takviye": "Taze Beyaz Üzüm Kürü (Saraçoğlu)",
+    "destekleyici": "Rezene Çayı",
+    "tamamlayici": "Kalsiyum"
+  },
+  {
+    "ana_kategori": "Kadın Sağlığı",
+    "ana_ikon": "fa-solid fa-venus",
+    "alt_kategori": "Gebelik/Anne",
+    "alt_ikon": "fa-solid fa-person-breastfeeding",
+    "soru": "Hamilelik sürecinde bacak krampları veya uyku problemleri yaşıyor musunuz?",
+    "cinsiyet": "Kadın",
+    "yas_grubu": "18-49",
+    "asil_takviye": "Magnezyum Sitrat/Malat",
+    "destekleyici": "Kalsiyum",
+    "tamamlayici": "Papatya Çayı"
+  },
+  {
+    "ana_kategori": "Kadın Sağlığı",
+    "ana_ikon": "fa-solid fa-venus",
+    "alt_kategori": "Gebelik/Anne",
+    "alt_ikon": "fa-solid fa-person-breastfeeding",
+    "soru": "Doğum sonrası saç dökülmesi veya ciltte çatlak/lekelenme sorunları yaşıyor musunuz?",
+    "cinsiyet": "Kadın",
+    "yas_grubu": "18-49",
+    "asil_takviye": "Kolajen Peptitleri",
+    "destekleyici": "Biotin",
+    "tamamlayici": "C Vitamini"
+  },
+  {
+    "ana_kategori": "Kadın Sağlığı",
+    "ana_ikon": "fa-solid fa-venus",
+    "alt_kategori": "Menopoz",
+    "alt_ikon": "fa-solid fa-temperature-arrow-down",
+    "soru": "Menopoza bağlı şiddetli sıcak basması veya gece terlemeleri yaşıyor musunuz?",
+    "cinsiyet": "Kadın",
+    "yas_grubu": "40-120",
+    "asil_takviye": "Testere Dişli Aslanpençesi Kürü (Saraçoğlu)",
+    "destekleyici": "Karayılan Otu",
+    "tamamlayici": "E Vitamini"
+  },
+  {
+    "ana_kategori": "Kadın Sağlığı",
+    "ana_ikon": "fa-solid fa-venus",
+    "alt_kategori": "Menopoz",
+    "alt_ikon": "fa-solid fa-temperature-arrow-down",
+    "soru": "Bu dönemde ani ruh hali değişimleri nedensiz ağlama krizleri veya depresif hissediyor musunuz?",
+    "cinsiyet": "Kadın",
+    "yas_grubu": "40-120",
+    "asil_takviye": "Sarı Kantaron",
+    "destekleyici": "Magnezyum",
+    "tamamlayici": "B-Kompleks"
+  },
+  {
+    "ana_kategori": "Kadın Sağlığı",
+    "ana_ikon": "fa-solid fa-venus",
+    "alt_kategori": "Menopoz",
+    "alt_ikon": "fa-solid fa-temperature-arrow-down",
+    "soru": "Menopoz döneminde uyku kalitenizde düşüş veya vajinal kuruluk yaşıyor musunuz?",
+    "cinsiyet": "Kadın",
+    "yas_grubu": "40-120",
+    "asil_takviye": "Çuha Çiçeği Yağı",
+    "destekleyici": "Omega-7",
+    "tamamlayici": "E Vitamini"
+  },
+  {
+    "ana_kategori": "Kadın Sağlığı",
+    "ana_ikon": "fa-solid fa-venus",
+    "alt_kategori": "Menopoz",
+    "alt_ikon": "fa-solid fa-temperature-arrow-down",
+    "soru": "Menopoz sonrası kemik erimesi (osteoporoz) riski taşıyor musunuz?",
+    "cinsiyet": "Kadın",
+    "yas_grubu": "40-120",
+    "asil_takviye": "Kalsiyum",
+    "destekleyici": "D3K2 Vitamini",
+    "tamamlayici": "Magnezyum"
+  },
+  {
+    "ana_kategori": "Kadın Sağlığı",
+    "ana_ikon": "fa-solid fa-venus",
+    "alt_kategori": "Menopoz",
+    "alt_ikon": "fa-solid fa-temperature-arrow-down",
+    "soru": "Menopoza geçiş döneminde adet kanamalarında aşırı dengesizlik yaşıyor musunuz?",
+    "cinsiyet": "Kadın",
+    "yas_grubu": "40-120",
+    "asil_takviye": "Hayıt Ekstresi (Agnus Castus)",
+    "destekleyici": "Magnezyum",
+    "tamamlayici": "Demir"
+  },
+  {
+    "ana_kategori": "Kadın Sağlığı",
+    "ana_ikon": "fa-solid fa-venus",
+    "alt_kategori": "İdrar Yolları",
+    "alt_ikon": "fa-solid fa-droplet",
+    "soru": "Sık sık idrar yolu hassasiyeti (yanma sık idrara çıkma) yaşar mısınız?",
+    "cinsiyet": "Kadın",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Turna Yemişi (Cranberry)",
+    "destekleyici": "D-Mannose",
+    "tamamlayici": "C Vitamini"
+  },
+  {
+    "ana_kategori": "Kadın Sağlığı",
+    "ana_ikon": "fa-solid fa-venus",
+    "alt_kategori": "İdrar Yolları",
+    "alt_ikon": "fa-solid fa-droplet",
+    "soru": "İdrar yolları enfeksiyonunuz (sistit) sürekli tekrarlıyor mu?",
+    "cinsiyet": "Kadın",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Karnabahar Kürü (Saraçoğlu)",
+    "destekleyici": "Turna Yemişi",
+    "tamamlayici": "Probiyotik"
+  },
+  {
+    "ana_kategori": "Kadın Sağlığı",
+    "ana_ikon": "fa-solid fa-venus",
+    "alt_kategori": "İdrar Yolları",
+    "alt_ikon": "fa-solid fa-droplet",
+    "soru": "Özellikle soğuk aldığınızda idrar kaçırma veya acil idrara çıkma hissi yaşıyor musunuz?",
+    "cinsiyet": "Kadın",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Sarı Kantaron Çayı",
+    "destekleyici": "Magnezyum",
+    "tamamlayici": "Kalsiyum"
+  },
+  {
+    "ana_kategori": "Kadın Sağlığı",
+    "ana_ikon": "fa-solid fa-venus",
+    "alt_kategori": "İdrar Yolları",
+    "alt_ikon": "fa-solid fa-droplet",
+    "soru": "Tuvalete çıkarken sancı veya pelvik bölgenizde baskı hissediyor musunuz?",
+    "cinsiyet": "Kadın",
+    "yas_grubu": "18-120",
+    "asil_takviye": "D-Mannose",
+    "destekleyici": "C Vitamini",
+    "tamamlayici": "Papatya Çayı"
+  },
+  {
+    "ana_kategori": "Kadın Sağlığı",
+    "ana_ikon": "fa-solid fa-venus",
+    "alt_kategori": "İdrar Yolları",
+    "alt_ikon": "fa-solid fa-droplet",
+    "soru": "Mesanede tam boşalamama hissi ve kasıklarda baskı yaşıyor musunuz?",
+    "cinsiyet": "Kadın",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Karnabahar Kürü (Saraçoğlu)",
+    "destekleyici": "Magnezyum",
+    "tamamlayici": "Turna Yemişi"
+  },
+  {
+    "ana_kategori": "Erkek Sağlığı",
+    "ana_ikon": "fa-solid fa-mars",
+    "alt_kategori": "Prostat",
+    "alt_ikon": "fa-solid fa-toilet",
+    "soru": "Geceleri sık sık idrara çıkma ihtiyacı ile uyanıyor musunuz?",
+    "cinsiyet": "Erkek",
+    "yas_grubu": "40-120",
+    "asil_takviye": "Cüce Palmiye (Saw Palmetto)",
+    "destekleyici": "Kabak Çekirdeği Ekstresi",
+    "tamamlayici": "Çinko"
+  },
+  {
+    "ana_kategori": "Erkek Sağlığı",
+    "ana_ikon": "fa-solid fa-mars",
+    "alt_kategori": "Prostat",
+    "alt_ikon": "fa-solid fa-toilet",
+    "soru": "Prostat büyümesine bağlı idrar yaparken zorlanma veya çatallanma yaşıyor musunuz?",
+    "cinsiyet": "Erkek",
+    "yas_grubu": "40-120",
+    "asil_takviye": "Brokoli Kürü (Saraçoğlu)",
+    "destekleyici": "Yakı Otu",
+    "tamamlayici": "Cüce Palmiye Ekstresi"
+  },
+  {
+    "ana_kategori": "Erkek Sağlığı",
+    "ana_ikon": "fa-solid fa-mars",
+    "alt_kategori": "Prostat",
+    "alt_ikon": "fa-solid fa-toilet",
+    "soru": "İdrarınızı tam boşaltamama hissi ve mesanede doluluk hissediyor musunuz?",
+    "cinsiyet": "Erkek",
+    "yas_grubu": "40-120",
+    "asil_takviye": "Yakı Otu Çayı",
+    "destekleyici": "Kabak Çekirdeği Yağı",
+    "tamamlayici": "Magnezyum"
+  },
+  {
+    "ana_kategori": "Erkek Sağlığı",
+    "ana_ikon": "fa-solid fa-mars",
+    "alt_kategori": "Prostat",
+    "alt_ikon": "fa-solid fa-toilet",
+    "soru": "İdrar akış hızınızda (tazyikinde) eskiye göre belirgin bir azalma var mı?",
+    "cinsiyet": "Erkek",
+    "yas_grubu": "40-120",
+    "asil_takviye": "Brokoli Kürü (Saraçoğlu)",
+    "destekleyici": "Çinko",
+    "tamamlayici": "Cüce Palmiye"
+  },
+  {
+    "ana_kategori": "Erkek Sağlığı",
+    "ana_ikon": "fa-solid fa-mars",
+    "alt_kategori": "Prostat",
+    "alt_ikon": "fa-solid fa-toilet",
+    "soru": "PSA değerlerinizde sınırda bir yükseklik veya doktor takibi durumunuz var mı?",
+    "cinsiyet": "Erkek",
+    "yas_grubu": "40-120",
+    "asil_takviye": "Domates Kürü (Likopen/Saraçoğlu)",
+    "destekleyici": "Yeşil Çay Ekstresi",
+    "tamamlayici": "Selenyum"
+  },
+  {
+    "ana_kategori": "Erkek Sağlığı",
+    "ana_ikon": "fa-solid fa-mars",
+    "alt_kategori": "Prostat",
+    "alt_ikon": "fa-solid fa-toilet",
+    "soru": "İdrarda yanma sızlama veya pelvik ağrı şikayetiniz var mı?",
+    "cinsiyet": "Erkek",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Karnabahar Kürü (Saraçoğlu)",
+    "destekleyici": "D-Mannose",
+    "tamamlayici": "C Vitamini"
+  },
+  {
+    "ana_kategori": "Erkek Sağlığı",
+    "ana_ikon": "fa-solid fa-mars",
+    "alt_kategori": "Performans",
+    "alt_ikon": "fa-solid fa-bolt-lightning",
+    "soru": "Sperm kalitesini veya genel üreme sağlığını desteklemek istiyor musunuz?",
+    "cinsiyet": "Erkek",
+    "yas_grubu": "18-60",
+    "asil_takviye": "Keçiboynuzu Kürü (Saraçoğlu)",
+    "destekleyici": "L-Karnitin",
+    "tamamlayici": "Çinko"
+  },
+  {
+    "ana_kategori": "Erkek Sağlığı",
+    "ana_ikon": "fa-solid fa-mars",
+    "alt_kategori": "Performans",
+    "alt_ikon": "fa-solid fa-bolt-lightning",
+    "soru": "Fiziksel dayanıklılığınızı ve performansınızı artıracak ekstra güce ihtiyaç duyuyor musunuz?",
+    "cinsiyet": "Erkek",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Ginseng Ekstresi",
+    "destekleyici": "Maca Kökü",
+    "tamamlayici": "Tribulus"
+  },
+  {
+    "ana_kategori": "Erkek Sağlığı",
+    "ana_ikon": "fa-solid fa-mars",
+    "alt_kategori": "Performans",
+    "alt_ikon": "fa-solid fa-bolt-lightning",
+    "soru": "Günlük fiziksel performansınızda gücünüzde veya dayanıklılığınızda düşüş hissediyor musunuz?",
+    "cinsiyet": "Erkek",
+    "yas_grubu": "18-120",
+    "asil_takviye": "L-Arginin",
+    "destekleyici": "Koenzim Q10",
+    "tamamlayici": "Omega-3"
+  },
+  {
+    "ana_kategori": "Erkek Sağlığı",
+    "ana_ikon": "fa-solid fa-mars",
+    "alt_kategori": "Performans",
+    "alt_ikon": "fa-solid fa-bolt-lightning",
+    "soru": "Stres veya yorgunluğa bağlı olarak cinsel isteğinizde (libido) azalma hissediyor musunuz?",
+    "cinsiyet": "Erkek",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Maca Kökü",
+    "destekleyici": "Çinko",
+    "tamamlayici": "Ginseng Ekstresi"
+  },
+  {
+    "ana_kategori": "Erkek Sağlığı",
+    "ana_ikon": "fa-solid fa-mars",
+    "alt_kategori": "Performans",
+    "alt_ikon": "fa-solid fa-bolt-lightning",
+    "soru": "Kas kütlenizi artırmak ve testosteron seviyenizi doğal yollardan desteklemek istiyor musunuz?",
+    "cinsiyet": "Erkek",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Tribulus Terrestris",
+    "destekleyici": "ZMA (Çinko/Mag/B6)",
+    "tamamlayici": "D3K2 Vitamini"
+  },
+  {
+    "ana_kategori": "Çocuk & Ergen",
+    "ana_ikon": "fa-solid fa-child",
+    "alt_kategori": "Gelişim",
+    "alt_ikon": "fa-solid fa-arrow-trend-up",
+    "soru": "Çocuğunuzda iştahsızlık veya kilo alımında yavaşlık gözlemliyor musunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "4-11",
+    "asil_takviye": "Çinko",
+    "destekleyici": "Magnezyum",
+    "tamamlayici": "B-Kompleks"
+  },
+  {
+    "ana_kategori": "Çocuk & Ergen",
+    "ana_ikon": "fa-solid fa-child",
+    "alt_kategori": "Gelişim",
+    "alt_ikon": "fa-solid fa-arrow-trend-up",
+    "soru": "Çocuğunuz okula gidiyor mu ve akranlarına göre daha sık mı hastalanıyor?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "4-17",
+    "asil_takviye": "Kara Mürver",
+    "destekleyici": "Beta Glukan",
+    "tamamlayici": "C Vitamini"
+  },
+  {
+    "ana_kategori": "Çocuk & Ergen",
+    "ana_ikon": "fa-solid fa-child",
+    "alt_kategori": "Gelişim",
+    "alt_ikon": "fa-solid fa-arrow-trend-up",
+    "soru": "Büyüme çağında kemik gelişimini ve boy uzamasını ekstra desteklemek istiyor musunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "12-17",
+    "asil_takviye": "L-Arginin",
+    "destekleyici": "D3K2 Vitamini",
+    "tamamlayici": "Kalsiyum"
+  },
+  {
+    "ana_kategori": "Çocuk & Ergen",
+    "ana_ikon": "fa-solid fa-child",
+    "alt_kategori": "Gelişim",
+    "alt_ikon": "fa-solid fa-arrow-trend-up",
+    "soru": "Çocuğunuz sık sık abur cubur yiyor ve sağlıklı gıdaları reddediyor mu?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "4-17",
+    "asil_takviye": "Probiyotik",
+    "destekleyici": "Omega-3",
+    "tamamlayici": "Çinko"
+  },
+  {
+    "ana_kategori": "Çocuk & Ergen",
+    "ana_ikon": "fa-solid fa-child",
+    "alt_kategori": "Gelişim",
+    "alt_ikon": "fa-solid fa-arrow-trend-up",
+    "soru": "Geceleri bacaklarında 'büyüme ağrısı' dediğimiz sızlamalar oluyor mu?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "4-11",
+    "asil_takviye": "Magnezyum Sitrat",
+    "destekleyici": "Kalsiyum",
+    "tamamlayici": "D3K2 Vitamini"
+  },
+  {
+    "ana_kategori": "Çocuk & Ergen",
+    "ana_ikon": "fa-solid fa-child",
+    "alt_kategori": "Gelişim",
+    "alt_ikon": "fa-solid fa-arrow-trend-up",
+    "soru": "Çocuğunuzda kansızlık (demir eksikliği) veya soluk ten rengi fark ediyor musunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "4-17",
+    "asil_takviye": "Kuru Üzüm Özü (Saraçoğlu)",
+    "destekleyici": "Demir Damlası",
+    "tamamlayici": "C Vitamini"
+  },
+  {
+    "ana_kategori": "Çocuk & Ergen",
+    "ana_ikon": "fa-solid fa-child",
+    "alt_kategori": "Okul/Zihin",
+    "alt_ikon": "fa-solid fa-book",
+    "soru": "Okul başarısı için dikkatini toplaması ve odaklanma desteği arıyor musunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "4-17",
+    "asil_takviye": "Sitikolin",
+    "destekleyici": "Omega-3 (Yüksek DHA)",
+    "tamamlayici": "Fosfatidilserin"
+  },
+  {
+    "ana_kategori": "Çocuk & Ergen",
+    "ana_ikon": "fa-solid fa-child",
+    "alt_kategori": "Okul/Zihin",
+    "alt_ikon": "fa-solid fa-book",
+    "soru": "Çocuğunuzda aşırı hareketlilik (hiperaktivite) veya yerinde duramama hali var mı?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "4-17",
+    "asil_takviye": "Omega-3 (EPA/DHA Dengeli)",
+    "destekleyici": "Magnezyum",
+    "tamamlayici": "B6 Vitamini"
+  },
+  {
+    "ana_kategori": "Çocuk & Ergen",
+    "ana_ikon": "fa-solid fa-child",
+    "alt_kategori": "Okul/Zihin",
+    "alt_ikon": "fa-solid fa-book",
+    "soru": "Ders çalışırken çok çabuk sıkılıyor ve ekran (tablet/telefon) bağımlılığı yaşıyor mu?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "4-17",
+    "asil_takviye": "L-Teanin",
+    "destekleyici": "Omega-3",
+    "tamamlayici": "B-Kompleks"
+  },
+  {
+    "ana_kategori": "Çocuk & Ergen",
+    "ana_ikon": "fa-solid fa-child",
+    "alt_kategori": "Okul/Zihin",
+    "alt_ikon": "fa-solid fa-book",
+    "soru": "Sınav dönemlerinde aşırı stres kaygı veya karın ağrısı çekiyor mu?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "12-17",
+    "asil_takviye": "Melisa Çayı",
+    "destekleyici": "Passiflora Ekstresi",
+    "tamamlayici": "Probiyotik"
+  },
+  {
+    "ana_kategori": "Çocuk & Ergen",
+    "ana_ikon": "fa-solid fa-child",
+    "alt_kategori": "Okul/Zihin",
+    "alt_ikon": "fa-solid fa-book",
+    "soru": "Uykuya dalmakta zorlanıyor ve sabahları okula gitmek için uyanamıyor mu?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "4-17",
+    "asil_takviye": "Papatya Çayı",
+    "destekleyici": "Magnezyum",
+    "tamamlayici": "L-Teanin"
+  },
+  {
+    "ana_kategori": "Sinir & Psikoloji",
+    "ana_ikon": "fa-solid fa-brain",
+    "alt_kategori": "Stres/Kaygı",
+    "alt_ikon": "fa-solid fa-wind",
+    "soru": "Gün içinde sürekli gergin aceleci veya huzursuz hissediyor musunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "L-Teanin",
+    "destekleyici": "Passiflora",
+    "tamamlayici": "Magnezyum Taurat"
+  },
+  {
+    "ana_kategori": "Sinir & Psikoloji",
+    "ana_ikon": "fa-solid fa-brain",
+    "alt_kategori": "Stres/Kaygı",
+    "alt_ikon": "fa-solid fa-wind",
+    "soru": "Panik hali nefes darlığı veya göğüste sıkışma hissi yaşıyor musunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Sarı Kantaron Çayı",
+    "destekleyici": "Kediotu Kökü",
+    "tamamlayici": "B-Kompleks"
+  },
+  {
+    "ana_kategori": "Sinir & Psikoloji",
+    "ana_ikon": "fa-solid fa-brain",
+    "alt_kategori": "Stres/Kaygı",
+    "alt_ikon": "fa-solid fa-wind",
+    "soru": "Kafanıza taktığınız düşünceler yüzünden günlük işlerinize odaklanamıyor musunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Magnezyum Treonat",
+    "destekleyici": "L-Teanin",
+    "tamamlayici": "Ginkgo Biloba"
+  },
+  {
+    "ana_kategori": "Sinir & Psikoloji",
+    "ana_ikon": "fa-solid fa-brain",
+    "alt_kategori": "Stres/Kaygı",
+    "alt_ikon": "fa-solid fa-wind",
+    "soru": "Topluluk içine çıkarken veya önemli bir iş öncesi ellerinizde titreme/terleme oluyor mu?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Passiflora",
+    "destekleyici": "Melisa Ekstresi",
+    "tamamlayici": "L-Teanin"
+  },
+  {
+    "ana_kategori": "Sinir & Psikoloji",
+    "ana_ikon": "fa-solid fa-brain",
+    "alt_kategori": "Stres/Kaygı",
+    "alt_ikon": "fa-solid fa-wind",
+    "soru": "Sürekli bir yorgunluk ve 'hiçbir şey yapmak istememe' (depresif) hali içinde misiniz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Sarı Kantaron Ekstresi",
+    "destekleyici": "D3K2 Vitamini",
+    "tamamlayici": "Omega-3"
+  },
+  {
+    "ana_kategori": "Sinir & Psikoloji",
+    "ana_ikon": "fa-solid fa-brain",
+    "alt_kategori": "Duygu Durumu",
+    "alt_ikon": "fa-solid fa-face-frown",
+    "soru": "Kendinizi sık sık mutsuz umutsuz veya enerjisi çekilmiş hissediyor musunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Sarı Kantaron Çayı (Saraçoğlu)",
+    "destekleyici": "B-Kompleks",
+    "tamamlayici": "D3K2 Vitamini"
+  },
+  {
+    "ana_kategori": "Sinir & Psikoloji",
+    "ana_ikon": "fa-solid fa-brain",
+    "alt_kategori": "Duygu Durumu",
+    "alt_ikon": "fa-solid fa-face-frown",
+    "soru": "Eskiden zevk aldığınız hobilere veya aktivitelere karşı ilginizi kaybettiniz mi?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Omega-3 (Yüksek EPA)",
+    "destekleyici": "L-Tirozin",
+    "tamamlayici": "B12 Vitamini"
+  },
+  {
+    "ana_kategori": "Sinir & Psikoloji",
+    "ana_ikon": "fa-solid fa-brain",
+    "alt_kategori": "Duygu Durumu",
+    "alt_ikon": "fa-solid fa-face-frown",
+    "soru": "Ani öfke patlamaları yaşıyor ve sonrasında pişmanlık duyuyor musunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "L-Teanin",
+    "destekleyici": "Magnezyum Bisglisinat",
+    "tamamlayici": "Papatya Çayı"
+  },
+  {
+    "ana_kategori": "Sinir & Psikoloji",
+    "ana_ikon": "fa-solid fa-brain",
+    "alt_kategori": "Duygu Durumu",
+    "alt_ikon": "fa-solid fa-face-frown",
+    "soru": "Mevsim geçişlerinde (özellikle kışa girerken) ruh halinizde belirgin bir çöküş oluyor mu?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "D3K2 Vitamini",
+    "destekleyici": "Işık Terapisi (Doğal Güneş)",
+    "tamamlayici": "Sarı Kantaron"
+  },
+  {
+    "ana_kategori": "Sinir & Psikoloji",
+    "ana_ikon": "fa-solid fa-brain",
+    "alt_kategori": "Duygu Durumu",
+    "alt_ikon": "fa-solid fa-face-frown",
+    "soru": "Aşırı düşünmekten (overthinking) beyninizin yorulduğunu ve durmadığını hissediyor musunuz?",
+    "cinsiyet": "Tümü",
+    "yas_grubu": "18-120",
+    "asil_takviye": "Kediotu Kökü",
+    "destekleyici": "Magnezyum Treonat",
+    "tamamlayici": "Passiflora"
+  }
 ]

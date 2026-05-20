@@ -19,9 +19,10 @@ import {
 import { getCinsiyetler, getYasAraliklari } from '../../services/lookups';
 import EisaDeleteConfirm from '../../components/shared/EisaDeleteConfirm.vue';
 import AlgorithmTargetBadges from '../../components/shared/AlgorithmTargetBadges.vue';
-import CategoryCard from '../../components/shared/CategoryCard.vue';
+import CategoryTreeNav from '../../components/shared/CategoryTreeNav.vue';
 import TargetGenderSelector from '../../components/shared/TargetGenderSelector.vue';
 import IngredientManager from '../../components/shared/IngredientManager.vue';
+import IconPickerPopup from '../../components/shared/IconPickerPopup.vue';
 
 //  Global Yükleme 
 const categories   = ref([]);
@@ -30,17 +31,20 @@ const cinsiyetler  = ref([]);
 const yasAraliklari = ref([]);
 const loadingCats  = ref(true);
 
+
 //  Kategori CRUD 
 const catModalOpen  = ref(false);
 const catModalMode  = ref('add');        // 'add' | 'edit'
 const catTarget     = ref(null);
-const EMPTY_CAT = () => ({ name: '', icon: '', is_sensitive: false, target_gender: null, target_age_ranges: [] });
+const EMPTY_CAT = () => ({ name: '', icon: 'fa-solid fa-pills', target_gender: null, target_age_ranges: [], bagli_kategori: null });
 const catForm       = ref(EMPTY_CAT());
+const catFormIsRoot = ref(true);         // Ana kategori mi? (bagli_kategori === null)
 const catFormError  = ref('');
 const catSaving     = ref(false);
 
-function openAddCategory() {
-  catForm.value    = EMPTY_CAT();
+function openAddCategory(parentId = null) {
+  catForm.value    = { ...EMPTY_CAT(), bagli_kategori: parentId };
+  catFormIsRoot.value = parentId === null;
   catFormError.value = '';
   catModalMode.value = 'add';
   catTarget.value  = null;
@@ -50,11 +54,12 @@ function openAddCategory() {
 function openEditCategory(cat) {
   catForm.value = {
     name:             cat.name,
-    icon:             cat.icon,
-    is_sensitive:     cat.is_sensitive,
+    icon:             cat.icon || 'fa-solid fa-pills',
     target_gender:    cat.target_gender ?? null,
     target_age_ranges: [...(cat.target_age_ranges ?? [])],
+    bagli_kategori:   cat.bagli_kategori ?? null,
   };
+  catFormIsRoot.value = cat.bagli_kategori === null;
   catFormError.value = '';
   catModalMode.value = 'edit';
   catTarget.value    = cat;
@@ -65,6 +70,8 @@ function closeCatModal() { catModalOpen.value = false; }
 
 async function saveCategory() {
   if (!catForm.value.name.trim()) { catFormError.value = 'Kategori adı zorunludur.'; return; }
+  if (!catFormIsRoot.value && !catForm.value.bagli_kategori) { catFormError.value = 'Bağlı kategori seçin veya "Ana Kategori" olarak işaretleyin.'; return; }
+  if (catFormIsRoot.value) catForm.value.bagli_kategori = null;
   catSaving.value    = true;
   catFormError.value = '';
   try {
@@ -272,40 +279,6 @@ function roleBadgeClass(role) {
 
 //  İkon Seçici 
 const iconPickerOpen = ref(false);
-const HEALTH_ICONS = [
-  { cls: 'fa-solid fa-pills',               label: 'İlaç'        },
-  { cls: 'fa-solid fa-heart-pulse',         label: 'Kalp'        },
-  { cls: 'fa-solid fa-lungs',               label: 'Akciğer'     },
-  { cls: 'fa-solid fa-brain',               label: 'Beyin'       },
-  { cls: 'fa-solid fa-tooth',               label: 'Diş'         },
-  { cls: 'fa-solid fa-eye',                 label: 'Göz'         },
-  { cls: 'fa-solid fa-ear-deaf',            label: 'Kulak'       },
-  { cls: 'fa-solid fa-hand',                label: 'El/Ağrı'     },
-  { cls: 'fa-solid fa-bone',                label: 'Kemik'       },
-  { cls: 'fa-solid fa-virus',               label: 'Virüs'       },
-  { cls: 'fa-solid fa-bacterium',           label: 'Bakteri'     },
-  { cls: 'fa-solid fa-dumbbell',            label: 'Spor'        },
-  { cls: 'fa-solid fa-leaf',                label: 'Bitkisel'    },
-  { cls: 'fa-solid fa-spa',                 label: 'Cilt'        },
-  { cls: 'fa-solid fa-sun',                 label: 'Güneş'      },
-  { cls: 'fa-solid fa-moon',                label: 'Uyku'        },
-  { cls: 'fa-solid fa-temperature-high',    label: 'Ateş'        },
-  { cls: 'fa-solid fa-syringe',             label: 'Enjeksiyon'  },
-  { cls: 'fa-solid fa-droplet',             label: 'Kan'         },
-  { cls: 'fa-solid fa-stethoscope',         label: 'Stetoskop'   },
-  { cls: 'fa-solid fa-bandage',             label: 'Yara'        },
-  { cls: 'fa-solid fa-capsules',            label: 'Kapsül'      },
-  { cls: 'fa-solid fa-microscope',          label: 'Lab'         },
-  { cls: 'fa-solid fa-user-doctor',         label: 'Doktor'      },
-  { cls: 'fa-solid fa-weight-scale',        label: 'Kilo'        },
-  { cls: 'fa-solid fa-fire',                label: 'Enerji'      },
-  { cls: 'fa-solid fa-wind',                label: 'Solunum'     },
-  { cls: 'fa-solid fa-shield-heart',        label: 'Koruma'      },
-  { cls: 'fa-solid fa-baby',                label: 'Bebek'       },
-  { cls: 'fa-solid fa-person-walking',      label: 'Hareket'     },
-  { cls: 'fa-solid fa-triangle-exclamation',label: 'Uyarı'       },
-  { cls: 'fa-solid fa-circle-info',         label: 'Bilgi'       },
-];
 </script>
 
 <template>
@@ -319,32 +292,39 @@ const HEALTH_ICONS = [
       style="max-height: 100vh; overflow-y: auto;"
     >
       <div class="px-5 pt-6 pb-4 border-b border-gray-200">
-        <p class="text-xs font-bold tracking-[0.15em] text-blue-600 uppercase mb-1">Şikayet Ağacı</p>
+        <p class="text-xs font-bold tracking-[0.15em] text-eisa-600 uppercase mb-1">Şikayet Ağacı</p>
         <h2 class="text-base font-semibold text-gray-900 leading-tight">Kategoriler</h2>
         <button
           @click="openAddCategory"
-          class="mt-3 w-full flex items-center justify-center gap-1.5 text-xs font-semibold text-gray-600 hover:text-blue-700 border border-gray-300 hover:border-blue-500 rounded-lg py-1.5 transition"
+          class="mt-3 w-full flex items-center justify-center gap-1.5 text-xs font-semibold text-gray-600 hover:text-eisa-600 border border-gray-300 hover:border-eisa-600 rounded-lg py-1.5 transition"
         >
           <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
           Yeni Kategori
         </button>
       </div>
 
-      <nav class="flex-1 px-3 py-3 space-y-1.5">
-        <div
-          v-if="loadingCats"
-          v-for="n in 5"
-          :key="n"
-          class="h-14 bg-gray-100 rounded-xl animate-pulse"
-        ></div>
+      <nav class="flex-1 px-3 py-3 space-y-1">
+        <!-- Yükleniyor skeletons -->
+        <template v-if="loadingCats">
+          <div v-for="n in 5" :key="n" class="h-14 bg-gray-100 rounded-xl animate-pulse mb-1.5"></div>
+        </template>
 
-        <CategoryCard
-          v-for="cat in categories"
-          :key="cat.id"
-          :cat="cat"
-          :active="activeCatId === cat.id"
+        <!-- Nested Treeview -->
+        <CategoryTreeNav
+          v-else
+          :items="categories"
+          :selected-id="activeCatId"
+          @update:selected-id="selectCategory"
+          parent-key="bagli_kategori"
+          label-key="name"
+          icon-key="icon"
+          active-key="is_active"
+          default-icon="fa-solid fa-pills"
+          accent="eisa"
+          :collapsible="true"
+          :show-target-badges="true"
+          :show-edit-button="true"
           :cinsiyetler="cinsiyetler"
-          @select="selectCategory"
           @edit="openEditCategory"
         />
       </nav>
@@ -361,10 +341,6 @@ const HEALTH_ICONS = [
             <h1 class="text-lg font-bold text-gray-900 tracking-tight">
               {{ activeCategory?.name ?? 'Kategori seçin' }}
             </h1>
-            <span
-              v-if="activeCategory?.is_sensitive"
-              class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-100 text-rose-600 border border-rose-200 uppercase tracking-wider"
-            >Hassas</span>
           </div>
           <p class="text-xs text-gray-500 font-mono" v-if="activeCategory">
             {{ questions.length }} soru
@@ -372,21 +348,27 @@ const HEALTH_ICONS = [
           </p>
         </div>
         <div v-if="activeCategory" class="flex items-center gap-2">
+          <template v-if="activeCategory.bagli_kategori !== null">
+            <button @click="openIngredientManager" class="eisa-btn text-sm">
+              <i class="fa-solid fa-capsules"></i>
+              Etken Maddeler
+            </button>
+            <button @click="openAddQuestion" class="eisa-btn eisa-btn-cta text-sm">
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+              </svg>
+              Soru Ekle
+            </button>
+          </template>
           <button
-            @click="openIngredientManager"
-            class="eisa-btn text-sm"
-          >
-            <i class="fa-solid fa-capsules"></i>
-            Etken Maddeler
-          </button>
-          <button
-            @click="openAddQuestion"
+            v-else
+            @click="openAddCategory(activeCatId)"
             class="eisa-btn eisa-btn-cta text-sm"
           >
             <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
               <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
             </svg>
-            Soru Ekle
+            Bağlı Kategori Ekle
           </button>
         </div>
       </div>
@@ -399,7 +381,22 @@ const HEALTH_ICONS = [
           <div v-for="n in 3" :key="n" class="h-16 bg-gray-100 rounded-xl animate-pulse"></div>
         </div>
 
-        <!-- Bo durum -->
+        <!-- Danışma kategorisi bilgi kartı -->
+        <div
+          v-else-if="activeCategory?.danisma"
+          class="flex flex-col items-center justify-center h-48 gap-3 rounded-2xl border border-teal-200 bg-teal-50 text-teal-700"
+        >
+          <i class="fa-solid fa-comments text-3xl opacity-60"></i>
+          <div class="text-center">
+            <p class="text-sm font-semibold">Danışma Kategorisi</p>
+            <p class="text-xs text-teal-600 mt-1">Bu kategoride soru veya etken madde tanımlanmaz.<br>Kioskta "Eczacınıza Danışın" akışında gösterilir.</p>
+            <p v-if="activeCategory.bagli_kategori" class="text-xs text-teal-600 mt-2">
+              Bağlı kategori: <strong>{{ categories.find(c => c.id === activeCategory.bagli_kategori)?.name ?? '#' + activeCategory.bagli_kategori }}</strong>
+            </p>
+          </div>
+        </div>
+
+        <!-- Boş durum -->
         <div
           v-else-if="!activeCategory"
           class="flex flex-col items-center justify-center h-64 text-gray-400"
@@ -414,8 +411,15 @@ const HEALTH_ICONS = [
           v-else-if="questions.length === 0 && !loadingQuestions"
           class="flex flex-col items-center justify-center h-48 text-gray-500"
         >
-          <p class="text-sm mb-3">Bu kategoride henüz soru yok.</p>
-          <button @click="openAddQuestion" class="text-blue-600 text-sm hover:text-blue-700 underline underline-offset-2">İlk soruyu ekle →</button>
+          <template v-if="activeCategory?.bagli_kategori === null">
+            <i class="fa-solid fa-sitemap text-3xl mb-3 opacity-30"></i>
+            <p class="text-sm mb-3">Ana kategorilere soru eklenemez.</p>
+            <button @click="openAddCategory(activeCatId)" class="text-eisa-600 text-sm hover:text-eisa-700 underline underline-offset-2">Bağlı Kategori Ekle →</button>
+          </template>
+          <template v-else>
+            <p class="text-sm mb-3">Bu kategoride henüz soru yok.</p>
+            <button @click="openAddQuestion" class="text-eisa-600 text-sm hover:text-eisa-700 underline underline-offset-2">İlk soruyu ekle →</button>
+          </template>
         </div>
 
         <!-- Soru Kartlar (Accordion) -->
@@ -425,7 +429,7 @@ const HEALTH_ICONS = [
           :key="q.id"
           class="question-card rounded-xl border overflow-hidden transition-all duration-200"
           :class="expandedQId === q.id
-            ? 'border-blue-400 shadow-lg shadow-blue-500/10'
+            ? 'border-eisa-200 shadow-lg shadow-eisa-600/10'
             : 'border-gray-200 hover:border-gray-400'"
           :style="{ animationDelay: qi * 40 + 'ms' }"
         >
@@ -454,7 +458,7 @@ const HEALTH_ICONS = [
               <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity" @click.stop>
                 <button
                   @click="openEditQuestion(q)"
-                  class="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition"
+                  class="p-1.5 text-gray-500 hover:text-eisa-600 hover:bg-eisa-50 rounded transition"
                   title="Düzenle"
                 >
                   <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -492,7 +496,7 @@ const HEALTH_ICONS = [
                   <h3 class="text-xs font-bold tracking-[0.12em] text-gray-600 uppercase">Etken Maddeler</h3>
                   <button
                     @click="openAddIngredient(q)"
-                    class="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-2.5 py-1 rounded-md transition"
+                    class="flex items-center gap-1 text-xs font-semibold text-eisa-600 hover:text-eisa-700 hover:bg-eisa-50 px-2.5 py-1 rounded-md transition"
                   >
                     <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
                       <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
@@ -591,7 +595,7 @@ const HEALTH_ICONS = [
                       @click="qIngForm.role = opt.v"
                       class="py-2.5 rounded-lg border text-sm font-semibold transition"
                       :class="qIngForm.role === opt.v
-                        ? 'bg-blue-100 border-blue-500 text-blue-800'
+                        ? 'bg-eisa-100 border-eisa-600 text-eisa-800'
                         : 'bg-white border-gray-300 text-gray-600 hover:border-gray-400'"
                     >{{ opt.l }}</button>
                   </div>
@@ -682,7 +686,7 @@ const HEALTH_ICONS = [
                       @click="toggleQAge(y.id)"
                       class="px-3 py-1 text-xs font-semibold rounded-full border transition"
                       :class="qForm.target_age_ranges.includes(y.id)
-                        ? 'bg-blue-100 text-blue-700 border-blue-400'
+                        ? 'bg-eisa-100 text-eisa-700 border-eisa-200'
                         : 'bg-white text-gray-500 border-gray-300 hover:border-gray-400'"
                     >{{ y.ad }}</button>
                   </div>
@@ -786,48 +790,77 @@ const HEALTH_ICONS = [
                     @click="iconPickerOpen = true"
                     class="drawer-input flex items-center gap-2"
                   >
-                    <span class="w-6 h-6 flex items-center justify-center text-sm bg-blue-50 rounded flex-shrink-0">
-                      <i :class="catForm.icon || 'fa-solid fa-pills'" class="text-blue-600"></i>
+                    <span class="w-6 h-6 flex items-center justify-center text-sm bg-eisa-50 rounded flex-shrink-0">
+                      <i :class="catForm.icon || 'fa-solid fa-pills'" class="text-eisa-600"></i>
                     </span>                   
                     <i class="fa-solid fa-grip text-gray-400 flex-shrink-0"></i>
                   </button>
                 </div>
               </div>
 
-              <!-- Hassas Toggle -->
-              <div class="flex items-center gap-2.5">
-                <input id="cat-hassas" type="checkbox" v-model="catForm.is_sensitive"
-                  class="w-4 h-4 rounded bg-white border-gray-300 text-blue-600 focus:ring-blue-400" />
-                <label for="cat-hassas" class="text-sm text-gray-700 cursor-pointer">Hassas kategori <span class="text-gray-500 text-xs">(Özel danışmanlık gerektirir)</span></label>
-              </div>
-
-              <!-- Hedef Cinsiyet (tek seçim) -->
-              <div>
-                <label class="block text-xs font-semibold text-gray-600 mb-2">Hedef Cinsiyet</label>
-                <TargetGenderSelector
-                  v-model="catForm.target_gender"
-                  :cinsiyetler="cinsiyetler"
-                  all-label="Tümü"
+              <!-- Ana Kategori Checkbox -->
+              <div class="flex items-center gap-2.5 pt-1 pb-1 px-3 rounded-lg border bg-gray-50"
+                :class="catFormIsRoot ? 'border-eisa-200 bg-eisa-50' : 'border-gray-200 bg-gray-50'">
+                <input
+                  id="cat-is-root"
+                  type="checkbox"
+                  v-model="catFormIsRoot"
+                  @change="catFormIsRoot && (catForm.bagli_kategori = null)"
+                  class="w-4 h-4 rounded border-gray-300 text-eisa-600 focus:ring-eisa-300 cursor-pointer"
                 />
-                <p class="mt-1 text-[10px] text-gray-500">Boş bırakırsanız tüm cinsiyetler hedeflenir.</p>
+                <label for="cat-is-root" class="flex-1 py-2 text-sm font-semibold cursor-pointer"
+                  :class="catFormIsRoot ? 'text-eisa-700' : 'text-gray-700'">
+                  Ana Kategori
+                </label>
+                <span class="text-[11px] text-gray-400">Başka bir kategoriye bağlı değil</span>
               </div>
 
-              <!-- Hedef Yaş Aralıkları -->
-              <div>
-                <label class="block text-xs font-semibold text-gray-600 mb-2">Hedef Yaş Aralıkları</label>
-                <div class="flex flex-wrap gap-2">
-                  <button
-                    v-for="y in yasAraliklari" :key="y.id"
-                    type="button"
-                    @click="toggleCatAge(y.id)"
-                    class="px-3 py-1 text-xs font-semibold rounded-full border transition"
-                    :class="catForm.target_age_ranges.includes(y.id)
-                      ? 'bg-blue-100 text-blue-700 border-blue-400'
-                      : 'bg-white text-gray-500 border-gray-300 hover:border-gray-400'"
-                  >{{ y.ad }}</button>
-                </div>
-                <p class="mt-1 text-[10px] text-gray-500">Boş bırakırsanız tüm yaş grupları hedeflenir.</p>
+              <!-- Bağlı Kategori (sadece ana kategori değilse) -->
+              <div v-if="!catFormIsRoot">
+                <label class="block text-xs font-semibold text-gray-600 mb-2">
+                  Bağlı Kategori <span class="text-rose-600">*</span>
+                </label>
+                <select v-model.number="catForm.bagli_kategori" class="drawer-input w-full">
+                  <option :value="null">— Seçin —</option>
+                  <option
+                    v-for="c in categories.filter(c => c.bagli_kategori === null && c.id !== catTarget?.id)"
+                    :key="c.id"
+                    :value="c.id"
+                  >{{ c.name }}</option>
+                </select>
+                <p class="mt-1 text-[10px] text-gray-500">Yalnızca ana kategoriler seçilebilir (tek seviye derinlik).</p>
               </div>
+
+              <!-- Hedef alanlar -->
+              <template>
+                <!-- Hedef Cinsiyet (tek seçim) -->
+                <div>
+                  <label class="block text-xs font-semibold text-gray-600 mb-2">Hedef Cinsiyet</label>
+                  <TargetGenderSelector
+                    v-model="catForm.target_gender"
+                    :cinsiyetler="cinsiyetler"
+                    all-label="Tümü"
+                  />
+                  <p class="mt-1 text-[10px] text-gray-500">Boş bırakırsanız tüm cinsiyetler hedeflenir.</p>
+                </div>
+
+                <!-- Hedef Yaş Aralıkları -->
+                <div>
+                  <label class="block text-xs font-semibold text-gray-600 mb-2">Hedef Yaş Aralıkları</label>
+                  <div class="flex flex-wrap gap-2">
+                    <button
+                      v-for="y in yasAraliklari" :key="y.id"
+                      type="button"
+                      @click="toggleCatAge(y.id)"
+                      class="px-3 py-1 text-xs font-semibold rounded-full border transition"
+                      :class="catForm.target_age_ranges.includes(y.id)
+                        ? 'bg-eisa-100 text-eisa-700 border-eisa-200'
+                        : 'bg-white text-gray-500 border-gray-300 hover:border-gray-400'"
+                    >{{ y.ad }}</button>
+                  </div>
+                  <p class="mt-1 text-[10px] text-gray-500">Boş bırakırsanız tüm yaş grupları hedeflenir.</p>
+                </div>
+              </template>
             </div>
 
             <!-- Footer -->
@@ -847,66 +880,11 @@ const HEALTH_ICONS = [
     </Transition>
   </Teleport>
 
-  <!--  İkon Seçici Popup  -->
-  <Teleport to="body">
-    <Transition name="fade">
-      <div
-        v-if="iconPickerOpen"
-        class="fixed inset-0 z-[60] flex items-center justify-center p-4"
-        style="background: rgba(15,23,42,0.45); backdrop-filter: blur(6px);"
-        @click.self="iconPickerOpen = false"
-      >
-        <div
-          class="w-full max-w-2xl bg-white border border-gray-200 rounded-2xl shadow-2xl overflow-hidden flex flex-col"
-          style="max-height: 80vh;"
-        >
-          <div class="flex items-center justify-between px-5 py-4 border-b border-gray-200">
-            <div>
-              <h3 class="text-base font-bold text-gray-900">İkon Seç</h3>
-              <p class="text-xs text-gray-500 mt-0.5">Kategori için bir sağlık ikonu seçin</p>
-            </div>
-            <button
-              type="button"
-              @click="iconPickerOpen = false"
-              class="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition"
-            >
-              <i class="fa-solid fa-xmark"></i>
-            </button>
-          </div>
-          <div class="flex-1 overflow-y-auto p-4">
-            <div class="grid grid-cols-6 sm:grid-cols-8 gap-2">
-              <button
-                v-for="ic in HEALTH_ICONS"
-                :key="ic.cls"
-                type="button"
-                :title="ic.label"
-                @click="catForm.icon = ic.cls; iconPickerOpen = false"
-                class="aspect-square flex flex-col items-center justify-center gap-1 rounded-xl border transition group"
-                :class="catForm.icon === ic.cls
-                  ? 'bg-blue-100 border-blue-500 text-blue-700 ring-2 ring-blue-400'
-                  : 'bg-white border-gray-200 text-gray-600 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50'"
-              >
-                <i :class="ic.cls" class="text-lg"></i>
-                <span class="text-[10px] leading-tight text-center px-1 truncate w-full opacity-70 group-hover:opacity-100">{{ ic.label }}</span>
-              </button>
-            </div>
-          </div>
-          <div class="px-5 py-3 border-t border-gray-200 flex justify-between items-center bg-gray-50">
-            <div class="text-xs text-gray-500">
-              Mevcut: <code class="text-blue-600 ml-1">{{ catForm.icon || 'fa-solid fa-pills' }}</code>
-            </div>
-            <button
-              type="button"
-              @click="iconPickerOpen = false"
-              class="eisa-btn"
-            >
-              Kapat
-            </button>
-          </div>
-        </div>
-      </div>
-    </Transition>
-  </Teleport>
+  <IconPickerPopup
+    v-model="catForm.icon"
+    :open="iconPickerOpen"
+    @update:open="iconPickerOpen = $event"
+  />
 </template>
 
 
@@ -997,8 +975,8 @@ const HEALTH_ICONS = [
 }
 
 .drawer-input:focus {
-  border-color: #2563EB;
-  box-shadow: 0 0 0 3px rgba(37,99,235,0.10);
+  border-color: #B1121B;
+  box-shadow: 0 0 0 3px rgba(177,18,27,0.10);
 }
 
 .drawer-input option {
@@ -1061,5 +1039,5 @@ const HEALTH_ICONS = [
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 2px; }
-::-webkit-scrollbar-thumb:hover { background: #2563EB; }
+::-webkit-scrollbar-thumb:hover { background: #B1121B; }
 </style>

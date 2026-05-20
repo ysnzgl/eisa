@@ -100,7 +100,7 @@ class EczaneViewSet(viewsets.ModelViewSet):
 class KioskViewSet(viewsets.ModelViewSet):
     """Kiosk CRUD (super admin) + /me/ (kiosk) + /regenerate-key/ (admin)."""
 
-    queryset = Kiosk.objects.select_related("eczane").all()
+    queryset = Kiosk.objects.select_related("eczane__il", "eczane__ilce").all()
     serializer_class = KioskSerializer
     authentication_classes = [JWTAuthentication, KioskAppKeyAuthentication]
 
@@ -192,4 +192,43 @@ class KioskViewSet(viewsets.ModelViewSet):
             ip_adresi=_client_ip(request),
         )
         return Response({"uygulama_anahtari": kiosk.uygulama_anahtari}, status=status.HTTP_200_OK)
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="health",
+        authentication_classes=[JWTAuthentication],
+        permission_classes=[IsSuperAdmin],
+    )
+    def health(self, request):
+        """GET /api/pharmacies/kiosks/health/ — tüm kiosklarin online/offline durumu.
+
+        Döner::
+            [{ id, ad, mac_adresi, eczane_ad, is_online, son_goruldu,
+               last_playlist_version, aktif }]
+        """
+        from django.utils import timezone as _tz
+        import datetime as _dt
+        threshold = _tz.now() - _dt.timedelta(minutes=5)
+        kiosks = (
+            Kiosk.objects
+            .select_related("eczane")
+            .filter(aktif=True)
+            .order_by("eczane__ad", "ad")
+        )
+        data = [
+            {
+                "id": k.pk,
+                "ad": k.ad,
+                "mac_adresi": k.mac_adresi,
+                "eczane_id": k.eczane_id,
+                "eczane_ad": k.eczane.ad if k.eczane_id else None,
+                "is_online": bool(k.son_goruldu and k.son_goruldu >= threshold),
+                "son_goruldu": k.son_goruldu.isoformat() if k.son_goruldu else None,
+                "last_playlist_version": k.last_playlist_version,
+                "aktif": k.aktif,
+            }
+            for k in kiosks
+        ]
+        return Response(data)
 

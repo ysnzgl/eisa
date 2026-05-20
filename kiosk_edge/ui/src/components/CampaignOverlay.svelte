@@ -108,7 +108,7 @@
   }
 
   .campaign-cta {
-    background: #16a34a;
+    background: #B1121B;
     color: #fff;
     border: none;
     border-radius: 14px;
@@ -123,6 +123,6 @@
   }
 
   .campaign-cta:hover {
-    background: #15803d;
+    background: #991B1B;
   }
 </style>

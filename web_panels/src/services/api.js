@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { useToastStore } from '../stores/toast';
+import { toast } from 'vue-sonner';
 
 // Vite dev proxy üzerinden gider (/api/* → localhost:8000);
 // prod'da VITE_API_BASE env ile geçersiz kılınabilir.
@@ -32,12 +32,31 @@ async function _refreshAccess() {
   return _refreshPromise;
 }
 
+// Django password validator mesajlarını Türkçeye çevirir.
+const PASSWORD_MSG_MAP = [
+  [/too short/i,       'Parola çok kısa, en az 10 karakter olmalı.'],
+  [/too common/i,      'Parola çok yaygın, daha özgün bir parola seçin.'],
+  [/entirely numeric/i,'Parola yalnızca rakamlardan oluşamaz.'],
+  [/similar.*user/i,   'Parola kullanıcı adına çok benziyor.'],
+];
+
+function _translatePassword(msg) {
+  for (const [pattern, tr] of PASSWORD_MSG_MAP) {
+    if (pattern.test(msg)) return tr;
+  }
+  return 'Parola uygun değil.';
+}
+
 function _humanError(error) {
   const status = error.response?.status;
   const data = error.response?.data;
   if (data?.detail) return String(data.detail);
   // DRF field error formatı: { field: ["mesaj"] }
   if (data && typeof data === 'object') {
+    // Parola hataları Türkçeye çevrilir.
+    if (Array.isArray(data.password) && data.password.length) {
+      return _translatePassword(String(data.password[0]));
+    }
     const first = Object.values(data).find((v) => Array.isArray(v) && v.length);
     if (first) return String(first[0]);
   }
@@ -73,11 +92,7 @@ http.interceptors.response.use(
     }
 
     if (!_isSilent(original)) {
-      try {
-        useToastStore().error(_humanError(error));
-      } catch {
-        // Pinia henüz mount edilmemişse (ör. uygulama açılırken) sessizce geç.
-      }
+      toast.error(_humanError(error));
     }
     return Promise.reject(error);
   },

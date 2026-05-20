@@ -1,7 +1,7 @@
 <script>
   import { tick } from 'svelte';
   import { getRecommendations, recsToIngredientList } from './lib/ingredients.js';
-  import { fetchCategories, fetchQuestions, submitSession } from './lib/api.js';
+  import { fetchCategories, fetchQuestions, fetchDanismaCategories, submitSession } from './lib/api.js';
   import {
     screen,
     selectedAge, selectedSex,
@@ -9,13 +9,14 @@
     currentCategory, currentQuestions, currentAnswers, currentQIndex,
     catsLoading, questionsLoading,
     result,
+    danismaCategories, danismaLoading,
   } from './stores/kiosk.js';
 
   import IdleScreen         from './components/IdleScreen.svelte';
   import DemographicsScreen from './components/DemographicsScreen.svelte';
   import WelcomeScreen      from './components/WelcomeScreen.svelte';
   import CategoryScreen     from './components/CategoryScreen.svelte';
-  import SensitiveScreen    from './components/SensitiveScreen.svelte';
+  import ConsultScreen      from './components/ConsultScreen.svelte';
   import QuestionScreen     from './components/QuestionScreen.svelte';
   import ResultScreen       from './components/ResultScreen.svelte';
   import AdStrip            from './components/AdStrip.svelte';
@@ -32,11 +33,12 @@
     currentQuestions.set([]);
     currentAnswers.set([]);
     result.set(null);
+    danismaCategories.set([]);
     goTo('idle');
   }
 
-  async function loadCategories(sensitive) {
-    goTo(sensitive ? 'sensitive' : 'category');
+  async function loadCategories() {
+    goTo('category');
     visibleCategories.set([]);
     catsLoading.set(true);
     try {
@@ -46,7 +48,7 @@
         cats = await fetchCategories();
         allCategories.set(cats);
       }
-      visibleCategories.set(cats.filter(c => c.hassas === sensitive));
+      visibleCategories.set(cats);
     } catch (err) {
       console.error('Kategori yükleme hatası:', err);
     } finally {
@@ -101,7 +103,7 @@
 
     const recs = getRecommendations(qs, answers, age ?? '18-25', sex ?? 'M');
     const ingredientList = recsToIngredientList(recs);
-    const { qrCode, qrPayload } = await doSubmitSession(false, cat?.slug ?? '', false, ingredientList);
+    const { qrCode, qrPayload } = await doSubmitSession(cat?.slug ?? '', false, ingredientList);
     const firstRec = recs[0];
 
     result.set({
@@ -118,14 +120,24 @@
     resultScreenRef?.drawQR(qrPayload);
   }
 
-  async function selectSensitive(cat) {
-    let age, sex;
-    selectedAge.update(v => { age = v; return v; });
-    selectedSex.update(v => { sex = v; return v; });
+  async function loadDanismaCategories() {
+    goTo('consult');
+    danismaCategories.set([]);
+    danismaLoading.set(true);
+    try {
+      const cats = await fetchDanismaCategories();
+      danismaCategories.set(cats ?? []);
+    } catch (err) {
+      console.error('Danışma kategori yükleme hatası:', err);
+    } finally {
+      danismaLoading.set(false);
+    }
+  }
 
-    const { qrCode, qrPayload } = await doSubmitSession(true, cat?.slug ?? cat?.ad ?? '', true, []);
+  async function selectConsult(cat) {
+    const { qrCode, qrPayload } = await doSubmitConsult(cat?.slug ?? cat?.ad ?? '');
     result.set({
-      label:       'Sessiz bildirim gönderildi',
+      label:       'Danışma talebi gönderildi',
       ana:         cat?.ad ?? cat,
       destek:      'Eczacınız sizi bekliyor — QR kodu okutunuz.',
       isSensitive: true,
@@ -137,7 +149,23 @@
     resultScreenRef?.drawQR(qrPayload);
   }
 
-  async function doSubmitSession(isFlowB, categorySlug, isSensitiveFlow, ingredientList) {
+  async function doSubmitConsult(categorySlug) {
+    try {
+      return await submitSession({
+        ageRange:       null,
+        gender:         null,
+        categorySlug,
+        isSensitiveFlow: true,
+        answersPayload:  {},
+        ingredientList:  [],
+      });
+    } catch {
+      const fallback = Math.random().toString(36).slice(2, 10).toUpperCase();
+      return { qrCode: fallback, qrPayload: fallback };
+    }
+  }
+
+  async function doSubmitSession(categorySlug, isSensitiveFlow, ingredientList) {
     let age, sex, answers;
     selectedAge.update(v => { age = v; return v; });
     selectedSex.update(v => { sex = v; return v; });
@@ -173,17 +201,17 @@
         />
       {:else if $screen === 'welcome'}
         <WelcomeScreen
-          on:flowA={() => loadCategories(false)}
-          on:flowB={() => loadCategories(true)}
+          on:flowA={loadCategories}
+          on:flowConsult={loadDanismaCategories}
         />
       {:else if $screen === 'category'}
         <CategoryScreen
           on:select={(e) => startQuestions(e.detail)}
           on:back={() => goTo('welcome')}
         />
-      {:else if $screen === 'sensitive'}
-        <SensitiveScreen
-          on:select={(e) => selectSensitive(e.detail)}
+      {:else if $screen === 'consult'}
+        <ConsultScreen
+          on:select={(e) => selectConsult(e.detail)}
           on:back={() => goTo('welcome')}
         />
       {:else if $screen === 'question'}

@@ -291,6 +291,8 @@ class PlaylistGenerator:
                 campaign__start_date__lte=when,
                 campaign__end_date__gte=when,
             )
+            # Önce guaranteed, sonra priority (küçük = yüksek öncelik)
+            .order_by("-campaign__is_guaranteed", "campaign__priority")
         )
 
         rules: List[ScheduleRule] = []
