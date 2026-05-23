@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import { Agent, fetch } from 'undici';
 import { checkOutboxPressure } from './db.js';
+import { syncMediaCache } from './mediaCache.js';
 
 let _tasks = [];
 let _undiciAgent = null;
@@ -247,18 +248,25 @@ export async function pullFromCentral(db, settings, log = console) {
 
     // 2) kiosk/v1/{id}/sync — { creatives: [...], house_ads: [...], lookups: {...} }
     const kioskId = settings.kioskId;
-    const r2 = await requestWithRetry(settings, 'GET', `/api/kiosk/v1/${kioskId}/sync/`, undefined, log);
-    if (r2.ok) {
-      const data = await r2.json();
-      const tx = db.transaction((payload) => {
-        upsertLookups(db, payload.lookups);
-        for (const c of payload.creatives || []) upsertCreative(db, c);
-        for (const h of payload.house_ads || []) upsertHouseAd(db, h);
-      });
-      tx(data);
-      log.info?.(`PULL: ${(data.creatives || []).length} creative, ${(data.house_ads || []).length} house_ad, ${(data.lookups?.iller || []).length} il guncellendi`);
+    if (!kioskId) {
+      log.warn?.('PULL kiosk/v1/sync atlandi: EISA_KIOSK_ID ayarlanmamis');
     } else {
-      log.warn?.(`PULL kiosk/v1/sync HTTP ${r2.status}`);
+      const r2 = await requestWithRetry(settings, 'GET', `/api/kiosk/v1/${kioskId}/sync/`, undefined, log);
+      if (r2.ok) {
+        const data = await r2.json();
+        const tx = db.transaction((payload) => {
+          upsertLookups(db, payload.lookups);
+          for (const c of payload.creatives || []) upsertCreative(db, c);
+          for (const h of payload.house_ads || []) upsertHouseAd(db, h);
+        });
+        tx(data);
+        await syncMediaCache(db, settings, log);
+        log.info?.(`PULL: ${(data.creatives || []).length} creative, ${(data.house_ads || []).length} house_ad, ${(data.lookups?.iller || []).length} il guncellendi`);
+      } else if (r2.status === 403) {
+        log.warn?.('PULL kiosk/v1/sync HTTP 403: EISA_KIOSK_ID ile AppKey/MAC eslesmesini kontrol edin');
+      } else {
+        log.warn?.(`PULL kiosk/v1/sync HTTP ${r2.status}`);
+      }
     }
   } catch (err) {
     log.error?.({ err: err.message || String(err) }, 'PULL basarisiz (offline mod)');
@@ -372,6 +380,7 @@ export async function pingAndSyncPlaylist(db, settings, log = console) {
       upsertMeta.run('playlist_date', today);
     });
     tx(playlists);
+    await syncMediaCache(db, settings, log);
 
     log.info?.(`PLAYLIST sync tamam: ${playlists.length} saat kaydedildi (v${serverVersion})`);
   } catch (err) {
@@ -428,7 +437,9 @@ export async function pushToCentral(db, settings, log = console) {
           tx(gosterimler);
           log.info?.(`PUSH proof-of-play: ${gosterimler.length} kayit gonderildi`);
         } else {
-          log.warn?.(`PUSH proof-of-play HTTP ${r.status}; kayitlar saklaniyor`);
+          let body = null;
+          try { body = await r.json(); } catch { body = null; }
+          log.warn?.({ status: r.status, body }, 'PUSH proof-of-play basarisiz; kayitlar saklaniyor');
         }
       } catch (err) {
         log.warn?.({ err: err.message }, 'PUSH proof-of-play kalici hata; kayitlar saklaniyor');
@@ -499,6 +510,9 @@ export function startScheduler(db, settings, log = console) {
 
   // İlk açılışta hemen bir ping yap
   pingAndSyncPlaylist(db, settings, log);
+  syncMediaCache(db, settings, log).catch((err) =>
+    log.warn?.({ err: err?.message }, 'Baslangicta medya cache senkronizasyonu basarisiz'),
+  );
 
   log.info?.(
     `Scheduler baslatildi — pull:${settings.pullIntervalSec}s push:${settings.pushIntervalSec}s ping:${settings.pingIntervalSec ?? 60}s`,

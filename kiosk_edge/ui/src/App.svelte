@@ -1,7 +1,7 @@
 <script>
-  import { tick } from 'svelte';
+  import { tick, onMount } from 'svelte';
   import { getRecommendations, recsToIngredientList } from './lib/ingredients.js';
-  import { fetchCategories, fetchQuestions, fetchDanismaCategories, submitSession } from './lib/api.js';
+  import { fetchCategories, fetchQuestions, fetchDanismaCategories, submitSession, fetchWifiStatus } from './lib/api.js';
   import {
     screen,
     selectedAge, selectedSex,
@@ -20,10 +20,25 @@
   import QuestionScreen     from './components/QuestionScreen.svelte';
   import ResultScreen       from './components/ResultScreen.svelte';
   import AdStrip            from './components/AdStrip.svelte';
+  import WifiSetupScreen    from './components/WifiSetupScreen.svelte';
 
   let resultScreenRef = null;
 
   function goTo(s) { screen.set(s); }
+
+  // Uygulama başlarken internet bağlantısı kontrol edilir.
+  // Bağlantı yoksa doğrudan wifi_setup ekranı gösterilir.
+  onMount(async () => {
+    try {
+      const status = await fetchWifiStatus();
+      if (!status.connected) {
+        goTo('wifi_setup');
+      }
+    } catch {
+      // api-node henüz hazır değilse veya nmcli yoksa (geliştirme ortamı)
+      // sessizce idle'da kal.
+    }
+  });
 
   function resetToIdle() {
     selectedAge.set(null);
@@ -188,7 +203,10 @@
 </script>
 
 <div class="kiosk">
-  {#if $screen === 'idle'}
+  {#if $screen === 'wifi_setup'}
+    <!-- WiFi Kurulum: internet yoksa ilk ekran -->
+    <WifiSetupScreen on:connected={() => goTo('idle')} />
+  {:else if $screen === 'idle'}
     <!-- Idle / Screensaver: tam ekran -->
     <IdleScreen on:start={() => goTo('demographics')} />
   {:else}
@@ -222,8 +240,8 @@
     </div>
   {/if}
 
-  <!-- Reklam bandı: her zaman mount, idle'da gizli -->
-  <div class="ad-strip-host" class:ad-strip-host--hidden={$screen === 'idle'}>
+  <!-- Reklam bandı: her zaman mount, idle ve wifi_setup ekranlarında gizli -->
+  <div class="ad-strip-host" class:ad-strip-host--hidden={$screen === 'idle' || $screen === 'wifi_setup'}>
     <AdStrip />
   </div>
 </div>

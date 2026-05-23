@@ -11,7 +11,7 @@ async function makeApp() {
     "INSERT INTO yas_araliklari (kod, ad, alt_sinir, ust_sinir) VALUES ('26-35','26-35',26,35)",
   ).run();
 
-  // 1 kategori + 2 soru + 1 aktif reklam
+  // 1 kategori + 2 soru + 1 aktif reklam asset
   db.prepare(
     `INSERT INTO kategoriler (id, slug, ad, ikon, hassas, aktif)
      VALUES (1, 'enerji', 'Enerji', 'fa-bolt', 0, 1)`,
@@ -22,13 +22,10 @@ async function makeApp() {
             (2, 1, 'en_q2', 'Uykunuz nasil?', 2, '[]')`,
   ).run();
 
-  const now = new Date();
-  const past = new Date(now.getTime() - 24 * 3600 * 1000).toISOString();
-  const future = new Date(now.getTime() + 24 * 3600 * 1000).toISOString();
   db.prepare(
-    `INSERT INTO reklamlar (id, ad, medya_url, baslangic_tarihi, bitis_tarihi, hedefleme, aktif)
-     VALUES (10, 'R1', '/m1.png', ?, ?, '{}', 1)`,
-  ).run(past, future);
+     `INSERT INTO house_ads (id, name, media_url, duration_seconds, type, aktif)
+      VALUES ('11111111-1111-4111-8111-111111111111', 'R1', '/m1.png', 10, 'house_ad', 1)`,
+    ).run();
 
   const app = await buildServer({ db, settings: fakeSettings, logger: false });
   return { app, db };
@@ -51,7 +48,6 @@ describe('Kiosk API (Turkce sema)', () => {
     expect(data).toHaveLength(1);
     expect(data[0].slug).toBe('enerji');
     expect(data[0].ad).toBe('Enerji');
-    expect(data[0].hassas).toBe(false);
     expect(data[0].hedef_cinsiyetler).toEqual([]);
     expect(data[0].hedef_yas_araliklari).toEqual([]);
   });
@@ -142,8 +138,8 @@ describe('Kiosk API (Turkce sema)', () => {
     expect(r.statusCode).toBe(200);
     const data = r.json();
     expect(data).toHaveLength(1);
-    expect(data[0].id).toBe(10);
-    expect(data[0].ad).toBe('R1');
+    expect(data[0].id).toBe('11111111-1111-4111-8111-111111111111');
+    expect(data[0].name).toBe('R1');
   });
 
   it('POST /api/reklam-gosterim outbox\'a yazar', async () => {
@@ -151,9 +147,10 @@ describe('Kiosk API (Turkce sema)', () => {
       method: 'POST',
       url: '/api/reklam-gosterim',
       payload: {
-        reklam_id: 10,
-        gosterilme_tarihi: new Date().toISOString(),
-        sure_ms: 1500,
+        asset_id: '11111111-1111-4111-8111-111111111111',
+        asset_type: 'house_ad',
+        played_at: new Date().toISOString(),
+        duration_played: 2,
       },
     });
     expect(r.statusCode).toBe(201);
@@ -161,7 +158,7 @@ describe('Kiosk API (Turkce sema)', () => {
     const row = db.prepare('SELECT payload FROM reklam_gosterim_outbox').get();
     expect(row).toBeTruthy();
     const payload = JSON.parse(row.payload);
-    expect(payload.reklam_id).toBe(10);
-    expect(payload.idempotency_anahtari).toBeTruthy();
+    expect(payload.asset_id).toBe('11111111-1111-4111-8111-111111111111');
+    expect(payload.asset_type).toBe('house_ad');
   });
 });

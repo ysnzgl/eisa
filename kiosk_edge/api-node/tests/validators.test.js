@@ -58,24 +58,27 @@ describe('oturumGonderSchema', () => {
 describe('reklamGosterimSchema', () => {
   it('gecerli payload', () => {
     const r = reklamGosterimSchema.safeParse({
-      reklam_id: 1,
-      gosterilme_tarihi: new Date().toISOString(),
-      sure_ms: 5000,
+      asset_id: '11111111-1111-4111-8111-111111111111',
+      asset_type: 'creative',
+      played_at: new Date().toISOString(),
+      duration_played: 5,
     });
     expect(r.success).toBe(true);
   });
-  it('reklam_id < 1 reddedilir', () => {
+  it('asset_id uuid degilse reddedilir', () => {
     const r = reklamGosterimSchema.safeParse({
-      reklam_id: 0,
-      gosterilme_tarihi: 'now',
+      asset_id: 'x',
+      asset_type: 'creative',
+      played_at: 'now',
     });
     expect(r.success).toBe(false);
   });
-  it('sure_ms ust sinir', () => {
+  it('duration_played ust sinir', () => {
     const r = reklamGosterimSchema.safeParse({
-      reklam_id: 1,
-      gosterilme_tarihi: 'now',
-      sure_ms: 24 * 60 * 60 * 1000 + 1,
+      asset_id: '11111111-1111-4111-8111-111111111111',
+      asset_type: 'house_ad',
+      played_at: 'now',
+      duration_played: 24 * 60 * 60 + 1,
     });
     expect(r.success).toBe(false);
   });

@@ -1,6 +1,7 @@
 import { writable } from 'svelte/store';
 
-// Ekran state makinesi: idle | demographics | welcome | category | sensitive | question | result
+// Ekran state makinesi:
+//   wifi_setup | idle | demographics | welcome | category | sensitive | question | result
 export const screen = writable('idle');
 
 // Demografik seçimler

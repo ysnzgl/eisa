@@ -40,6 +40,7 @@ if (!central.toLowerCase().startsWith('https://')) {
 
 export const settings = Object.freeze({
   sqlitePath: process.env.EISA_SQLITE_PATH || '/var/lib/eisa/local.db',
+  mediaDir: process.env.EISA_MEDIA_DIR || '/var/lib/eisa/media',
   centralApiBase: central,
   kioskAppKey: appKey,
   kioskMac: mac,

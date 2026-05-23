@@ -209,6 +209,23 @@ function initSchema(db, outboxMaxRows = DEFAULT_OUTBOX_MAX_ROWS) {
     CREATE INDEX IF NOT EXISTS oturum_outbox_pending ON oturum_outbox(gonderilme_tarihi);
     CREATE INDEX IF NOT EXISTS reklam_outbox_pending ON reklam_gosterim_outbox(gonderilme_tarihi);
 
+    -- LOCAL MEDIA CACHE (offline reklam oynatimi)
+    CREATE TABLE IF NOT EXISTS media_cache (
+      asset_id        TEXT    NOT NULL,
+      asset_type      TEXT    NOT NULL CHECK(asset_type IN ('creative','house_ad')),
+      source_url      TEXT    NOT NULL,
+      source_checksum TEXT    NOT NULL DEFAULT '',
+      file_checksum   TEXT    NOT NULL DEFAULT '',
+      local_path      TEXT    NOT NULL,
+      mime_type       TEXT    NOT NULL DEFAULT '',
+      file_size       INTEGER NOT NULL DEFAULT 0,
+      status          TEXT    NOT NULL DEFAULT 'ready',
+      error_message   TEXT    NOT NULL DEFAULT '',
+      synced_at       TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      PRIMARY KEY (asset_id, asset_type)
+    );
+    CREATE INDEX IF NOT EXISTS media_cache_status_idx ON media_cache(status);
+
     -- DOOH PLAYLIST (merkezi scheduler'dan cekilir)
     CREATE TABLE IF NOT EXISTS kiosk_meta (
       key   TEXT PRIMARY KEY,

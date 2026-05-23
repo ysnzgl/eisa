@@ -1,7 +1,6 @@
 <script>
   import { createEventDispatcher, onMount, onDestroy } from 'svelte';
-  import { campaigns } from '../stores/kiosk.js';
-  import { fetchActiveCampaigns } from '../lib/api.js';
+  import { campaigns, playlistItems } from '../stores/kiosk.js';
 
   const dispatch = createEventDispatcher();
   const SS_TIMEOUT = 10; // saniye — ekran koruyucu başlatma süresi
@@ -19,7 +18,9 @@
   let ssTick;
   let ssVisible = true;
 
-  $: ssImages = $campaigns.length > 0
+  $: ssImages = $playlistItems.length > 0
+    ? $playlistItems.map(i => i.media_url).filter(Boolean)
+    : $campaigns.length > 0
     ? $campaigns.map(c => c.media_url).filter(Boolean)
     : DUMMY_IMAGES;
 
@@ -52,12 +53,8 @@
     dispatch('start');
   }
 
-  onMount(async () => {
+  onMount(() => {
     startIdleTimer();
-    try {
-      const list = await fetchActiveCampaigns();
-      campaigns.set(list);
-    } catch { /* offline */ }
   });
 
   onDestroy(() => {

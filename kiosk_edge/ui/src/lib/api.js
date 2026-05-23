@@ -5,6 +5,12 @@
 
 const API_BASE = 'http://127.0.0.1:8765';
 
+function _normalizeMediaUrl(url) {
+  if (!url || typeof url !== 'string') return url;
+  if (url.startsWith('/')) return `${API_BASE}${url}`;
+  return url;
+}
+
 /**
  * ERR-005 + ERR-007: Tutarlı fetch sarmalayıcısı.
  *  - AbortError → kullanıcı dostu zaman aşımı mesajı.
@@ -98,8 +104,42 @@ export async function submitSession({ ageRange, gender, categorySlug, isSensitiv
   return { qrCode: data.qr_kodu, qrPayload: data.qr_payload || data.qr_kodu };
 }
 
+// ── WiFi API ────────────────────────────────────────────────────────────────
+
+/**
+ * @returns {Promise<{connected: boolean, ssid: string|null}>}
+ */
+export async function fetchWifiStatus() {
+  return _request(`${API_BASE}/api/wifi/status`, { timeoutMs: 8000 });
+}
+
+/**
+ * @returns {Promise<Array<{ssid: string, signal: number, secured: boolean}>>}
+ */
+export async function fetchWifiNetworks() {
+  return _request(`${API_BASE}/api/wifi/scan`, { timeoutMs: 25000 });
+}
+
+/**
+ * @param {string} ssid
+ * @param {string} [password]
+ * @returns {Promise<{success: boolean, message: string}>}
+ */
+export async function connectToWifi(ssid, password) {
+  return _request(`${API_BASE}/api/wifi/connect`, {
+    method: 'POST',
+    body: { ssid, ...(password ? { password } : {}) },
+    timeoutMs: 45000,
+  });
+}
+
 export async function fetchActiveCampaigns() {
-  return _request(`${API_BASE}/api/reklamlar/aktif`, { timeoutMs: 4000 });
+  const list = await _request(`${API_BASE}/api/reklamlar/aktif`, { timeoutMs: 4000 });
+  return (list || []).map((item) => ({
+    ...item,
+    media_url: _normalizeMediaUrl(item.media_url),
+    remote_media_url: _normalizeMediaUrl(item.remote_media_url),
+  }));
 }
 
 /**
@@ -110,7 +150,15 @@ export async function fetchActiveCampaigns() {
  */
 export async function fetchCurrentPlaylist(hour) {
   const query = hour !== undefined ? `?hour=${hour}` : '';
-  return _request(`${API_BASE}/api/playlist/current${query}`, { timeoutMs: 4000 });
+  const pl = await _request(`${API_BASE}/api/playlist/current${query}`, { timeoutMs: 4000 });
+  return {
+    ...pl,
+    items: (pl?.items || []).map((item) => ({
+      ...item,
+      media_url: _normalizeMediaUrl(item.media_url),
+      remote_media_url: _normalizeMediaUrl(item.remote_media_url),
+    })),
+  };
 }
 
 export async function logAdImpression({ assetId, assetType, shownAt, durationMs }) {
