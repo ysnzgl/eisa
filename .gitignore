@@ -34,3 +34,9 @@ Thumbs.db
 # Logs
 *.log
 logs/
+
+# Kubernetes — gerçek sırlar repo'ya girmesin
+k8s/11-secret.yaml
+k8s/secret.yaml
+
+docs/rancher-deployment-updated.md

@@ -92,19 +92,23 @@ TEMPLATES = [
     },
 ]
 
+# DB_* (yeni K8s contract) → POSTGRES_* (geri uyumluluk) fallback.
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": config("POSTGRES_DB", default="eisa"),
-        "USER": config("POSTGRES_USER", default="eisa"),
-        "PASSWORD": config("POSTGRES_PASSWORD", default="eisa" if DEBUG else ""),
-        "HOST": config("POSTGRES_HOST", default="localhost"),
-        "PORT": config("POSTGRES_PORT", default="5432"),
+        "NAME":     config("DB_NAME",     default=config("POSTGRES_DB",       default="eisa")),
+        "USER":     config("DB_USER",     default=config("POSTGRES_USER",     default="eisa")),
+        "PASSWORD": config("DB_PASSWORD", default=config("POSTGRES_PASSWORD", default="eisa" if DEBUG else "")),
+        "HOST":     config("DB_HOST",     default=config("POSTGRES_HOST",     default="localhost")),
+        "PORT":     config("DB_PORT",     default=config("POSTGRES_PORT",     default="5432")),
+        # PgBouncer transaction pooling ile uyumlu olması için connection-level
+        # özellikleri kapalı tutuyoruz; uzun süreli connection açmıyoruz.
+        "CONN_MAX_AGE": config("DB_CONN_MAX_AGE", default=0, cast=int),
     }
 }
 if not DEBUG and (not DATABASES["default"]["PASSWORD"] or DATABASES["default"]["PASSWORD"] == "eisa"):
     raise ImproperlyConfigured(
-        "POSTGRES_PASSWORD üretimde güçlü ve rastgele bir değere ayarlanmalıdır."
+        "DB_PASSWORD üretimde güçlü ve rastgele bir değere ayarlanmalıdır."
     )
 
 # Django'nun yerleşik parola güvenlik politikaları
@@ -169,9 +173,10 @@ JWT_COOKIE_DOMAIN = config("JWT_COOKIE_DOMAIN", default=None)
 if JWT_COOKIE_DOMAIN == "":
     JWT_COOKIE_DOMAIN = None
 
+# CORS_ALLOWED_ORIGINS (K8s contract) → DJANGO_CORS_ORIGINS (legacy) fallback.
 CORS_ALLOWED_ORIGINS = config(
-    "DJANGO_CORS_ORIGINS",
-    default="",
+    "CORS_ALLOWED_ORIGINS",
+    default=config("DJANGO_CORS_ORIGINS", default=""),
     cast=lambda v: [s.strip() for s in v.split(",") if s.strip()],
 )
 # Development ortamında tüm originleri kabul et, üretimde whitelist kullan
@@ -222,14 +227,25 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
-RUSTFS_ENDPOINT = config("RUSTFS_ENDPOINT", default="localhost:9000")
-RUSTFS_ACCESS_KEY = config("RUSTFS_ACCESS_KEY", default="admin")
-RUSTFS_SECRET_KEY = config("RUSTFS_SECRET_KEY", default="admin1234")
-RUSTFS_BUCKET_NAME = config("RUSTFS_BUCKET_NAME", default="dev")
-RUSTFS_SECURE = config("RUSTFS_SECURE", default=False, cast=bool)
-RUSTFS_PRESIGNED_URL_TTL_MINUTES = config(
-    "RUSTFS_PRESIGNED_URL_TTL_MINUTES", default=60, cast=int
-)
+# S3 / RustFS — yeni K8s contract (S3_*) eski isimlere (RUSTFS_*) fallback eder.
+S3_ENDPOINT             = config("S3_ENDPOINT",          default=config("RUSTFS_ENDPOINT",   default="localhost:9000"))
+S3_ACCESS_KEY           = config("S3_ACCESS_KEY",        default=config("RUSTFS_ACCESS_KEY", default="admin"))
+S3_SECRET_KEY           = config("S3_SECRET_KEY",        default=config("RUSTFS_SECRET_KEY", default="admin1234"))
+S3_BUCKET               = config("S3_BUCKET",            default=config("RUSTFS_BUCKET_NAME", default="dev"))
+S3_REGION               = config("S3_REGION",            default="us-east-1")
+S3_FORCE_PATH_STYLE     = config("S3_FORCE_PATH_STYLE",  default=True, cast=bool)
+S3_SECURE               = config("S3_SECURE",            default=config("RUSTFS_SECURE", default=False, cast=bool), cast=bool)
+S3_PRESIGNED_URL_TTL_MINUTES = config("S3_PRESIGNED_URL_TTL_MINUTES",
+                                       default=config("RUSTFS_PRESIGNED_URL_TTL_MINUTES", default=60, cast=int),
+                                       cast=int)
+
+# Geri uyumlu alias'lar (mevcut kod RUSTFS_* okuyabilir).
+RUSTFS_ENDPOINT                   = S3_ENDPOINT
+RUSTFS_ACCESS_KEY                 = S3_ACCESS_KEY
+RUSTFS_SECRET_KEY                 = S3_SECRET_KEY
+RUSTFS_BUCKET_NAME                = S3_BUCKET
+RUSTFS_SECURE                     = S3_SECURE
+RUSTFS_PRESIGNED_URL_TTL_MINUTES  = S3_PRESIGNED_URL_TTL_MINUTES
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 

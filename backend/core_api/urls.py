@@ -21,9 +21,21 @@ class _SilentEmpty(View):
         return HttpResponse(status=204)
 
 
+class _Healthz(View):
+    """K8s liveness/readiness probe — DB'ye dokunmaz, hızlı 200 döner."""
+
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def get(self, request, *args, **kwargs):
+        return HttpResponse("ok", content_type="text/plain", status=200)
+
+
 urlpatterns = [
     path("", _SilentEmpty.as_view()),
     path("favicon.ico", _SilentEmpty.as_view()),
+    path("healthz", _Healthz.as_view()),
+    path("healthz/", _Healthz.as_view()),
     path("admin/", admin.site.urls),
     # Panel kimlik doğrulama (httpOnly çerez tabanlı JWT) — rate-limited
     path("api/auth/token/", CookieTokenObtainPairView.as_view(), name="token_obtain_pair"),

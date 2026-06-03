@@ -1,9 +1,14 @@
 import axios from 'axios';
 import { toast } from 'vue-sonner';
 
-// Vite dev proxy üzerinden gider (/api/* → localhost:8000);
-// prod'da VITE_API_BASE env ile geçersiz kılınabilir.
-const API_BASE = import.meta.env.VITE_API_BASE ?? '';
+// API base URL çözümleme önceliği:
+//   1) Runtime config (window.__APP_CONFIG__.API_BASE_URL) — container ENV'den
+//      `docker-entrypoint.sh` tarafından `/config.js` içine yazılır.
+//   2) Build-time VITE_API_BASE (geliştirme/legacy).
+//   3) Boş string → same-origin (dev'de Vite proxy, prod'da ingress aynı host).
+const RUNTIME_BASE =
+  typeof window !== 'undefined' && window.__APP_CONFIG__?.API_BASE_URL;
+const API_BASE = RUNTIME_BASE || import.meta.env.VITE_API_BASE || '';
 
 // httpOnly JWT çerezleri otomatik gönderilsin diye `withCredentials` (SEC-002).
 export const http = axios.create({

@@ -889,8 +889,6 @@ const iconPickerOpen = ref(false);
 
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Mono:wght@400;500&display=swap');
-
 /*  Root Layout  */
 .medical-logic-root {
   background: #F2F1EE;

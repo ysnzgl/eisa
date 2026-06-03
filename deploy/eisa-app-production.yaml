@@ -1,0 +1,298 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: eisa-app
+  labels:
+    app.kubernetes.io/part-of: eisa
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: eisa-app-config
+  namespace: eisa-app
+data:
+  EISA_ENVIRONMENT: "production"
+
+  DJANGO_DEBUG: "0"
+  DJANGO_ALLOWED_HOSTS: "api.eisa.com.tr"
+  CORS_ALLOWED_ORIGINS: "https://portal.eisa.com.tr"
+  CORS_ALLOW_CREDENTIALS: "True"
+  CSRF_TRUSTED_ORIGINS: "https://portal.eisa.com.tr,https://api.eisa.com.tr"
+  SECURE_PROXY_SSL_HEADER: "HTTP_X_FORWARDED_PROTO,https"
+  USE_X_FORWARDED_HOST: "True"
+
+  DB_HOST: "10.200.201.10"
+  DB_PORT: "6432"
+  DB_NAME: "eisa_db"
+  DB_USER: "eisa_user"
+  DB_CONN_MAX_AGE: "0"
+
+  POSTGRES_HOST: "10.200.201.10"
+  POSTGRES_PORT: "6432"
+  POSTGRES_DB: "eisa_db"
+  POSTGRES_USER: "eisa_user"
+
+  S3_ENDPOINT: "http://10.200.201.11:9000"
+  S3_REGION: "us-east-1"
+  S3_BUCKET: "eisa-files"
+  S3_FORCE_PATH_STYLE: "true"
+  S3_SECURE: "false"
+
+  JWT_AUTH_COOKIE: "eisa_access"
+  JWT_REFRESH_COOKIE: "eisa_refresh"
+  JWT_COOKIE_SAMESITE: "Strict"
+  JWT_COOKIE_SECURE: "True"
+  JWT_COOKIE_DOMAIN: ".eisa.com.tr"
+
+  THROTTLE_ANON: "100/hour"
+  THROTTLE_USER: "2000/hour"
+  THROTTLE_LOGIN: "5/min"
+  THROTTLE_ADMIN_SENSITIVE: "10/hour"
+
+  API_BASE_URL: "https://api.eisa.com.tr"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eisa-api
+  namespace: eisa-app
+  labels:
+    app.kubernetes.io/name: eisa-api
+    app.kubernetes.io/part-of: eisa
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: eisa-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: eisa-api
+        app.kubernetes.io/part-of: eisa
+    spec:
+      automountServiceAccountToken: false
+      imagePullSecrets:
+        - name: eisa-regcred
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: api
+          image: ghcr.io/ysnzgl/eisa-api:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: eisa-app-config
+            - secretRef:
+                name: eisa-app-secrets
+          env:
+            - name: PORT
+              value: "8080"
+            - name: ASPNETCORE_URLS
+              value: "http://+:8080"
+          volumeMounts:
+            - name: api-logs
+              mountPath: /app/logs
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+              httpHeaders:
+                - name: Host
+                  value: api.eisa.com.tr
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+              httpHeaders:
+                - name: Host
+                  value: api.eisa.com.tr
+            initialDelaySeconds: 40
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "768Mi"
+      volumes:
+        - name: api-logs
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: eisa-api
+  namespace: eisa-app
+  labels:
+    app.kubernetes.io/name: eisa-api
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: eisa-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eisa-portal
+  namespace: eisa-app
+  labels:
+    app.kubernetes.io/name: eisa-portal
+    app.kubernetes.io/part-of: eisa
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: eisa-portal
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: eisa-portal
+        app.kubernetes.io/part-of: eisa
+    spec:
+      automountServiceAccountToken: false
+      imagePullSecrets:
+        - name: eisa-regcred
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: portal
+          image: ghcr.io/ysnzgl/eisa-portal:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: API_BASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: eisa-app-config
+                  key: API_BASE_URL
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: "20m"
+              memory: "64Mi"
+            limits:
+              cpu: "300m"
+              memory: "256Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: eisa-portal
+  namespace: eisa-app
+  labels:
+    app.kubernetes.io/name: eisa-portal
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: eisa-portal
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+      protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: eisa-app
+  namespace: eisa-app
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - api.eisa.com.tr
+        - portal.eisa.com.tr
+      secretName: eisa-app-tls
+  rules:
+    - host: api.eisa.com.tr
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: eisa-api
+                port:
+                  number: 80
+    - host: portal.eisa.com.tr
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: eisa-portal
+                port:
+                  number: 80
