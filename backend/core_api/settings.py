@@ -170,8 +170,8 @@ SIMPLE_JWT = {
 # KIOSK_PROVISIONING_SECRET : HMAC-SHA256 provision imzasi VE IoT token imzasi icin ortak sir.
 #                     Kiosk + backend'de ayni deger olmali.
 # KIOSK_IOT_TOKEN_TTL_DAYS  : Token suresi (varsayilan 7 gun).
-KIOSK_FLEET_KEY              = config("KIOSK_FLEET_KEY", default="")
-KIOSK_PROVISIONING_SECRET    = config("KIOSK_PROVISIONING_SECRET", default="")
+KIOSK_FLEET_KEY              = config("KIOSK_FLEET_KEY", default="dev_fleet_key")
+KIOSK_PROVISIONING_SECRET    = config("KIOSK_PROVISIONING_SECRET", default="dev_provisioning_secret")
 KIOSK_IOT_TOKEN_TTL_DAYS     = config("KIOSK_IOT_TOKEN_TTL_DAYS", default=7, cast=int)
 
 # ─── JWT httpOnly Çerez Ayarları (SEC-002) ──────────────────────────────────

@@ -8,8 +8,8 @@ let _db = null;
 
 const DEFAULT_OUTBOX_MAX_ROWS = 10000;
 
-// Sema versiyonu — backend ile hizali hedefleme iliski tablolari eklendi.
-const SCHEMA_VERSION = 8;
+// Sema versiyonu — iller/ilceler kaldirildi (kiosk bu verileri kullanmiyor).
+const SCHEMA_VERSION = 9;
 
 export function openDb(sqlitePath, options = {}) {
   if (_db) return _db;
@@ -92,15 +92,6 @@ function initSchema(db, outboxMaxRows = DEFAULT_OUTBOX_MAX_ROWS) {
     CREATE TABLE IF NOT EXISTS schema_meta (version INTEGER NOT NULL);
 
     -- LOOKUP TABLOLARI (audit kolonu YOK)
-    CREATE TABLE IF NOT EXISTS iller (
-      id    INTEGER PRIMARY KEY,
-      ad    TEXT    NOT NULL UNIQUE
-    );
-    CREATE TABLE IF NOT EXISTS ilceler (
-      id    INTEGER PRIMARY KEY,
-      il_id INTEGER NOT NULL REFERENCES iller(id),
-      ad    TEXT    NOT NULL
-    );
     CREATE TABLE IF NOT EXISTS cinsiyetler (
       id  INTEGER PRIMARY KEY,
       kod TEXT    NOT NULL UNIQUE,
@@ -228,7 +219,6 @@ function initSchema(db, outboxMaxRows = DEFAULT_OUTBOX_MAX_ROWS) {
 
     CREATE INDEX IF NOT EXISTS sorular_kategori_idx  ON sorular(kategori_id);
     CREATE INDEX IF NOT EXISTS cevaplar_soru_idx     ON cevaplar(soru_id);
-    CREATE INDEX IF NOT EXISTS ilceler_il_idx        ON ilceler(il_id);
     CREATE INDEX IF NOT EXISTS danisma_ust_idx       ON danisma_kategorileri(ust_kategori_id);
     CREATE INDEX IF NOT EXISTS kategoriler_hedef_cinsiyet_idx ON kategoriler(hedef_cinsiyet_id);
     CREATE INDEX IF NOT EXISTS sorular_hedef_cinsiyet_idx     ON sorular(hedef_cinsiyet_id);

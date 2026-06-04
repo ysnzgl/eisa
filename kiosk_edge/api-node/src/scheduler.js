@@ -303,18 +303,10 @@ function upsertLookups(db, lookups) {
     `INSERT INTO yas_araliklari (id, kod, ad, alt_sinir, ust_sinir) VALUES (@id, @kod, @ad, @alt_sinir, @ust_sinir)
      ON CONFLICT(id) DO UPDATE SET kod=excluded.kod, ad=excluded.ad, alt_sinir=excluded.alt_sinir, ust_sinir=excluded.ust_sinir`,
   );
-  const insIl = db.prepare(
-    'INSERT INTO iller (id, ad) VALUES (@id, @ad) ON CONFLICT(id) DO UPDATE SET ad=excluded.ad',
-  );
-  const insIlce = db.prepare(
-    'INSERT INTO ilceler (id, il_id, ad) VALUES (@id, @il_id, @ad) ON CONFLICT(id) DO UPDATE SET il_id=excluded.il_id, ad=excluded.ad',
-  );
 
   const tx = db.transaction((l) => {
     for (const c of l.cinsiyetler ?? []) insCinsiyet.run(c);
     for (const y of l.yas_araliklari ?? []) insYas.run(y);
-    for (const il of l.iller ?? []) insIl.run(il);
-    for (const ilce of l.ilceler ?? []) insIlce.run(ilce);
   });
   tx(lookups);
 }
@@ -325,6 +317,10 @@ export async function pullFromCentral(db, settings, log = console) {
     log.warn?.('PULL atlandi: kiosk kimligi henuz provision edilmedi');
     return;
   }
+  // Token suresi dolmussa veya yaklasiyorsa istekten once yenile.
+  await refreshIotTokenIfNeeded(db, settings, log).catch((err) =>
+    log.warn?.({ err: err?.message }, 'PULL oncesi token yenileme basarisiz'),
+  );
   try {
     // 1) kiosk/v1/{id}/sync — { creatives: [...], house_ads: [...], lookups: {...} }
     const kioskId = settings.kioskId;
@@ -341,7 +337,7 @@ export async function pullFromCentral(db, settings, log = console) {
         });
         tx(data);
         await syncMediaCache(db, settings, log);
-        log.info?.(`PULL: ${(data.creatives || []).length} creative, ${(data.house_ads || []).length} house_ad, ${(data.lookups?.iller || []).length} il guncellendi`);
+        log.info?.(`PULL: ${(data.creatives || []).length} creative, ${(data.house_ads || []).length} house_ad guncellendi`);
       } else if (r2.status === 403) {
         log.warn?.('PULL kiosk/v1/sync HTTP 403: EISA_KIOSK_ID ile AppKey/MAC eslesmesini kontrol edin');
       } else {

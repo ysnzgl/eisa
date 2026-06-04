@@ -45,7 +45,7 @@ class _UoWWritableViewSet(viewsets.ModelViewSet):
 class UrunSyncView(APIView):
     """GET /api/products/sync/ — kiosk yerel DB icin tam katalog."""
 
-    authentication_classes = [JWTAuthentication, KioskIoTTokenAuthentication, KioskAppKeyAuthentication]
+    authentication_classes = [KioskIoTTokenAuthentication, KioskAppKeyAuthentication, JWTAuthentication]
     permission_classes = [IsKioskOrAuthenticated]
 
     def get(self, request):

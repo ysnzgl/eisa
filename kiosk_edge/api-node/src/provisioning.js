@@ -186,9 +186,9 @@ export function getAuthHeaders(db, settings) {
     headers['X-Kiosk-Key'] = settings.kioskFleetKey;
   }
 
-  // IoT token tercih edilir
+  // IoT token tercih edilir — sadece suresi dolmamis token gonder
   const iotToken = getMeta(db, 'iot_token');
-  if (iotToken) {
+  if (iotToken && isIotTokenAlive(iotToken, 0)) {
     headers['Authorization'] = `Bearer ${iotToken}`;
     return headers;
   }

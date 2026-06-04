@@ -5,10 +5,6 @@ export function makeMemoryDb() {
   const db = new Database(':memory:');
   db.pragma('foreign_keys = ON');
   db.exec(`
-    CREATE TABLE iller (
-      id INTEGER PRIMARY KEY, ad TEXT NOT NULL UNIQUE);
-    CREATE TABLE ilceler (
-      id INTEGER PRIMARY KEY, il_id INTEGER NOT NULL REFERENCES iller(id), ad TEXT NOT NULL);
     CREATE TABLE cinsiyetler (
       id INTEGER PRIMARY KEY, kod TEXT NOT NULL UNIQUE, ad TEXT NOT NULL);
     CREATE TABLE yas_araliklari (

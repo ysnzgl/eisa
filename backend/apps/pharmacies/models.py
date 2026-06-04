@@ -60,3 +60,9 @@ class Kiosk(BaseModel):
 
     def __str__(self) -> str:
         return self.mac_adresi
+
+    # DRF throttle/permission mekanizmasi request.user.is_authenticated cagirir.
+    # Kiosk, Django User degildir; bu property 500'u onler.
+    @property
+    def is_authenticated(self) -> bool:
+        return True

@@ -22,6 +22,12 @@ class JWTCookieAuthentication(JWTAuthentication):
         header = self.get_header(request)
         raw_token = self.get_raw_token(header) if header is not None else None
 
+        # JWT disi Bearer token'lari (ornegin kiosk IoT token'i) bu auth'ta 401'e dusurme.
+        if raw_token is not None:
+            token_text = raw_token.decode("utf-8", errors="ignore") if isinstance(raw_token, bytes) else str(raw_token)
+            if token_text.count(".") != 2:
+                return None
+
         if raw_token is None:
             cookie_name = getattr(settings, "JWT_AUTH_COOKIE", "eisa_access")
             raw_cookie = request.COOKIES.get(cookie_name)
