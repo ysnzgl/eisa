@@ -164,6 +164,16 @@ SIMPLE_JWT = {
     "UPDATE_LAST_LOGIN": True,
 }
 
+# ─── Kiosk IoT Kimlik Dogrulama ──────────────────────────────────────────────
+# KIOSK_FLEET_KEY   : Tum kiosk cihazlarin gonderdigi ortak header (X-Kiosk-Key).
+#                     Backend, bu olmayan istekleri kiosk istegi olarak isleme almaz.
+# KIOSK_PROVISIONING_SECRET : HMAC-SHA256 provision imzasi VE IoT token imzasi icin ortak sir.
+#                     Kiosk + backend'de ayni deger olmali.
+# KIOSK_IOT_TOKEN_TTL_DAYS  : Token suresi (varsayilan 7 gun).
+KIOSK_FLEET_KEY              = config("KIOSK_FLEET_KEY", default="")
+KIOSK_PROVISIONING_SECRET    = config("KIOSK_PROVISIONING_SECRET", default="")
+KIOSK_IOT_TOKEN_TTL_DAYS     = config("KIOSK_IOT_TOKEN_TTL_DAYS", default=7, cast=int)
+
 # ─── JWT httpOnly Çerez Ayarları (SEC-002) ──────────────────────────────────
 JWT_AUTH_COOKIE = config("JWT_AUTH_COOKIE", default="eisa_access")
 JWT_REFRESH_COOKIE = config("JWT_REFRESH_COOKIE", default="eisa_refresh")

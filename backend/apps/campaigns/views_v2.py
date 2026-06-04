@@ -32,7 +32,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.uow import UnitOfWork
-from apps.pharmacies.auth import KioskAppKeyAuthentication
+from apps.pharmacies.auth import KioskAppKeyAuthentication, KioskIoTTokenAuthentication
 from apps.pharmacies.models import Kiosk
 from apps.pharmacies.permissions import IsKiosk, IsSuperAdmin
 from core_api.cookie_jwt import JWTCookieAuthentication as JWTAuthentication
@@ -933,7 +933,7 @@ class KioskSyncView(APIView):
     Kiosk bunlari local storage'a indirir ve hash ile cache'ler.
     """
 
-    authentication_classes = [KioskAppKeyAuthentication]
+    authentication_classes = [KioskIoTTokenAuthentication, KioskAppKeyAuthentication]
     permission_classes = [IsKiosk]
 
     def get(self, request, kiosk_id):
@@ -984,7 +984,7 @@ class KioskPlaylistView(APIView):
     Ilgili gunun 24 saatlik playlist'lerini siralayarak doner.
     """
 
-    authentication_classes = [KioskAppKeyAuthentication]
+    authentication_classes = [KioskIoTTokenAuthentication, KioskAppKeyAuthentication]
     permission_classes = [IsKiosk]
 
     def get(self, request, kiosk_id):
@@ -1033,7 +1033,7 @@ class KioskPingView(APIView):
         }
     """
 
-    authentication_classes = [KioskAppKeyAuthentication]
+    authentication_classes = [KioskIoTTokenAuthentication, KioskAppKeyAuthentication]
     permission_classes = [IsKiosk]
 
     def get(self, request, kiosk_id):
@@ -1075,7 +1075,7 @@ class ProofOfPlayView(APIView):
         ]}
     """
 
-    authentication_classes = [KioskAppKeyAuthentication]
+    authentication_classes = [KioskIoTTokenAuthentication, KioskAppKeyAuthentication]
     permission_classes = [IsKiosk]
 
     def post(self, request, kiosk_id):

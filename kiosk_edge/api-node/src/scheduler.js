@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import { Agent, fetch } from 'undici';
 import { checkOutboxPressure } from './db.js';
 import { syncMediaCache } from './mediaCache.js';
+import { getAuthHeaders, refreshIotTokenIfNeeded } from './provisioning.js';
 
 let _tasks = [];
 let _undiciAgent = null;
@@ -12,16 +13,21 @@ function getAgent(verifyTls) {
   return _undiciAgent;
 }
 
-function authHeaders(settings) {
-  return {
-    Authorization: `AppKey ${settings.kioskAppKey}`,
-    'X-Kiosk-MAC': settings.kioskMac,
-  };
+function authHeaders(db, settings) {
+  return getAuthHeaders(db, settings);
 }
 
-async function request(settings, method, pathPart, body) {
+function hasCentralAuth(db, settings) {
+  try {
+    const row = db.prepare("SELECT value FROM kiosk_meta WHERE key='iot_token'").get();
+    if (row?.value) return true;
+  } catch { /* DB henuz acilmamis */ }
+  return Boolean(settings?.kioskAppKey && settings?.kioskMac);
+}
+
+async function request(db, settings, method, pathPart, body) {
   const url = settings.centralApiBase.replace(/\/+$/, '') + pathPart;
-  const headers = authHeaders(settings);
+  const headers = authHeaders(db, settings);
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   const res = await fetch(url, {
     method,
@@ -34,13 +40,13 @@ async function request(settings, method, pathPart, body) {
 }
 
 // Exponential backoff ile retry (ERR-002).
-async function requestWithRetry(settings, method, pathPart, body, log) {
+async function requestWithRetry(db, settings, method, pathPart, body, log) {
   const delays = [0, 1000, 3000];
   let lastErr;
   for (let attempt = 0; attempt < delays.length; attempt++) {
     if (delays[attempt] > 0) await new Promise((r) => setTimeout(r, delays[attempt]));
     try {
-      const res = await request(settings, method, pathPart, body);
+      const res = await request(db, settings, method, pathPart, body);
       if (res.status >= 500) {
         lastErr = new Error(`HTTP ${res.status}`);
         log?.warn?.(`PUSH ${pathPart} HTTP ${res.status} (deneme ${attempt + 1}/${delays.length})`);
@@ -60,6 +66,8 @@ async function requestWithRetry(settings, method, pathPart, body, log) {
 
 // ── upsert yardimcilari (Turkce alanlar) ─────────────────────────────────
 function upsertKategori(db, c) {
+  const hedefCinsiyetId = resolveCinsiyetId(db, c.hedef_cinsiyet ?? c.hedef_cinsiyetler ?? null);
+  const hedefYasAraliklari = normalizeLookupIds(c.hedef_yas_araliklari);
   const exists = db.prepare('SELECT id FROM kategoriler WHERE id = ?').get(c.id);
   const params = {
     id: c.id,
@@ -67,15 +75,17 @@ function upsertKategori(db, c) {
     ad: c.ad,
     ikon: c.ikon || 'fa-circle',
     bagli_kategori_id: c.bagli_kategori ?? null,
+    hedef_cinsiyet_id: hedefCinsiyetId,
     aktif: c.aktif === false ? 0 : 1,
-    hedef_cinsiyetler: JSON.stringify(c.hedef_cinsiyetler ?? []),
-    hedef_yas_araliklari: JSON.stringify(c.hedef_yas_araliklari ?? []),
+    hedef_cinsiyetler: JSON.stringify(legacyCinsiyetArray(c, hedefCinsiyetId)),
+    hedef_yas_araliklari: JSON.stringify(hedefYasAraliklari),
   };
   if (exists) {
     db.prepare(
       `UPDATE kategoriler
           SET slug=@slug, ad=@ad, ikon=@ikon,
               bagli_kategori_id=@bagli_kategori_id, aktif=@aktif,
+              hedef_cinsiyet_id=@hedef_cinsiyet_id,
               hedef_cinsiyetler=@hedef_cinsiyetler,
               hedef_yas_araliklari=@hedef_yas_araliklari,
               guncellenme_tarihi=strftime('%Y-%m-%dT%H:%M:%fZ','now')
@@ -84,11 +94,13 @@ function upsertKategori(db, c) {
   } else {
     db.prepare(
       `INSERT INTO kategoriler
-         (id, slug, ad, ikon, bagli_kategori_id, aktif, hedef_cinsiyetler, hedef_yas_araliklari)
-       VALUES (@id, @slug, @ad, @ikon, @bagli_kategori_id, @aktif,
+         (id, slug, ad, ikon, bagli_kategori_id, hedef_cinsiyet_id, aktif, hedef_cinsiyetler, hedef_yas_araliklari)
+       VALUES (@id, @slug, @ad, @ikon, @bagli_kategori_id, @hedef_cinsiyet_id, @aktif,
                @hedef_cinsiyetler, @hedef_yas_araliklari)`,
     ).run(params);
   }
+
+  replaceKategoriYasAraliklari(db, c.id, hedefYasAraliklari);
 }
 
 function upsertDanismaKategori(db, d) {
@@ -110,6 +122,8 @@ function upsertDanismaKategori(db, d) {
 }
 
 function upsertSoru(db, q, kategoriId) {
+  const hedefCinsiyetId = resolveCinsiyetId(db, q.hedef_cinsiyet ?? q.hedef_cinsiyetler ?? null);
+  const hedefYasAraliklari = normalizeLookupIds(q.hedef_yas_araliklari);
   const exists = db.prepare('SELECT id FROM sorular WHERE id = ?').get(q.id);
   const params = {
     id: q.id,
@@ -118,12 +132,15 @@ function upsertSoru(db, q, kategoriId) {
     metin: q.metin ?? q.text ?? '',
     sira: q.sira ?? q.priority ?? 0,
     eslesme_kurallari: JSON.stringify(q.eslesme_kurallari ?? q.match_rules ?? []),
-    hedef_cinsiyetler: JSON.stringify(q.hedef_cinsiyetler ?? []),
-    hedef_yas_araliklari: JSON.stringify(q.hedef_yas_araliklari ?? []),
+    hedef_cinsiyet_id: hedefCinsiyetId,
+    hedef_cinsiyetler: JSON.stringify(legacyCinsiyetArray(q, hedefCinsiyetId)),
+    hedef_yas_araliklari: JSON.stringify(hedefYasAraliklari),
   };
   if (exists) {
     db.prepare(
-      `UPDATE sorular SET metin=@metin, sira=@sira, eslesme_kurallari=@eslesme_kurallari,
+      `UPDATE sorular SET kategori_id=@kategori_id, metin=@metin, sira=@sira,
+              eslesme_kurallari=@eslesme_kurallari,
+              hedef_cinsiyet_id=@hedef_cinsiyet_id,
               hedef_cinsiyetler=@hedef_cinsiyetler,
               hedef_yas_araliklari=@hedef_yas_araliklari,
               guncellenme_tarihi=strftime('%Y-%m-%dT%H:%M:%fZ','now')
@@ -133,11 +150,14 @@ function upsertSoru(db, q, kategoriId) {
     db.prepare(
       `INSERT INTO sorular
          (id, kategori_id, seed_id, metin, sira, eslesme_kurallari,
-          hedef_cinsiyetler, hedef_yas_araliklari)
+          hedef_cinsiyet_id, hedef_cinsiyetler, hedef_yas_araliklari)
        VALUES (@id, @kategori_id, @seed_id, @metin, @sira, @eslesme_kurallari,
-               @hedef_cinsiyetler, @hedef_yas_araliklari)`,
+               @hedef_cinsiyet_id, @hedef_cinsiyetler, @hedef_yas_araliklari)`,
     ).run(params);
   }
+
+  replaceSoruYasAraliklari(db, q.id, hedefYasAraliklari);
+  replaceSoruEtkenMaddeler(db, q.id, q.hedef_etken_maddeler ?? []);
 }
 
 function upsertCevap(db, a, soruId) {
@@ -154,9 +174,89 @@ function upsertCevap(db, a, soruId) {
 
 function upsertEtkenMadde(db, em) {
   db.prepare(
-    `INSERT INTO etken_maddeler (id, ad, aciklama) VALUES (@id, @ad, @aciklama)
-     ON CONFLICT(id) DO UPDATE SET ad=excluded.ad, aciklama=excluded.aciklama`,
-  ).run({ id: em.id, ad: em.ad, aciklama: em.aciklama || '' });
+    `INSERT INTO etken_maddeler (id, ad, aciklama, aktif)
+     VALUES (@id, @ad, @aciklama, @aktif)
+     ON CONFLICT(id) DO UPDATE SET
+       ad=excluded.ad,
+       aciklama=excluded.aciklama,
+       aktif=excluded.aktif,
+       guncellenme_tarihi=strftime('%Y-%m-%dT%H:%M:%fZ','now')`,
+  ).run({
+    id: em.id,
+    ad: em.ad,
+    aciklama: em.aciklama || '',
+    aktif: em.aktif === false ? 0 : 1,
+  });
+}
+
+function legacyCinsiyetArray(payload, hedefCinsiyetId) {
+  if (Array.isArray(payload?.hedef_cinsiyetler)) return payload.hedef_cinsiyetler;
+  return hedefCinsiyetId ? [hedefCinsiyetId] : [];
+}
+
+function normalizeLookupIds(value) {
+  if (Array.isArray(value)) {
+    return [...new Set(value.map((v) => Number.parseInt(v, 10)).filter(Number.isFinite))];
+  }
+  if (value === null || value === undefined || value === '') return [];
+  const n = Number.parseInt(value, 10);
+  return Number.isFinite(n) ? [n] : [];
+}
+
+function resolveCinsiyetId(db, value) {
+  if (value === null || value === undefined || value === '') return null;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const resolved = resolveCinsiyetId(db, item);
+      if (resolved) return resolved;
+    }
+    return null;
+  }
+
+  const n = Number.parseInt(value, 10);
+  if (Number.isFinite(n)) {
+    const row = db.prepare('SELECT id FROM cinsiyetler WHERE id = ?').get(n);
+    return row ? row.id : null;
+  }
+
+  const row = db.prepare('SELECT id FROM cinsiyetler WHERE kod = ?').get(String(value));
+  return row ? row.id : null;
+}
+
+function replaceKategoriYasAraliklari(db, kategoriId, yasAraligiIds) {
+  db.prepare('DELETE FROM kategori_hedef_yas_araliklari WHERE kategori_id = ?').run(kategoriId);
+  const ins = db.prepare(
+    'INSERT INTO kategori_hedef_yas_araliklari (kategori_id, yas_araligi_id) VALUES (?, ?)',
+  );
+  for (const yasId of yasAraligiIds) {
+    const exists = db.prepare('SELECT 1 FROM yas_araliklari WHERE id = ?').get(yasId);
+    if (exists) ins.run(kategoriId, yasId);
+  }
+}
+
+function replaceSoruYasAraliklari(db, soruId, yasAraligiIds) {
+  db.prepare('DELETE FROM soru_hedef_yas_araliklari WHERE soru_id = ?').run(soruId);
+  const ins = db.prepare(
+    'INSERT INTO soru_hedef_yas_araliklari (soru_id, yas_araligi_id) VALUES (?, ?)',
+  );
+  for (const yasId of yasAraligiIds) {
+    const exists = db.prepare('SELECT 1 FROM yas_araliklari WHERE id = ?').get(yasId);
+    if (exists) ins.run(soruId, yasId);
+  }
+}
+
+function replaceSoruEtkenMaddeler(db, soruId, hedefEtkenMaddeler) {
+  db.prepare('DELETE FROM soru_etken_maddeler WHERE soru_id = ?').run(soruId);
+  const ins = db.prepare(
+    'INSERT INTO soru_etken_maddeler (soru_id, etken_madde_id, rol) VALUES (?, ?, ?)',
+  );
+  for (const item of hedefEtkenMaddeler) {
+    const etkenMaddeId = Number.parseInt(item?.etken_madde, 10);
+    if (!Number.isFinite(etkenMaddeId)) continue;
+    const exists = db.prepare('SELECT 1 FROM etken_maddeler WHERE id = ?').get(etkenMaddeId);
+    if (!exists) continue;
+    ins.run(soruId, etkenMaddeId, item?.rol || 'ana');
+  }
 }
 
 function upsertCreative(db, c) {
@@ -221,37 +321,17 @@ function upsertLookups(db, lookups) {
 
 // ── PULL ─────────────────────────────────────────────────────────────────
 export async function pullFromCentral(db, settings, log = console) {
+  if (!hasCentralAuth(db, settings)) {
+    log.warn?.('PULL atlandi: kiosk kimligi henuz provision edilmedi');
+    return;
+  }
   try {
-    // 1) products/sync — { kategoriler: [...], etken_maddeler: [...] }
-    const r1 = await requestWithRetry(settings, 'GET', '/api/products/sync/', undefined, log);
-    if (r1.ok) {
-      const data = await r1.json();
-      const tx = db.transaction((payload) => {
-        for (const cat of payload.kategoriler || []) {
-          upsertKategori(db, cat);
-          for (const q of cat.sorular || []) {
-            upsertSoru(db, q, cat.id);
-            for (const a of q.cevaplar || []) upsertCevap(db, a, q.id);
-          }
-        }
-        for (const em of payload.etken_maddeler || []) upsertEtkenMadde(db, em);
-        for (const d of payload.danisma_kategorileri || []) {
-          upsertDanismaKategori(db, d);
-          for (const alt of d.alt_kategoriler || []) upsertDanismaKategori(db, { ...alt, ust_kategori: d.id });
-        }
-      });
-      tx(data);
-      log.info?.(`PULL: ${(data.kategoriler || []).length} kategori, ${(data.etken_maddeler || []).length} etken madde, ${(data.danisma_kategorileri || []).length} danisma guncellendi`);
-    } else {
-      log.warn?.(`PULL products/sync HTTP ${r1.status}`);
-    }
-
-    // 2) kiosk/v1/{id}/sync — { creatives: [...], house_ads: [...], lookups: {...} }
+    // 1) kiosk/v1/{id}/sync — { creatives: [...], house_ads: [...], lookups: {...} }
     const kioskId = settings.kioskId;
     if (!kioskId) {
       log.warn?.('PULL kiosk/v1/sync atlandi: EISA_KIOSK_ID ayarlanmamis');
     } else {
-      const r2 = await requestWithRetry(settings, 'GET', `/api/kiosk/v1/${kioskId}/sync/`, undefined, log);
+      const r2 = await requestWithRetry(db, settings, 'GET', `/api/kiosk/v1/${kioskId}/sync/`, undefined, log);
       if (r2.ok) {
         const data = await r2.json();
         const tx = db.transaction((payload) => {
@@ -268,6 +348,30 @@ export async function pullFromCentral(db, settings, log = console) {
         log.warn?.(`PULL kiosk/v1/sync HTTP ${r2.status}`);
       }
     }
+
+    // 2) products/sync — { kategoriler: [...], etken_maddeler: [...] }
+    const r1 = await requestWithRetry(db, settings, 'GET', '/api/products/sync/', undefined, log);
+    if (r1.ok) {
+      const data = await r1.json();
+      const tx = db.transaction((payload) => {
+        for (const em of payload.etken_maddeler || []) upsertEtkenMadde(db, em);
+        for (const cat of payload.kategoriler || []) {
+          upsertKategori(db, cat);
+          for (const q of cat.sorular || []) {
+            upsertSoru(db, q, cat.id);
+            for (const a of q.cevaplar || []) upsertCevap(db, a, q.id);
+          }
+        }
+        for (const d of payload.danisma_kategorileri || []) {
+          upsertDanismaKategori(db, d);
+          for (const alt of d.alt_kategoriler || []) upsertDanismaKategori(db, { ...alt, ust_kategori: d.id });
+        }
+      });
+      tx(data);
+      log.info?.(`PULL: ${(data.kategoriler || []).length} kategori, ${(data.etken_maddeler || []).length} etken madde, ${(data.danisma_kategorileri || []).length} danisma guncellendi`);
+    } else {
+      log.warn?.(`PULL products/sync HTTP ${r1.status}`);
+    }
   } catch (err) {
     log.error?.({ err: err.message || String(err) }, 'PULL basarisiz (offline mod)');
   }
@@ -281,13 +385,14 @@ export async function pullFromCentral(db, settings, log = console) {
  * Kiosk offline ise hata yutulur; mevcut yerel playlist oynatılmaya devam eder.
  */
 export async function pingAndSyncPlaylist(db, settings, log = console) {
+  if (!hasCentralAuth(db, settings)) return;
   const kioskId = settings.kioskId;
   if (!kioskId) return;
 
   try {
     const today = new Date().toISOString().slice(0, 10);
     const pingRes = await requestWithRetry(
-      settings, 'GET', `/api/kiosk/v1/${kioskId}/ping/`, undefined, log,
+      db, settings, 'GET', `/api/kiosk/v1/${kioskId}/ping/`, undefined, log,
     );
     if (!pingRes.ok) {
       log.warn?.(`PING HTTP ${pingRes.status}`);
@@ -316,7 +421,7 @@ export async function pingAndSyncPlaylist(db, settings, log = console) {
 
     // Bugün için tüm saatleri çek (tek istek — ?date=YYYY-MM-DD)
     const plRes = await requestWithRetry(
-      settings, 'GET',
+      db, settings, 'GET',
       `/api/kiosk/v1/${kioskId}/playlist/?date=${today}`,
       undefined, log,
     );
@@ -390,6 +495,10 @@ export async function pingAndSyncPlaylist(db, settings, log = console) {
 
 // ── PUSH ─────────────────────────────────────────────────────────────────
 export async function pushToCentral(db, settings, log = console) {
+  if (!hasCentralAuth(db, settings)) {
+    log.warn?.('PUSH atlandi: kiosk kimligi henuz provision edilmedi');
+    return;
+  }
   try {
     // 1) oturum_outbox → /api/analytics/sessions/
     const oturumlar = db
@@ -401,7 +510,7 @@ export async function pushToCentral(db, settings, log = console) {
     if (oturumlar.length) {
       try {
         const r = await requestWithRetry(
-          settings, 'POST', '/api/analytics/sessions/',
+          db, settings, 'POST', '/api/analytics/sessions/',
           { items: oturumlar.map((s) => JSON.parse(s.payload)) }, log,
         );
         await consumeBulkPushResponse(db, 'oturum_outbox', oturumlar, r, log, 'sessions');
@@ -419,6 +528,11 @@ export async function pushToCentral(db, settings, log = console) {
       .all();
     if (gosterimler.length) {
       try {
+        const kioskId = settings.kioskId;
+        if (!kioskId) {
+          log.warn?.('PUSH proof-of-play atlandi: kiosk_id bilinmiyor');
+          return;
+        }
         const logs = gosterimler.map((i) => {
           const p = JSON.parse(i.payload);
           const entry = { played_at: p.played_at, duration_played: p.duration_played ?? 0 };
@@ -426,9 +540,8 @@ export async function pushToCentral(db, settings, log = console) {
           else entry.creative_id = p.asset_id;
           return entry;
         });
-        const kioskId = settings.kioskId;
         const r = await requestWithRetry(
-          settings, 'POST', `/api/kiosk/v1/${kioskId}/proof-of-play/`,
+          db, settings, 'POST', `/api/kiosk/v1/${kioskId}/proof-of-play/`,
           { logs }, log,
         );
         if (r.status === 201) {
@@ -497,7 +610,10 @@ export function startScheduler(db, settings, log = console) {
 
   const pullTimer    = setInterval(() => pullFromCentral(db, settings, log), pullEvery);
   const pushTimer    = setInterval(() => pushToCentral(db, settings, log), pushEvery);
-  const pingTimer    = setInterval(() => pingAndSyncPlaylist(db, settings, log), pingEvery);
+  const pingTimer = setInterval(async () => {
+    await refreshIotTokenIfNeeded(db, settings, log).catch(() => {});
+    pingAndSyncPlaylist(db, settings, log);
+  }, pingEvery);
   const pressureTimer = setInterval(() => {
     try { checkOutboxPressure(log, settings.outboxMaxRows); }
     catch (err) { log?.warn?.({ err: err?.message }, 'Outbox basinc kontrolu basarisiz'); }

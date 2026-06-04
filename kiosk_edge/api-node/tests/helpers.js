@@ -19,6 +19,7 @@ export function makeMemoryDb() {
       id INTEGER PRIMARY KEY, slug TEXT NOT NULL UNIQUE, ad TEXT NOT NULL,
       ikon TEXT NOT NULL DEFAULT 'fa-circle',
       bagli_kategori_id INTEGER REFERENCES kategoriler(id),
+      hedef_cinsiyet_id INTEGER REFERENCES cinsiyetler(id),
       hassas INTEGER NOT NULL DEFAULT 0, aktif INTEGER NOT NULL DEFAULT 1,
       surum INTEGER NOT NULL DEFAULT 1,
       hedef_cinsiyetler TEXT NOT NULL DEFAULT '[]',
@@ -31,6 +32,7 @@ export function makeMemoryDb() {
       kategori_id INTEGER NOT NULL REFERENCES kategoriler(id),
       seed_id TEXT, metin TEXT NOT NULL,
       sira INTEGER NOT NULL DEFAULT 0, eslesme_kurallari TEXT NOT NULL DEFAULT '[]',
+      hedef_cinsiyet_id INTEGER REFERENCES cinsiyetler(id),
       surum INTEGER NOT NULL DEFAULT 1,
       hedef_cinsiyetler TEXT NOT NULL DEFAULT '[]',
       hedef_yas_araliklari TEXT NOT NULL DEFAULT '[]',
@@ -42,7 +44,27 @@ export function makeMemoryDb() {
       metin TEXT NOT NULL, agirlik INTEGER NOT NULL DEFAULT 0);
 
     CREATE TABLE etken_maddeler (
-      id INTEGER PRIMARY KEY, ad TEXT NOT NULL UNIQUE, aciklama TEXT NOT NULL DEFAULT '');
+      id INTEGER PRIMARY KEY, ad TEXT NOT NULL UNIQUE, aciklama TEXT NOT NULL DEFAULT '',
+      aktif INTEGER NOT NULL DEFAULT 1,
+      surum INTEGER NOT NULL DEFAULT 1,
+      olusturulma_tarihi TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      guncellenme_tarihi TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')));
+
+    CREATE TABLE kategori_hedef_yas_araliklari (
+      kategori_id INTEGER NOT NULL REFERENCES kategoriler(id) ON DELETE CASCADE,
+      yas_araligi_id INTEGER NOT NULL REFERENCES yas_araliklari(id),
+      PRIMARY KEY (kategori_id, yas_araligi_id));
+
+    CREATE TABLE soru_hedef_yas_araliklari (
+      soru_id INTEGER NOT NULL REFERENCES sorular(id) ON DELETE CASCADE,
+      yas_araligi_id INTEGER NOT NULL REFERENCES yas_araliklari(id),
+      PRIMARY KEY (soru_id, yas_araligi_id));
+
+    CREATE TABLE soru_etken_maddeler (
+      soru_id INTEGER NOT NULL REFERENCES sorular(id) ON DELETE CASCADE,
+      etken_madde_id INTEGER NOT NULL REFERENCES etken_maddeler(id),
+      rol TEXT NOT NULL DEFAULT 'ana',
+      PRIMARY KEY (soru_id, etken_madde_id));
 
     CREATE TABLE creatives (
       id TEXT PRIMARY KEY,
@@ -99,9 +121,10 @@ export const fakeSettings = {
   centralApiBase: 'http://localhost:8000',
   kioskAppKey: 'test-key',
   kioskMac: '00:11:22:33:44:55',
+  kioskFleetKey: 'test-fleet-key',
+  kioskProvisioningSecret: 'test-secret',
   kioskId: 1,
   pharmacyId: 1,
-  localApiSecret: 'test-secret',
   pullIntervalSec: 900,
   pushIntervalSec: 300,
   verifyTls: false,

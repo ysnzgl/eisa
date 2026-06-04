@@ -2,7 +2,7 @@
 
 E-İSA Kiosk lokal API — **Fastify + better-sqlite3 + node-cron**.
 
-Bu klasör eski `api/` (FastAPI) modülünün Node.js eşleniğidir. Endpoint'ler, port (`8765`), şema, push/pull mantığı ve seed dosyası birebir korunmuştur — Svelte UI için davranış aynıdır.
+Bu klasor kioskun Node.js lokal API moduludur. Endpoint'ler, port (`8765`), sema ve push/pull davranisi Svelte UI ile uyumludur.
 
 ## Komutlar
 
@@ -14,9 +14,6 @@ npm install
 
 # .env'i oluştur
 cp .env.example .env
-
-# SQLite seed (opsiyonel, app açılışında zaten yüklüyor)
-npm run seed
 
 # Geliştirme sunucusu (auto-reload)
 npm run dev
@@ -31,15 +28,16 @@ npm run test:coverage
 
 ## Ortam Değişkenleri
 
-`.env.example` dosyasına bakın. FastAPI sürümüyle birebir aynı `EISA_*` değişkenleri kullanılır.
+`.env.example` dosyasina bakin. Uretim ve gelistirme icin tum `EISA_*` degiskenleri buradadir.
 
 | Değişken | Varsayılan |
 |---|---|
-| `EISA_KIOSK_APP_KEY` | — (zorunlu) |
-| `EISA_KIOSK_MAC` | — (zorunlu) |
+| `EISA_KIOSK_FLEET_KEY` | — (zorunlu) |
+| `EISA_KIOSK_PROVISIONING_SECRET` | — (zorunlu) |
+| `EISA_KIOSK_APP_KEY` | — (opsiyonel, legacy dev/test) |
+| `EISA_KIOSK_MAC` | sistemden otomatik tespit |
 | `EISA_SQLITE_PATH` | `/var/lib/eisa/local.db` |
-| `EISA_CENTRAL_API_BASE` | `https://api.e-isa.local` |
-| `EISA_LOCAL_API_SECRET` | — |
+| `EISA_CENTRAL_API_BASE` | `https://api.eisa.com.tr` |
 | `EISA_PULL_INTERVAL_SEC` | `900` |
 | `EISA_PUSH_INTERVAL_SEC` | `300` |
 | `EISA_VERIFY_TLS` | `true` |
@@ -47,18 +45,27 @@ npm run test:coverage
 | `EISA_HOST` | `127.0.0.1` |
 | `EISA_PORT` | `8765` |
 
+Bootstrap akis:
+
+1. Kiosk, MAC adresini sistemden otomatik okur.
+2. `EISA_KIOSK_FLEET_KEY` + `EISA_KIOSK_PROVISIONING_SECRET` ile HMAC imzali provision istegi gonder.
+3. Backend IoT token doner; `kiosk_id` ve `pharmacy_id` token payload'indan alinir.
+4. Bu bilgiler lokal SQLite'a yazilir ve sonraki acilislarda tekrar istenmez.
+
 ## Endpoint'ler
 
 | Method | URL | Yetki | Açıklama |
 |---|---|---|---|
 | GET | `/health` | — | Sağlık |
-| GET | `/api/categories` | — | Aktif kategoriler |
-| GET | `/api/categories/:slug/questions` | — | Kategori soruları |
-| POST | `/api/session/submit` | — | Anket → outbox |
-| GET | `/api/session/:qr` | `Bearer LOCAL_SECRET` | QR ile oturum |
-| GET | `/api/campaigns/active` | — | Aktif kampanyalar (saat filtreli) |
-| POST | `/api/ad-impression` | — | Reklam impression logu |
+| GET | `/api/kategoriler` | — | Aktif kategoriler |
+| GET | `/api/kategoriler/:slug/sorular` | — | Kategori soruları |
+| POST | `/api/oturum/gonder` | — | Anket → outbox |
+| GET | `/api/oturum/:qr` | `Bearer PROVISIONING_SECRET` | QR ile oturum |
+| GET | `/api/reklamlar/aktif` | — | Aktif kampanyalar |
+| POST | `/api/reklam-gosterim` | — | Reklam gösterim logu |
 
 ## Üretim Dağıtımı
 
-`eisa-api.service` systemd dosyasını `/etc/systemd/system/` altına kopyalayın. Servis `node /opt/eisa/api/src/index.js` çalıştırır. Tek binary istiyorsanız Node SEA (`node --experimental-sea-config`) veya `pkg` ile derleyebilirsiniz.
+`eisa-api.service` systemd dosyasini `/etc/systemd/system/` altina kopyalayin. Servis `node /opt/eisa/app/kiosk_edge/api-node/src/index.js` calistirir. Tek binary istiyorsaniz Node SEA (`node --experimental-sea-config`) veya `pkg` ile derleyebilirsiniz.
+
+Detayli VirtualBox + production kurulum adimlari icin: `kiosk_edge/PRODUCTION_VIRTUALBOX_DEPLOY.md`

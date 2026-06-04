@@ -588,13 +588,10 @@ ln -sf /lib/systemd/system/NetworkManager.service \
 cat > "$ROOT/etc/eisa/kiosk.env" << 'KIOSK_ENV'
 # Bu dosya provision scripti tarafından cihaza özgü değerlerle doldurulur.
 # Asla boş değerlerle bırakmayın!
-EISA_KIOSK_APP_KEY=PROVISION_REQUIRED
-EISA_KIOSK_MAC=PROVISION_REQUIRED
-EISA_KIOSK_ID=PROVISION_REQUIRED
-EISA_PHARMACY_ID=PROVISION_REQUIRED
+EISA_KIOSK_FLEET_KEY=PROVISION_REQUIRED
+EISA_KIOSK_PROVISIONING_SECRET=PROVISION_REQUIRED
 EISA_SQLITE_PATH=/data/eisa/local.db
 EISA_CENTRAL_API_BASE=PROVISION_REQUIRED
-EISA_LOCAL_API_SECRET=PROVISION_REQUIRED
 EISA_PULL_INTERVAL_SEC=900
 EISA_PUSH_INTERVAL_SEC=300
 EISA_PING_INTERVAL_SEC=60
@@ -776,26 +773,21 @@ Bu adım golden image flashing'inden **sonra** ve network'e ilk bağlanmadan **�
 ```bash
 #!/bin/bash
 # provision-kiosk.sh — Saha teknisyeni tarafından çalıştırılır.
-# Kullanım: ./provision-kiosk.sh <kiosk_id> <pharmacy_id> <app_key> <api_base>
+# Kullanım: ./provision-kiosk.sh <fleet_key> <provisioning_secret> <api_base>
 
 set -euo pipefail
 
-KIOSK_ID="$1"
-PHARMACY_ID="$2"
-APP_KEY="$3"
-API_BASE="$4"
-LOCAL_SECRET=$(openssl rand -hex 32)
+FLEET_KEY="$1"
+PROVISIONING_SECRET="$2"
+API_BASE="$3"
 MAC=$(cat /sys/class/net/eth0/address 2>/dev/null || \
       cat /sys/class/net/wlan0/address 2>/dev/null)
 
 cat > /etc/eisa/kiosk.env << EOF
-EISA_KIOSK_APP_KEY=${APP_KEY}
-EISA_KIOSK_MAC=${MAC}
-EISA_KIOSK_ID=${KIOSK_ID}
-EISA_PHARMACY_ID=${PHARMACY_ID}
+EISA_KIOSK_FLEET_KEY=${FLEET_KEY}
+EISA_KIOSK_PROVISIONING_SECRET=${PROVISIONING_SECRET}
 EISA_SQLITE_PATH=/data/eisa/local.db
 EISA_CENTRAL_API_BASE=${API_BASE}
-EISA_LOCAL_API_SECRET=${LOCAL_SECRET}
 EISA_PULL_INTERVAL_SEC=900
 EISA_PUSH_INTERVAL_SEC=300
 EISA_PING_INTERVAL_SEC=60
@@ -818,12 +810,11 @@ sed -i \
 
 systemctl restart eisa-api mender-updated
 
-echo "Kiosk #${KIOSK_ID} provision tamamlandı (MAC: ${MAC})"
-echo "Local API Secret: ${LOCAL_SECRET}"
-echo ">>> Lütfen bu secret'ı Django admin panelinde kiosk kaydını güncelleyerek saklayın."
+echo "Kiosk provision tamamlandı (MAC: ${MAC})"
+echo "Kiosk ilk açılışta HMAC-imzalı provision ile IoT token alacak."
 ```
 
-> **Güvenlik notu**: `LOCAL_SECRET` Django admin panelinde ilgili `Kiosk` kaydındaki `local_api_secret` alanına kaydedilmelidir. Terminal çıktısı loglanmamalıdır.
+> **Not**: `EISA_KIOSK_PROVISIONING_SECRET` hem IoT token provision imzası hem de eczacı terminali QR sorgusu için kullanılır. Tek bir secret yönetilir.
 
 ---
 

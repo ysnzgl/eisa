@@ -8,8 +8,8 @@ let _db = null;
 
 const DEFAULT_OUTBOX_MAX_ROWS = 10000;
 
-// Sema versiyonu — playlists/playlist_items/kiosk_meta tablolari eklendi.
-const SCHEMA_VERSION = 7;
+// Sema versiyonu — backend ile hizali hedefleme iliski tablolari eklendi.
+const SCHEMA_VERSION = 8;
 
 export function openDb(sqlitePath, options = {}) {
   if (_db) return _db;
@@ -121,6 +121,7 @@ function initSchema(db, outboxMaxRows = DEFAULT_OUTBOX_MAX_ROWS) {
       ad                   TEXT    NOT NULL,
       ikon                 TEXT    NOT NULL DEFAULT 'fa-circle',
       bagli_kategori_id    INTEGER REFERENCES kategoriler(id),
+      hedef_cinsiyet_id    INTEGER REFERENCES cinsiyetler(id),
       aktif                INTEGER NOT NULL DEFAULT 1,
       surum                INTEGER NOT NULL DEFAULT 1,
       hedef_cinsiyetler    TEXT    NOT NULL DEFAULT '[]',
@@ -147,6 +148,7 @@ function initSchema(db, outboxMaxRows = DEFAULT_OUTBOX_MAX_ROWS) {
       metin                TEXT    NOT NULL,
       sira                 INTEGER NOT NULL DEFAULT 0,
       eslesme_kurallari    TEXT    NOT NULL DEFAULT '[]',
+      hedef_cinsiyet_id    INTEGER REFERENCES cinsiyetler(id),
       surum                INTEGER NOT NULL DEFAULT 1,
       hedef_cinsiyetler    TEXT    NOT NULL DEFAULT '[]',
       hedef_yas_araliklari TEXT    NOT NULL DEFAULT '[]',
@@ -164,7 +166,29 @@ function initSchema(db, outboxMaxRows = DEFAULT_OUTBOX_MAX_ROWS) {
     CREATE TABLE IF NOT EXISTS etken_maddeler (
       id       INTEGER PRIMARY KEY,
       ad       TEXT    NOT NULL UNIQUE,
-      aciklama TEXT    NOT NULL DEFAULT ''
+      aciklama TEXT    NOT NULL DEFAULT '',
+      aktif    INTEGER NOT NULL DEFAULT 1,
+      surum    INTEGER NOT NULL DEFAULT 1,
+      olusturulma_tarihi TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      guncellenme_tarihi TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
+
+    -- Backend M2M hedefleme iliskileri (kiosk sorgulari icin de normalize tutulur).
+    CREATE TABLE IF NOT EXISTS kategori_hedef_yas_araliklari (
+      kategori_id    INTEGER NOT NULL REFERENCES kategoriler(id) ON DELETE CASCADE,
+      yas_araligi_id INTEGER NOT NULL REFERENCES yas_araliklari(id),
+      PRIMARY KEY (kategori_id, yas_araligi_id)
+    );
+    CREATE TABLE IF NOT EXISTS soru_hedef_yas_araliklari (
+      soru_id        INTEGER NOT NULL REFERENCES sorular(id) ON DELETE CASCADE,
+      yas_araligi_id INTEGER NOT NULL REFERENCES yas_araliklari(id),
+      PRIMARY KEY (soru_id, yas_araligi_id)
+    );
+    CREATE TABLE IF NOT EXISTS soru_etken_maddeler (
+      soru_id        INTEGER NOT NULL REFERENCES sorular(id) ON DELETE CASCADE,
+      etken_madde_id INTEGER NOT NULL REFERENCES etken_maddeler(id),
+      rol            TEXT    NOT NULL DEFAULT 'ana',
+      PRIMARY KEY (soru_id, etken_madde_id)
     );
 
     CREATE TABLE IF NOT EXISTS creatives (
@@ -206,6 +230,11 @@ function initSchema(db, outboxMaxRows = DEFAULT_OUTBOX_MAX_ROWS) {
     CREATE INDEX IF NOT EXISTS cevaplar_soru_idx     ON cevaplar(soru_id);
     CREATE INDEX IF NOT EXISTS ilceler_il_idx        ON ilceler(il_id);
     CREATE INDEX IF NOT EXISTS danisma_ust_idx       ON danisma_kategorileri(ust_kategori_id);
+    CREATE INDEX IF NOT EXISTS kategoriler_hedef_cinsiyet_idx ON kategoriler(hedef_cinsiyet_id);
+    CREATE INDEX IF NOT EXISTS sorular_hedef_cinsiyet_idx     ON sorular(hedef_cinsiyet_id);
+    CREATE INDEX IF NOT EXISTS kategori_hedef_yas_idx         ON kategori_hedef_yas_araliklari(yas_araligi_id);
+    CREATE INDEX IF NOT EXISTS soru_hedef_yas_idx             ON soru_hedef_yas_araliklari(yas_araligi_id);
+    CREATE INDEX IF NOT EXISTS soru_etken_madde_idx           ON soru_etken_maddeler(etken_madde_id);
     CREATE INDEX IF NOT EXISTS oturum_outbox_pending ON oturum_outbox(gonderilme_tarihi);
     CREATE INDEX IF NOT EXISTS reklam_outbox_pending ON reklam_gosterim_outbox(gonderilme_tarihi);
 
@@ -295,6 +324,7 @@ export function rowToKategori(row) {
     ad: row.ad,
     ikon: row.ikon,
     bagli_kategori_id: row.bagli_kategori_id ?? null,
+    hedef_cinsiyet_id: row.hedef_cinsiyet_id ?? null,
     aktif: !!row.aktif,
     hedef_cinsiyetler: safeJson(row.hedef_cinsiyetler, []),
     hedef_yas_araliklari: safeJson(row.hedef_yas_araliklari, []),
@@ -322,6 +352,7 @@ export function rowToSoru(row) {
     metin: row.metin,
     sira: row.sira,
     eslesme_kurallari: safeJson(row.eslesme_kurallari, []),
+    hedef_cinsiyet_id: row.hedef_cinsiyet_id ?? null,
     hedef_cinsiyetler: safeJson(row.hedef_cinsiyetler, []),
     hedef_yas_araliklari: safeJson(row.hedef_yas_araliklari, []),
   };

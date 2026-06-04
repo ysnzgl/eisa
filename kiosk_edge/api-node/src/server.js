@@ -44,6 +44,19 @@ export async function buildServer({ db, settings, logger }) {
     return reply.code(status).send({ detail });
   }
 
+  const selKategoriYas = db.prepare(
+    'SELECT yas_araligi_id FROM kategori_hedef_yas_araliklari WHERE kategori_id = ? ORDER BY yas_araligi_id',
+  );
+  const selSoruYas = db.prepare(
+    'SELECT yas_araligi_id FROM soru_hedef_yas_araliklari WHERE soru_id = ? ORDER BY yas_araligi_id',
+  );
+  const selSoruEtken = db.prepare(
+    `SELECT etken_madde_id, rol
+       FROM soru_etken_maddeler
+      WHERE soru_id = ?
+      ORDER BY etken_madde_id`,
+  );
+
   function parseBody(schema, body, reply) {
     const result = schema.safeParse(body ?? {});
     if (!result.success) {
@@ -100,19 +113,25 @@ export async function buildServer({ db, settings, logger }) {
     const rows = db
       .prepare(
         `SELECT id, slug, ad, ikon, bagli_kategori_id, aktif,
-                hedef_cinsiyetler, hedef_yas_araliklari
+                hedef_cinsiyet_id, hedef_cinsiyetler, hedef_yas_araliklari
            FROM kategoriler WHERE aktif = 1 ORDER BY id`,
       )
       .all();
-    return rows.map((r) => ({
-      id: r.id,
-      slug: r.slug,
-      ad: r.ad,
-      ikon: r.ikon,
-      bagli_kategori_id: r.bagli_kategori_id ?? null,
-      hedef_cinsiyetler: safeJson(r.hedef_cinsiyetler, []),
-      hedef_yas_araliklari: safeJson(r.hedef_yas_araliklari, []),
-    }));
+    return rows.map((r) => {
+      const yasIds = selKategoriYas.all(r.id).map((x) => x.yas_araligi_id);
+      const legacyAges = safeJson(r.hedef_yas_araliklari, []);
+      const legacyGender = safeJson(r.hedef_cinsiyetler, []);
+      return {
+        id: r.id,
+        slug: r.slug,
+        ad: r.ad,
+        ikon: r.ikon,
+        bagli_kategori_id: r.bagli_kategori_id ?? null,
+        hedef_cinsiyet: r.hedef_cinsiyet_id ?? null,
+        hedef_cinsiyetler: legacyGender,
+        hedef_yas_araliklari: yasIds.length ? yasIds : legacyAges,
+      };
+    });
   });
 
   app.get('/api/danisma-kategorileri', async () => {
@@ -142,19 +161,28 @@ export async function buildServer({ db, settings, logger }) {
     const rows = db
       .prepare(
         `SELECT id, seed_id, metin, sira, eslesme_kurallari,
-                hedef_cinsiyetler, hedef_yas_araliklari
+                hedef_cinsiyet_id, hedef_cinsiyetler, hedef_yas_araliklari
            FROM sorular WHERE kategori_id = ? ORDER BY sira`,
       )
       .all(cat.id);
-    return rows.map((r) => ({
-      id: r.id,
-      seed_id: r.seed_id,
-      metin: r.metin,
-      sira: r.sira,
-      eslesme_kurallari: safeJson(r.eslesme_kurallari, []),
-      hedef_cinsiyetler: safeJson(r.hedef_cinsiyetler, []),
-      hedef_yas_araliklari: safeJson(r.hedef_yas_araliklari, []),
-    }));
+    return rows.map((r) => {
+      const yasIds = selSoruYas.all(r.id).map((x) => x.yas_araligi_id);
+      const legacyAges = safeJson(r.hedef_yas_araliklari, []);
+      return {
+        id: r.id,
+        seed_id: r.seed_id,
+        metin: r.metin,
+        sira: r.sira,
+        eslesme_kurallari: safeJson(r.eslesme_kurallari, []),
+        hedef_cinsiyet: r.hedef_cinsiyet_id ?? null,
+        hedef_cinsiyetler: safeJson(r.hedef_cinsiyetler, []),
+        hedef_yas_araliklari: yasIds.length ? yasIds : legacyAges,
+        hedef_etken_maddeler: selSoruEtken.all(r.id).map((x) => ({
+          etken_madde: x.etken_madde_id,
+          rol: x.rol,
+        })),
+      };
+    });
   });
 
   // ── oturum gonder ──────────────────────────────────────────────────────
@@ -240,7 +268,7 @@ export async function buildServer({ db, settings, logger }) {
   // ── eczaci sorgulamasi (yerel sirla korunur) ───────────────────────────
   app.get(
     '/api/oturum/*',
-    { preHandler: requireLocalSecret(settings.localApiSecret) },
+    { preHandler: requireLocalSecret(settings.kioskProvisioningSecret) },
     async (req, reply) => {
       const qrCode = req.params['*'];
       if (!qrCode || qrCode.length > 256 || !QR_RE.test(qrCode)) {

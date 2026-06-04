@@ -6,9 +6,9 @@ After=network.target
 Type=simple
 User=eisa
 Group=eisa
-WorkingDirectory=/opt/eisa/api
+WorkingDirectory=/opt/eisa/app/kiosk_edge/api-node
 EnvironmentFile=/etc/eisa/kiosk.env
-ExecStart=/usr/bin/node /opt/eisa/api/src/index.js
+ExecStart=/usr/bin/node /opt/eisa/app/kiosk_edge/api-node/src/index.js
 Restart=always
 RestartSec=3
 

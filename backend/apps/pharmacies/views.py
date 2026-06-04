@@ -4,19 +4,29 @@ Eczane ve Kiosk yonetim gorunumleri.
 UoW ile yazma: tum CRUD perform_*() metotlari `UnitOfWork(user=request.user)`
 icinden kaydeder; `olusturan/guncelleyen/surum` otomatik islenir.
 """
+import re
 import secrets
 
+from django.conf import settings
 from django.db.models import Count
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
+from rest_framework.views import APIView
 from core_api.cookie_jwt import JWTCookieAuthentication as JWTAuthentication
 
 from apps.audit.models import DenetimLogu, kayit_birak
 from apps.core.uow import UnitOfWork
 
-from .auth import KioskAppKeyAuthentication
+from .auth import (
+    KioskAppKeyAuthentication,
+    check_fleet_key,
+    create_iot_token,
+    is_timestamp_fresh,
+    verify_provision_hmac,
+)
 from .models import Eczane, Kiosk
 from .permissions import IsKiosk, IsSuperAdmin
 from .serializers import EczaneSerializer, KioskSerializer
@@ -33,6 +43,110 @@ class _AnahtarYenileThrottle(UserRateThrottle):
     """SEC-008: regenerate_key endpoint'ine ozgu siki oran siniri."""
 
     scope = "admin_sensitive"
+
+
+MAC_RE = re.compile(r"^([0-9A-F]{2}:){5}[0-9A-F]{2}$")
+
+
+def _normalize_mac(raw: str) -> str:
+    value = (raw or "").strip().upper().replace("-", ":")
+    return value
+
+
+class KioskBootstrapView(APIView):
+    """POST /api/pharmacies/kiosks/bootstrap/
+
+    Kiosk ilk aktivasyonunda cihaz kimligini ve IoT token'ini alir.
+
+    Istek:
+      Header  X-Kiosk-Key: <KIOSK_FLEET_KEY>
+      Body    {
+                "mac_adresi": "AA:BB:CC:DD:EE:FF",
+                "timestamp":  "2026-06-04T10:00:00Z",   # ISO-8601 UTC
+                "hmac":       "<HMAC-SHA256(MAC_UPPER + timestamp, KIOSK_PROVISIONING_SECRET)>"
+              }
+
+    Yanit:
+      { "iot_token": "...", "kiosk_id": 1, "pharmacy_id": 1,
+        "kiosk_adi": "...", "expires_in_days": 7 }
+    """
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        fleet_key = getattr(settings, "KIOSK_FLEET_KEY", "") or ""
+        provisioning_secret = getattr(settings, "KIOSK_PROVISIONING_SECRET", "") or ""
+
+        if not fleet_key or not provisioning_secret:
+            return Response(
+                {"detail": "Kiosk provision devre disi (sunucu ayarlari eksik)."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        # 1) Fleet key kontrolu
+        if not check_fleet_key(request):
+            return Response(
+                {"detail": "Gecersiz veya eksik X-Kiosk-Key."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        # 2) Body alanlari
+        raw_mac = request.data.get("mac_adresi") or request.headers.get("X-Kiosk-MAC", "")
+        mac = _normalize_mac(raw_mac)
+        timestamp = (request.data.get("timestamp") or "").strip()
+        received_hmac = (request.data.get("hmac") or "").strip()
+
+        if not MAC_RE.match(mac):
+            return Response({"detail": "Gecersiz MAC adresi."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not timestamp or not received_hmac:
+            return Response(
+                {"detail": "timestamp ve hmac alanlari zorunludur."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # 3) Timestamp tazelik kontrolu (replay koruyu, +/- 5 dk)
+        if not is_timestamp_fresh(timestamp):
+            return Response(
+                {"detail": "Timestamp gecersiz veya suresi dolmus (max +/-5 dk)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # 4) HMAC dogrulama
+        if not verify_provision_hmac(mac, timestamp, received_hmac, provisioning_secret):
+            return Response(
+                {"detail": "HMAC imzasi dogrulanamadi."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        # 5) MAC ile kiosk sorgulama
+        kiosk = (
+            Kiosk.objects
+            .select_related("eczane")
+            .filter(aktif=True, mac_adresi__iexact=mac)
+            .first()
+        )
+        if not kiosk:
+            return Response(
+                {"detail": "Bu MAC adresi icin aktif kayitli kiosk bulunamadi."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # 6) IoT token uret
+        ttl_days: int = getattr(settings, "KIOSK_IOT_TOKEN_TTL_DAYS", 7)
+        iot_token = create_iot_token(kiosk.pk, kiosk.eczane_id, mac)
+
+        return Response(
+            {
+                "iot_token": iot_token,
+                "kiosk_id": kiosk.pk,
+                "pharmacy_id": kiosk.eczane_id,
+                "kiosk_adi": kiosk.ad,
+                "expires_in_days": ttl_days,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class EczaneViewSet(viewsets.ModelViewSet):

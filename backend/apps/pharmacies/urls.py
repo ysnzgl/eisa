@@ -3,13 +3,14 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .dashboard import EczaciDashboardView
-from .views import EczaneViewSet, KioskViewSet
+from .views import EczaneViewSet, KioskBootstrapView, KioskViewSet
 
 kiosk_router = DefaultRouter()
 kiosk_router.register(r"kiosks", KioskViewSet, basename="kiosk")
 
 urlpatterns = [
     path("me/dashboard/", EczaciDashboardView.as_view(), name="eczaci-dashboard"),
+    path("kiosks/bootstrap/", KioskBootstrapView.as_view(), name="kiosk-bootstrap"),
     path(
         "",
         EczaneViewSet.as_view({"get": "list", "post": "create"}),
