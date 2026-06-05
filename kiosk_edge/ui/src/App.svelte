@@ -24,6 +24,29 @@
 
   let resultScreenRef = null;
 
+  // ── Sahte oturum (fake session) yasam dongusu ───────────────────────────
+  // Kategori seciminde bir id atanir; oturum QR uretildiginde (tamamlandi) veya
+  // 10sn cevap verilmediginde (terk edilmis) sonlanir.
+  const INACTIVITY_MS = 10_000;
+  let sessionId = null;        // kategori seciminde atanan oturum id'si
+  let sessionFinalized = true; // cift gonderimi engelleyen koruma
+  let inactivityTimer = null;
+
+  function clearInactivity() {
+    if (inactivityTimer) { clearTimeout(inactivityTimer); inactivityTimer = null; }
+  }
+  function armInactivity() {
+    clearInactivity();
+    inactivityTimer = setTimeout(onInactivityTimeout, INACTIVITY_MS);
+  }
+  async function onInactivityTimeout() {
+    // 10sn etkilesim yok → oturumu terk edilmis (tamamlandi=false) olarak kapat.
+    let cat;
+    currentCategory.update(v => { cat = v; return v; });
+    if (!cat || sessionFinalized) return;
+    await showFlowAResult(cat, false);
+  }
+
   function goTo(s) { screen.set(s); }
 
   // Uygulama başlarken internet bağlantısı kontrol edilir.
@@ -41,6 +64,9 @@
   });
 
   function resetToIdle() {
+    clearInactivity();
+    sessionId = null;
+    sessionFinalized = true;
     selectedAge.set(null);
     selectedSex.set(null);
     currentCategory.set(null);
@@ -72,12 +98,16 @@
   }
 
   async function startQuestions(cat) {
+    // Kategori secimi = oturum baslangici. Yeni id ata, terk-zamanlayicisini kur.
+    sessionId = (crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    sessionFinalized = false;
     currentCategory.set(cat);
     currentQIndex.set(0);
     currentAnswers.set([]);
     currentQuestions.set([]);
     questionsLoading.set(true);
     goTo('question');
+    armInactivity();
     try {
       const qs = await fetchQuestions(cat.slug);
       currentQuestions.set(qs);
@@ -93,6 +123,7 @@
   }
 
   async function handleAnswer(answer) {
+    armInactivity();
     let qs, idx, answers;
     currentQuestions.update(v => { qs = v; return v; });
     currentQIndex.update(v => { idx = v; return v; });
@@ -109,7 +140,11 @@
     }
   }
 
-  async function showFlowAResult(cat) {
+  async function showFlowAResult(cat, completed = true) {
+    // Cift sonlandirmayi engelle (zaman asimi + normal bitis yarisabilir).
+    if (sessionFinalized) return;
+    sessionFinalized = true;
+    clearInactivity();
     let qs, answers, age, sex;
     currentQuestions.update(v => { qs = v; return v; });
     currentAnswers.update(v => { answers = v; return v; });
@@ -118,7 +153,7 @@
 
     const recs = getRecommendations(qs, answers, age ?? '18-25', sex ?? 'M');
     const ingredientList = recsToIngredientList(recs);
-    const { qrCode, qrPayload } = await doSubmitSession(cat?.slug ?? '', false, ingredientList);
+    const { qrCode, qrPayload } = await doSubmitSession(cat?.slug ?? '', false, ingredientList, completed);
     const firstRec = recs[0];
 
     result.set({
@@ -180,7 +215,7 @@
     }
   }
 
-  async function doSubmitSession(categorySlug, isSensitiveFlow, ingredientList) {
+  async function doSubmitSession(categorySlug, isSensitiveFlow, ingredientList, completed = true) {
     let age, sex, answers;
     selectedAge.update(v => { age = v; return v; });
     selectedSex.update(v => { sex = v; return v; });
@@ -194,6 +229,7 @@
         isSensitiveFlow,
         answersPayload: Object.fromEntries(answers.map(a => [a.id, a.answer])),
         ingredientList,
+        completed,
       });
     } catch {
       const fallback = Math.random().toString(36).slice(2, 10).toUpperCase();

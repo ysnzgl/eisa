@@ -11,45 +11,91 @@
   // Playlist güncelleme kontrolü: her dakika hangi saat olduğunu kontrol et
   const HOUR_CHECK_MS = 60_000;
 
-  let currentIndex = 0;
+  let asset        = null;   // o an ekranda gösterilen öğe
+  let shownKey     = null;   // gösterilen öğenin kimliği (impression için)
   let shownAt      = new Date().toISOString();
   let visible      = true;
   let cycleTick    = null;
   let hourTick     = null;
+  let loopSeconds  = 60;     // 60sn DOOH loop süresi
+  let useSlots     = false;  // gerçek slot playlist mi, yoksa basit sıralı mı
+  let currentIndex = 0;      // sıralı (fallback) modda indeks
 
-  // Güncel oynatma listesi (playlist varsa oradan, yoksa campaigns)
+  // Güncel oynatma listesi (playlist varsa oradan, yoksa eski campaigns store)
   $: items = $playlistItems.length > 0 ? $playlistItems : $campaigns;
-  $: asset = items[currentIndex] ?? null;
 
-  function currentDurationMs() {
-    return ((asset?.duration_seconds ?? 0) * 1000) || FALLBACK_DURATION_MS;
-  }
+  const off   = (it) => it?.estimated_start_offset_seconds ?? 0;
+  const keyOf = (it) =>
+    it ? `${it.asset_type ?? it.type ?? 'creative'}:${it.asset_id ?? it.id}` : null;
 
-  function scheduleNext() {
-    if (cycleTick) clearTimeout(cycleTick);
-    cycleTick = setTimeout(advance, currentDurationMs());
-  }
-
-  function advance() {
-    if (!items.length) { scheduleNext(); return; }
+  // O an gösterilen reklam slotunun gerçek izlenme süresini backend'e logla.
+  function logCurrentImpression() {
+    if (!asset || !shownKey) return;
     const durationMs = Date.now() - new Date(shownAt).getTime();
-    if (asset) {
-      logAdImpression({
-        assetId:   asset.asset_id ?? asset.id,
-        assetType: asset.asset_type ?? asset.type ?? 'creative',
-        shownAt,
-        durationMs,
-      });
+    logAdImpression({
+      assetId:   asset.asset_id ?? asset.id,
+      assetType: asset.asset_type ?? asset.type ?? 'creative',
+      shownAt,
+      durationMs,
+    });
+  }
+
+  // Yeni öğeye geçir (öğe değiştiyse önceki slotu logla + yumuşak geçiş yap).
+  function show(item, msUntilNext) {
+    const newKey = keyOf(item);
+    if (newKey !== shownKey) {
+      logCurrentImpression();
+      visible = false;
+      setTimeout(() => {
+        asset = item;
+        shownKey = newKey;
+        shownAt = new Date().toISOString();
+        visible = true;
+      }, 400);
     }
-    visible = false;
-    setTimeout(() => {
-      currentIndex = (currentIndex + 1) % items.length;
-      // Playlist store'u güncelle (eski campaigns store ile uyumluluk)
-      activeCampaignIndex.set(currentIndex);
-      shownAt = new Date().toISOString();
-      visible = true;
-      scheduleNext();
-    }, 400);
+    scheduleNext(msUntilNext);
+  }
+
+  function scheduleNext(ms) {
+    if (cycleTick) clearTimeout(cycleTick);
+    cycleTick = setTimeout(tick, ms);
+  }
+
+  function tick() {
+    if (useSlots) slotTick();
+    else seqTick();
+  }
+
+  // ── Slot modu: duvar saatine göre 60sn loop içindeki konuma karşılık gelen
+  //    öğeyi göster. Bu, her kioskun aynı dakikada doğru slotu oynatmasını ve
+  //    proof-of-play kayıtlarının slotlarla hizalanmasını sağlar. ──
+  function slotTick() {
+    if (!items.length) { scheduleNext(1000); return; }
+    const sorted = [...items].sort((a, b) => off(a) - off(b));
+    const pos = Math.floor(Date.now() / 1000) % loopSeconds;
+
+    let idx = sorted.length - 1; // pos ilk offsetten önce ise son slota sar
+    for (let i = 0; i < sorted.length; i++) {
+      if (off(sorted[i]) <= pos) idx = i;
+      else break;
+    }
+    const cur = sorted[idx];
+    const nextOffset = (idx + 1 < sorted.length) ? off(sorted[idx + 1]) : loopSeconds;
+    let secsToNext = nextOffset - pos;
+    if (secsToNext <= 0) secsToNext = loopSeconds - pos; // wrap koruması
+
+    activeCampaignIndex.set(idx);
+    show(cur, Math.max(250, secsToNext * 1000));
+  }
+
+  // ── Sıralı (fallback) modu: öğeleri kendi sürelerine göre döngüsel oynat. ──
+  function seqTick() {
+    if (!items.length) { scheduleNext(FALLBACK_DURATION_MS); return; }
+    const item  = items[currentIndex % items.length];
+    const durMs = ((item?.duration_seconds ?? 0) * 1000) || FALLBACK_DURATION_MS;
+    activeCampaignIndex.set(currentIndex % items.length);
+    show(item, durMs);
+    currentIndex = (currentIndex + 1) % items.length;
   }
 
   async function loadPlaylist() {
@@ -60,10 +106,16 @@
       playlistVersion.set(pl.version);
       playlistHour.set(pl.target_hour ?? nowHour);
       playlistIsFallback.set(pl.is_fallback ?? true);
-      // Sırayı sıfırla
+      loopSeconds = pl.loop_duration_seconds || 60;
+
+      const list    = pl.items ?? [];
+      const offsets = list.map(off);
+      // Gerçek slot zamanlaması yalnızca backend offset üretmişse kullanılır.
+      useSlots = !(pl.is_fallback ?? true) && list.length > 1 && new Set(offsets).size > 1;
+
       currentIndex = 0;
       activeCampaignIndex.set(0);
-      scheduleNext();
+      scheduleNext(0); // reaktif `items` güncellensin diye bir sonraki mikro-adımda başlat
     } catch {
       // Offline — mevcut state korunur
     }
@@ -83,6 +135,7 @@
   });
 
   onDestroy(() => {
+    logCurrentImpression(); // ekran kapanırken son slotu kaybetme
     clearTimeout(cycleTick);
     clearInterval(hourTick);
   });

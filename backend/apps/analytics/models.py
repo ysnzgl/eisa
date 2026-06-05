@@ -29,6 +29,13 @@ class OturumLogu(BaseModel):
     qr_kodu = models.CharField(max_length=64, db_index=True)
     cevaplar = models.JSONField(default=dict, blank=True)
     onerilen_etken_maddeler = models.JSONField(default=list, blank=True)
+    tamamlandi = models.BooleanField(
+        default=True,
+        help_text=(
+            "True = kullanici akisi tamamladi (QR uretildi). "
+            "False = 10sn etkilesimsizlik ile terk edilmis (sahte/abandoned oturum)."
+        ),
+    )
 
     class Meta:
         db_table = "oturum_loglari"

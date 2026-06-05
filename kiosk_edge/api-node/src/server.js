@@ -214,6 +214,7 @@ export async function buildServer({ db, settings, logger }) {
       qr_kodu: qr,
       cevaplar: body.cevaplar,
       onerilen_etken_maddeler: body.onerilen_etken_maddeler,
+      tamamlandi: body.tamamlandi,
       olusturulma_tarihi: olusturulmaTarihi,
     };
 

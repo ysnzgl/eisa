@@ -17,6 +17,8 @@ export const oturumGonderSchema = z.object({
   qr_kodu: z.string().max(256).regex(QR_RE, 'Gecersiz QR kodu formati').nullable().optional(),
   cevaplar: z.record(z.any()).default({}),
   onerilen_etken_maddeler: z.array(z.string()).max(50, 'Cok fazla bilesen').default([]),
+  // false = 10sn etkilesimsizlik ile terk edilmis (sahte/abandoned) oturum.
+  tamamlandi: z.boolean().default(true),
 });
 
 export const reklamGosterimSchema = z.object({

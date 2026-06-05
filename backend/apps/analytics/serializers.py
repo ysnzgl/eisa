@@ -21,6 +21,7 @@ class OturumLoguItemSerializer(serializers.Serializer):
     qr_kodu = serializers.CharField(max_length=64)
     cevaplar = serializers.JSONField(default=dict)
     onerilen_etken_maddeler = serializers.JSONField(default=list)
+    tamamlandi = serializers.BooleanField(default=True)
     olusturulma_tarihi = serializers.DateTimeField(required=False, allow_null=True)
 
 
@@ -48,5 +49,6 @@ class OturumLoguSerializer(serializers.ModelSerializer):
             "qr_kodu",
             "cevaplar",
             "onerilen_etken_maddeler",
+            "tamamlandi",
             "olusturulma_tarihi",
         ]

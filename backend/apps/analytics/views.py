@@ -135,6 +135,7 @@ class OturumLoguView(APIView):
                 qr_kodu=d["qr_kodu"],
                 cevaplar=d.get("cevaplar", {}),
                 onerilen_etken_maddeler=d.get("onerilen_etken_maddeler", []),
+                tamamlandi=d.get("tamamlandi", True),
             )
             with UnitOfWork(user=None) as uow:
                 uow.add(instance)

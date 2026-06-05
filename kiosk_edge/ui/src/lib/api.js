@@ -85,9 +85,10 @@ export async function fetchQuestions(categorySlug) {
  * @param {boolean} payload.isSensitiveFlow
  * @param {object} payload.answersPayload — { seed_id: 'Y'|'N' }
  * @param {string[]} payload.ingredientList
+ * @param {boolean} [payload.completed]  — false ise 10sn etkilesimsizlik ile terk edilmis oturum
  * @returns {Promise<{qrCode: string, qrPayload: string}>}
  */
-export async function submitSession({ ageRange, gender, categorySlug, isSensitiveFlow, answersPayload, ingredientList }) {
+export async function submitSession({ ageRange, gender, categorySlug, isSensitiveFlow, answersPayload, ingredientList, completed = true }) {
   const data = await _request(`${API_BASE}/api/oturum/gonder`, {
     method: 'POST',
     body: {
@@ -97,6 +98,7 @@ export async function submitSession({ ageRange, gender, categorySlug, isSensitiv
       hassas_akis:             isSensitiveFlow,
       cevaplar:                answersPayload,
       onerilen_etken_maddeler: ingredientList,
+      tamamlandi:              completed,
     },
     timeoutMs: 5000,
     retry: 1,
