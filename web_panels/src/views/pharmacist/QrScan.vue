@@ -17,6 +17,7 @@ import { ref, onMounted, onUnmounted } from 'vue';
 import { http } from '../../services/api';
 import { useAuthStore } from '../../stores/auth';
 import { decodeQrCode, QR_BITPACK_RE } from '../../services/qrBitpack';
+import { completeSession } from '../../services/analytics';
 
 const auth = useAuthStore();
 
@@ -26,7 +27,10 @@ const loading = ref(false);
 const notFound = ref(false);
 const apiError = ref('');
 const ownershipError = ref('');
-const offlineMode = ref(false);
+const offlineMode = ref('');
+const completionNote = ref('');
+const completionLoading = ref(false);
+const completionError = ref('');
 
 // Kamera desteği
 const cameraSupported = ref(false);
@@ -155,6 +159,22 @@ async function lookup() {
   }
 }
 
+async function handleCompleteSession() {
+  if (!session.value?.id || completionLoading.value) return;
+
+  completionLoading.value = true;
+  completionError.value = '';
+  try {
+    const res = await completeSession(session.value.id, completionNote.value);
+    session.value = { ...session.value, ...res.data }; // Update local state with response
+  } catch (err) {
+    completionError.value =
+      err?.response?.data?.detail || 'Danışma tamamlanırken bir hata oluştu.';
+  } finally {
+    completionLoading.value = false;
+  }
+}
+
 function reset() {
   qrInput.value = '';
   session.value = null;
@@ -162,6 +182,9 @@ function reset() {
   apiError.value = '';
   ownershipError.value = '';
   offlineMode.value = false;
+  completionNote.value = '';
+  completionLoading.value = false;
+  completionError.value = '';
 }
 
 const GENDER_LABEL = { F: 'Kadın', M: 'Erkek', O: 'Diğer', male: 'Erkek', female: 'Kadın' };
@@ -290,16 +313,16 @@ function formatDT(iso) {
         <div class="qr-result-section qr-grid-2">
           <div>
             <p class="qr-detail-label">Yaş Aralığı</p>
-            <p class="qr-detail-value">{{ session.age_range }} yaş</p>
+            <p class="qr-detail-value">{{ session.age_range || session.yas_araligi_kod }}</p>
           </div>
           <div>
             <p class="qr-detail-label">Cinsiyet</p>
-            <p class="qr-detail-value">{{ GENDER_LABEL[session.gender] ?? session.gender }}</p>
+            <p class="qr-detail-value">{{ GENDER_LABEL[session.gender || session.cinsiyet_kod] ?? (session.gender || session.cinsiyet_kod) }}</p>
           </div>
           <div style="grid-column:1/span 2;">
             <p class="qr-detail-label">Seçilen Kategori</p>
             <p class="qr-detail-value">
-              {{ session.category?.name ?? session.category_name ?? session.category_slug ?? '—' }}
+              {{ session.kategori_adi ?? session.category?.name ?? session.category_name ?? session.category_slug ?? '—' }}
             </p>
           </div>
         </div>
@@ -316,6 +339,46 @@ function formatDT(iso) {
           </div>
         </div>
 
+        <!-- Completion Info (if completed) -->
+        <div v-if="session.danisma_tamamlandi" class="qr-result-section qr-completion-info">
+          <div class="qr-completion-header">
+            <i class="fa-solid fa-check-circle"></i>
+            <span>Danışma Tamamlandı</span>
+          </div>
+          <p v-if="session.danisma_notu" class="qr-completion-note">
+            <strong>Eczacı Notu:</strong> {{ session.danisma_notu }}
+          </p>
+          <p class="qr-completion-meta">
+            {{ session.danisma_tamamlayan_eczaci_adi }} tarafından
+            {{ formatDT(session.danisma_tamamlanma_tarihi) }} tarihinde tamamlandı.
+          </p>
+        </div>
+
+        <!-- Completion Action (if not completed) -->
+        <div v-if="!session.danisma_tamamlandi && session._source === 'server'" class="qr-result-section qr-completion-action">
+          <p class="qr-detail-label" style="margin-bottom:0.5rem;">Danışma Notu (Opsiyonel)</p>
+          <textarea
+            v-model="completionNote"
+            rows="2"
+            placeholder="Hastaya verilen tavsiye veya ürün önerisi..."
+            class="eisa-field"
+            style="margin-bottom:0.75rem;"
+          ></textarea>
+          <button
+            class="eisa-btn eisa-btn-success"
+            style="width:100%;"
+            :disabled="completionLoading"
+            @click="handleCompleteSession"
+          >
+            <i v-if="completionLoading" class="fa-solid fa-circle-notch fa-spin"></i>
+            <i v-else class="fa-solid fa-check"></i>
+            Danışmayı Tamamlandı Olarak İşaretle
+          </button>
+          <p v-if="completionError" class="eisa-error-text" style="margin-top:0.5rem;text-align:center;">
+            {{ completionError }}
+          </p>
+        </div>
+
         <!-- Footer -->
         <div class="qr-result-section" style="display:flex;align-items:center;justify-content:space-between;background:#F9FAFB;border-radius:0 0 0.875rem 0.875rem;margin:-0;padding:0.75rem 1.25rem;">
           <span style="font-size:0.75rem;color:#6B7280;">
@@ -328,3 +391,39 @@ function formatDT(iso) {
     </div><!-- /qr-scan-page -->
   </div>
 </template>
+
+<style scoped>
+.qr-completion-info {
+  background: #F0FDF4;
+  border: 1px solid #A7F3D0;
+  border-radius: 0.75rem;
+  padding: 1rem 1.25rem;
+}
+.qr-completion-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 700;
+  color: #065F46;
+  margin-bottom: 0.5rem;
+}
+.qr-completion-header i {
+  color: #10B981;
+}
+.qr-completion-note {
+  font-size: 0.875rem;
+  color: #047857;
+  margin-bottom: 0.5rem;
+  padding-left: 1.75rem;
+}
+.qr-completion-meta {
+  font-size: 0.75rem;
+  color: #065F46;
+  padding-left: 1.75rem;
+}
+.qr-completion-action {
+  background: #F9FAFB;
+  padding: 1.25rem;
+  border-top: 1px solid #E5E7EB;
+}
+</style>

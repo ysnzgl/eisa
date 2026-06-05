@@ -7,6 +7,14 @@
 
 ## 2026-06-05
 
+### Danışma Tamamlama Akışı Uygulanması
+**Değişiklik:** Backend'e pharmacist-side consultation completion endpoint eklendi. Yeni DB alanları: `danisma_tamamlandi`, `danisma_tamamlanma_tarihi`, `danisma_notu`, `danisma_tamamlayan_eczaci`.  
+**Dosyalar:** `backend/apps/analytics/views.py` (OturumLoguCompleteView), `models.py` (4 yeni alan), `serializers.py` (yeni alanlar), `urls.py` (endpoint path); `web_panels/src/views/pharmacist/QrScan.vue` (completion UI), `services/analytics.js` (completeSession helper).  
+**Migration:** `0005_oturumlogu_danisma_notu_and_more.py`  
+**Endpoint:** `POST /api/analytics/sessions/{id}/complete/` (eczacı-only, pharmacy ownership enforced, idempotent).  
+**Doküman:** `07-session-and-analytics.md`, `06-db-and-api-contracts.md` güncellenmiş.  
+**Breaking:** Yok.
+
 ### İlk Dokümantasyon Seti Oluşturuldu
 **Dosyalar:** 00-AI-INDEX.md, 01-backend.md, 02-web-panels.md, 03-kiosk-edge-api-node.md, 04-kiosk-edge-ui.md, 05-cross-project-flows.md, 06-db-and-api-contracts.md  
 **Amaç:** Token-ekonomik AI context  

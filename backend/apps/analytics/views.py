@@ -149,8 +149,64 @@ class OturumLoguView(APIView):
                         status=return_status)
 
 
+class OturumLoguCompleteView(APIView):
+    """POST /api/analytics/sessions/{id}/complete/
+
+    Eczacının bir QR danışmasını tamamlandı olarak işaretlemesini sağlar.
+    - Yalnızca eczacılar kullanabilir.
+    - Eczacı yalnızca kendi eczanesine ait kioskların oturumlarını güncelleyebilir.
+    - Idempotent: Tekrar tekrar çağrılsa bile yalnızca ilk seferde günceller.
+    """
+
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsEczaci]
+
+    def post(self, request, pk=None):
+        user = request.user
+        if not user.eczane_id:
+            return Response(
+                {"detail": "Bu işlemi yapmak için bir eczaneye bağlı olmalısınız."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        try:
+            oturum = OturumLogu.objects.get(pk=pk, kiosk__eczane_id=user.eczane_id)
+        except OturumLogu.DoesNotExist:
+            return Response(
+                {"detail": "Oturum bulunamadı veya bu oturuma erişim yetkiniz yok."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if oturum.danisma_tamamlandi:
+            # Zaten tamamlanmış, mevcut durumu döndür (idempotency).
+            serializer = OturumLoguSerializer(oturum)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        oturum.danisma_tamamlandi = True
+        oturum.danisma_tamamlanma_tarihi = timezone.now()
+        oturum.danisma_tamamlayan_eczaci = user
+        oturum.danisma_notu = request.data.get("note", "") or request.data.get("not", "")
+
+        with UnitOfWork(user=user) as uow:
+            uow.update(
+                oturum,
+                update_fields=[
+                    "danisma_tamamlandi",
+                    "danisma_tamamlanma_tarihi",
+                    "danisma_tamamlayan_eczaci",
+                    "danisma_notu",
+                    "guncellenme_tarihi",
+                    "guncelleyen",
+                    "surum",
+                ],
+            )
+
+        serializer = OturumLoguSerializer(oturum)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
 class OturumLoguStatsView(APIView):
-    """GET /api/analytics/sessions/stats/ â€” super admin istatistikleri."""
+    """GET /api/analytics/sessions/stats/ — super admin istatistikleri."""
 
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsSuperAdmin]

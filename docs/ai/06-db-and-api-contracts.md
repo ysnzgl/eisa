@@ -107,6 +107,10 @@
 - yas_araligi_id FK, cinsiyet_id FK, kategori_id FK
 - hassas_akis (bool), qr_kodu (indexed), cevaplar (JSON), onerilen_etken_maddeler (JSON), tamamlandi (bool)
 - olusturulma_tarihi
+- danisma_tamamlandi (bool, default=false)
+- danisma_tamamlanma_tarihi (datetime, nullable)
+- danisma_notu (text, blank)
+- danisma_tamamlayan_eczaci_id FK (users_eisauser, nullable)
 
 ---
 
@@ -169,7 +173,7 @@
 
 **GET /api/pharmacies/sessions/?qr={qr_kodu}**
 - Auth: JWT (Pharmacist)
-- Response: `{ "id": "uuid", "kiosk": {...}, "yas_araligi": "25-34", "cinsiyet": "Kadın", "kategori": "Uyku Sorunu", "cevaplar": {...}, "onerilen_etken_maddeler": [...], "tamamlandi": true }`
+- Response: `{ "id": "uuid", "kiosk": {...}, "yas_araligi": "25-34", "cinsiyet": "Kadın", "kategori": "Uyku Sorunu", "cevaplar": {...}, "onerilen_etken_maddeler": [...], "tamamlandi": true, "danisma_tamamlandi": false, ... }`
 
 ---
 
@@ -196,6 +200,21 @@
 **GET /api/products/danisma-kategorileri/**
 - Auth: JWT (SuperAdmin)
 - Response: `[{ "id": 1, "ad": "Reçete Danışma", "slug": "recete-danisma", "ikon": "fa-prescription", "ust_kategori": null, "aktif": true }, ...]`
+
+---
+
+### Analytics Endpoints
+
+**GET /api/analytics/sessions/**
+- Auth: JWT (SuperAdmin/Pharmacist)
+- Query Params: `qr_kodu`, `hassas_akis`, `page_size`
+- Response: (paginated list of `OturumLoguSerializer` objects)
+
+**POST /api/analytics/sessions/{id}/complete/**
+- Auth: JWT (Pharmacist)
+- `{id}` is the integer `OturumLogu.id` primary key
+- Request: `{ "note": "Optional pharmacist note." }`
+- Response: (single updated `OturumLoguSerializer` object)
 
 ---
 

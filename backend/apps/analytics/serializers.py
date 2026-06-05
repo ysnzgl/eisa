@@ -23,6 +23,12 @@ class OturumLoguItemSerializer(serializers.Serializer):
     onerilen_etken_maddeler = serializers.JSONField(default=list)
     tamamlandi = serializers.BooleanField(default=True)
     olusturulma_tarihi = serializers.DateTimeField(required=False, allow_null=True)
+    danisma_tamamlandi = serializers.BooleanField(default=False)
+    danisma_tamamlanma_tarihi = serializers.DateTimeField(required=False, allow_null=True)
+    danisma_notu = serializers.CharField(max_length=500, required=False, allow_blank=True)
+    danisma_tamamlayan_eczaci = serializers.CharField(
+        source="danisma_tamamlayan_eczaci.get_full_name", read_only=True, default=""
+    )
 
 
 class OturumLoguSerializer(serializers.ModelSerializer):
@@ -31,6 +37,9 @@ class OturumLoguSerializer(serializers.ModelSerializer):
     eczane_adi = serializers.CharField(source="kiosk.eczane.ad", read_only=True)
     yas_araligi_kod = serializers.CharField(source="yas_araligi.kod", read_only=True)
     cinsiyet_kod = serializers.CharField(source="cinsiyet.kod", read_only=True)
+    danisma_tamamlayan_eczaci_adi = serializers.CharField(
+        source="danisma_tamamlayan_eczaci.get_full_name", read_only=True, default=""
+    )
 
     class Meta:
         model = OturumLogu
@@ -51,4 +60,14 @@ class OturumLoguSerializer(serializers.ModelSerializer):
             "onerilen_etken_maddeler",
             "tamamlandi",
             "olusturulma_tarihi",
+            "danisma_tamamlandi",
+            "danisma_tamamlanma_tarihi",
+            "danisma_notu",
+            "danisma_tamamlayan_eczaci",
+            "danisma_tamamlayan_eczaci_adi",
+        ]
+        read_only_fields = [
+            "danisma_tamamlandi",
+            "danisma_tamamlanma_tarihi",
+            "danisma_tamamlayan_eczaci",
         ]

@@ -233,14 +233,14 @@ GET /api/analytics/oturum-loglari/
 
 ---
 
-## QR Tarama (web_panels)
+### QR Tarama ve Danışma Tamamlama (web_panels)
 
-### Flow
+#### Flow
 ```
 1. Eczacı → /pharmacist/qr sayfası
 2. QR okutma (kamera veya manuel input)
-3. GET /api/pharmacies/sessions/?qr={qr_kodu}
-4. Backend → OturumLogu.objects.filter(qr_kodu=qr).first()
+3. GET /api/analytics/sessions/?qr_kodu={qr_kodu}
+4. Backend → OturumLogu.objects.filter(qr_kodu=qr, kiosk__eczane_id=user.eczane_id).first()
 5. Response:
    {
      "id": "uuid",
@@ -251,24 +251,22 @@ GET /api/analytics/oturum-loglari/
      "cevaplar": { ... },
      "onerilen_etken_maddeler": ["Melatonin", "Valerian"],
      "tamamlandi": true,
-     "olusturulma_tarihi": "2026-06-05T10:30:00Z"
+     "olusturulma_tarihi": "2026-06-05T10:30:00Z",
+     "danisma_tamamlandi": false,
+     "danisma_tamamlanma_tarihi": null,
+     "danisma_notu": "",
+     "danisma_tamamlayan_eczaci": null
    }
-6. Modal gösterimi
-```
-
-### Eksik Akış
-**Danışmanlık sonuçlandırma endpoint'i yok:**
-- Eczacı QR okutunca session detayını görüyor
-- Sonrasında ne yapılacak? (not ekleme, durum güncelleme)
-- Backend'de endpoint eksik (Belirsiz / doğrulanmalı)
-
-**Candidate endpoint (not implemented):**
-```
-POST /api/pharmacies/sessions/{id}/complete/
-{ "tamamlandi": true, "note": "..." }
-
-Likely file: backend/apps/pharmacies/views.py
-Belirsiz / doğrulanmalı — endpoint currently not verified in source
+6. Modal gösterimi: Oturum detayı ve "Danışmayı Tamamla" butonu gösterilir.
+7. Eczacı not ekler (opsiyonel) ve butona tıklar.
+8. POST /api/analytics/sessions/{id}/complete/
+   { "note": "Hastaya X ürünü tavsiye edildi." }
+9. Backend:
+   - OturumLogu'nu bulur ve eczane sahipliğini kontrol eder.
+   - `danisma_tamamlandi`, `danisma_tamamlanma_tarihi`, `danisma_notu`, `danisma_tamamlayan_eczaci` alanlarını günceller.
+   - Idempotency: Eğer zaten tamamlanmışsa, tekrar güncellemez, mevcut durumu döner.
+10. Response: Güncellenmiş oturum objesi döner.
+11. Frontend: UI güncellenir, tamamlama formu kaybolur ve tamamlama bilgisi gösterilir.
 ```
 
 ---
@@ -280,7 +278,7 @@ Belirsiz / doğrulanmalı — endpoint currently not verified in source
 3. **Outbox tam dolunca:** Log kaybı riski, overwrite/block mekanizması yok
 4. **Session timeout:** 10sn çok kısa olabilir, configurable değil
 5. **Abandoned session tracking:** Terk edilmiş session'lar analytics'te görünüyor mu?
-6. **QR tarama sonrası akış:** Danışmanlık sonuçlandırma eksik
+- **QR tarama sonrası akış:** Danışmanlık sonuçlandırma eksik
 
 ---
 
