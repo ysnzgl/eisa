@@ -3,7 +3,7 @@
  * Tüm fetch çağrıları burada, bileşenler sadece bu fonksiyonları kullanır.
  */
 
-const API_BASE = 'http://127.0.0.1:8765';
+const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://127.0.0.1:8765';
 
 function _normalizeMediaUrl(url) {
   if (!url || typeof url !== 'string') return url;

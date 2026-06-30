@@ -5,6 +5,47 @@
 
 ---
 
+## 2026-07-01
+
+### Kiosk Demo — Rancher/Kubernetes Manifest
+**Değişiklik:** Birleşik kiosk container'ı demo.eisa.com.tr üzerinden yayınlamak için K8s manifest eklendi.  
+**Dosyalar:** `deploy/eisa-kiosk-demo.yaml` (YENİ)  
+**Kapsam:** Namespace + ConfigMap (EISA_ env'leri) + Deployment (ghcr.io/ysnzgl/eisa-kiosk:1.0.0, port 80) + Service (ClusterIP) + Ingress (traefik + cert-manager, demo.eisa.com.tr TLS).  
+**Pattern:** `deploy/eisa-app-production.yaml` ile aynı konvansiyon.  
+**Storage:** emptyDir (demo veri backend'den pull edilir); opsiyonel PVC örneği yorum olarak eklendi.  
+**Breaking:** Yok.
+
+### Kiosk Docker — Tek Container Birleştirme
+**Değişiklik:** API Node ve UI tek container'da birleştirildi (önce ayrı 2 servisti).  
+**Dosyalar:**
+- `kiosk_edge/Dockerfile` (YENİ — birleşik multi-stage: ui-build + api-deps + runner)
+- `kiosk_edge/.dockerignore` (YENİ)
+- `kiosk_edge/docker-compose.demo.yml` (tek `kiosk` servisi, port 8080→80)
+- `kiosk_edge/ui/src/lib/api.js` (`||` → `??` ki boş VITE_API_BASE relative path olsun)
+- `kiosk_edge/README_DEMO_DOCKER.md` (birleşik mimari güncellendi)  
+**Mimari:** Nginx (:80) UI static + `/api` proxy → Node (127.0.0.1:8765); supervisord ile 2 process.  
+**Doküman:** 03-kiosk-edge-api-node.md, 04-kiosk-edge-ui.md Docker bölümleri güncellendi.  
+**Breaking:** Yok (ilk versiyondaki ayrı `api-node/Dockerfile` ve `ui/Dockerfile` kaldırıldı; tek kök `Dockerfile` kullanılıyor).
+
+### Kiosk IdleScreen Layout İyileştirmesi
+**Değişiklik:** Bekleme ekranındaki logo ve ana içerik ortadan yukarıya taşındı.  
+**Dosyalar:** `kiosk_edge/ui/src/app.css` (.screen-idle: `align-items: flex-start`, .idle-content: `margin-top: 80px`)  
+**Etki:** Daha dengeli görsel yerleşim, alt banner için daha fazla alan.
+
+### Kiosk Docker Deployment (Demo)
+**Değişiklik:** demo.eisa.com.tr için Docker yapısı oluşturuldu. Gerçek kiosk deployment'ında kullanılmaz.  
+**Not:** İlk versiyonda ayrı `api-node/Dockerfile` + `ui/Dockerfile` vardı; sonradan tek kök `Dockerfile`'a birleştirildi (üstteki kayıt).  
+**Dosyalar:**
+- `kiosk_edge/docker-compose.demo.yml` (demo compose)
+- `kiosk_edge/.env.demo` (environment variables)
+- `kiosk_edge/README_DEMO_DOCKER.md` (deployment guide)
+- `kiosk_edge/ui/.env.example` (VITE_API_BASE konfigürasyonu)
+- `kiosk_edge/ui/src/lib/api.js` (API_BASE configurable: `import.meta.env.VITE_API_BASE`)  
+**Doküman:** 03-kiosk-edge-api-node.md, 04-kiosk-edge-ui.md güncellenmiş (Docker Deployment bölümü eklendi).  
+**Breaking:** Yok.
+
+---
+
 ## 2026-06-05
 
 ### Danışma Tamamlama Akışı Uygulanması

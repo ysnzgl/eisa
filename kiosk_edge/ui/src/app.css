@@ -316,7 +316,7 @@ body {
   cursor: pointer;
   position: relative;
   overflow: hidden;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
 }
 .idle-bg {
@@ -330,6 +330,7 @@ body {
   text-align: center;
   color: #fff;
   padding: 48px;
+  margin-top: 80px;
 }
 .idle-logo      { font-size: 64px; font-weight: 900; letter-spacing: -2px; }
 .idle-logo span { color: #B1121B; }

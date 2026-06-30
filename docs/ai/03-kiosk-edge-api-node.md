@@ -244,6 +244,57 @@
 
 ---
 
+## Docker Deployment (Demo)
+
+### Birleşik (All-in-One) Container
+
+**Dosya:** `kiosk_edge/Dockerfile` (build context: `kiosk_edge/`)
+
+API Node ve UI **tek container** içinde birlikte çalışır:
+- Nginx (:80) → UI static + `/api` proxy → 127.0.0.1:8765
+- Node API (Fastify, internal port 8765)
+- supervisord ile iki process yönetilir (autorestart)
+
+**Özellikler:**
+- Multi-stage build (ui-build → api-deps → runner)
+- Alpine Linux + Node.js 20
+- better-sqlite3 native derleme (python3/make/g++ build stage)
+- SQLite + media persistence: `/var/lib/eisa` volume
+
+### Environment Variables (container içi)
+
+```bash
+EISA_PORT=8765
+EISA_HOST=127.0.0.1
+EISA_SQLITE_PATH=/var/lib/eisa/local.db
+EISA_MEDIA_DIR=/var/lib/eisa/media
+EISA_LOG_DIR=/var/log/eisa
+EISA_CENTRAL_API_BASE=https://api.eisa.com.tr
+```
+
+> Not: API `EISA_` prefix'li env değişkenleri kullanır (`config.js`).
+
+### Docker Compose
+
+**Dosya:** `kiosk_edge/docker-compose.demo.yml`
+
+```powershell
+# Başlat
+docker compose -f docker-compose.demo.yml up -d
+
+# Loglar (api + nginx birlikte)
+docker compose -f docker-compose.demo.yml logs -f kiosk
+
+# Container içi process durumu
+docker exec -it eisa-kiosk-demo supervisorctl status
+```
+
+**NOT:** Bu Docker yapısı sadece **demo.eisa.com.tr** için hazırlanmıştır. Gerçek kiosk cihazlarında systemd service olarak native deployment kullanılır (`eisa-api.service`).
+
+Detay: `kiosk_edge/README_DEMO_DOCKER.md`
+
+---
+
 ## Belirsiz / Riskli Noktalar
 
 1. **Outbox tam dolunca ne olur:** `outboxMaxRows` aşılırsa sadece warning, overwrite/block mekanizması yok. Log kaybı riski. (Riskli)
@@ -255,4 +306,4 @@
 
 ---
 
-**Satır sayısı: ~200**
+**Satır sayısı: ~260**

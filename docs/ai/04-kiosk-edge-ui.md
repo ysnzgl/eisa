@@ -285,6 +285,79 @@
 
 ---
 
+## UI Konfigürasyonu
+
+### API Endpoint Konfigürasyonu
+
+API endpoint'i configurable yapılmıştır (2026-07-01):
+
+**Dosya:** `kiosk_edge/ui/src/lib/api.js`
+```javascript
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8765';
+```
+
+**Environment variable:**
+- `.env.example` dosyasında `VITE_API_BASE` tanımlı
+- Build sırasında Vite tarafından inject edilir
+- Default: `http://127.0.0.1:8765` (lokal development)
+- Birleşik Docker container'da `""` (relative path → nginx `/api` proxy)
+- `??` (nullish) kullanılır ki boş string override edilebilsin
+
+**Kullanım:**
+```bash
+# Development
+VITE_API_BASE=http://127.0.0.1:8765 npm run dev
+
+# Production build (demo için)
+VITE_API_BASE=http://kiosk-api:8765 npm run build
+```
+
+### IdleScreen Layout Değişikliği
+
+**Dosya:** `kiosk_edge/ui/src/app.css`
+
+**Değişiklik (2026-07-01):**
+- `.screen-idle`: `align-items: center` → `align-items: flex-start`
+- `.idle-content`: `margin-top: 80px` eklendi
+
+**Etki:**
+- Logo ve ana içerik ekranın ortasından yukarıya taşındı
+- Daha fazla alan bekleme ekranı alt banner için ayrıldı
+- Görsel denge iyileştirildi
+
+---
+
+## Docker Deployment (Demo)
+
+### Birleşik (All-in-One) Container
+
+**Dosya:** `kiosk_edge/Dockerfile` (build context: `kiosk_edge/`)
+
+API Node ve UI **tek container** içinde birlikte çalışır:
+- Nginx (:80) → UI static + `/api` proxy
+- Node API (127.0.0.1:8765, internal)
+- supervisord ile iki process yönetilir
+
+**Özellikler:**
+- Multi-stage build (ui-build → api-deps → runner)
+- UI build sırasında `VITE_API_BASE=""` (relative path) → nginx `/api` proxy
+- Aynı origin → CORS sorunu yok
+- Health check: `/healthz` (nginx), `/health` (api proxy)
+
+**Build & Run:**
+```powershell
+cd kiosk_edge
+docker compose -f docker-compose.demo.yml up -d
+```
+
+- **UI + API:** http://localhost:8080
+
+**NOT:** Bu Docker yapısı sadece **demo.eisa.com.tr** için hazırlanmıştır. Gerçek kiosk cihazlarında native deployment kullanılır (PRODUCTION_VIRTUALBOX_DEPLOY.md).
+
+Detay: `kiosk_edge/README_DEMO_DOCKER.md`
+
+---
+
 ## Belirsiz / Riskli Noktalar
 
 1. **Etken madde önerileri hesaplama:** `getRecommendations` fonksiyonu (`lib/ingredients.js`) mantığı tam açık değil. Hangi kurallara göre öneri yapılıyor? (Belirsiz)
@@ -297,4 +370,4 @@
 
 ---
 
-**Satır sayısı: ~200**
+**Satır sayısı: ~280**

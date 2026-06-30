@@ -1,0 +1,15 @@
+**/node_modules
+**/npm-debug.log
+**/*.db
+**/*.db-shm
+**/*.db-wal
+**/dist
+**/.env
+**/.env.local
+**/tests
+**/*.test.js
+**/coverage
+**/.vscode
+**/.idea
+**/*.md
+!**/README.md
