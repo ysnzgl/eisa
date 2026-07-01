@@ -100,7 +100,10 @@ body {
   to   { filter: brightness(1.15); }
 }
 .ss-overlay-text {
-  position: relative;
+  position: absolute;
+  top: 56px;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 10;
   text-align: center;
   color: #fff;
@@ -109,13 +112,14 @@ body {
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   border-radius: 24px;
-  padding: 48px 64px;
+  padding: 32px 56px;
 }
+.ss-logo-img { margin: 0 auto; }
 .ss-logo      { font-size: 80px; font-weight: 900; letter-spacing: -3px; }
 .ss-logo span { color: #B1121B; }
 .ss-sub       { font-size: 22px; color: #9CA3AF; margin-top: 10px; }
 .ss-tap {
-  margin-top: 44px;
+  margin-top: 28px;
   font-size: 20px;
   color: #E5E7EB;
   display: flex;
@@ -139,6 +143,7 @@ body {
 
 /* ─── Header ─── */
 .kiosk-header    { text-align: center; margin-bottom: 24px; }
+.kiosk-logo-img  { margin: 0 auto; }
 .kiosk-logo      { font-size: 34px; font-weight: 700; color: #111827; letter-spacing: -1px; }
 .kiosk-logo span { color: #B1121B; }
 .kiosk-subtitle  { font-size: 15px; color: #6B7280; margin-top: 2px; }
@@ -309,78 +314,11 @@ body {
 .qr-heading { font-size: 15px; font-weight: 700; color: #374151; margin-bottom: 16px; }
 .qr-note    { font-size: 12px; color: #9CA3AF; margin-top: 12px; margin-bottom: 0; }
 
-/* ─── Idle ekranı ─── */
-.screen-idle {
-  background: #111827;
-  padding: 0;
-  cursor: pointer;
-  position: relative;
-  overflow: hidden;
-  align-items: flex-start;
-  justify-content: center;
-}
-.idle-bg {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(145deg, #111827 0%, #7F1D1D 50%, #111827 100%);
-}
-.idle-content {
-  position: relative;
-  z-index: 2;
-  text-align: center;
-  color: #fff;
-  padding: 48px;
-  margin-top: 80px;
-}
-.idle-logo      { font-size: 64px; font-weight: 900; letter-spacing: -2px; }
-.idle-logo span { color: #B1121B; }
-.idle-tagline   { font-size: 22px; color: #9CA3AF; margin-top: 8px; }
-.idle-ad-card {
-  margin-top: 48px;
-  background: rgba(255, 255, 255, 0.07);
-  border-radius: 18px;
-  padding: 32px 40px;
-}
-.idle-ad-label { color: #9CA3AF; font-size: 13px; margin: 0 0 6px; }
-.idle-ad-text  { color: #E5E7EB; font-size: 22px; font-weight: 700; margin: 0; }
-.idle-tap-hint {
-  margin-top: 56px;
-  font-size: 18px;
-  color: #6B7280;
-  animation: pulse 2s infinite;
-}
+/* pulse — cekici ekrandaki "dokunun" ipucu animasyonu (.ss-tap) */
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0.4; }
 }
-.idle-ad-banner {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background: rgba(127, 29, 29, 0.8);
-  backdrop-filter: blur(8px);
-  padding: 18px 32px;
-  text-align: center;
-  color: #E5E7EB;
-  font-size: 14px;
-}
-.idle-timer {
-  position: absolute;
-  top: 24px;
-  right: 24px;
-  z-index: 3;
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 99px;
-  padding: 6px 14px;
-  font-size: 13px;
-  color: #9CA3AF;
-  transition: color 0.3s;
-}
-.idle-timer.overdue { color: #ef4444; }
 
 /* ─── Yardımcılar ─── */
 .screen-badge {

@@ -1,6 +1,7 @@
 <script>
   import { createEventDispatcher } from 'svelte';
   import { danismaCategories, danismaLoading, selectedDanismaParent } from '../stores/kiosk.js';
+  import ScreenHeader from './ScreenHeader.svelte';
 
   const dispatch = createEventDispatcher();
 
@@ -25,10 +26,7 @@
 </script>
 
 <div class="screen">
-  <div class="kiosk-header">
-    <div class="kiosk-logo">e-<span>İSA</span></div>
-    <div class="kiosk-subtitle">Eczacınıza Danışın</div>
-  </div>
+  <ScreenHeader subtitle="Eczacınıza Danışın" />
 
   <h2 class="screen-title">Danışma konunuzu seçin</h2>
 

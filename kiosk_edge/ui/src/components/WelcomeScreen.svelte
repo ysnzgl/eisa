@@ -1,14 +1,12 @@
 <script>
   import { createEventDispatcher } from 'svelte';
+  import ScreenHeader from './ScreenHeader.svelte';
 
   const dispatch = createEventDispatcher();
 </script>
 
 <div class="screen">
-  <div class="kiosk-header">
-    <div class="kiosk-logo">e-<span>İSA</span></div>
-    <div class="kiosk-subtitle">Eczane İçi Sağlık Asistanınız</div>
-  </div>
+  <ScreenHeader height="52px" />
 
   <div class="flex-grow-1 d-flex flex-column justify-content-center">
     <h2 class="screen-title text-center">Nasıl Yardımcı Olabilirim?</h2>

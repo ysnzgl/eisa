@@ -1,6 +1,7 @@
 <script>
   import { createEventDispatcher } from 'svelte';
   import { selectedAge, selectedSex } from '../stores/kiosk.js';
+  import ScreenHeader from './ScreenHeader.svelte';
 
   const dispatch = createEventDispatcher();
 
@@ -12,10 +13,7 @@
 </script>
 
 <div class="screen">
-  <div class="kiosk-header">
-    <div class="kiosk-logo">e-<span>İSA</span></div>
-    <div class="kiosk-subtitle">Sağlık Asistanınız</div>
-  </div>
+  <ScreenHeader subtitle="Sağlık Asistanınız" />
 
   <span class="screen-badge">Adım 1 / 3 — Hızlı Profil</span>
   <h2 class="screen-title">Devam etmek için lütfen seçin</h2>

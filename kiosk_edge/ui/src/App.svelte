@@ -1,5 +1,5 @@
 <script>
-  import { tick, onMount } from 'svelte';
+  import { tick, onMount, onDestroy } from 'svelte';
   import { getRecommendations, recsToIngredientList } from './lib/ingredients.js';
   import { fetchCategories, fetchQuestions, fetchDanismaCategories, submitSession, fetchWifiStatus } from './lib/api.js';
   import {
@@ -24,10 +24,11 @@
 
   let resultScreenRef = null;
 
-  // ── Sahte oturum (fake session) yasam dongusu ───────────────────────────
+  // ── Sahte oturum (fake session) yasam dongusu + global inaktivite ────────
   // Kategori seciminde bir id atanir; oturum QR uretildiginde (tamamlandi) veya
-  // 10sn cevap verilmediginde (terk edilmis) sonlanir.
-  const INACTIVITY_MS = 10_000;
+  // 20sn islem yapilmadiginda sonlanir. Idle/wifi disindaki HER ekranda 20sn
+  // islem yoksa oturum (varsa terk edilmis olarak kapatilip) idle'a doner.
+  const INACTIVITY_MS = 20_000;
   let sessionId = null;        // kategori seciminde atanan oturum id'si
   let sessionFinalized = true; // cift gonderimi engelleyen koruma
   let inactivityTimer = null;
@@ -40,18 +41,52 @@
     inactivityTimer = setTimeout(onInactivityTimeout, INACTIVITY_MS);
   }
   async function onInactivityTimeout() {
-    // 10sn etkilesim yok → oturumu terk edilmis (tamamlandi=false) olarak kapat.
+    // 20sn islem yok → varsa terk edilmis oturumu (tamamlandi=false) kapat,
+    // ardindan idle ekranina don.
+    await finalizeAbandonedSession();
+    resetToIdle();
+  }
+
+  // Aktif (ama tamamlanmamis) bir anket oturumu varsa terk edilmis olarak
+  // sessizce gonderir — sonuc/QR ekranina YONLENDIRMEZ.
+  async function finalizeAbandonedSession() {
     let cat;
     currentCategory.update(v => { cat = v; return v; });
     if (!cat || sessionFinalized) return;
-    await showFlowAResult(cat, false);
+    sessionFinalized = true;
+    let qs, answers, age, sex;
+    currentQuestions.update(v => { qs = v; return v; });
+    currentAnswers.update(v => { answers = v; return v; });
+    selectedAge.update(v => { age = v; return v; });
+    selectedSex.update(v => { sex = v; return v; });
+    const recs = getRecommendations(qs ?? [], answers ?? [], age ?? '18-25', sex ?? 'M');
+    const ingredientList = recsToIngredientList(recs);
+    await doSubmitSession(cat?.slug ?? '', false, ingredientList, false);
   }
 
   function goTo(s) { screen.set(s); }
 
+  // Global inaktivite: idle/wifi_setup disindaki her ekranda zamanlayiciyi kur;
+  // bu ekranlarda durdur. Ekran degisimi de bir aktivite sayilir (yeniden kur).
+  $: currentScreenName = $screen;
+  $: if (currentScreenName === 'idle' || currentScreenName === 'wifi_setup') {
+    clearInactivity();
+  } else {
+    armInactivity();
+  }
+
+  // Herhangi bir dokunma/tus, aktif ekranda zamanlayiciyi sifirlar.
+  function onUserActivity() {
+    if (currentScreenName !== 'idle' && currentScreenName !== 'wifi_setup') {
+      armInactivity();
+    }
+  }
+
   // Uygulama başlarken internet bağlantısı kontrol edilir.
   // Bağlantı yoksa doğrudan wifi_setup ekranı gösterilir.
   onMount(async () => {
+    window.addEventListener('pointerdown', onUserActivity, { passive: true });
+    window.addEventListener('keydown', onUserActivity);
     try {
       const status = await fetchWifiStatus();
       if (!status.connected) {
@@ -61,6 +96,12 @@
       // api-node henüz hazır değilse veya nmcli yoksa (geliştirme ortamı)
       // sessizce idle'da kal.
     }
+  });
+
+  onDestroy(() => {
+    clearInactivity();
+    window.removeEventListener('pointerdown', onUserActivity);
+    window.removeEventListener('keydown', onUserActivity);
   });
 
   function resetToIdle() {

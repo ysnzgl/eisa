@@ -1,130 +1,76 @@
 <script>
-  import { createEventDispatcher, onMount, onDestroy } from 'svelte';
+  // Cekici (attractor) / bekleme ekrani. Uygulama acilir acilmaz dogrudan bu
+  // ekran gosterilir (ayri bir "normal idle" ekrani YOKTUR).
+  //   - Gercek reklam (playlist/kampanya) varsa gorseller arasinda gecis yapar.
+  //   - Reklam yoksa donen "Bu Alana Reklam Verebilirsiniz" promosu gosterir.
+  // Ekrana dokunulunca akis baslar.
+  import { createEventDispatcher, onDestroy } from 'svelte';
   import { campaigns, playlistItems } from '../stores/kiosk.js';
+  import Logo from './Logo.svelte';
+  import AdPromo from './AdPromo.svelte';
+  import MediaView from './MediaView.svelte';
 
   const dispatch = createEventDispatcher();
-  const SS_TIMEOUT = 10; // saniye — ekran koruyucu başlatma süresi
+  const ROTATE_MS = 5000;
 
-  // Screensaver için yedek görseller (kampanya yoksa)
-  const DUMMY_IMAGES = [
-    'https://images.unsplash.com/photo-1607619056574-7b8d3ee536b2?w=794&h=1123&fit=crop',
-    'https://images.unsplash.com/photo-1628771065518-0d82f1938462?w=794&h=1123&fit=crop',
-    'https://images.unsplash.com/photo-1543362906-acfc16c67564?w=794&h=1123&fit=crop',
-  ];
+  let index = 0;
+  let visible = true;
+  let rotateTick;
 
-  let idleTick;
-  let screensaver = false;
-  let ssIndex = 0;
-  let ssTick;
-  let ssVisible = true;
-
-  $: ssImages = $playlistItems.length > 0
+  $: images = $playlistItems.length > 0
     ? $playlistItems.map(i => i.media_url).filter(Boolean)
     : $campaigns.length > 0
     ? $campaigns.map(c => c.media_url).filter(Boolean)
-    : DUMMY_IMAGES;
+    : [];
 
-  $: ssImage = ssImages[ssIndex % Math.max(ssImages.length, 1)];
+  $: hasAds = images.length > 0;
+  $: image = hasAds ? images[index % images.length] : null;
 
-  function startIdleTimer() {
-    screensaver = false;
-    clearInterval(idleTick);
-    clearInterval(ssTick);
-    idleTick = setTimeout(() => enterScreensaver(), SS_TIMEOUT * 1000);
-  }
+  // Reklam listesi degistikce gorsel donmesini (yeniden) baslat.
+  $: images, restartRotation();
 
-  function enterScreensaver() {
-    screensaver = true;
-    ssIndex = 0;
-    ssVisible = true;
-    clearInterval(ssTick);
-    ssTick = setInterval(() => {
-      ssVisible = false;
+  function restartRotation() {
+    clearInterval(rotateTick);
+    if (images.length <= 1) return; // tek/sifir gorselde gecise gerek yok
+    rotateTick = setInterval(() => {
+      visible = false;
       setTimeout(() => {
-        ssIndex = (ssIndex + 1) % ssImages.length;
-        ssVisible = true;
+        index = (index + 1) % images.length;
+        visible = true;
       }, 600);
-    }, 5000);
+    }, ROTATE_MS);
   }
 
   function handleTap() {
-    clearTimeout(idleTick);
-    clearInterval(ssTick);
+    clearInterval(rotateTick);
     dispatch('start');
   }
 
-  onMount(() => {
-    startIdleTimer();
-  });
-
-  onDestroy(() => {
-    clearTimeout(idleTick);
-    clearInterval(ssTick);
-  });
+  onDestroy(() => clearInterval(rotateTick));
 </script>
 
-{#if screensaver}
-  <!-- ── Ekran Koruyucu ── -->
-  <div
-    class="screen-saver"
-    on:click={handleTap}
-    role="button"
-    tabindex="0"
-    on:keydown={(e) => e.key === 'Enter' && handleTap()}
-  >
-    <div class="ss-bg-layer" style="opacity:{ssVisible ? 1 : 0}">
-      {#if ssImage && /\.(mp4|webm|ogg)$/i.test(ssImage)}
-        <!-- svelte-ignore a11y-media-has-caption -->
-        <video src={ssImage} autoplay loop muted playsinline class="ss-media"></video>
-      {:else if ssImage}
-        <img src={ssImage} alt="ekran koruyucu" class="ss-media" />
-      {:else}
-        <div class="ss-css-bg"></div>
-      {/if}
-    </div>
-
-    <div class="ss-overlay-text">
-      <div class="ss-logo">e-<span>İSA</span></div>
-      <div class="ss-sub">Eczane İçi Sağlık Asistanınız</div>
-      <div class="ss-tap">
-        <i class="fa-solid fa-hand-pointer ss-pulse-icon"></i>
-        Başlamak için dokunun
-      </div>
-    </div>
+<div
+  class="screen-saver"
+  on:click={handleTap}
+  role="button"
+  tabindex="0"
+  on:keydown={(e) => e.key === 'Enter' && handleTap()}
+>
+  <div class="ss-bg-layer" style="opacity:{visible ? 1 : 0}">
+    {#if hasAds}
+      <MediaView src={image} alt="reklam" class="ss-media" />
+    {:else}
+      <!-- Reklam yok: donen "Bu Alana Reklam Verebilirsiniz" promosu -->
+      <AdPromo large />
+    {/if}
   </div>
 
-{:else}
-  <!-- ── Normal Bekleme ── -->
-  <div
-    class="screen screen-idle"
-    on:click={handleTap}
-    role="button"
-    tabindex="0"
-    on:keydown={(e) => e.key === 'Enter' && handleTap()}
-  >
-    <div class="idle-bg"></div>
-
-    <div class="idle-content">
-      <div class="idle-logo">e-<span>İSA</span></div>
-      <div class="idle-tagline">Eczane İçi Sağlık Asistanınız</div>
-
-      <div class="idle-ad-card">
-        <p class="idle-ad-label">ECZANE SAĞLIK KİOSKU</p>
-        <p class="idle-ad-text">
-          Sağlığınıza önem veriyorsanız,<br>
-          <span style="color:#B1121B;">bizimle başlayın.</span>
-        </p>
-      </div>
-
-      <div class="idle-tap-hint">
-        <i class="fa-solid fa-hand-pointer"></i> Başlamak için ekrana dokunun
-      </div>
-    </div>
-
-    <div class="idle-ad-banner">
-      Ekrana dokunarak sağlık danışmanınızla görüşün &nbsp;|&nbsp;
-      Bu cihaz yalnızca bilgilendirme amaçlıdır, ilaç tavsiyesi değildir.
+  <div class="ss-overlay-text">
+    <Logo height="96px" light class="ss-logo-img" />
+    <div class="ss-tap">
+      <i class="fa-solid fa-hand-pointer ss-pulse-icon"></i>
+      Başlamak için dokunun
     </div>
   </div>
-{/if}
+</div>
 

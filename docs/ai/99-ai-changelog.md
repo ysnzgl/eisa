@@ -7,6 +7,44 @@
 
 ## 2026-07-01
 
+### Kiosk UI — Normal Idle Ekranı Kaldırıldı + Bileşen Refactor
+**Değişiklik:** Açılışta gelen "normal idle" bekleme ekranı kaldırıldı; uygulama artık doğrudan çekici (attractor) ekranla açılıyor. Tekrar eden parçalar bileşene çıkarıldı.  
+**Detay:**
+1. `IdleScreen.svelte` artık tek-durumlu attractor: açılışta anında gösterilir (10sn bekleme + iki-durumlu screensaver mantığı kaldırıldı). Reklam varsa görseller döner, yoksa `<AdPromo large />`. Eski `.screen-idle`/`.idle-*` markup ve CSS silindi.
+2. `MediaView.svelte` (YENİ) — URL uzantısına göre `<video>`/`<img>` render eden ortak bileşen; AdStrip + IdleScreen kullanıyor (kopyalanan img/video mantığı tekilleştirildi).
+3. `ScreenHeader.svelte` (YENİ) — Logo + opsiyonel subtitle; Welcome/Demographics/Category/Consult/Question ekranlarındaki tekrarlanan `kiosk-header` markup'ı bununla değiştirildi.  
+**Dosyalar:** `IdleScreen.svelte`, `MediaView.svelte` (YENİ), `ScreenHeader.svelte` (YENİ), `AdStrip.svelte`, `Welcome/Category/Consult/Demographics/QuestionScreen.svelte`, `app.css` (ölü idle stilleri temizlendi)  
+**Doküman:** 04-kiosk-edge-ui.md güncellendi.  
+**Test:** ui 16/16 geçti; tarayıcıda doğrulandı.  
+**Breaking:** Yok (idle screen state aynı; sadece görünüm/komponent yapısı değişti).
+
+### Kiosk UI — Marka Logosu, Ortak AdPromo, Ekran Koruyucu Promosu, 20sn Inaktivite
+**Değişiklik:** 4 UI iyileştirmesi yapıldı.  
+**Detay:**
+1. `Logo.svelte` (YENİ) + `assets/eisa-logo.svg` & `eisa-logo-light.svg` — tüm "e-İSA" yazıları resmi marka logosu ile değiştirildi (koyu zeminde beyaz varyant).
+2. `AdPromo.svelte` (YENİ) — dönen "Bu Alana Reklam Verebilirsiniz" tasarımı ortak bileşene çıkarıldı; AdStrip (reklam yokken) ve IdleScreen ekran koruyucusunda (reklam yokken, `large`) kullanılıyor.
+3. IdleScreen `ss-overlay-text` ekranın ÜSTÜNE konumlandırıldı; ekran koruyucu artık stok görseller yerine reklam yoksa AdPromo döndürüyor.
+4. App.svelte global inaktivite `10s → 20s`; idle/wifi dışındaki HER ekranda 20sn işlemsizlikte idle'a döner (`finalizeAbandonedSession()` ile terk edilmiş oturum analitiği korunur).  
+**Dosyalar:** `Logo.svelte`, `AdPromo.svelte`, `IdleScreen.svelte`, `AdStrip.svelte`, `App.svelte`, `Welcome/Category/Consult/Demographics/QuestionScreen.svelte`, `app.css`, `assets/eisa-logo*.svg`  
+**Doküman:** 04-kiosk-edge-ui.md güncellendi.  
+**Test:** ui 16/16 geçti.  
+**Breaking:** Yok.
+
+### Kiosk ↔ Backend DOOH Uyum Denetimi — TZ + Slot + Ölü Endpoint Düzeltmeleri
+**Değişiklik:** Reklam gösterim mantığının backend ile uyumu denetlendi; 3 gerçek hata düzeltildi.  
+**Hatalar:**
+1. **Zaman dilimi (TZ):** Kiosk playlist'i UTC saatine göre seçiyordu; backend `target_hour` Istanbul yereli (USE_TZ, Europe/Istanbul) → reklamlar ~3 saat kayıyordu.
+2. **Slot ölçeği:** `estimated_start_offset_seconds` saat-mutlak (0..3599) iken AdStrip slot döngüsü 60sn'e göre sarıyordu → sadece ilk dakikanın öğeleri oynuyor, PER_HOUR/PER_DAY reklamlar hiç görünmüyordu.
+3. **Ölü endpoint:** `server.js` `/api/lookups/iller*` kaldırılmış SQLite tablolarını (db.js v9) sorguluyordu.  
+**Dosyalar:**
+- `kiosk_edge/api-node/src/timezone.js` (YENİ — `istanbulNow()`)
+- `kiosk_edge/api-node/src/server.js` (`/api/playlist/current` Istanbul tarih/saat; ölü iller endpoint'leri kaldırıldı)
+- `kiosk_edge/api-node/src/scheduler.js` (playlist çekme Istanbul tarihi)
+- `kiosk_edge/ui/src/components/AdStrip.svelte` (slot döngüsü 3600sn; Istanbul saati ile yeniden yükleme; kullanılmayan `loopSeconds` kaldırıldı)  
+**Doküman:** 08-dooh-advertising.md (Playlist/PlaylistItem/HouseAd/PlayLog modelleri, AdStrip örneği, sync aralıkları, TZ & Slot bölümü, çözülen riskler) gerçek kodla hizalandı.  
+**Test:** api-node 30/30, ui 16/16 geçti.  
+**Breaking:** Yok (davranış düzeltmesi; cihaz/konteyner TZ'sinden bağımsız çalışır).
+
 ### Kiosk Demo — Rancher/Kubernetes Manifest
 **Değişiklik:** Birleşik kiosk container'ı demo.eisa.com.tr üzerinden yayınlamak için K8s manifest eklendi.  
 **Dosyalar:** `deploy/eisa-kiosk-demo.yaml` (YENİ)  

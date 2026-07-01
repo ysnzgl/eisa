@@ -16,6 +16,7 @@ import { printReceipt } from './printer.js';
 import { buildLoggerOptions } from './logger.js';
 import { getWifiStatus, scanWifi, connectWifi } from './wifi.js';
 import { buildMediaUrl, getLocalMediaMeta } from './mediaCache.js';
+import { istanbulNow } from './timezone.js';
 
 /**
  * @param {object} opts
@@ -98,15 +99,8 @@ export async function buildServer({ db, settings, logger }) {
     return db.prepare('SELECT id, kod, ad FROM cinsiyetler ORDER BY id').all();
   });
 
-  app.get('/api/lookups/iller', async () => {
-    return db.prepare('SELECT id, ad FROM iller ORDER BY ad').all();
-  });
-
-  app.get('/api/lookups/iller/:ilId/ilceler', async (req) => {
-    return db
-      .prepare('SELECT id, il_id, ad FROM ilceler WHERE il_id = ? ORDER BY ad')
-      .all(req.params.ilId);
-  });
+  // Not: il/ilce lookup'lari kiosk semasindan kaldirildi (db.js v9); kiosk bu
+  // verileri kullanmiyor. Eski /api/lookups/iller* endpoint'leri kaldirildi.
 
   // ── kategoriler ────────────────────────────────────────────────────────
   app.get('/api/kategoriler', async () => {
@@ -327,11 +321,12 @@ export async function buildServer({ db, settings, logger }) {
    *   { version, target_date, target_hour, loop_duration_seconds, items: [...] }
    */
   app.get('/api/playlist/current', async (req) => {
-    const now     = new Date();
-    const today   = now.toISOString().slice(0, 10);
-    const hour    = req.query.hour !== undefined
+    // Playlist'ler backend tarafindan Istanbul yerel saatine gore uretilir;
+    // dogru saati secmek icin duvar saatini Europe/Istanbul'a gore hesapla.
+    const { date: today, hour: localHour } = istanbulNow();
+    const hour = req.query.hour !== undefined
       ? parseInt(req.query.hour, 10)
-      : now.getUTCHours();
+      : localHour;
 
     const playlist = db
       .prepare('SELECT * FROM playlists WHERE target_date = ? AND target_hour = ?')

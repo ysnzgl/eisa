@@ -195,15 +195,19 @@ is_guaranteed=True → never dropped, even if capacity full
 
 ```python
 class Playlist(BaseModel):
+    id = UUIDField(pk)
     kiosk = FK(Kiosk)
     target_date = DateField
-    target_hour = PositiveSmallIntegerField(0-23)
-    version = PositiveIntegerField
-    locked = BooleanField(default=False)
-    total_duration_seconds = PositiveIntegerField
-    items = JSONField  # [{ asset_type, asset_id, duration, order }]
-    metadata = JSONField  # { generated_at, campaign_count, ... }
+    target_hour = PositiveSmallIntegerField(0-23)   # Istanbul YEREL saati
+    loop_duration_seconds = PositiveSmallIntegerField(default=60)
+    version = PositiveIntegerField(default=1)
+    # NOT: item'lar ayri PlaylistItem satirlarinda tutulur (JSONField DEGIL).
+    # unique(kiosk, target_date, target_hour)
 ```
+
+> **Zaman dilimi:** `target_hour` admin'in girdigi YEREL (Europe/Istanbul)
+> saattir; backend `USE_TZ=True`, `TIME_ZONE="Europe/Istanbul"`. Kiosk dogru
+> playlist'i secmek icin duvar saatini Istanbul'a gore hesaplar (bkz. Timezone).
 
 ### Versioning
 ```
@@ -219,12 +223,22 @@ class Playlist(BaseModel):
 
 ```python
 class PlaylistItem(BaseModel):
+    id = UUIDField(pk)
     playlist = FK(Playlist)
-    asset_type = Choices(creative, house_ad)
-    asset_id = UUIDField
-    duration_seconds = PositiveSmallIntegerField
-    playback_order = PositiveIntegerField
+    creative = FK(Creative, null=True)     # creative VEYA house_ad (biri dolu)
+    house_ad = FK(HouseAd, null=True)      # filler (Pass 4) icin
+    playback_order = PositiveSmallIntegerField
+    estimated_start_offset_seconds = PositiveSmallIntegerField  # SAAT-mutlak 0..3599
 ```
+
+> `estimated_start_offset_seconds` = `loop_index * loop_duration_seconds + slot_offset`
+> yani saatin tamami boyunca mutlak ofset (0..3599), tek bir 60sn loop'a gore
+> degil. Kiosk slot hizalamasi bu nedenle 3600sn'lik saatlik dongu uzerinden
+> yapilir (bkz. Slot Hizalama).
+>
+> API contract'ta (`KioskPlaylistItemSerializer`) bu alanlar ayrica
+> `asset_id` + `asset_type` ("creative"|"house_ad") + `media_url` +
+> `duration_seconds` olarak duzlestirilir.
 
 ---
 
@@ -232,12 +246,12 @@ class PlaylistItem(BaseModel):
 
 ```python
 class HouseAd(BaseModel):
+    id = UUIDField(pk)
     name = CharField
     media_url = URLField(https only)
-    duration_seconds = PositiveSmallIntegerField
+    duration_seconds = PositiveSmallIntegerField(1-60, default=10)
+    aktif = BooleanField(default=True)            # NOT: "aktif" (TR), "active" degil
     priority = PositiveSmallIntegerField(default=100)
-    active = BooleanField(default=True)
-    checksum = CharField
 ```
 
 ### Usage
@@ -251,29 +265,38 @@ class HouseAd(BaseModel):
 
 ### Flow
 ```
-1. Scheduler (kiosk_edge/api-node: pingAndSyncPlaylist, 10dk)
+1. Scheduler (kiosk_edge/api-node: pingAndSyncPlaylist, ping ~60sn;
+   ayrica pull 900sn / push 300sn — config.js varsayilanlari)
    → GET /api/kiosk/v1/{kiosk_id}/ping/
-   → Response: { playlist_version: 42 }
+   → Response: { kiosk_id, date, playlist_version: 42, updated_at, server_time }
 
 2. Lokal version kontrolü (SQLite kiosk_meta.playlist_version)
-   → Eğer farklıysa:
+   → Eğer server > lokal ise:
 
-3. GET /api/kiosk/v1/{kiosk_id}/playlist/?date=YYYY-MM-DD
-   → Response:
+3. GET /api/kiosk/v1/{kiosk_id}/playlist/?date=YYYY-MM-DD  (Istanbul yerel tarih)
+   → Response (GÜNÜN TÜM SAATLERİ tek istekte):
      {
-       "id": "uuid",
+       "kiosk_id": 12,
        "target_date": "2026-06-05",
-       "target_hour": 10,
-       "version": 42,
-       "items": [
+       "loop_duration_seconds": 60,
+       "playlists": [
          {
-           "asset_type": "creative",
-           "asset_id": "uuid",
-           "media_url": "https://...",
-           "duration_seconds": 15,
-           "playback_order": 1
-         },
-         ...
+           "id": "uuid",
+           "target_hour": 10,
+           "version": 42,
+           "loop_duration_seconds": 60,
+           "items": [
+             {
+               "id": "uuid",
+               "asset_type": "creative",
+               "asset_id": "uuid",
+               "media_url": "https://...",
+               "duration_seconds": 15,
+               "playback_order": 1,
+               "estimated_start_offset_seconds": 0
+             }
+           ]
+         }
        ]
      }
 
@@ -287,49 +310,34 @@ class HouseAd(BaseModel):
 ## Ad Playback (kiosk_edge/ui)
 
 ### AdStrip Component
-```svelte
-<script>
-  let playlist = [];
-  let currentIndex = 0;
 
-  onMount(async () => {
-    const res = await fetch('http://localhost:5234/playlist?date=2026-06-05');
-    playlist = res.items;
-    startPlayback();
-  });
+Kiosk UI, merkezi backend'e DEGIL, yerel api-node'a (`http://127.0.0.1:8765`)
+baglanir. `GET /api/playlist/current` o anki saatin playlist'ini (yoksa
+fallback) doner. Oynatim iki moddadir:
 
-  function startPlayback() {
-    const item = playlist[currentIndex];
-    playMedia(item);
-    
-    setTimeout(() => {
-      currentIndex = (currentIndex + 1) % playlist.length;
-      startPlayback();
-    }, item.duration_seconds * 1000);
-  }
+- **Slot modu** (gercek playlist): Duvar saatine gore SAATLIK (3600sn) dongu
+  icindeki konuma karsilik gelen oge gosterilir. Boylece tum kiosklar ayni
+  anda dogru slotu oynatir ve proof-of-play kayitlari hizalanir.
+  ```js
+  const HOUR_SECONDS = 3600;
+  const pos = Math.floor(Date.now() / 1000) % HOUR_SECONDS; // saat icindeki saniye
+  // offset <= pos olan SON oge aktif; sonraki sinir = sonraki offset ya da 3600
+  ```
+- **Sirali (fallback) modu**: Playlist yoksa veya offset uretilmemisse,
+  ogeleri kendi `duration_seconds` surelerine gore dongusel oynatir.
 
-  function playMedia(item) {
-    const playStarted = new Date().toISOString();
-    
-    // <video> or <img> playback
-    // onEnded or setTimeout → impression log
-    
-    const playEnded = new Date().toISOString();
-    logImpression({
-      creative_id: item.asset_id,
-      playlist_id: playlist.id,
-      play_started: playStarted,
-      play_ended: playEnded,
-      completed: true
-    });
-  }
-</script>
-```
+Oge degistiginde onceki slot icin impression backend'e loglanir
+(`logCurrentImpression()` -> `POST /api/reklam-gosterim`).
 
-### 60sn Loop
-- Playlist items sırayla oynatılır (playback_order)
-- Son item bittikinde başa dön
-- Loop infinite
+> **Onemli:** `estimated_start_offset_seconds` saat-mutlak (0..3599) oldugundan
+> dongu suresi `loop_duration_seconds` (60) DEGIL, tam saat (3600) olmalidir.
+> Aksi halde yalnizca ilk dakikanin (loop 0) ogeleri oynar; PER_HOUR/PER_DAY
+> reklamlar hic gosterilmez.
+
+### Saatlik Dongu
+- Playlist ogeleri saat-mutlak offset'e gore duvar saatiyle hizalanir.
+- Saat degistiginde (Istanbul yereli) UI playlist'i yeniden yukler.
+- Saat icinde dongu sonsuzdur (pos saat sonunda 0'a sarar).
 
 ---
 
@@ -338,15 +346,17 @@ class HouseAd(BaseModel):
 ### Model
 ```python
 class PlayLog(BaseModel):
+    id = UUIDField(pk)
     kiosk = FK(Kiosk)
-    playlist = FK(Playlist, nullable)
-    creative = FK(Creative, nullable)
-    house_ad = FK(HouseAd, nullable)
-    play_started = DateTimeField
-    play_ended = DateTimeField
-    completed = BooleanField
-    failure_reason = CharField(nullable)
+    creative = FK(Creative, null=True, on_delete=SET_NULL)
+    house_ad = FK(HouseAd, null=True, on_delete=SET_NULL)
+    played_at = DateTimeField(db_index=True)
+    duration_played = PositiveSmallIntegerField   # gercekten oynatilan saniye
 ```
+
+> Eski tasarimdaki `play_started`/`play_ended`/`completed`/`failure_reason`
+> ve `playlist` FK alanlari MEVCUT DEGIL. Kiosk yalnizca `played_at` +
+> `duration_played` (+ creative_id ya da house_ad_id) gonderir.
 
 **Backend implementation:**
 - File: `backend/apps/campaigns/views_v2.py`
@@ -358,12 +368,12 @@ class PlayLog(BaseModel):
 ```
 1. Kiosk UI (AdStrip.svelte) → logCurrentImpression()
    → logAdImpression({ assetId, assetType, shownAt, durationMs })
-   → POST http://localhost:5234/api/reklam-gosterim
+   → POST http://127.0.0.1:8765/api/reklam-gosterim
 
 2. api-node (server.js line 406) → reklam_gosterim_outbox INSERT
    { asset_id, asset_type, played_at, duration_played }
 
-3. Scheduler → pushToCentral() (1dk interval)
+3. Scheduler → pushToCentral() (push ~300sn interval)
    → reads reklam_gosterim_outbox WHERE gonderilme_tarihi IS NULL
    → POST /api/kiosk/v1/{kiosk_id}/proof-of-play/ { logs: [...] }
 
@@ -384,17 +394,44 @@ class PlayLog(BaseModel):
 
 ### Analytics
 ```python
-# Toplam impression
-PlayLog.objects.filter(campaign__id=campaign_id).count()
+# Bir kampanyanin toplam impression'i (PlayLog -> creative -> campaign)
+PlayLog.objects.filter(creative__campaign_id=campaign_id).count()
 
-# Completion rate
-completed = PlayLog.objects.filter(completed=True).count()
+# Tam izlenme orani (oynatilan sure >= creative suresi)
+from django.db.models import F
+completed = PlayLog.objects.filter(
+    duration_played__gte=F("creative__duration_seconds")
+).count()
 total = PlayLog.objects.count()
-rate = completed / total
+rate = completed / total if total else 0
 
 # Kiosk bazında performans
 PlayLog.objects.values('kiosk__ad').annotate(count=Count('id'))
 ```
+
+> PlayLog'da `completed` BooleanField'i YOKTUR; tam izlenme `duration_played`
+> ile creative suresi karsilastirilarak turetilir. Kampanya iliskisi de
+> dogrudan degil `creative__campaign` uzerindendir.
+
+---
+
+## Zaman Dilimi & Slot Hizalama (Onemli)
+
+Backend `USE_TZ=True`, `TIME_ZONE="Europe/Istanbul"`. Playlist `target_hour`
+degerleri admin'in girdigi YEREL (Istanbul) saatlerdir. Kiosk cihazi UTC ya da
+baska bir TZ ile calisabilecegi icin dogru playlist'i secmek adina duvar saati
+DAIMA Europe/Istanbul'a gore hesaplanir:
+
+- `kiosk_edge/api-node/src/timezone.js` → `istanbulNow()` (date + hour).
+- `server.js` `/api/playlist/current` ve `scheduler.js` playlist cekme → Istanbul
+  tarih/saat kullanir.
+- `AdStrip.svelte` saat-degisimi tespiti → `Intl` ile Istanbul saati.
+
+Slot hizalama (gercek playlist): `estimated_start_offset_seconds` SAAT-mutlak
+(0..3599) oldugundan dongu suresi 3600sn'dir (60sn loop DEGIL). Pozisyon:
+`Math.floor(Date.now()/1000) % 3600`. Turkiye sabit UTC+3 oldugundan epoch'un
+saat siniri Istanbul `:00` ile cakisir; bu sayede tum kiosklar ayni anda ayni
+slotu oynatir ve proof-of-play hizalanir.
 
 ---
 
@@ -405,6 +442,15 @@ PlayLog.objects.values('kiosk__ad').annotate(count=Count('id'))
 3. **Slot overflow:** 60sn'den fazla campaign varsa ne olur? (Belirsiz / doğrulanmalı)
 4. **Playlist version mismatch:** Kiosk uzun süre offline kalırsa eski versiyon oynatılır mı? (Belirsiz / doğrulanmalı)
 5. **Media cache:** Creative medya cache mekanizması placeholder (Belirsiz / doğrulanmalı)
+
+### Çözülen (bu denetimde)
+- **TZ kaymasi (ÇÖZÜLDÜ):** Kiosk playlist'i UTC saatine göre seciyordu → reklamlar
+  Istanbul yereline göre ~3 saat kayiyordu. Artık Istanbul yerel tarih/saati kullaniliyor.
+- **Slot ölçeği (ÇÖZÜLDÜ):** AdStrip slot dongusu 60sn'e göre sariliyordu; saat-mutlak
+  offset'lerle yalnızca ilk dakikanın öğeleri oynuyor, PER_HOUR/PER_DAY reklamlar
+  hiç gösterilmiyordu. Artık 3600sn'lik saatlik dongu kullaniliyor.
+- **Ölü endpoint (ÇÖZÜLDÜ):** `server.js` `/api/lookups/iller*` kaldırılmıs tabloları
+  sorguluyordu (db.js v9). Kullanılmadığı için tamamen kaldırıldı.
 
 ---
 

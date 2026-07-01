@@ -85,17 +85,19 @@
 - id (UUID), campaign_id FK (1to1), frequency_type (PER_LOOP/PER_HOUR/PER_DAY), frequency_value, target_hours (JSON)
 
 **dooh_playlists**
-- id (UUID), kiosk_id FK, target_date, target_hour (0-23), version, locked, total_duration_seconds, items (JSON), metadata (JSON)
+- id (UUID), kiosk_id FK, target_date, target_hour (0-23, Istanbul yereli), loop_duration_seconds (default 60), version
+- unique(kiosk, target_date, target_hour); item'lar ayri dooh_playlist_items satirlarinda
 
 **dooh_playlist_items**
-- id (UUID), playlist_id FK, asset_type (creative/house_ad), asset_id (UUID), duration_seconds, playback_order
+- id (UUID), playlist_id FK, creative_id FK (nullable), house_ad_id FK (nullable), playback_order, estimated_start_offset_seconds (SAAT-mutlak 0..3599)
+- API contract'ta creative/house_ad -> asset_id + asset_type + media_url + duration_seconds olarak duzlestirilir
 
 **dooh_house_ads**
-- id (UUID), name, media_url, duration_seconds, priority, active, checksum
+- id (UUID), name, media_url, duration_seconds (1-60), aktif (bool), priority
 
 **dooh_play_logs**
-- id (UUID), kiosk_id FK, playlist_id FK (nullable), creative_id FK (nullable), house_ad_id FK (nullable)
-- play_started, play_ended, completed (bool), failure_reason (nullable)
+- id (UUID), kiosk_id FK, creative_id FK (nullable, SET_NULL), house_ad_id FK (nullable, SET_NULL)
+- played_at (indexed), duration_played (saniye)
 
 **dooh_pricing_matrix**
 - id (singleton), matrix (JSON)
@@ -308,46 +310,55 @@
   ```
 
 **GET /api/kiosk/v1/{kiosk_id}/playlist/?date=YYYY-MM-DD**
-- Auth: Kiosk
-- Response:
+- Auth: Kiosk (IoT token / AppKey)
+- Response (günün TÜM saatleri tek istekte döner):
   ```json
   {
-    "id": "uuid",
+    "kiosk_id": 12,
     "target_date": "2026-06-05",
-    "target_hour": 10,
-    "version": 42,
-    "items": [
+    "loop_duration_seconds": 60,
+    "playlists": [
       {
-        "asset_type": "creative",
-        "asset_id": "uuid",
-        "media_url": "https://cdn.example.com/creative.mp4",
-        "duration_seconds": 15,
-        "playback_order": 1
-      },
-      ...
+        "id": "uuid",
+        "target_hour": 10,
+        "version": 42,
+        "loop_duration_seconds": 60,
+        "items": [
+          {
+            "id": "uuid",
+            "asset_type": "creative",
+            "asset_id": "uuid",
+            "media_url": "https://cdn.example.com/creative.mp4",
+            "duration_seconds": 15,
+            "playback_order": 1,
+            "estimated_start_offset_seconds": 0
+          }
+        ]
+      }
     ]
   }
   ```
 
 **POST /api/kiosk/v1/{kiosk_id}/proof-of-play/**
-- Auth: Kiosk
-- Request:
+- Auth: Kiosk (IoT token / AppKey)
+- Request (her log'da creative_id VEYA house_ad_id):
   ```json
   {
     "logs": [
       {
         "creative_id": "uuid",
-        "playlist_id": "uuid",
-        "play_started": "2026-06-05T10:30:00.000Z",
-        "play_ended": "2026-06-05T10:30:15.000Z",
-        "completed": true,
-        "failure_reason": null
+        "played_at": "2026-06-05T10:30:00.000Z",
+        "duration_played": 15
       },
-      ...
+      {
+        "house_ad_id": "uuid",
+        "played_at": "2026-06-05T10:30:15.000Z",
+        "duration_played": 10
+      }
     ]
   }
   ```
-- Response: `{ "received": 10 }` (başarıyla kaydedilen log sayısı)
+- Response: `201 { "ingested": 10 }` (kaydedilen log sayisi)
 
 ---
 

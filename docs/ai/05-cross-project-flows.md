@@ -175,35 +175,30 @@ kiosk_edge/ui (AdStrip component)
 **3.1. Impression Kaydı (Kiosk UI)**
 ```
 kiosk_edge/ui (AdStrip)
-  → Creative oynatma başlar → play_started = Date.now()
-  → Creative oynatma biter → play_ended = Date.now(), completed = true
-  → POST http://localhost:5234/ad-impressions
+  → Reklam slotu gösterilir → shownAt = ISO timestamp
+  → Slot değişince → duration_played = (now - shownAt) saniye
+  → POST http://127.0.0.1:8765/api/reklam-gosterim
     {
-      "creative_id": "uuid",
-      "playlist_id": "uuid",
-      "play_started": "2026-06-05T10:30:00.000Z",
-      "play_ended": "2026-06-05T10:30:15.000Z",
-      "completed": true,
-      "failure_reason": null
+      "asset_id": "uuid",
+      "asset_type": "creative",
+      "played_at": "2026-06-05T10:30:00.000Z",
+      "duration_played": 15
     }
   → kiosk_edge/api-node: SQLite insert (reklam_gosterim_outbox)
 ```
 
 **3.2. Outbox Push (Kiosk Edge Scheduler)**
 ```
-kiosk_edge/api-node (scheduler: pushOutbox, her 1dk)
+kiosk_edge/api-node (scheduler: pushToCentral, her ~5dk)
   → SQLite query: SELECT * FROM reklam_gosterim_outbox WHERE gonderilme_tarihi IS NULL
-  → Batch payload:
+  → Batch payload (asset_type'a göre creative_id / house_ad_id):
     {
       "logs": [
         {
           "creative_id": "uuid",
-          "playlist_id": "uuid",
-          "play_started": "...",
-          "play_ended": "...",
-          "completed": true
-        },
-        ...
+          "played_at": "2026-06-05T10:30:00.000Z",
+          "duration_played": 15
+        }
       ]
     }
   → POST /api/kiosk/v1/{kiosk_id}/proof-of-play/

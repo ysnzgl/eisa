@@ -176,23 +176,22 @@
 5. Backend → `OturumLogu` modeline kayıt (idempotency_anahtari ile duplikasyon koruması)
 
 ### Impression Log Akışı
-1. Kiosk UI AdStrip → creative oynatma başlar → `play_started` timestamp
-2. Kiosk UI AdStrip → creative oynatma biter → `play_ended` timestamp, `completed` bool
-3. Kiosk UI → `POST http://localhost:5234/ad-impressions` → impression JSON payload
+1. Kiosk UI AdStrip → bir reklam slotu gösterilir → `shownAt` timestamp
+2. Slot değişince önceki slotun gerçek izlenme süresi hesaplanır (`durationMs`)
+3. Kiosk UI → `POST http://127.0.0.1:8765/api/reklam-gosterim` → payload
    ```json
    {
-     "creative_id": "uuid",
-     "playlist_id": "uuid",
-     "play_started": "2026-06-05T10:30:00Z",
-     "play_ended": "2026-06-05T10:30:15Z",
-     "completed": true,
-     "failure_reason": null
+     "asset_id": "uuid",
+     "asset_type": "creative",
+     "played_at": "2026-06-05T10:30:00Z",
+     "duration_played": 15
    }
    ```
 4. Lokal API → SQLite `reklam_gosterim_outbox` → insert
-5. Scheduler → `pushOutbox` → backend'e batch gönderim
+5. Scheduler → `pushToCentral` → backend'e batch gönderim
    - `POST /api/kiosk/v1/{kiosk_id}/proof-of-play/` → `logs` array
-6. Backend → `PlayLog` modeline bulk insert
+     (her log: `creative_id` VEYA `house_ad_id` + `played_at` + `duration_played`)
+6. Backend → `PlayLog` modeline bulk insert (201 `{ ingested: N }`)
 
 ---
 
@@ -229,13 +228,13 @@
 
 3. **Outbox Payload Format:**
    - Session: `{ idempotency_key, yas_araligi_id, cinsiyet_id, kategori_id, qr_kodu, cevaplar, onerilen_etken_maddeler, tamamlandi }`
-   - Impression: `{ creative_id, playlist_id, play_started, play_ended, completed, failure_reason }`
+   - Impression: `{ asset_id, asset_type, played_at, duration_played }` (push'ta creative_id/house_ad_id'ye maplenir)
    - Breaking: backend cannot parse
 
-4. **Scheduler Intervals:**
-   - pullFromCentral: 5 min
-   - pingAndSyncPlaylist: 10 min
-   - pushOutbox: 1 min
+4. **Scheduler Intervals (config.js varsayilanlari):**
+   - pullFromCentral: 900sn (15 dk) — `EISA_PULL_INTERVAL_SEC`
+   - pingAndSyncPlaylist: 60sn (1 dk) — `EISA_PING_INTERVAL_SEC`
+   - pushToCentral: 300sn (5 dk) — `EISA_PUSH_INTERVAL_SEC`
    - Breaking: sync frequency/performance issues
 
 5. **Lokal API Endpoints:**

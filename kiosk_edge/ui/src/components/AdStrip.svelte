@@ -5,11 +5,28 @@
     campaigns, activeCampaignIndex,
   } from '../stores/kiosk.js';
   import { fetchCurrentPlaylist, logAdImpression } from '../lib/api.js';
+  import AdPromo from './AdPromo.svelte';
+  import MediaView from './MediaView.svelte';
 
   // Playlist yokken ya da yüklenmeden önce kullanılacak varsayılan süre (ms)
   const FALLBACK_DURATION_MS = 8000;
   // Playlist güncelleme kontrolü: her dakika hangi saat olduğunu kontrol et
   const HOUR_CHECK_MS = 60_000;
+  // Backend playlist'leri bir SAATLİK döngü üretir: estimated_start_offset_seconds
+  // 0..3599 (loop_index*60 + slot offset). Slot hizalaması bu nedenle saatin
+  // tamamı (3600sn) üzerinden yapılmalıdır; aksi halde yalnızca ilk dakikanın
+  // (loop 0) öğeleri oynar, PER_HOUR/PER_DAY reklamlar hiç gösterilmez.
+  const HOUR_SECONDS = 3600;
+
+  // Duvar saatini Europe/Istanbul'a göre hesapla (cihaz TZ'sinden bağımsız).
+  // Backend target_hour'u Istanbul yerel saatine göre üretir.
+  const _hourFmt = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Istanbul', hour: '2-digit', hour12: false,
+  });
+  const istanbulHour = () => {
+    const h = parseInt(_hourFmt.format(new Date()), 10);
+    return h === 24 ? 0 : h;
+  };
 
   let asset        = null;   // o an ekranda gösterilen öğe
   let shownKey     = null;   // gösterilen öğenin kimliği (impression için)
@@ -17,7 +34,6 @@
   let visible      = true;
   let cycleTick    = null;
   let hourTick     = null;
-  let loopSeconds  = 60;     // 60sn DOOH loop süresi
   let useSlots     = false;  // gerçek slot playlist mi, yoksa basit sıralı mı
   let currentIndex = 0;      // sıralı (fallback) modda indeks
 
@@ -66,13 +82,15 @@
     else seqTick();
   }
 
-  // ── Slot modu: duvar saatine göre 60sn loop içindeki konuma karşılık gelen
-  //    öğeyi göster. Bu, her kioskun aynı dakikada doğru slotu oynatmasını ve
-  //    proof-of-play kayıtlarının slotlarla hizalanmasını sağlar. ──
+  // ── Slot modu: duvar saatine göre saatlik (3600sn) döngü içindeki konuma
+  //    karşılık gelen öğeyi göster. Bu, her kioskun aynı anda doğru slotu
+  //    oynatmasını ve proof-of-play kayıtlarının slotlarla hizalanmasını sağlar.
+  //    estimated_start_offset_seconds saat-mutlak (0..3599) olduğundan döngü
+  //    süresi loop_duration_seconds değil, tam saattir. ──
   function slotTick() {
     if (!items.length) { scheduleNext(1000); return; }
     const sorted = [...items].sort((a, b) => off(a) - off(b));
-    const pos = Math.floor(Date.now() / 1000) % loopSeconds;
+    const pos = Math.floor(Date.now() / 1000) % HOUR_SECONDS;
 
     let idx = sorted.length - 1; // pos ilk offsetten önce ise son slota sar
     for (let i = 0; i < sorted.length; i++) {
@@ -80,9 +98,9 @@
       else break;
     }
     const cur = sorted[idx];
-    const nextOffset = (idx + 1 < sorted.length) ? off(sorted[idx + 1]) : loopSeconds;
+    const nextOffset = (idx + 1 < sorted.length) ? off(sorted[idx + 1]) : HOUR_SECONDS;
     let secsToNext = nextOffset - pos;
-    if (secsToNext <= 0) secsToNext = loopSeconds - pos; // wrap koruması
+    if (secsToNext <= 0) secsToNext = HOUR_SECONDS - pos; // wrap koruması
 
     activeCampaignIndex.set(idx);
     show(cur, Math.max(250, secsToNext * 1000));
@@ -99,14 +117,13 @@
   }
 
   async function loadPlaylist() {
-    const nowHour = new Date().getUTCHours();
+    const nowHour = istanbulHour();
     try {
       const pl = await fetchCurrentPlaylist();
       playlistItems.set(pl.items ?? []);
       playlistVersion.set(pl.version);
       playlistHour.set(pl.target_hour ?? nowHour);
       playlistIsFallback.set(pl.is_fallback ?? true);
-      loopSeconds = pl.loop_duration_seconds || 60;
 
       const list    = pl.items ?? [];
       const offsets = list.map(off);
@@ -127,7 +144,7 @@
 
     // Her dakika saat değişti mi kontrol et → playlist güncelle
     hourTick = setInterval(async () => {
-      const nowHour = new Date().getUTCHours();
+      const nowHour = istanbulHour();
       if (nowHour !== $playlistHour) {
         await loadPlaylist();
       }
@@ -144,18 +161,10 @@
 <div class="ad-strip">
   {#if asset?.media_url}
     <div class="ad-strip-media" style="opacity:{visible ? 1 : 0}">
-      {#if /\.(mp4|webm|ogg)$/i.test(asset.media_url)}
-        <!-- svelte-ignore a11y-media-has-caption -->
-        <video src={asset.media_url} autoplay loop muted playsinline class="ad-strip-fill"></video>
-      {:else}
-        <img src={asset.media_url} alt={asset.name ?? 'Reklam'} class="ad-strip-fill" />
-      {/if}
+      <MediaView src={asset.media_url} alt={asset.name ?? 'Reklam'} class="ad-strip-fill" />
     </div>
   {:else}
-    <div class="ad-strip-default">
-      <i class="fa-solid fa-leaf"></i>
-      <span>e-<strong>İSA</strong> — Sağlıklı Yaşam</span>
-    </div>
+    <AdPromo />
   {/if}
 </div>
 
@@ -186,19 +195,5 @@
     width: 100%;
     height: 100%;
     object-fit: cover;
-  }
-
-  .ad-strip-default {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    color: #6B7280;
-    font-size: 16px;
-    font-style: italic;
-  }
-
-  .ad-strip-default i {
-    font-size: 1.5rem;
-    color: #B1121B;
   }
 </style>

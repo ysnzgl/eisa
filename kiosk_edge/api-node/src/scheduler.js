@@ -3,6 +3,7 @@ import { Agent, fetch } from 'undici';
 import { checkOutboxPressure } from './db.js';
 import { syncMediaCache } from './mediaCache.js';
 import { getAuthHeaders, refreshIotTokenIfNeeded } from './provisioning.js';
+import { istanbulNow } from './timezone.js';
 
 let _tasks = [];
 let _undiciAgent = null;
@@ -386,7 +387,7 @@ export async function pingAndSyncPlaylist(db, settings, log = console) {
   if (!kioskId) return;
 
   try {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = istanbulNow().date;
     const pingRes = await requestWithRetry(
       db, settings, 'GET', `/api/kiosk/v1/${kioskId}/ping/`, undefined, log,
     );

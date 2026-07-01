@@ -104,7 +104,7 @@ kiosk_edge/ui (ResultScreen QR) → web_panels (QrScan) → Backend API (GET /ap
 - **Playlist:** Kiosk için üretilmiş 60sn reklam döngüsü (date/hour bazlı)
 - **HouseAd:** Filler reklam (slot boşsa oynatılır)
 - **OturumLogu:** KVKK uyumlu anonim kullanıcı session (yaş aralığı, cinsiyet, kategori, QR kodu, tamamlanma durumu)
-- **PlayLog:** Reklam gösterim kanıtı (creative_id, play_started, play_ended, completed)
+- **PlayLog:** Reklam gösterim kanıtı / proof-of-play (creative_id veya house_ad_id, played_at, duration_played)
 - **Kiosk:** Fiziksel cihaz (mac_adresi, uygulama_anahtari, eczane, aktif/online durumu)
 - **Eczane:** Kiosk'un bulunduğu fiziksel lokasyon (il/ilçe, sahip, telefon)
 

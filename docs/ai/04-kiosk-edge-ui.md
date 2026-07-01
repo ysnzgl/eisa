@@ -16,16 +16,26 @@
 
 ## Important Source Files
 
-- `kiosk_edge/ui/src/App.svelte` — Main app, session lifecycle:
-  - `INACTIVITY_MS = 10_000` (line 30) — timeout constant
-  - `onInactivityTimeout()`, `armInactivity()`, `clearInactivity()` — timeout management
+- `kiosk_edge/ui/src/App.svelte` — Main app, session lifecycle + global inaktivite:
+  - `INACTIVITY_MS = 20_000` — idle/wifi disindaki HER ekranda 20sn islem yoksa idle'a doner
+  - `onInactivityTimeout()`, `armInactivity()`, `clearInactivity()` — timeout yonetimi
+  - `finalizeAbandonedSession()` — timeout'ta aktif anket oturumunu sessizce terk edilmis (tamamlandi=false) gonderir (sonuc ekranina YONLENDIRMEZ)
+  - Global `pointerdown`/`keydown` dinleyicileri + reaktif ekran-bazli arm/clear
 - `kiosk_edge/ui/src/stores/kiosk.js` — State management
 - `kiosk_edge/ui/src/lib/api.js` — Lokal API client:
   - `submitSession()` — session submission
   - `logAdImpression({ assetId, assetType, shownAt, durationMs })` (line 166) — impression logging
 - `kiosk_edge/ui/src/lib/ingredients.js` — Etken madde recommendation
-- `kiosk_edge/ui/src/components/AdStrip.svelte` — Reklam oynatım:
-  - `logCurrentImpression()` — creates impression payload with `asset_type` and `asset_id`
+- `kiosk_edge/ui/src/components/Logo.svelte` — Tekrar kullanilabilir marka logosu (SVG):
+  - `height` + `light` (koyu zeminde beyaz varyant) prop'lari. Tum "e-İSA" yazilari bununla degistirildi.
+  - Kaynak: `src/assets/eisa-logo.svg` (koyu metin) + `src/assets/eisa-logo-light.svg` (beyaz metin)
+- `kiosk_edge/ui/src/components/ScreenHeader.svelte` — Ortak ekran basligi (Logo + opsiyonel subtitle); 5 ekranda kullanilir
+- `kiosk_edge/ui/src/components/MediaView.svelte` — URL uzantisina gore `<video>`/`<img>` render eden ortak bilesen; AdStrip + IdleScreen kullanir
+- `kiosk_edge/ui/src/components/AdPromo.svelte` — Reklam YOKKEN gosterilen donen "Bu Alana Reklam Verebilirsiniz" tasarimi (her yerde ortak); `large` prop tam-ekran (attractor) varyanti
+- `kiosk_edge/ui/src/components/IdleScreen.svelte` — Cekici (attractor) ekrani; acilista DOGRUDAN gosterilir (normal idle YOK). Reklam varsa MediaView ile doner, yoksa AdPromo
+- `kiosk_edge/ui/src/components/AdStrip.svelte` — Reklam oynatim:
+  - `logCurrentImpression()` — `asset_type` + `asset_id` ile impression payload olusturur
+  - Medya yoksa `<AdPromo />`, medya varsa `<MediaView />` gosterir
 - `kiosk_edge/ui/src/components/ResultScreen.svelte` — QR gösterimi
 - `kiosk_edge/ui/src/components/CategoryScreen.svelte` — Kategori seçimi
 - `kiosk_edge/ui/src/components/QuestionScreen.svelte` — Soru akışı
@@ -37,19 +47,23 @@
 **Kullanıcı tipi:** Anonim son kullanıcı (eczane ziyaretçisi)
 
 **Ana akış:**
-1. İdeal ekran (attraktor video/animasyon)
-2. "Başla" butonu → Demografik seçim (yaş aralığı, cinsiyet)
+1. Cekici (attractor) ekran — acilista dogrudan gelir: reklam varsa gorseller doner, yoksa donen "Bu Alana Reklam Verebilirsiniz" + logo + "Baslamak icin dokunun"
+2. Dokunma → Demografik seçim (yaş aralığı, cinsiyet)
 3. Kategori seçimi (şikayet türü: uyku, enerji, bağışıklık, vb.)
 4. Soru/cevap akışı (kategori sorularına cevap verme)
 5. Sonuç ekranı (önerilen etken maddeler + QR kod)
-6. 10sn inaktivite → otomatik idle'a dön
+6. 20sn inaktivite → otomatik idle'a dön (idle/wifi disindaki her ekranda geçerli)
 
 **Alternatif akış:**
 - "Eczacınıza Danışın" butonu → Danışma kategorisi seçimi → QR kod (direkt)
 
 **Reklam akışı:**
-- Tüm ekranların altında AdStrip component → 60sn playlist döngüsü (creative/house_ad)
-- Impression log toplama (play_started, play_ended, completed)
+- Tüm ekranların altında AdStrip component → saatlik slot-hizalı playlist (creative/house_ad)
+- Reklam YOKKEN: donen "Bu Alana Reklam Verebilirsiniz" (AdPromo); ekran koruyucuda da ayni promo
+- Impression log: `{ asset_id, asset_type, played_at, duration_played }`
+
+**Marka:**
+- Tüm "e-İSA" yazilari resmi logo (Logo.svelte / SVG) ile gosterilir; koyu zeminlerde beyaz varyant
 
 ---
 
@@ -60,7 +74,7 @@
 **State management:** Svelte 5 runes ($state, $derived, $effect) + writable stores (`src/stores/kiosk.js`)
 
 **Screen states:**
-- `idle`: İdeal ekran
+- `idle`: Cekici (attractor) ekran — acilista dogrudan gelir (normal idle YOK)
 - `demographics`: Demografik seçim
 - `welcome`: Hoş geldin ekranı
 - `category`: Kategori seçim
@@ -70,21 +84,23 @@
 - `wifi_setup`: WiFi kurulum (Linux, nmcli)
 
 **Lifecycle hooks:**
-- `onMount`: WiFi durumu kontrol, kategori cache kontrol
-- Inactivity timer: 10sn sonra idle'a dön
+- `onMount`: WiFi durumu kontrol, kategori cache kontrol, global aktivite dinleyicileri
+- Global inaktivite: idle/wifi_setup disindaki HER ekranda 20sn islem yoksa idle'a doner; herhangi bir dokunma/tus zamanlayiciyi sifirlar
 
 **Session lifecycle:**
 - Kategori seçiminde `sessionId` atanır
-- QR üretildiğinde veya 10sn inaktivite → session finalize edilir (`tamamlandi: true/false`)
+- QR üretildiğinde session finalize (`tamamlandi: true`); 20sn inaktivite → `finalizeAbandonedSession()` ile terk edilmis (`tamamlandi: false`) gonderilir, ardindan idle'a donulur
 - `sessionFinalized` bayrağı → duplikasyon koruması
 
 ---
 
 ### Components (`src/components/`)
 
-1. **IdleScreen.svelte**
-   - Attraktor animasyon/video
-   - "Başla" butonu → `demographics` screen
+1. **IdleScreen.svelte** (cekici / attractor ekrani)
+   - Uygulama acilir acilmaz DOGRUDAN bu ekran gosterilir; ayri bir "normal idle" bekleme ekrani YOKTUR (kaldirildi).
+   - Gercek reklam (playlist/kampanya) varsa gorseller arasinda gecis yapar (`MediaView`); reklam YOKKEN `<AdPromo large />` (donen "Bu Alana Reklam Verebilirsiniz").
+   - Ust-orta'da logo (beyaz) + "Baslamak icin dokunun" overlay (`ss-overlay-text`).
+   - Dokunma → `demographics` screen.
 
 2. **DemographicsScreen.svelte**
    - Yaş aralığı seçimi (5 buton: 0-17, 18-24, 25-34, 35-49, 50+)
@@ -120,18 +136,29 @@
    - Auto-reset: 30sn sonra otomatik idle'a dön
 
 8. **AdStrip.svelte**
-   - Alt strip (height: 150px)
-   - Playlist çekme: `GET http://localhost:5234/playlist?date=YYYY-MM-DD`
-   - 60sn döngü: playlist_items sırayla oynatılır
-   - Her item için:
-     - `<img>` veya `<video>` element (asset_type: creative/house_ad)
-     - `duration_seconds` kadar gösterim
-     - Oynatma başlangıcı → `play_started` timestamp
-     - Oynatma bitişi → `play_ended` timestamp, `completed: true`
-     - Impression log: `POST http://localhost:5234/ad-impressions`
-   - Loop: 60sn tamamlanınca başa dön
+   - Alt strip (kiosk yuksekliginin ~2/5'i)
+   - Playlist çekme: `GET http://127.0.0.1:8765/api/playlist/current?hour=<0-23>`
+   - Saatlik (3600sn) slot-hizali oynatim: pos = floor(epoch/1000) % 3600 (duvar saatine gore)
+   - Her item icin `<MediaView>` (asset_type: creative/house_ad), `duration_seconds`
+   - Slot degisince onceki slot icin impression: `POST http://127.0.0.1:8765/api/reklam-gosterim`
+     `{ asset_id, asset_type, played_at, duration_played }`
+   - Medya/asset YOKKEN → `<AdPromo />` (donen "Bu Alana Reklam Verebilirsiniz")
 
-9. **WifiSetupScreen.svelte**
+### Ortak (tekrar kullanilan) bilesenler
+
+9. **Logo.svelte**
+   - Marka logosu (SVG). Props: `height`, `light` (koyu zeminde beyaz), `class`. Kaynak: `assets/eisa-logo.svg` + `eisa-logo-light.svg`
+
+10. **AdPromo.svelte**
+   - Reklam yokken donen "Bu Alana Reklam Verebilirsiniz" tasarimi (konik isik halkasi + megafon + shimmer baslik + logo). `large` prop tam-ekran (attractor) varyanti
+
+11. **MediaView.svelte**
+   - URL uzantisina gore `<video>` veya `<img>` render eder. Props: `src`, `alt`, `loop`, `class`. AdStrip + IdleScreen tarafindan ortak kullanilir
+
+12. **ScreenHeader.svelte**
+   - Ortak ekran basligi: `Logo` + opsiyonel `subtitle`. Props: `height`, `subtitle`. Welcome/Demographics/Category/Consult/Question ekranlarinda kullanilir
+
+13. **WifiSetupScreen.svelte**
    - WiFi ağ listesi (`GET http://localhost:5234/wifi-status`)
    - Ağ seçimi + şifre girişi
    - "Bağlan" butonu → `POST http://localhost:5234/wifi-connect` (nmcli)
@@ -188,17 +215,15 @@
 6. 60sn döngü tamamlanınca başa dön (loop)
 
 **Impression logging:**
-- Her item oynatımı başladığında → `play_started` timestamp kaydedilir
-- Item oynatımı bittiğinde → `play_ended` timestamp, `completed: true/false`
-- `POST http://localhost:5234/ad-impressions`:
+- Bir reklam slotu gösterildiğinde → `shownAt` timestamp kaydedilir
+- Slot değişince önceki slotun gerçek izlenme süresi (`durationMs`) hesaplanır
+- `POST http://127.0.0.1:8765/api/reklam-gosterim`:
   ```json
   {
-    "creative_id": "uuid",
-    "playlist_id": "uuid",
-    "play_started": "2026-06-05T10:30:00.000Z",
-    "play_ended": "2026-06-05T10:30:15.000Z",
-    "completed": true,
-    "failure_reason": null
+    "asset_id": "uuid",
+    "asset_type": "creative",
+    "played_at": "2026-06-05T10:30:00.000Z",
+    "duration_played": 15
   }
   ```
 - Lokal API → `reklam_gosterim_outbox` tablosuna insert → backend'e batch gönderim
