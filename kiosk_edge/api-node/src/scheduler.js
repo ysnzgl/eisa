@@ -41,7 +41,7 @@ async function request(db, settings, method, pathPart, body) {
 }
 
 // Exponential backoff ile retry (ERR-002).
-async function requestWithRetry(db, settings, method, pathPart, body, log) {
+export async function requestWithRetry(db, settings, method, pathPart, body, log) {
   const delays = [0, 1000, 3000];
   let lastErr;
   for (let attempt = 0; attempt < delays.length; attempt++) {
@@ -346,10 +346,24 @@ export async function pullFromCentral(db, settings, log = console) {
       }
     }
 
-    // 2) products/sync — { kategoriler: [...], etken_maddeler: [...] }
+    // 2) products/sync — { kategoriler: [...], etken_maddeler: [...], lookups: {...} }
     const r1 = await requestWithRetry(db, settings, 'GET', '/api/products/sync/', undefined, log);
     if (r1.ok) {
       const data = await r1.json();
+      
+      // Insert lookups first, outside transaction to avoid rollback on FK errors
+      if (data.lookups) {
+        try {
+          upsertLookups(db, data.lookups);
+          log.info?.(`PULL: ${(data.lookups.cinsiyetler || []).length} cinsiyet, ${(data.lookups.yas_araliklari || []).length} yas_araligi yuklendi`);
+        } catch (err) {
+          log.error?.({ err: err?.message }, 'Lookup upsert basarisiz');
+        }
+      }
+      
+      // Temporarily disable FK checks for self-referencing categories (must be outside transaction)
+      db.exec('PRAGMA foreign_keys = OFF');
+      
       const tx = db.transaction((payload) => {
         for (const em of payload.etken_maddeler || []) upsertEtkenMadde(db, em);
         for (const cat of payload.kategoriler || []) {
@@ -364,6 +378,10 @@ export async function pullFromCentral(db, settings, log = console) {
           for (const alt of d.alt_kategoriler || []) upsertDanismaKategori(db, { ...alt, ust_kategori: d.id });
         }
       });
+      tx(data);
+      
+      // Re-enable FK checks
+      db.exec('PRAGMA foreign_keys = ON');
       tx(data);
       log.info?.(`PULL: ${(data.kategoriler || []).length} kategori, ${(data.etken_maddeler || []).length} etken madde, ${(data.danisma_kategorileri || []).length} danisma guncellendi`);
     } else {

@@ -18,9 +18,7 @@ class Command(BaseCommand):
         self.stdout.write("Step 1: Lookup tablolarini tohumluyorum...")
         counts = seed_lookups()
         self.stdout.write(self.style.SUCCESS(
-            f"✓ Lookup tohumlama tamamlandi: "
-            f"il+{counts['il']}, ilce+{counts['ilce']}, "
-            f"cinsiyet+{counts['cinsiyet']}, yas_araligi+{counts['yas_araligi']}"
+            f"✓ Lookup tohumlama tamamlandi: {counts}"
         ))
 
         # 2. Eczane olustur (Istanbul)

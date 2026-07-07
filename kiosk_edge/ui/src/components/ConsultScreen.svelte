@@ -60,9 +60,6 @@
           <button class="cat-card" on:click={() => selectParent(cat)}>
             <i class="fa-solid {cat.ikon}"></i>
             <h3>{cat.ad}</h3>
-            {#if cat.alt_kategoriler && cat.alt_kategoriler.length > 0}
-              <span class="cat-sub-count">{cat.alt_kategoriler.length} alt konu</span>
-            {/if}
           </button>
         {/each}
       </div>

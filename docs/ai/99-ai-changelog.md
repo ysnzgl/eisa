@@ -5,6 +5,21 @@
 
 ---
 
+## 2026-07-07
+
+### Kiosk Edge — SQLite FK Kaldırma + QR Anında Sync + ConsultScreen Visual Temizlik
+**Değişiklik:** 3 kiosk iyileştirmesi yapıldı: (1) SQLite foreign key constraint'leri kaldırıldı, (2) QR oluştuğunda session anında backend'e iletilir, (3) Danışma kategori ikonlarının altındaki "X alt konu" yazısı kaldırıldı (alt kategori yapısı korundu).  
+**Detay:**
+1. **SQLite FK kaldırma:** `db.js` schema'sından tüm `REFERENCES` clause'ları kaldırıldı (kategoriler, danisma_kategorileri, sorular, cevaplar, M2M tablolar). Backend zaten veri bütünlüğünü sağladığı için lokal DB'de gereksiz kontroller kaldırıldı. `scheduler.js` PRAGMA foreign_keys komutları temizlendi.
+2. **QR anında sync:** `server.js` POST `/api/oturum/gonder` endpoint'i güncellendi → `tamamlandi=true` olduğunda anında backend'e `POST /api/analytics/sessions/` yapılır (exponential backoff retry ile). Başarılı olursa outbox kaydı `gonderilme_tarihi` işaretlenir; başarısız olursa scheduler tekrar dener. `scheduler.js` `requestWithRetry` fonksiyonu export edildi.
+3. **ConsultScreen visual temizlik:** `ConsultScreen.svelte` kategori ikonlarının altındaki conditional "X alt konu" badge kaldırıldı (lines 63-65). Alt kategori navigation yapısı (activeParent, selectParent, selectChild, backToParents) tamamen korundu; sadece görsel sayı gösterimi kaldırıldı.  
+**Dosyalar:** `kiosk_edge/api-node/src/db.js`, `scheduler.js` (export requestWithRetry), `server.js` (immediate sync), `kiosk_edge/ui/src/components/ConsultScreen.svelte`  
+**Doküman:** 03-kiosk-edge-api-node.md, 04-kiosk-edge-ui.md, 07-session-and-analytics.md güncellendi.  
+**Test:** Container rebuild, sync success, 41 kategori + 6 danışma + 104 etken madde + 8 lookup başarıyla senkronize edildi.  
+**Breaking:** Yok.
+
+---
+
 ## 2026-07-01
 
 ### Kiosk UI — Normal Idle Ekranı Kaldırıldı + Bileşen Refactor

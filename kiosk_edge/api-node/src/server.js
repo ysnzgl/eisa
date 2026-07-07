@@ -17,6 +17,7 @@ import { buildLoggerOptions } from './logger.js';
 import { getWifiStatus, scanWifi, connectWifi } from './wifi.js';
 import { buildMediaUrl, getLocalMediaMeta } from './mediaCache.js';
 import { istanbulNow } from './timezone.js';
+import { requestWithRetry } from './scheduler.js';
 
 /**
  * @param {object} opts
@@ -216,6 +217,27 @@ export async function buildServer({ db, settings, logger }) {
       'INSERT INTO oturum_outbox (idempotency_anahtari, payload) VALUES (?, ?)',
     ).run(idempotencyAnahtari, JSON.stringify(payload));
 
+    // QR olusturuldugunda (tamamlandi=true) aninda backend'e ilet
+    if (body.tamamlandi && settings.centralApiBase && (settings.kioskAppKey || settings.kioskId)) {
+      try {
+        const res = await requestWithRetry(
+          db, settings, 'POST', '/api/analytics/sessions/',
+          { items: [payload] }, app.log
+        );
+        if (res.status === 201 || res.status === 200) {
+          // Basarili, outbox kaydini isaretle
+          db.prepare(
+            'UPDATE oturum_outbox SET gonderilme_tarihi = ? WHERE idempotency_anahtari = ?'
+          ).run(new Date().toISOString(), idempotencyAnahtari);
+          app.log.info({ qr: qr }, 'Session aninda backend\'e iletildi');
+        }
+      } catch (err) {
+        // Hata olursa log'la ama devam et, scheduler tekrar deneyecek
+        app.log.warn({ err: err.message, qr: qr }, 'Session aninda iletilemedi, scheduler tekrar deneyecek');
+      }
+    }
+
+    // 
     // 41-bit bitpack QR payload — offline okunabilir, 8 karakter Base36.
     let qrPayload = qr;
     try {

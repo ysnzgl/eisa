@@ -11,7 +11,7 @@ from apps.core.models import BaseModel
 class Kategori(BaseModel):
     """Sikayet kategorisi (Uyku, Enerji, Bagisiklik vb.)"""
 
-    ad = models.CharField(max_length=128, unique=True)
+    ad = models.CharField(max_length=200, unique=True)
     slug = models.SlugField(unique=True)
     ikon = models.CharField(max_length=64, default="fa-circle")
     aktif = models.BooleanField(default=True)
@@ -48,7 +48,7 @@ class Danisma(BaseModel):
     Kioskta 'Eczaciniza Danisin' butonuna basininca cikan kategorilerdir.
     """
 
-    ad = models.CharField(max_length=128, unique=True)
+    ad = models.CharField(max_length=200, unique=True)
     slug = models.SlugField(unique=True)
     ikon = models.CharField(max_length=64, default="fa-comments")
     aktif = models.BooleanField(default=True)

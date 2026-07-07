@@ -47,7 +47,6 @@ export function openDb(sqlitePath, options = {}) {
 
   _db = new Database(sqlitePath);
   _db.pragma('journal_mode = WAL');
-  _db.pragma('foreign_keys = ON');
   initSchema(_db, options.outboxMaxRows ?? DEFAULT_OUTBOX_MAX_ROWS);
   return _db;
 }
@@ -111,8 +110,8 @@ function initSchema(db, outboxMaxRows = DEFAULT_OUTBOX_MAX_ROWS) {
       slug                 TEXT    NOT NULL UNIQUE,
       ad                   TEXT    NOT NULL,
       ikon                 TEXT    NOT NULL DEFAULT 'fa-circle',
-      bagli_kategori_id    INTEGER REFERENCES kategoriler(id),
-      hedef_cinsiyet_id    INTEGER REFERENCES cinsiyetler(id),
+      bagli_kategori_id    INTEGER,
+      hedef_cinsiyet_id    INTEGER,
       aktif                INTEGER NOT NULL DEFAULT 1,
       surum                INTEGER NOT NULL DEFAULT 1,
       hedef_cinsiyetler    TEXT    NOT NULL DEFAULT '[]',
@@ -126,7 +125,7 @@ function initSchema(db, outboxMaxRows = DEFAULT_OUTBOX_MAX_ROWS) {
       slug               TEXT    NOT NULL UNIQUE,
       ad                 TEXT    NOT NULL,
       ikon               TEXT    NOT NULL DEFAULT 'fa-comments',
-      ust_kategori_id    INTEGER REFERENCES danisma_kategorileri(id),
+      ust_kategori_id    INTEGER,
       aktif              INTEGER NOT NULL DEFAULT 1,
       olusturulma_tarihi TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
       guncellenme_tarihi TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
@@ -134,12 +133,12 @@ function initSchema(db, outboxMaxRows = DEFAULT_OUTBOX_MAX_ROWS) {
 
     CREATE TABLE IF NOT EXISTS sorular (
       id                   INTEGER PRIMARY KEY,
-      kategori_id          INTEGER NOT NULL REFERENCES kategoriler(id),
+      kategori_id          INTEGER NOT NULL,
       seed_id              TEXT,
       metin                TEXT    NOT NULL,
       sira                 INTEGER NOT NULL DEFAULT 0,
       eslesme_kurallari    TEXT    NOT NULL DEFAULT '[]',
-      hedef_cinsiyet_id    INTEGER REFERENCES cinsiyetler(id),
+      hedef_cinsiyet_id    INTEGER,
       surum                INTEGER NOT NULL DEFAULT 1,
       hedef_cinsiyetler    TEXT    NOT NULL DEFAULT '[]',
       hedef_yas_araliklari TEXT    NOT NULL DEFAULT '[]',
@@ -149,7 +148,7 @@ function initSchema(db, outboxMaxRows = DEFAULT_OUTBOX_MAX_ROWS) {
 
     CREATE TABLE IF NOT EXISTS cevaplar (
       id      INTEGER PRIMARY KEY,
-      soru_id INTEGER NOT NULL REFERENCES sorular(id) ON DELETE CASCADE,
+      soru_id INTEGER NOT NULL,
       metin   TEXT    NOT NULL,
       agirlik INTEGER NOT NULL DEFAULT 0
     );
@@ -166,18 +165,18 @@ function initSchema(db, outboxMaxRows = DEFAULT_OUTBOX_MAX_ROWS) {
 
     -- Backend M2M hedefleme iliskileri (kiosk sorgulari icin de normalize tutulur).
     CREATE TABLE IF NOT EXISTS kategori_hedef_yas_araliklari (
-      kategori_id    INTEGER NOT NULL REFERENCES kategoriler(id) ON DELETE CASCADE,
-      yas_araligi_id INTEGER NOT NULL REFERENCES yas_araliklari(id),
+      kategori_id    INTEGER NOT NULL,
+      yas_araligi_id INTEGER NOT NULL,
       PRIMARY KEY (kategori_id, yas_araligi_id)
     );
     CREATE TABLE IF NOT EXISTS soru_hedef_yas_araliklari (
-      soru_id        INTEGER NOT NULL REFERENCES sorular(id) ON DELETE CASCADE,
-      yas_araligi_id INTEGER NOT NULL REFERENCES yas_araliklari(id),
+      soru_id        INTEGER NOT NULL,
+      yas_araligi_id INTEGER NOT NULL,
       PRIMARY KEY (soru_id, yas_araligi_id)
     );
     CREATE TABLE IF NOT EXISTS soru_etken_maddeler (
-      soru_id        INTEGER NOT NULL REFERENCES sorular(id) ON DELETE CASCADE,
-      etken_madde_id INTEGER NOT NULL REFERENCES etken_maddeler(id),
+      soru_id        INTEGER NOT NULL,
+      etken_madde_id INTEGER NOT NULL,
       rol            TEXT    NOT NULL DEFAULT 'ana',
       PRIMARY KEY (soru_id, etken_madde_id)
     );

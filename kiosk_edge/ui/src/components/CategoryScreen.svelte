@@ -68,9 +68,6 @@
         <button class="cat-card" on:click={() => onCardClick(cat)}>
           <i class="fa-solid {cat.ikon}"></i>
           <h3>{cat.ad}</h3>
-          {#if hasChildren(cat)}
-            <span class="cat-subbadge"><i class="fa-solid fa-layer-group"></i> Alt başlıklar</span>
-          {/if}
         </button>
       {/each}
     </div>

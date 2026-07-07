@@ -64,6 +64,12 @@ ResultScreen
       "onerilen_etken_maddeler": ["Melatonin", "Valerian"],
       "tamamlandi": true
     }
+  → Lokal API → oturum_outbox insert
+  → ÖNEMLİ (2026-07-07): tamamlandi=true → ANINDA backend sync
+     • requestWithRetry() ile POST /api/analytics/sessions/ (exponential backoff)
+     • Başarılı → outbox.gonderilme_tarihi set edilir
+     • Başarısız → log, scheduler tekrar dener
+     • Eczacı QR taradığında cevapları ANINDA görebilir
   → sessionFinalized = true
   → 30sn sonra otomatik idle'a dön
 ```

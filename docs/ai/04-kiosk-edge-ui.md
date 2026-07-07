@@ -120,6 +120,8 @@
 
 5. **ConsultScreen.svelte**
    - Danışma kategori grid (ikon + isim)
+   - **Alt kategori navigation:** Ebeveyn kategorilere tıklama → alt kategoriler gösterilir (`activeParent` state, `selectParent()`, `selectChild()`, `backToParents()` fonksiyonları). Alt kategori seçimi → QR üretme.
+   - **Visual temizlik (2026-07-07):** Kategori ikonlarının altında gösterilen "X alt konu" badge/text kaldırıldı (lines 63-65). Alt kategori yapısı TAM olarak korundu, sadece sayı gösterimi kaldırıldı.
    - Kategori tıklama → QR üretme → `result` screen (direkt)
 
 6. **QuestionScreen.svelte**

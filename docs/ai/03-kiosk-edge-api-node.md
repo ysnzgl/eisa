@@ -83,13 +83,15 @@
 
 ### SQLite Schema (`src/db.js`)
 
+**ÖNEMLİ:** SQLite schema'sında FOREIGN KEY constraint'leri YOK (2026-07-07 itibarıyla kaldırıldı). Backend veri bütünlüğünü zaten sağladığı için offline-first SQLite'da gereksiz kontroller kaldırıldı. Tüm `REFERENCES` clause'ları silinmiş, `PRAGMA foreign_keys` komutları temizlenmiş.
+
 **Kategori/Soru/Danışma:**
-- `kategoriler`: id, slug, ad, ikon, bagli_kategori_id, hedef_cinsiyet_id, aktif, hedef_cinsiyetler JSON, hedef_yas_araliklari JSON
-- `sorular`: id, kategori_id, metin, sira, hedef_cinsiyet_id, hedef_cinsiyetler JSON, hedef_yas_araliklari JSON, eslesme_kurallari JSON
-- `cevaplar`: id, soru_id, metin, sira
-- `cevap_etken_madde`: cevap_id, etken_madde_id, aktif
+- `kategoriler`: id, slug, ad, ikon, bagli_kategori_id (INTEGER, FK YOK), hedef_cinsiyet_id (INTEGER, FK YOK), aktif, hedef_cinsiyetler JSON, hedef_yas_araliklari JSON
+- `sorular`: id, kategori_id (INTEGER NOT NULL, FK YOK), metin, sira, hedef_cinsiyet_id (INTEGER, FK YOK), hedef_cinsiyetler JSON, hedef_yas_araliklari JSON, eslesme_kurallari JSON
+- `cevaplar`: id, soru_id (INTEGER NOT NULL, FK YOK), metin, sira
+- `cevap_etken_madde`: cevap_id (FK YOK), etken_madde_id (FK YOK), aktif
 - `etken_maddeler`: id, ad, slug, aktif
-- `danisma_kategorileri`: id, slug, ad, ikon, ust_kategori_id, aktif
+- `danisma_kategorileri`: id, slug, ad, ikon, ust_kategori_id (INTEGER, FK YOK), aktif
 
 **Playlist/Creative:**
 - `creatives`: id, campaign_id, media_url, duration_seconds, name, type (creative/house_ad), checksum
@@ -171,9 +173,14 @@
    }
    ```
 3. Lokal API → SQLite `oturum_outbox` → insert
-4. Scheduler → `pushOutbox` → backend'e batch gönderim
+4. **ÖNEMLİ (2026-07-07 güncellemesi):** Eğer `tamamlandi=true` ise session ANINDA backend'e iletilir:
+   - `server.js` POST `/api/oturum/gonder` handler → `requestWithRetry()` ile `POST /api/analytics/sessions/`
+   - Başarılı (HTTP 200/201) → outbox kaydının `gonderilme_tarihi` set edilir
+   - Başarısız (network/500 error) → log + scheduler sonraki cycle'da tekrar dener
+   - Eczacı QR taradığında cevapları ANINDA görebilir (300sn scheduler beklentisi yok)
+5. Scheduler → `pushOutbox` → pending kayıtlar için batch gönderim (retry mekanizması)
    - `POST /api/kiosk/v1/{kiosk_id}/sync/` → `sessions` array
-5. Backend → `OturumLogu` modeline kayıt (idempotency_anahtari ile duplikasyon koruması)
+6. Backend → `OturumLogu` modeline kayıt (idempotency_anahtari ile duplikasyon koruması)
 
 ### Impression Log Akışı
 1. Kiosk UI AdStrip → bir reklam slotu gösterilir → `shownAt` timestamp
