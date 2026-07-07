@@ -226,7 +226,10 @@
   }
 
   async function selectConsult(cat) {
+    // Danışma kategorisi seçimi = oturum başlangıcı. Yeni id ata.
+    sessionId = (crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`);    sessionFinalized = false;
     const { qrCode, qrPayload } = await doSubmitConsult(cat?.slug ?? cat?.ad ?? '');
+    sessionFinalized = true; // Danışma hemen tamamlanır
     result.set({
       label:       'Danışma talebi gönderildi',
       ana:         cat?.ad ?? cat,
@@ -241,14 +244,18 @@
   }
 
   async function doSubmitConsult(categorySlug) {
+    let age, sex;
+    selectedAge.update(v => { age = v; return v; });
+    selectedSex.update(v => { sex = v; return v; });
     try {
       return await submitSession({
-        ageRange:       null,
-        gender:         null,
+        ageRange:       age,
+        gender:         sex,
         categorySlug,
         isSensitiveFlow: true,
         answersPayload:  {},
         ingredientList:  [],
+        completed:       true,  // Danışma anında tamamlanır
       });
     } catch {
       const fallback = Math.random().toString(36).slice(2, 10).toUpperCase();

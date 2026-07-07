@@ -74,20 +74,22 @@ class DanismaSerializer(serializers.ModelSerializer):
 
 
 class SoruDetayliSerializer(serializers.ModelSerializer):
-    """Kiosk sync icin: cevaplar ic ice + hedefleme + eslesme_kurallari."""
+    """Kiosk sync icin: hedefleme + eslesme_kurallari.
+    
+    NOT: cevaplar kaldırıldı — kiosk artık sadece EVET/HAYIR butonları kullanıyor.
+    """
 
-    cevaplar = CevapSerializer(many=True, read_only=True)
     hedef_etken_maddeler = SoruEtkenMaddeSerializer(
         many=True, read_only=True, source="etken_madde_baglantilari"
     )
     eslesme_kurallari = serializers.SerializerMethodField()
 
     def get_eslesme_kurallari(self, obj):
-        """ingredients.js'in bekledigi match_rules formatini uretir."""
-        em_by_rol = {b.rol: b.etken_madde.ad for b in obj.etken_madde_baglantilari.all()}
-        primary = em_by_rol.get(SoruEtkenMadde.ROL_ANA, "")
-        if not primary:
+        """Her etken madde için ayrı match rule üretir (rol fark etmez)."""
+        baglantılar = obj.etken_madde_baglantilari.all()
+        if not baglantılar:
             return []
+        
         gender = [obj.hedef_cinsiyet.kod] if obj.hedef_cinsiyet else ["F", "M"]
         yas_objs = list(obj.hedef_yas_araliklari.all())
         if yas_objs:
@@ -96,18 +98,20 @@ class SoruDetayliSerializer(serializers.ModelSerializer):
             age_max = max(ust_vals) if ust_vals else 200
         else:
             age_min, age_max = 0, 200
+        
+        # Her etken madde için bağımsız rule
         return [{
             "gender": gender,
             "age_min": age_min,
             "age_max": age_max,
-            "primary": primary,
-            "supportive": em_by_rol.get(SoruEtkenMadde.ROL_DESTEKLEYICI, ""),
-        }]
+            "primary": b.etken_madde.ad,
+            "supportive": "",
+        } for b in baglantılar]
 
     class Meta:
         model = Soru
         fields = [
-            "id", "metin", "sira", "cevaplar",
+            "id", "metin", "sira",
             "hedef_cinsiyet", "hedef_yas_araliklari", "hedef_etken_maddeler",
             "eslesme_kurallari",
         ]

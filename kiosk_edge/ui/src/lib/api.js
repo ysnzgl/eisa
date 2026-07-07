@@ -89,6 +89,7 @@ export async function fetchQuestions(categorySlug) {
  * @returns {Promise<{qrCode: string, qrPayload: string}>}
  */
 export async function submitSession({ ageRange, gender, categorySlug, isSensitiveFlow, answersPayload, ingredientList, completed = true }) {
+  // Backend'e gönderirken tamamlanma durumunu bildir
   const data = await _request(`${API_BASE}/api/oturum/gonder`, {
     method: 'POST',
     body: {
