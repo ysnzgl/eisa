@@ -4,9 +4,7 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
-.env
-.env.*
-!.env.example
+
 
 # Node
 node_modules/
