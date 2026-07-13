@@ -4,14 +4,14 @@
  *
  * AKIŞ:
  *  1. QR string'i okunur (kamera veya manuel).
- *  2. Önce LOKAL olarak şifre çözülmeye çalışılır (offline destek).
- *     - Başarılıysa: payload.p (pharmacy_id) eczacının pharmacyId'siyle
+ *  2. Önce LOKAL olarak bit-packing çözümü yapılır (offline destek).
+ *     - Başarılıysa: payload.pharmacyId eczacının pharmacyId'siyle
  *       eşleşmeli. Eşleşmiyorsa "Bu barkod size ait değil" uyarısı.
  *     - Başarılı + sahip ise: ekranda görüntüle.
  *  3. Online ise opsiyonel olarak backend'den session detayı çekilerek
  *     görünüm zenginleştirilir.
  *
- * Şifreleme: AES-256-GCM, paylaşılan VITE_QR_SECRET (kiosk ile aynı).
+ * Format: 41-bit bit-packing → 8 karakter Base36 QR kod (şifreleme yok).
  */
 import { ref, onMounted, onUnmounted } from 'vue';
 import { http } from '../../services/api';
