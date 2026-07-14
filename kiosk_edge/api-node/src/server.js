@@ -18,6 +18,7 @@ import { getWifiStatus, scanWifi, connectWifi } from './wifi.js';
 import { buildMediaUrl, getLocalMediaMeta } from './mediaCache.js';
 import { istanbulNow } from './timezone.js';
 import { requestWithRetry } from './scheduler.js';
+import { handle403Error } from './provisioning.js';
 
 /**
  * @param {object} opts
@@ -230,6 +231,8 @@ export async function buildServer({ db, settings, logger }) {
             'UPDATE oturum_outbox SET gonderilme_tarihi = ? WHERE idempotency_anahtari = ?'
           ).run(new Date().toISOString(), idempotencyAnahtari);
           app.log.info({ qr: qr }, 'Session aninda backend\'e iletildi');
+        } else if (res.status === 403) {
+          handle403Error(db, settings, app.log);
         }
       } catch (err) {
         // Hata olursa log'la ama devam et, scheduler tekrar deneyecek

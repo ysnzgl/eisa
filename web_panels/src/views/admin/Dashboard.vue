@@ -5,7 +5,7 @@
  */
 import { ref, computed, onMounted, watch } from 'vue';
 import { http } from '../../services/api';
-import { getPharmacies, getKioskStatus } from '../../services/devices';
+import { getPharmacies, getKioskStatus, listProvisioningRequests } from '../../services/devices';
 import EisaLookup from '../../components/shared/EisaLookup.vue';
 
 //  Constants 
@@ -155,6 +155,16 @@ const kpiCards = [
   },
 ];
 
+//  Pending Devices 
+const pendingCount = ref(0);
+
+async function loadPendingCount() {
+  try {
+    const list = await listProvisioningRequests({ status: 'PENDING' });
+    pendingCount.value = list.length;
+  } catch { /* ignore */ }
+}
+
 //  Pharmacy Filter + Kiosk List 
 const pharmacies      = ref([]);
 const selectedPharmacy = ref(null);
@@ -198,6 +208,7 @@ onMounted(async () => {
     loading.value = false;
   }
   await loadPharmacies();
+  loadPendingCount();
 });
 </script>
 
@@ -217,6 +228,13 @@ onMounted(async () => {
           <time class="dash-date-chip">{{ currentDate }}</time>
       </div>
     </div>  <!-- eisa-page-header -->
+
+    <!--  Pending Devices Alert  -->
+    <div v-if="pendingCount > 0" class="dash-pending-alert">
+      <i class="fa-solid fa-clock dash-pending-icon"></i>
+      <span><strong>{{ pendingCount }}</strong> cihaz yönetici onayı bekliyor</span>
+      <router-link to="/admin/devices/pending" class="dash-pending-link">Görüntüle →</router-link>
+    </div>
 
     <!--  KPI Cards  -->
     <div class="dash-kpi-grid">
@@ -461,3 +479,28 @@ onMounted(async () => {
   </div>
 
 </template>
+
+<style scoped>
+.dash-pending-alert {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: #fefce8;
+  border: 1px solid #fde047;
+  border-left: 4px solid #f59e0b;
+  border-radius: 8px;
+  padding: 0.75rem 1.1rem;
+  margin-bottom: 1.25rem;
+  font-size: 0.9rem;
+  color: #78350f;
+}
+.dash-pending-icon { font-size: 1rem; color: #f59e0b; flex-shrink: 0; }
+.dash-pending-link {
+  margin-left: auto;
+  font-weight: 600;
+  color: #b45309;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.dash-pending-link:hover { text-decoration: underline; }
+</style>

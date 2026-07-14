@@ -16,6 +16,7 @@ const routes = [
     children: [
       { path: '', component: () => import('../views/admin/Dashboard.vue') },
       { path: 'devices',        component: () => import('../views/admin/DeviceManagement.vue') },
+      { path: 'devices/pending', component: () => import('../views/admin/PendingDevices.vue') },
       { path: 'medical-logic',      component: () => import('../views/admin/MedicalLogic.vue') },
       { path: 'danisma',           component: () => import('../views/admin/DanismaYonetimi.vue') },
       { path: 'campaigns',     component: () => import('../views/admin/CampaignWizard.vue') },

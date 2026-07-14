@@ -54,7 +54,7 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 | `/api/auth/logout/` | `CookieLogoutView` | JWT | Çerez temizleme |
 | `/api/lookups/` | `apps.lookups.urls` | JWT/Kiosk | Il/Ilce/Cinsiyet/YasAraligi sabitleri |
 | `/api/users/` | `apps.users.urls` | JWT | Kullanıcı CRUD |
-| `/api/pharmacies/` | `apps.pharmacies.urls` | JWT | Eczane/Kiosk CRUD, QR session fetch |
+| `/api/pharmacies/` | `apps.pharmacies.urls` | JWT | Eczane/Kiosk CRUD, QR session fetch, provisioning yönetimi |
 | `/api/products/` | `apps.products.urls` | JWT | Kategori/Soru/EtkenMadde/Danışma CRUD |
 | `/api/analytics/` | `apps.analytics.urls` | JWT | Session log raporlama |
 | `/api/campaigns/` | `apps.campaigns.urls` | JWT (SuperAdmin) | Campaign/Creative/ScheduleRule yönetimi |
@@ -101,6 +101,7 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 ### Pharmacies (`apps.pharmacies`)
 - `Eczane`: Eczane (il/ilce, ad, sahip, telefon, aktif)
 - `Kiosk`: Kiosk cihaz (eczane FK, mac_adresi, uygulama_anahtari, aktif, is_online, son_goruldu, last_playlist_version)
+- `KioskProvisioningRequest`: Kayıtsız kiosk onay talebi (UUID pk, mac_adresi, hostname, device_metadata JSON, status PENDING/APPROVED/REJECTED, last_seen_at, request_count, approved_by/at, rejected_by/at, rejection_reason, kiosk FK nullable). DB tablo: `kiosk_provisioning_requests`. **Raw fleet_key/provision_secret saklanmaz.**
 
 ### Products (`apps.products`)
 - `Kategori`: Şikayet kategorisi (ad, slug, ikon, hedef_cinsiyet, hedef_yas_araliklari M2M, bagli_kategori self-FK)
@@ -156,10 +157,18 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 - **App-Key + MAC:** `KioskAppKeyAuthentication` (HTTP header `X-Kiosk-App-Key`, `X-Kiosk-Mac-Address`)
 - **IoT Token:** `KioskIoTTokenAuthentication` (HTTP header `Authorization: Bearer <iot_token>`)
 
-Kiosk provisioning:
-1. `GET /api/kiosk/v1/{id}/provision/` → IoT token alınır (App-Key + MAC ile)
+Kiosk provisioning (kayıtlı cihaz):
+1. `POST /api/pharmacies/kiosks/bootstrap/` → IoT token alınır (Fleet Key + HMAC body ile)
 2. Token kiosk_edge SQLite'a `kiosk_meta` tablosuna kaydedilir
 3. Sonraki isteklerde IoT token kullanılır (refresh ile yenilenir)
+
+**Pending provisioning (kayıtsız cihaz — 2026-07-14):**
+1. `POST /api/pharmacies/kiosks/bootstrap/` → Fleet key + HMAC doğrulaması
+2. Kiosk bulunamazsa → `KioskProvisioningRequest` PENDING kaydı oluşturulur → `202 Accepted`
+3. SuperAdmin → `GET /api/pharmacies/kiosks/provisioning/` → pending cihazları listeler
+4. SuperAdmin → `POST /api/pharmacies/kiosks/provisioning/{id}/approve/` → eczane seçer, Kiosk oluşturulur, APPROVED
+5. Cihaz tekrar `POST /api/pharmacies/kiosks/bootstrap/` → 200 iot_token (APPROVED path)
+6. REJECTED cihaz → 403 REJECTED, token verilmez
 
 ### Log/Session Akışı
 1. Kiosk UI → kullanıcı kategori/soru akışını tamamlar → QR üretilir

@@ -1,6 +1,6 @@
 # AI Context Index — E-İSA Project
 
-**Son güncelleme:** 2026-06-05  
+**Son güncelleme:** 2026-07-14  
 **Amaç:** Token-ekonomik AI context; kod yapısını hızlı anlamak ve geliştirmelerde doğru noktadan başlamak.
 
 ---
@@ -71,6 +71,7 @@ Backend'de kampanya/creative tanımı → Merkezi playlist üretimi → Kiosk'a 
 | Proje arası veri akışları | 05-cross-project-flows.md |
 | Yeni özellik ekleme prosedürü | AI-WORKFLOW.md |
 | Bug düzeltme prosedürü | AI-WORKFLOW.md + AI-RULES.md |
+| **Kiosk provisioning/onay akışı** | **05-cross-project-flows.md + 01-backend.md + 03-kiosk-edge-api-node.md + 06-db-and-api-contracts.md** |
 
 ---
 

@@ -5,6 +5,36 @@
 
 ---
 
+## 2026-07-14
+
+### [kiosk_edge] — Bootstrap İsteğine Cihaz Metadata Eklendi
+**Değişiklik:** `provisioning.js`'e `collectDeviceMetadata()` fonksiyonu eklendi. Bootstrap isteği artık `hostname` ve `device_metadata` gönderir.  
+**Toplanan alanlar:** hostname, os_type, os_platform, os_release, arch, cpu_model, cpu_cores, total_memory_mb, ip_addresses (iface+IPv4), node_version, uptime_seconds.  
+**Güvenlik:** Her alan `try/catch` içinde; token/secret/hmac içermiyor; `collectDeviceMetadata` export edildi.  
+**Dosyalar:** `kiosk_edge/api-node/src/provisioning.js`  
+**Breaking:** Yok (bootstrap body yeni isteğe bağlı alanlar aldı; backend zaten kabul ediyordu).
+
+### [web_panels] — Dashboard Pending Devices Banner + PendingDevices UX İyileştirme
+**Değişiklik:** Dashboard'a `pendingCount > 0` olduğunda sarı uyarı banner'ı eklendi (`/admin/devices/pending` linki ile). PendingDevices.vue: eczane seçimi `<select>`'ten `EisaLookup` autocomplete'e çevrildi (ad/il/ilçe arama); metadata detay modalı yapılandırılmış görünüme (insan okunur etiketler, IP listesi, uptime formatlı) geçirildi.  
+**Dosyalar:** `web_panels/src/views/admin/Dashboard.vue`, `PendingDevices.vue`, `services/devices.js`  
+**Breaking:** Yok.
+
+---
+
+## 2026-07-14
+
+### [Backend + web_panels + kiosk_edge] — Onay Bekleyen Cihaz Provisioning Akışı
+**Değişiklik:** Kayıtsız kiosklar için uçtan uca IoT cihaz kayıt ve onay sistemi eklendi.  
+**Backend:** `KioskProvisioningRequest` modeli (PENDING/APPROVED/REJECTED lifecycle), migration 0006, `KioskBootstrapView` güncellendi (202 PENDING / 403 REJECTED), admin provisioning API endpoints (`/api/pharmacies/kiosks/provisioning/` list/detail/approve/reject).  
+**web_panels:** `PendingDevices.vue` yeni view, `/admin/devices/pending` route, AdminLayout nav item, `devices.js` service fonksiyonları eklendi.  
+**kiosk_edge:** `provisioning.js` durum makinesi (UNREGISTERED→PENDING_APPROVAL→APPROVED/REJECTED), `scheduler.js` bootstrap retry, `getProvisioningState` export edildi.  
+**Güvenlik:** fleet_key/provision_secret DB/log/UI'da saklanmaz; sabit zaman karşılaştırma korundu; onay transaction+select_for_update ile race condition güvenli; pending cihaz normal API'lere erişemez.  
+**Dosyalar:** `pharmacies/models.py`, `pharmacies/migrations/0006_*.py`, `pharmacies/serializers.py`, `pharmacies/views.py`, `pharmacies/urls.py`, `pharmacies/tests/test_provisioning.py`, `web_panels/.../PendingDevices.vue`, `devices.js`, `router/index.js`, `AdminLayout.vue`, `kiosk_edge/api-node/src/provisioning.js`, `scheduler.js`. **Doküman:** 00-AI-INDEX, 01-backend, 02-web-panels, 03-kiosk-edge-api-node, 05-cross-project-flows, 06-db-and-api-contracts güncellendi.  
+**Test:** 24/24 backend testi geçti.  
+**Breaking:** KioskBootstrapView davranışı değişti: bilinmeyen MAC artık 404 yerine 202 döndürüyor.
+
+---
+
 ## 2026-07-07
 
 ### Kiosk Edge — SQLite FK Kaldırma + QR Anında Sync + ConsultScreen Visual Temizlik

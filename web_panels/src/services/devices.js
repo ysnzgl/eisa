@@ -101,18 +101,97 @@ export async function getKioskStatus(pharmacyId = null) {
 
 /**
  * Eczaneye yeni kiosk ekler.
- * @param {{ pharmacyId: number, mac: string }} data
+ * @param {{ pharmacyId: number, mac: string, ad: string }} data
  */
 export async function createKiosk(data) {
   const { data: created } = await http.post('/api/pharmacies/kiosks/', {
     eczane: data.pharmacyId,
     mac_adresi: data.mac,
-    ad:data.ad,
+    ad: data.ad,
     aktif: true,
   });
   return mapKioskFromApi(created);
 }
 
+/**
+ * Kiosk bilgilerini günceller.
+ * @param {number} id - Kiosk ID
+ * @param {{ mac?: string, ad?: string, isActive?: boolean }} data
+ */
+export async function updateKiosk(id, data) {
+  const payload = {};
+  if (data.mac !== undefined) payload.mac_adresi = data.mac;
+  if (data.ad !== undefined) payload.ad = data.ad;
+  if (data.isActive !== undefined) payload.aktif = data.isActive;
+  const { data: updated } = await http.patch(`/api/pharmacies/kiosks/${id}/`, payload);
+  return mapKioskFromApi(updated);
+}
+
 export async function deleteKiosk(id) {
   await http.delete(`/api/pharmacies/kiosks/${id}/`);
 }
+
+// ── Provisioning (Onay Bekleyen Cihazlar) ───────────────────────────────────
+
+export function mapProvisioningRequestFromApi(r) {
+  if (!r) return null;
+  return {
+    id: r.id,
+    mac: r.mac_adresi,
+    hostname: r.hostname ?? '',
+    deviceMetadata: r.device_metadata ?? {},
+    status: r.status,
+    firstSeenAt: r.first_seen_at,
+    lastSeenAt: r.last_seen_at,
+    requestCount: r.request_count ?? 1,
+    approvedAt: r.approved_at,
+    approvedBy: r.approved_by_username ?? null,
+    rejectedAt: r.rejected_at,
+    rejectedBy: r.rejected_by_username ?? null,
+    rejectionReason: r.rejection_reason ?? '',
+    kioskId: r.kiosk_id ?? null,
+    kioskAd: r.kiosk_ad ?? null,
+  };
+}
+
+/**
+ * Onay bekleyen (veya reddedilen) cihaz listesini getirir.
+ * Yalnızca SuperAdmin erişebilir.
+ * @param {{ status?: string, mac?: string, hostname?: string }} filters
+ */
+export async function listProvisioningRequests(filters = {}) {
+  const params = {};
+  if (filters.status) params.status = filters.status;
+  if (filters.mac) params.mac = filters.mac;
+  if (filters.hostname) params.hostname = filters.hostname;
+  const { data } = await http.get('/api/pharmacies/kiosks/provisioning/', { params });
+  const items = Array.isArray(data) ? data : (data?.results ?? []);
+  return items.map(mapProvisioningRequestFromApi);
+}
+
+/**
+ * Cihazı eczaneye bağlayarak onaylar.
+ * @param {string} id - KioskProvisioningRequest UUID
+ * @param {{ eczane_id: number, ad: string }} data
+ */
+export async function approveProvisioningRequest(id, data) {
+  const { data: result } = await http.post(
+    `/api/pharmacies/kiosks/provisioning/${id}/approve/`,
+    { eczane_id: data.eczane_id, ad: data.ad },
+  );
+  return mapProvisioningRequestFromApi(result);
+}
+
+/**
+ * Cihazı reddeder.
+ * @param {string} id - KioskProvisioningRequest UUID
+ * @param {{ rejection_reason?: string }} data
+ */
+export async function rejectProvisioningRequest(id, data = {}) {
+  const { data: result } = await http.post(
+    `/api/pharmacies/kiosks/provisioning/${id}/reject/`,
+    { rejection_reason: data.rejection_reason ?? '' },
+  );
+  return mapProvisioningRequestFromApi(result);
+}
+

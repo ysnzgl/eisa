@@ -2,7 +2,7 @@ import cron from 'node-cron';
 import { Agent, fetch } from 'undici';
 import { checkOutboxPressure } from './db.js';
 import { syncMediaCache } from './mediaCache.js';
-import { getAuthHeaders, refreshIotTokenIfNeeded } from './provisioning.js';
+import { getAuthHeaders, getProvisioningState, refreshIotTokenIfNeeded, handle403Error } from './provisioning.js';
 import { istanbulNow } from './timezone.js';
 
 let _tasks = [];
@@ -340,7 +340,7 @@ export async function pullFromCentral(db, settings, log = console) {
         await syncMediaCache(db, settings, log);
         log.info?.(`PULL: ${(data.creatives || []).length} creative, ${(data.house_ads || []).length} house_ad guncellendi`);
       } else if (r2.status === 403) {
-        log.warn?.('PULL kiosk/v1/sync HTTP 403: EISA_KIOSK_ID ile AppKey/MAC eslesmesini kontrol edin');
+        handle403Error(db, settings, log);
       } else {
         log.warn?.(`PULL kiosk/v1/sync HTTP ${r2.status}`);
       }
@@ -410,7 +410,11 @@ export async function pingAndSyncPlaylist(db, settings, log = console) {
       db, settings, 'GET', `/api/kiosk/v1/${kioskId}/ping/`, undefined, log,
     );
     if (!pingRes.ok) {
-      log.warn?.(`PING HTTP ${pingRes.status}`);
+      if (pingRes.status === 403) {
+        handle403Error(db, settings, log);
+      } else {
+        log.warn?.(`PING HTTP ${pingRes.status}`);
+      }
       return;
     }
     const ping = await pingRes.json();
@@ -441,7 +445,11 @@ export async function pingAndSyncPlaylist(db, settings, log = console) {
       undefined, log,
     );
     if (!plRes.ok) {
-      log.warn?.(`PLAYLIST çekme HTTP ${plRes.status}`);
+      if (plRes.status === 403) {
+        handle403Error(db, settings, log);
+      } else {
+        log.warn?.(`PLAYLIST çekme HTTP ${plRes.status}`);
+      }
       return;
     }
     const body = await plRes.json();
@@ -528,7 +536,11 @@ export async function pushToCentral(db, settings, log = console) {
           db, settings, 'POST', '/api/analytics/sessions/',
           { items: oturumlar.map((s) => JSON.parse(s.payload)) }, log,
         );
-        await consumeBulkPushResponse(db, 'oturum_outbox', oturumlar, r, log, 'sessions');
+        if (r.status === 403) {
+          handle403Error(db, settings, log);
+        } else {
+          await consumeBulkPushResponse(db, 'oturum_outbox', oturumlar, r, log, 'sessions');
+        }
       } catch (err) {
         log.warn?.({ err: err.message }, 'PUSH sessions kalici hata; kayitlar saklaniyor');
       }
@@ -564,6 +576,8 @@ export async function pushToCentral(db, settings, log = console) {
           const tx = db.transaction((items) => { for (const it of items) del.run(it.id); });
           tx(gosterimler);
           log.info?.(`PUSH proof-of-play: ${gosterimler.length} kayit gonderildi`);
+        } else if (r.status === 403) {
+          handle403Error(db, settings, log);
         } else {
           let body = null;
           try { body = await r.json(); } catch { body = null; }
@@ -626,6 +640,7 @@ export function startScheduler(db, settings, log = console) {
   const pullTimer    = setInterval(() => pullFromCentral(db, settings, log), pullEvery);
   const pushTimer    = setInterval(() => pushToCentral(db, settings, log), pushEvery);
   const pingTimer = setInterval(async () => {
+    // PENDING_APPROVAL durumunda token yenileme bootstrap'i tekrar dener (backoff)
     await refreshIotTokenIfNeeded(db, settings, log).catch(() => {});
     pingAndSyncPlaylist(db, settings, log);
   }, pingEvery);
@@ -639,6 +654,16 @@ export function startScheduler(db, settings, log = console) {
   pressureTimer.unref?.();
   _tasks.push(pullTimer, pushTimer, pingTimer, pressureTimer);
 
+  // Provisioning durumunu logla
+  try {
+    const provState = getProvisioningState(db);
+    if (provState === 'PENDING_APPROVAL') {
+      log.warn?.('Kiosk provisioning PENDING_APPROVAL — admin onayi bekleniyor, veri senkronizasyonu askiya alindi');
+    } else if (provState === 'REJECTED') {
+      log.warn?.('Kiosk provisioning REJECTED — admin ile iletisime gecin');
+    }
+  } catch { /* DB henuz hazir degil */ }
+
   // İlk açılışta hemen bir ping yap
   pingAndSyncPlaylist(db, settings, log);
   syncMediaCache(db, settings, log).catch((err) =>
@@ -646,7 +671,7 @@ export function startScheduler(db, settings, log = console) {
   );
 
   log.info?.(
-    `Scheduler baslatildi — pull:${settings.pullIntervalSec}s push:${settings.pushIntervalSec}s ping:${settings.pingIntervalSec ?? 60}s`,
+    `Scheduler baslatildi - pull:${settings.pullIntervalSec}s push:${settings.pushIntervalSec}s ping:${settings.pingIntervalSec ?? 60}s`,
   );
 }
 

@@ -32,6 +32,13 @@
 - id, eczane_id FK, ad, mac_adresi (unique), uygulama_anahtari (unique), aktif, is_online, son_goruldu, last_playlist_version
 - olusturulma_tarihi, guncellenme_tarihi
 
+**kiosk_provisioning_requests** *(2026-07-14)*
+- id (UUID), mac_adresi, hostname, device_metadata (JSON — token/secret içermez)
+- status (PENDING/APPROVED/REJECTED), last_seen_at, request_count
+- approved_at, approved_by FK (nullable), rejected_at, rejected_by FK (nullable), rejection_reason
+- kiosk FK (nullable, SET_NULL — OneToOne), olusturulma_tarihi, guncellenme_tarihi, surum
+- **Güvenlik:** Raw fleet_key veya provision_secret bu tabloda saklanmaz.
+
 ### Lookups
 
 **iller**: id, ad
@@ -167,6 +174,43 @@
 **GET /api/pharmacies/kiosklar/**
 - Auth: JWT (SuperAdmin/Pharmacist)
 - Response: `[{ "id": 1, "eczane": {...}, "mac_adresi": "AA:BB:CC:DD:EE:FF", "aktif": true, "is_online": false }, ...]`
+
+---
+
+### Provisioning Endpoints *(2026-07-14)*
+
+**POST /api/pharmacies/kiosks/bootstrap/**
+- Auth: `X-Kiosk-Key: <fleet_key>` (header), body: `{ "mac_adresi": "...", "timestamp": "ISO", "hmac": "...", "hostname": "...", "device_metadata": { ... } }`
+- `hostname` ve `device_metadata` opsiyonel; kiosk_edge `collectDeviceMetadata()` ile otomatik doldurur
+- `device_metadata` içeriği: hostname, os_type, os_platform, os_release, arch, cpu_model, cpu_cores, total_memory_mb, ip_addresses, node_version, uptime_seconds
+- Response 200 (kayıtlı cihaz): `{ "iot_token": "...", "kiosk_id": 1, "pharmacy_id": 1, "kiosk_adi": "...", "expires_in_days": 7 }`
+- Response 202 (bilinmeyen cihaz, PENDING): `{ "status": "PENDING", "registration_id": "uuid", "message": "...", "retry_after_seconds": 30 }`
+- Response 403 (reddedilmiş): `{ "status": "REJECTED", "message": "..." }`
+- Response 401: Geçersiz fleet key veya HMAC (hangi credential yanlış belirtilmez)
+- **Breaking change (2026-07-14):** Kayıtsız MAC için artık 404 yerine 202 döner.
+
+**GET /api/pharmacies/kiosks/provisioning/**
+- Auth: JWT (SuperAdmin)
+- Filters: `?status=PENDING&mac=AA:BB:...&hostname=kiosk1`
+- Response: `[{ "id": "uuid", "mac_adresi": "...", "hostname": "...", "status": "PENDING", "first_seen_at": "...", "last_seen_at": "...", "request_count": 2, ... }]`
+
+**GET /api/pharmacies/kiosks/provisioning/{id}/**
+- Auth: JWT (SuperAdmin)
+- Response: single KioskProvisioningRequest object (yukarıdakiyle aynı schema)
+
+**POST /api/pharmacies/kiosks/provisioning/{id}/approve/**
+- Auth: JWT (SuperAdmin)
+- Request: `{ "eczane_id": 1, "ad": "Kiosk 1" }`
+- Response 200: approved KioskProvisioningRequest (kiosk_id dahil)
+- Response 409: MAC zaten kayıtlı / reddedilmiş talep
+- Response 400: eczane_id bulunamadı / eksik alan
+- **İdempotent:** Aynı kiosk ile zaten onaylanmışsa 200 döner.
+
+**POST /api/pharmacies/kiosks/provisioning/{id}/reject/**
+- Auth: JWT (SuperAdmin)
+- Request: `{ "rejection_reason": "..." }` (opsiyonel)
+- Response 200: rejected KioskProvisioningRequest
+- Response 409: zaten onaylanmış talep
 
 **POST /api/pharmacies/kiosklar/**
 - Auth: JWT (SuperAdmin)

@@ -14,6 +14,57 @@
 
 ---
 
+## 0. Kiosk Provisioning (Onay) Akışı *(2026-07-14)*
+
+### kiosk_edge → Backend → web_panels → Backend → kiosk_edge
+
+**0.1. Kayıtsız Cihaz Bootstrap İsteği**
+```
+kiosk_edge/api-node (provisioning.js: resolveRuntimeSettings)
+  → POST /api/pharmacies/kiosks/bootstrap/
+    Header: X-Kiosk-Key: <fleet_key>
+    Body: { "mac_adresi": "AA:BB:CC:DD:EE:FF", "timestamp": "...", "hmac": "..." }
+  → Backend: fleet_key + HMAC doğrulama
+  → Kiosk bulunamadı → KioskProvisioningRequest PENDING kaydı oluştur
+  → Response 202: { "status": "PENDING", "registration_id": "uuid", "retry_after_seconds": 30 }
+  → kiosk_edge: provisioning_state = 'PENDING_APPROVAL', registration_id kaydedilir
+```
+
+**0.2. Admin Onay Ekranı**
+```
+SuperAdmin (web_panels/PendingDevices.vue)
+  → GET /api/pharmacies/kiosks/provisioning/?status=PENDING
+  → Backend: KioskProvisioningRequest listesi
+  → Admin eczane + kiosk adı seçer
+  → POST /api/pharmacies/kiosks/provisioning/{id}/approve/
+    { "eczane_id": 1, "ad": "Kiosk 1" }
+  → Backend transaction:
+    1. SELECT FOR UPDATE (race condition koruması)
+    2. Kiosk oluşturulur (uygulama_anahtari otomatik)
+    3. KioskProvisioningRequest → APPROVED, kiosk FK bağlanır
+  → Response 200: approved request detayı
+```
+
+**0.3. Onaylanmış Cihaz Bootstrap**
+```
+kiosk_edge/api-node (scheduler: refreshIotTokenIfNeeded, her 60s)
+  → POST /api/pharmacies/kiosks/bootstrap/ (aynı credentials)
+  → Backend: MAC ile Kiosk bulunur (artık kayıtlı)
+  → Response 200: { "iot_token": "...", "kiosk_id": 1, ... }
+  → kiosk_edge: iot_token SQLite'a yazılır, provisioning_state = 'APPROVED'
+  → Normal scheduler syncs başlar
+```
+
+**0.4. Reddedilen Cihaz**
+```
+SuperAdmin → POST /api/pharmacies/kiosks/provisioning/{id}/reject/
+  → Backend: status = REJECTED
+  → Cihaz tekrar bootstrap → 403 { "status": "REJECTED" }
+  → kiosk_edge: provisioning_state = 'REJECTED', normal API çağrıları engellenir
+```
+
+---
+
 ## 1. Kategori Akışı
 
 ### Backend → web_panels → Backend → kiosk_edge/api-node → kiosk_edge/ui

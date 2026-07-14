@@ -5,6 +5,8 @@
 **/*.db-wal
 **/dist
 **/.env
+**/.env.dev
+**/.env.prod
 **/.env.local
 **/tests
 **/*.test.js

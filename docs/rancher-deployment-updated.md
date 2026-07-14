@@ -98,31 +98,41 @@ Sebep: Registry'yi kurmadan image push/pull akışı hemen çalışır. Daha son
 Örnek GHCR akışı:
 
 $GH_USER = "ysnzgl"
-$GHCR_PAT = "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"
+$GHCR_PAT = "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" 
 
 $GHCR_PAT | docker login ghcr.io -u $GH_USER --password-stdin
 
 ```powershell
 $REGISTRY = "ghcr.io/ysnzgl"
-$TAG      = Get-Date -Format "yyyyMMdd-HHmmss"
+$TAG      = "1.0.2"
 
 docker build --no-cache -t "$REGISTRY/eisa-api:$TAG" ./backend
 docker build --no-cache -t "$REGISTRY/eisa-portal:$TAG" ./web_panels
+docker build --no-cache -t "$REGISTRY/eisa-kiosk:$TAG" ./kiosk_edge
 
 docker push "$REGISTRY/eisa-api:$TAG"
 docker push "$REGISTRY/eisa-portal:$TAG"
+docker push "$REGISTRY/eisa-kiosk:$TAG"
 
 Write-Host "Yeni tag: $TAG"
 ```
 
 REGISTRY="ghcr.io/ysnzgl"
-TAG="20260604-022117"
+TAG="1.0.2"
 
 kubectl -n eisa-app set image deploy/eisa-api api=${REGISTRY}/eisa-api:${TAG}
 kubectl -n eisa-app set image deploy/eisa-portal portal=${REGISTRY}/eisa-portal:${TAG}
+kubectl -n eisa-app set image deploy/eisa-kiosk kiosk=${REGISTRY}/eisa-kiosk:${TAG}
 
 kubectl -n eisa-app rollout status deploy/eisa-api --timeout=180s
 kubectl -n eisa-app rollout status deploy/eisa-portal --timeout=180s
+kubectl -n eisa-app rollout status deploy/eisa-kiosk --timeout=180s
+
+migration için:
+
+kubectl -n eisa-app exec deployment/eisa-api -- python manage.py migrate
+kubectl -n eisa-app rollout restart deployment/eisa-api
+kubectl -n eisa-app rollout status deployment/eisa-api
 
 Manifest içindeki image alanları buna göre güncellenir:
 

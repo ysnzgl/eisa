@@ -18,6 +18,7 @@ const isAdmin = computed(() => auth.role === 'superadmin');
 const adminNavItems = [
   { to: '/admin',               exact: true, icon: 'fa-chart-line',   label: 'Dashboard' },
   { to: '/admin/devices',                    icon: 'fa-display',       label: 'Cihaz Yönetimi' },
+  { to: '/admin/devices/pending',            icon: 'fa-clock',         label: 'Onay Bekleyen Cihazlar' },
   { to: '/admin/medical-logic',              icon: 'fa-dna',           label: 'Algoritma Editörü' },
   { to: '/admin/danisma',                    icon: 'fa-comments',      label: 'Danışma Kategorileri' },
   { to: '/admin/campaigns',                  icon: 'fa-bullhorn',      label: 'Kampanyalar' },

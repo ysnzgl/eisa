@@ -3,62 +3,81 @@
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #
 # Tek container içinde hem API Node servisi hem de UI birlikte çalışır.
-# - Node.js API (Fastify) → 127.0.0.1:8765 (internal)
-# - Nginx → :80 (UI static + /api proxy)
+# - Node.js API (Fastify) → 127.0.0.1:8765
+# - Nginx → :80
 # - supervisord ile iki process yönetilir.
-#
-# Build context: kiosk_edge/ klasörü
-#   docker build -f Dockerfile -t eisa-kiosk-allinone .
 #
 # NOT: Sadece demo.eisa.com.tr için. Gerçek kiosk'larda native deployment.
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-# ── Stage 1: UI Build ──
+# ── Stage 1: UI Build ────────────────────────────────────────────────
 FROM node:20-alpine AS ui-build
+
 WORKDIR /ui
+
 COPY ui/package*.json ./
 RUN npm ci
+
 COPY ui/ .
-# Relative API path → nginx /api proxy üzerinden node'a yönlenir
+
+# UI, aynı container içindeki Node API'ye Nginx /api proxy'si üzerinden gider.
 ENV VITE_API_BASE=""
+
 RUN npm run build
 
-# ── Stage 2: API Dependencies ──
+
+# ── Stage 2: API Dependencies ────────────────────────────────────────
 FROM node:20-alpine AS api-deps
+
 WORKDIR /api
-# better-sqlite3 native derleme için build araçları
+
+# better-sqlite3 native derleme araçları
 RUN apk add --no-cache python3 make g++
+
 COPY api-node/package*.json ./
 RUN npm ci --omit=dev
 
-# ── Stage 3: Runner (Node + Nginx + supervisord) ──
+
+# ── Stage 3: Runner ──────────────────────────────────────────────────
 FROM node:20-alpine AS runner
+
 ENV NODE_ENV=production
 
 # Nginx + supervisor + sqlite runtime
 RUN apk add --no-cache nginx supervisor sqlite
 
-# ── API Node ──
+# ── API Node ─────────────────────────────────────────────────────────
 WORKDIR /app/api
+
 COPY --from=api-deps /api/node_modules ./node_modules
 COPY api-node/package.json ./
 COPY api-node/src ./src
 
-# Node API ortam değişkenleri (container içi)
 ENV EISA_PORT=8765
 ENV EISA_HOST=127.0.0.1
 ENV EISA_SQLITE_PATH=/var/lib/eisa/local.db
 ENV EISA_MEDIA_DIR=/var/lib/eisa/media
 ENV EISA_LOG_DIR=/var/log/eisa
-ENV EISA_CENTRAL_API_BASE=https://api.eisa.com.tr
 
-# Veri / log dizinleri
-RUN mkdir -p /var/lib/eisa/media /var/log/eisa /run/nginx
+# Node doğrudan merkezi API'ye değil, aynı container'daki Nginx proxy'sine gider.
+ENV EISA_CENTRAL_API_BASE=http://127.0.0.1/_central-api
 
-# ── UI static dosyaları ──
+# Veri, log ve Nginx runtime dizinleri
+RUN mkdir -p \
+    /var/lib/eisa/media \
+    /var/log/eisa \
+    /run/nginx \
+    /var/lib/nginx/logs \
+    /var/lib/nginx/tmp/client_body \
+    /var/lib/nginx/tmp/proxy \
+    /var/lib/nginx/tmp/fastcgi \
+    /var/lib/nginx/tmp/uwsgi \
+    /var/lib/nginx/tmp/scgi
+
+# ── UI static dosyaları ──────────────────────────────────────────────
 COPY --from=ui-build /ui/dist /usr/share/nginx/html
 
-# ── Nginx config (UI + /api proxy) ──
+# ── Nginx config ─────────────────────────────────────────────────────
 RUN printf 'server {\n\
     listen 80;\n\
     server_name _;\n\
@@ -66,7 +85,7 @@ RUN printf 'server {\n\
     index index.html;\n\
     client_max_body_size 25m;\n\
 \n\
-    # API proxy → Node.js (127.0.0.1:8765)\n\
+    # UI istekleri -> container icindeki Node API\n\
     location /api/ {\n\
         proxy_pass http://127.0.0.1:8765;\n\
         proxy_http_version 1.1;\n\
@@ -77,17 +96,41 @@ RUN printf 'server {\n\
         proxy_read_timeout 60s;\n\
     }\n\
 \n\
-    # API health check passthrough\n\
+    # Node API -> Kubernetes icindeki merkezi E-ISA API\n\
+    # Yalnizca ayni container icinden erisilebilir.\n\
+    location /_central-api/ {\n\
+        allow 127.0.0.1;\n\
+        allow ::1;\n\
+        deny all;\n\
+\n\
+        # Sondaki slash, /_central-api/ prefixini kaldirir.\n\
+        proxy_pass http://eisa-api/;\n\
+        proxy_http_version 1.1;\n\
+\n\
+        # Django istegi HTTPS arkasindan gelmis olarak kabul eder.\n\
+        proxy_set_header Host api.eisa.com.tr;\n\
+        proxy_set_header X-Forwarded-Proto https;\n\
+        proxy_set_header X-Forwarded-Host api.eisa.com.tr;\n\
+        proxy_set_header X-Forwarded-Port 443;\n\
+        proxy_set_header X-Real-IP $remote_addr;\n\
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n\
+\n\
+        proxy_connect_timeout 5s;\n\
+        proxy_send_timeout 30s;\n\
+        proxy_read_timeout 30s;\n\
+    }\n\
+\n\
+    # Node API health check passthrough\n\
     location = /health {\n\
         proxy_pass http://127.0.0.1:8765/health;\n\
         access_log off;\n\
     }\n\
 \n\
-    # UI health check\n\
+    # Kubernetes / Docker health check\n\
     location = /healthz {\n\
         access_log off;\n\
-        return 200 "OK";\n\
-        add_header Content-Type text/plain;\n\
+        default_type text/plain;\n\
+        return 200 "OK\\n";\n\
     }\n\
 \n\
     # SPA routing\n\
@@ -96,7 +139,7 @@ RUN printf 'server {\n\
     }\n\
 }\n' > /etc/nginx/http.d/default.conf
 
-# ── supervisord config ──
+# ── supervisord config ────────────────────────────────────────────────
 RUN printf '[supervisord]\n\
 nodaemon=true\n\
 user=root\n\
@@ -127,6 +170,6 @@ priority=20\n' > /etc/supervisord.conf
 EXPOSE 80
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost/healthz || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://127.0.0.1/healthz || exit 1
 
 CMD ["supervisord", "-c", "/etc/supervisord.conf"]

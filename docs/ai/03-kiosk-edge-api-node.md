@@ -103,7 +103,7 @@
 - `reklam_gosterim_outbox`: id, payload JSON, olusturulma_tarihi, gonderilme_tarihi (null = pending)
 
 **Meta:**
-- `kiosk_meta`: key, value (iot_token, playlist_version, last_sync_at)
+- `kiosk_meta`: key, value (iot_token, playlist_version, last_sync_at, provisioning_state, registration_id)
 - `media_cache`: url, local_path, cached_at, checksum
 
 **Outbox pressure check (`checkOutboxPressure`):**
@@ -130,14 +130,49 @@
 
 ### Provisioning (`src/provisioning.js`)
 
+**Durum makinesi (2026-07-14):**
+```
+UNREGISTERED      → bootstrap dene
+PENDING_APPROVAL  → admin onayi bekleniyor (polling / backoff)
+APPROVED          → iot_token alindi
+PROVISIONED       → normal operation (iot_token gecerli)
+REJECTED          → admin reddetti; normal API'lere erisim engellenir
+```
+
+**State kiosk_meta'da saklanır:**
+- `provisioning_state`: UNREGISTERED / PENDING_APPROVAL / APPROVED / REJECTED
+- `registration_id`: 202 PENDING yanıtından gelen UUID
+
 **İlk açılış:**
 1. `resolveRuntimeSettings` fonksiyonu → env'den `KIOSK_APP_KEY` ve `KIOSK_MAC` oku
-2. Eğer SQLite'da `iot_token` yoksa → `POST /api/kiosk/v1/{kiosk_id}/provision/` → IoT token al
-3. IoT token → `kiosk_meta` tablosuna yaz
-4. Sonraki isteklerde `Authorization: Bearer {iot_token}` kullanılır
+2. Eğer SQLite'da geçerli `iot_token` varsa → PROVISIONED (doğrudan kullan)
+3. REJECTED ise → token alınmaz, AppKey fallback denenebilir
+4. Aksi halde `POST /api/pharmacies/kiosks/bootstrap/` → 200 (PROVISIONED) / 202 (PENDING) / 403 (REJECTED)
+5. IoT token → `kiosk_meta` tablosuna yaz
+6. Sonraki isteklerde `Authorization: Bearer {iot_token}` kullanılır
 
 **Token refresh:**
-- `refreshIotTokenIfNeeded` fonksyonu → token expiry kontrolü (şu an placeholder, tam implementasyon belirsiz)
+- `refreshIotTokenIfNeeded` fonksiyonu → token expiry kontrolü (scheduler her ping döngüsünde çağrılır)
+- Token süresine 24h'den az kalmışsa ve PENDING_APPROVAL ise → bootstrap tekrar denenir (admin onaylamışsa 200 döner)
+- REJECTED durumunda refresh denemesi yapılmaz
+- **403 Handling (2026-07-14):** Backend'den HTTP 403 alındığında token temizlenir
+  - `clearIotToken(db, log)` → IoT token ve ilişkili meta veriler silinir
+  - `handle403Error(db, settings, log)` → 403 durumunu handle eder, token'ı temizler
+  - Token temizlenince bir sonraki sync döngüsünde provision otomatik yeniden yapılır
+  - **403 kontrolü aktif olan yerler:**
+    - scheduler.js: pullFromCentral (kiosk/v1/sync)
+    - scheduler.js: pushToCentral (sessions, proof-of-play)
+    - scheduler.js: pingAndSyncPlaylist (ping + playlist fetch)
+    - server.js: POST /api/oturum/gonder (immediate session push)
+
+**Cihaz metadata (2026-07-14):**
+Bootstrap isteğinde `collectDeviceMetadata()` ile derlenen sistem bilgileri gönderilir:
+- `hostname`, `os_type`, `os_platform`, `os_release`, `arch`
+- `cpu_model`, `cpu_cores`, `total_memory_mb`
+- `ip_addresses` (dahili olmayan IPv4 listesi + interface adı)
+- `node_version`, `uptime_seconds`
+
+Toplanan veriler `device_metadata` JSON alanı olarak `KioskProvisioningRequest`'e yazılır. Token/secret/credential içermez.
 
 ---
 

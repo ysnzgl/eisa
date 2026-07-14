@@ -11,6 +11,7 @@ import {
   deletePharmacy,
   getKioskStatus,
   createKiosk,
+  updateKiosk,
   deleteKiosk,
 } from '../../services/devices';
 import { getIller, getIlceler } from '../../services/lookups';
@@ -60,6 +61,27 @@ const kioskModalPharm  = ref(null);     // hangi eczaneye kiosk ekleniyor
 const kioskForm        = ref({ mac: '' });
 const kioskFormError   = ref('');
 const kioskSaving      = ref(false);
+
+// ─── Kiosk Düzenleme ──────────────────────────────────────────────────────────
+const kioskEditModalOpen = ref(false);
+const kioskEditTarget    = ref(null);
+const kioskEditForm      = ref({ ad: '', mac: '', isActive: true });
+const kioskEditSaving    = ref(false);
+const kioskEditError     = ref('');
+
+// ─── Toast Notification ───────────────────────────────────────────────────────
+const toastVisible = ref(false);
+const toastMessage = ref('');
+let toastTimeout = null;
+
+function showToast(message) {
+  if (toastTimeout) clearTimeout(toastTimeout);
+  toastMessage.value = message;
+  toastVisible.value = true;
+  toastTimeout = setTimeout(() => {
+    toastVisible.value = false;
+  }, 2000);
+}
 
 // ─── Kiosk Silme ──────────────────────────────────────────────────────────────
 const kioskDeleteTarget = ref(null);
@@ -251,6 +273,62 @@ async function confirmDeleteKiosk() {
     kioskDeleting.value = false;
   }
 }
+
+function openEditKiosk(kiosk) {
+  kioskEditTarget.value = kiosk;
+  kioskEditForm.value = {
+    ad: kiosk.ad || '',
+    mac: kiosk.mac || '',
+    isActive: kiosk.isActive !== false,
+  };
+  kioskEditError.value = '';
+  kioskEditModalOpen.value = true;
+}
+
+function closeEditKiosk() {
+  kioskEditModalOpen.value = false;
+  kioskEditTarget.value = null;
+  kioskEditForm.value = { ad: '', mac: '', isActive: true };
+  kioskEditError.value = '';
+}
+
+async function saveEditKiosk() {
+  const { ad, mac } = kioskEditForm.value;
+  if (!ad.trim()) {
+    kioskEditError.value = 'Kiosk adı zorunludur.';
+    return;
+  }
+  if (!mac.trim()) {
+    kioskEditError.value = 'MAC adresi zorunludur.';
+    return;
+  }
+  if (!/^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$/.test(mac)) {
+    kioskEditError.value = 'Geçerli bir MAC adresi girin (örn: AA:BB:CC:DD:EE:FF).';
+    return;
+  }
+  kioskEditSaving.value = true;
+  kioskEditError.value = '';
+  try {
+    await updateKiosk(kioskEditTarget.value.id, kioskEditForm.value);
+    await Promise.all([loadKiosks(), loadPharmacies()]);
+    closeEditKiosk();
+  } catch {
+    kioskEditError.value = 'Kiosk güncellenemedi. MAC adresi zaten kayıtlı olabilir.';
+  } finally {
+    kioskEditSaving.value = false;
+  }
+}
+
+async function copyAppKey() {
+  const appKey = kioskEditTarget.value?.appKey;
+  if (!appKey || appKey === '—') return;
+  try {
+    await navigator.clipboard.writeText(appKey);
+    showToast('Kopyalandı!');
+  } catch {
+    showToast('Kopyalanamadı');
+  }
+}
 </script>
 
 <template>
@@ -434,6 +512,10 @@ async function confirmDeleteKiosk() {
                 <i class="fa-solid fa-hospital" style="margin-right:0.35rem;color:#9CA3AF;font-size:0.7rem;"></i>
                 {{ kiosk.pharmacyName }}
               </p>
+              <div style="margin-top:0.5rem;padding-top:0.5rem;border-top:1px solid #E5E7EB;">
+                <p style="font-size:0.65rem;color:#9CA3AF;margin-bottom:0.15rem;">MAC Adresi</p>
+                <p style="font-size:0.75rem;font-family:'DM Mono',monospace;color:#374151;font-weight:500;">{{ kiosk.mac || '—' }}</p>
+              </div>
             </div>
             <div class="eisa-kiosk-card-footer">
               <div>
@@ -443,13 +525,22 @@ async function confirmDeleteKiosk() {
                   :style="{ color: isOnline(kiosk) ? '#059669' : '#EF4444' }"
                 >{{ formatPing(kiosk.lastPing) }}</p>
               </div>
-              <button
-                class="eisa-icon-btn"
-                title="Kiosk'u Kaldır"
-                @click="openDeleteKiosk(kiosk)"
-              >
-                <i class="fa-solid fa-trash" style="color:#EF4444;"></i>
-              </button>
+              <div style="display:flex;gap:0.5rem;">
+                <button
+                  class="eisa-icon-btn"
+                  title="Düzenle"
+                  @click="openEditKiosk(kiosk)"
+                >
+                  <i class="fa-solid fa-pen-to-square" style="color:#7C3AED;"></i>
+                </button>
+                <button
+                  class="eisa-icon-btn"
+                  title="Kiosk'u Kaldır"
+                  @click="openDeleteKiosk(kiosk)"
+                >
+                  <i class="fa-solid fa-trash" style="color:#EF4444;"></i>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -659,6 +750,112 @@ async function confirmDeleteKiosk() {
     </Transition>
   </Teleport>
 
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- Kiosk Düzenle Modal                                                     -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <Teleport to="body">
+    <Transition name="backdrop">
+      <div
+        v-if="kioskEditModalOpen"
+        id="kiosk-edit-modal-backdrop"
+        class="eisa-modal-backdrop"
+        @click.self="closeEditKiosk"
+      >
+        <Transition name="modal" appear>
+          <div v-if="kioskEditModalOpen" id="kiosk-edit-modal" class="eisa-modal" style="max-width:500px;">
+            <div class="eisa-modal-header">
+              <div>
+                <h3 class="eisa-modal-title">Kiosk Düzenle</h3>
+                <p class="eisa-stat-sub">{{ kioskEditTarget?.pharmacyName }}</p>
+              </div>
+              <button class="eisa-modal-close" @click="closeEditKiosk">
+                <i class="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+
+            <div class="eisa-modal-body">
+              <div v-if="kioskEditError" class="eisa-error-banner">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                {{ kioskEditError }}
+              </div>
+
+              <div class="eisa-form-row">
+                <label for="kiosk-edit-ad" class="eisa-field-label">
+                  Kiosk Adı <span style="color:#EF4444;">*</span>
+                </label>
+                <input
+                  id="kiosk-edit-ad"
+                  v-model="kioskEditForm.ad"
+                  type="text"
+                  placeholder="Kiosk 1"
+                  class="eisa-field"
+                />
+              </div>
+
+              <div class="eisa-form-row">
+                <label for="kiosk-edit-mac" class="eisa-field-label">
+                  MAC Adresi <span style="color:#EF4444;">*</span>
+                </label>
+                <input
+                  id="kiosk-edit-mac"
+                  v-model="kioskEditForm.mac"
+                  type="text"
+                  placeholder="AA:BB:CC:DD:EE:FF"
+                  class="eisa-field"
+                  style="font-family:'DM Mono',monospace;"
+                />
+              </div>
+
+              <div class="eisa-form-row">
+                <label for="kiosk-edit-appkey" class="eisa-field-label">
+                  Uygulama Anahtarı (Salt Okunur)
+                </label>
+                <div style="display:flex;gap:0.5rem;align-items:stretch;">
+                  <input
+                    id="kiosk-edit-appkey"
+                    :value="kioskEditTarget?.appKey || '—'"
+                    type="text"
+                    readonly
+                    class="eisa-field"
+                    style="flex:1;font-family:'DM Mono',monospace;background:#F1F5F9;cursor:not-allowed;"
+                    title="Uygulama anahtarı backend tarafından otomatik üretilir"
+                  />
+                  <button
+                    type="button"
+                    class="eisa-icon-btn"
+                    style="padding:0.5rem 0.75rem;background:#7C3AED;color:white;border-radius:0.375rem;transition:all 0.15s;"
+                    :disabled="!kioskEditTarget?.appKey || kioskEditTarget?.appKey === '—'"
+                    @click="copyAppKey"
+                    title="Kopyala"
+                  >
+                    <i class="fa-solid fa-copy"></i>
+                  </button>
+                </div>
+                <p style="margin-top:0.35rem;font-size:0.75rem;color:#6B7280;">Backend tarafından otomatik üretilir, değiştirilemez</p>
+              </div>
+
+              <div class="eisa-form-row eisa-toggle-row">
+                <label class="eisa-toggle">
+                  <input type="checkbox" v-model="kioskEditForm.isActive" />
+                  Aktif
+                </label>
+              </div>
+            </div>
+
+            <div class="eisa-modal-footer">
+              <button class="eisa-btn eisa-btn-ghost" :disabled="kioskEditSaving" @click="closeEditKiosk">İptal</button>
+              <button class="eisa-btn eisa-btn-cta" :disabled="kioskEditSaving" @click="saveEditKiosk">
+                <i v-if="kioskEditSaving" class="fa-solid fa-circle-notch fa-spin"></i>
+                <i v-else class="fa-solid fa-check"></i>
+                {{ kioskEditSaving ? 'Kaydediliyor…' : 'Güncelle' }}
+              </button>
+            </div>
+          </div>
+        </Transition>
+      </div>
+    </Transition>
+  </Teleport>
+
   <!-- Kiosk Sil -->
   <EisaDeleteConfirm
     :open="kioskDeleteOpen"
@@ -680,5 +877,32 @@ async function confirmDeleteKiosk() {
     @confirm="confirmDelete"
     @cancel="closeDelete"
   />
+
+  <!-- Toast Notification -->
+  <Teleport to="body">
+    <Transition name="toast">
+      <div
+        v-if="toastVisible"
+        style="position:fixed;bottom:2rem;right:2rem;background:#10B981;color:white;padding:0.75rem 1.25rem;border-radius:0.5rem;box-shadow:0 10px 25px rgba(0,0,0,0.2);z-index:9999;display:flex;align-items:center;gap:0.5rem;font-weight:500;"
+      >
+        <i class="fa-solid fa-check-circle"></i>
+        {{ toastMessage }}
+      </div>
+    </Transition>
+  </Teleport>
 </template>
+
+<style scoped>
+.toast-enter-active, .toast-leave-active {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.toast-enter-from {
+  opacity: 0;
+  transform: translateY(1rem);
+}
+.toast-leave-to {
+  opacity: 0;
+  transform: translateY(-0.5rem);
+}
+</style>
 

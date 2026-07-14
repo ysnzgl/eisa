@@ -1,57 +1,80 @@
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # E-İSA Kiosk Demo — Rancher / Kubernetes Deployment
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#
-# Birleşik kiosk container'ı (API Node + UI) demo.eisa.com.tr üzerinden yayınlar.
-# Image: kiosk_edge/Dockerfile çıktısı (Nginx :80 + Node 8765 + supervisord)
+# Namespace: eisa-app
+# Host: demo.eisa.com.tr
 #
 # Build & push:
 #   cd kiosk_edge
-#   docker build -t ghcr.io/ysnzgl/eisa-kiosk:1.0.0 .
-#   docker push ghcr.io/ysnzgl/eisa-kiosk:1.0.0
+#   docker build -t ghcr.io/ysnzgl/eisa-kiosk:1.
+#   docker push ghcr.io/ysnzgl/eisa-kiosk:1
 #
 # Apply:
-#   kubectl apply -f deploy/eisa-kiosk-demo.yaml
+#   kubectl apply -f eisa-kiosk-demo.yaml
 #
-# NOT: Sadece demo amaçlıdır. Gerçek kiosk'lar fiziksel cihazda native çalışır.
+# Durum:
+#   kubectl -n eisa-app rollout status deployment/eisa-kiosk-demo
+#   kubectl -n eisa-app get pods -l app.kubernetes.io/name=eisa-kiosk-demo
+#   kubectl -n eisa-app logs -f deployment/eisa-kiosk-demo
+#
+# NOT:
+# - eisa-app namespace'inde eisa-regcred secret'ının mevcut olduğu varsayılır.
+# - Bu deployment yalnızca web üzerinden erişilen demo kiosk içindir.
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: eisa-kiosk-demo
+  name: eisa-app
   labels:
     app.kubernetes.io/part-of: eisa
+
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: eisa-kiosk-demo-config
-  namespace: eisa-kiosk-demo
+  namespace: eisa-app
+  labels:
+    app.kubernetes.io/name: eisa-kiosk-demo
+    app.kubernetes.io/part-of: eisa
 data:
   NODE_ENV: "production"
 
-  # Node API ortam değişkenleri (container içi)
+  # Container içindeki Node API
   EISA_PORT: "8765"
   EISA_HOST: "127.0.0.1"
+
+  # Yerel veri ve log yolları
   EISA_SQLITE_PATH: "/var/lib/eisa/local.db"
   EISA_MEDIA_DIR: "/var/lib/eisa/media"
   EISA_LOG_DIR: "/var/log/eisa"
 
-  # Merkezi backend API endpoint
+  # Merkezi E-İSA API
   EISA_CENTRAL_API_BASE: "https://api.eisa.com.tr"
 
-  # Demo kiosk kimlik bilgileri (legacy AppKey — opsiyonel)
-  # NOT: Gerçek production'da her kiosk'un unique MAC ve key'i olmalı.
-  EISA_KIOSK_APP_KEY: "demo-kiosk-key"
-  EISA_KIOSK_MAC: "00:00:00:00:00:00"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: eisa-kiosk-demo-secrets
+  namespace: eisa-app
+  labels:
+    app.kubernetes.io/name: eisa-kiosk-demo
+    app.kubernetes.io/part-of: eisa
+type: Opaque
+stringData:
+  EISA_KIOSK_FLEET_KEY: "BObKjG26RAaEAmDdADTfmv_rIoyPKzAuQ_hzF5qUE3ahX4fvuTDCh0IsEfycdX_C"
+  EISA_KIOSK_PROVISIONING_SECRET: "P0S59KUHwlarznDOUAGGUT5RdC-4xymN23YhguZGhBvGvqP1L3eWGzmbMO7DR_xTMtPMZDWn0N83_jdvj55Vow"
+
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: eisa-kiosk-demo
-  namespace: eisa-kiosk-demo
+  namespace: eisa-app
   labels:
     app.kubernetes.io/name: eisa-kiosk-demo
+    app.kubernetes.io/component: kiosk
     app.kubernetes.io/part-of: eisa
 spec:
   replicas: 1
@@ -68,6 +91,7 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: eisa-kiosk-demo
+        app.kubernetes.io/component: kiosk
         app.kubernetes.io/part-of: eisa
     spec:
       automountServiceAccountToken: false
@@ -78,7 +102,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: kiosk
-          image: ghcr.io/ysnzgl/eisa-kiosk:1.0.0
+          image: ghcr.io/ysnzgl/eisa-kiosk:1.0.2
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -87,16 +111,24 @@ spec:
           envFrom:
             - configMapRef:
                 name: eisa-kiosk-demo-config
+            - secretRef:
+                name: eisa-kiosk-demo-secrets
           volumeMounts:
             - name: kiosk-data
               mountPath: /var/lib/eisa
             - name: kiosk-logs
               mountPath: /var/log/eisa
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 18
           readinessProbe:
             httpGet:
               path: /healthz
               port: http
-            initialDelaySeconds: 15
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 6
@@ -104,11 +136,12 @@ spec:
             httpGet:
               path: /healthz
               port: http
-            initialDelaySeconds: 40
             periodSeconds: 30
             timeoutSeconds: 5
             failureThreshold: 5
           securityContext:
+            runAsUser: 0
+            runAsGroup: 0
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: false
             capabilities:
@@ -116,6 +149,7 @@ spec:
                 - ALL
               add:
                 - CHOWN
+                - DAC_OVERRIDE
                 - SETUID
                 - SETGID
                 - NET_BIND_SERVICE
@@ -127,20 +161,21 @@ spec:
               cpu: "750m"
               memory: "512Mi"
       volumes:
-        # Demo için emptyDir yeterli — veriler backend'den pull edilir.
-        # Kalıcı saklama gerekirse aşağıdaki PVC alternatifini kullanın.
+        # Demo ortamında Pod yeniden oluşturulduğunda SQLite ve medya silinir.
         - name: kiosk-data
           emptyDir: {}
         - name: kiosk-logs
           emptyDir: {}
+
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: eisa-kiosk-demo
-  namespace: eisa-kiosk-demo
+  namespace: eisa-app
   labels:
     app.kubernetes.io/name: eisa-kiosk-demo
+    app.kubernetes.io/part-of: eisa
 spec:
   type: ClusterIP
   selector:
@@ -150,12 +185,16 @@ spec:
       port: 80
       targetPort: http
       protocol: TCP
+
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: eisa-kiosk-demo
-  namespace: eisa-kiosk-demo
+  namespace: eisa-app
+  labels:
+    app.kubernetes.io/name: eisa-kiosk-demo
+    app.kubernetes.io/part-of: eisa
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
@@ -177,28 +216,35 @@ spec:
                 name: eisa-kiosk-demo
                 port:
                   number: 80
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# (Opsiyonel) Kalıcı SQLite saklama — PVC alternatifi
+# Opsiyonel PVC
+#
+# SQLite ve medya Pod değişimlerinde korunacaksa:
+# 1. Aşağıdaki PVC kaynağını etkinleştir.
+# 2. Deployment içindeki kiosk-data emptyDir tanımını kaldır.
+# 3. Yerine şunu ekle:
+#
+#   - name: kiosk-data
+#     persistentVolumeClaim:
+#       claimName: eisa-kiosk-demo-data
+#
+# SQLite + tek PVC kullanıldığında Deployment strategy için Recreate daha
+# güvenlidir:
+#
+# strategy:
+#   type: Recreate
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Demo verisi backend'den pull edildiği için emptyDir yeterlidir.
-# Kalıcı saklama isteniyorsa:
-#   1) Aşağıdaki PVC'yi etkinleştirin
-#   2) Deployment > volumes > kiosk-data altındaki emptyDir'i
-#      persistentVolumeClaim ile değiştirin:
-#         - name: kiosk-data
-#           persistentVolumeClaim:
-#             claimName: eisa-kiosk-demo-data
 #
 # ---
 # apiVersion: v1
 # kind: PersistentVolumeClaim
 # metadata:
 #   name: eisa-kiosk-demo-data
-#   namespace: eisa-kiosk-demo
+#   namespace: eisa-app
 # spec:
 #   accessModes:
 #     - ReadWriteOnce
 #   resources:
 #     requests:
 #       storage: 1Gi
-
