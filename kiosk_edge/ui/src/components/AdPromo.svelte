@@ -15,10 +15,10 @@
       <i class="fa-solid fa-bullhorn"></i>
     </div>
     <div class="ad-promo-text">
-      <span class="ad-promo-title">Bu Alana Reklam Verebilirsiniz</span>
+      <span class="ad-promo-title">Bu Alana İlan Verebilirsiniz</span>
       <span class="ad-promo-sub">
         <Logo height={large ? '20px' : '15px'} light class="ad-promo-logo" />
-        <span>Reklam Ağı · Eczane Ekranında Markanız</span>
+        <span>İlan Ağı · Eczane Ekranında Markanız</span>
       </span>
     </div>
   </div>
