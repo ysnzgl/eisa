@@ -36,32 +36,36 @@
       <span>Yükleniyor…</span>
     </div>
   {:else if activeParent}
-    <!-- Alt kategoriler görünümü -->
-    <p class="screen-subtitle mb-3">
-      <i class="fa-solid {activeParent.ikon} me-2"></i>{activeParent.ad}
-    </p>
-    <div class="cat-grid">
-      {#each activeParent.alt_kategoriler as child (child.id)}
-        <button class="cat-card" on:click={() => selectChild(child)}>
-          <i class="fa-solid {child.ikon || 'fa-circle'}"></i>
-          <h3>{child.ad}</h3>
-        </button>
-      {/each}
+    <div class="cat-grid-scroll">
+      <!-- Alt kategoriler görünümü -->
+      <p class="screen-subtitle mb-3">
+        <i class="fa-solid {activeParent.ikon} me-2"></i>{activeParent.ad}
+      </p>
+      <div class="cat-grid">
+        {#each activeParent.alt_kategoriler as child (child.id)}
+          <button class="cat-card" on:click={() => selectChild(child)}>
+            <i class="fa-solid {child.ikon || 'fa-circle'}"></i>
+            <h3>{child.ad}</h3>
+          </button>
+        {/each}
+      </div>
     </div>
   {:else}
     <!-- Üst kategoriler -->
     {#if $danismaCategories.length === 0}
-      <div class="flex-grow-1 d-flex align-items-center justify-content-center text-center text-secondary">
-        <p>Danışma kategorisi tanımlanmamış.</p>
+      <div class="cat-grid-scroll d-flex align-items-center justify-content-center text-center text-secondary">
+        <p class="mb-0">Danışma kategorisi tanımlanmamış.</p>
       </div>
     {:else}
-      <div class="cat-grid">
-        {#each $danismaCategories as cat (cat.id)}
-          <button class="cat-card" on:click={() => selectParent(cat)}>
-            <i class="fa-solid {cat.ikon}"></i>
-            <h3>{cat.ad}</h3>
-          </button>
-        {/each}
+      <div class="cat-grid-scroll">
+        <div class="cat-grid">
+          {#each $danismaCategories as cat (cat.id)}
+            <button class="cat-card" on:click={() => selectParent(cat)}>
+              <i class="fa-solid {cat.ikon}"></i>
+              <h3>{cat.ad}</h3>
+            </button>
+          {/each}
+        </div>
       </div>
     {/if}
   {/if}

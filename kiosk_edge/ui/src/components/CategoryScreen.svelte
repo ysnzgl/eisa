@@ -63,13 +63,15 @@
       <span>Bu başlık altında kategori bulunamadı.</span>
     </div>
   {:else}
-    <div class="cat-grid">
-      {#each levelCategories as cat (cat.id)}
-        <button class="cat-card" on:click={() => onCardClick(cat)}>
-          <i class="fa-solid {cat.ikon}"></i>
-          <h3>{cat.ad}</h3>
-        </button>
-      {/each}
+    <div class="cat-grid-scroll">
+      <div class="cat-grid">
+        {#each levelCategories as cat (cat.id)}
+          <button class="cat-card" on:click={() => onCardClick(cat)}>
+            <i class="fa-solid {cat.ikon}"></i>
+            <h3>{cat.ad}</h3>
+          </button>
+        {/each}
+      </div>
     </div>
   {/if}
 

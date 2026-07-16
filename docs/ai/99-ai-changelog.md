@@ -5,6 +5,16 @@
 
 ---
 
+## 2026-07-16
+
+### [kiosk_edge/ui] — Dead Code Temizliği: SensitiveScreen Kaldırıldı
+**Değişiklik:** Runtime'da hiçbir yerden çağrılmayan `SensitiveScreen.svelte` silindi. Yalnız bu dosyada kullanılan ölü CSS selector'ları (`.cat-card.sensitive*`, `.sensitive-badge`, `.sensitive-info-box`) temizlendi. `stores/kiosk.js` ekran state yorumu gerçek akışla hizalandı (`sensitive` → `consult`).  
+**Dosyalar:** `kiosk_edge/ui/src/components/SensitiveScreen.svelte` (silindi), `kiosk_edge/ui/src/app.css`, `kiosk_edge/ui/src/stores/kiosk.js`  
+**Breaking:** Yok (aktif akış `ConsultScreen` üzerinden devam ediyor).  
+**Test:** `npm test`, `npm run build` (kiosk_edge/ui)
+
+---
+
 ## 2026-07-14
 
 ### [kiosk_edge] — Bootstrap İsteğine Cihaz Metadata Eklendi

@@ -190,10 +190,4 @@
     justify-content: center;
     transition: opacity 0.4s ease;
   }
-
-  .ad-strip-fill {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
 </style>
