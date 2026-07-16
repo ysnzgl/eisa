@@ -7,9 +7,10 @@ import Database from 'better-sqlite3';
 let _db = null;
 
 const DEFAULT_OUTBOX_MAX_ROWS = 10000;
+const DEFAULT_DIAGNOSTIC_MAX_ROWS = 5000;
 
-// Sema versiyonu — iller/ilceler kaldirildi (kiosk bu verileri kullanmiyor).
-const SCHEMA_VERSION = 9;
+// Sema versiyonu — v10: diagnostic_outbox eklendi (bounded teknik log kuyrugu).
+const SCHEMA_VERSION = 10;
 
 export function openDb(sqlitePath, options = {}) {
   if (_db) return _db;
@@ -47,7 +48,10 @@ export function openDb(sqlitePath, options = {}) {
 
   _db = new Database(sqlitePath);
   _db.pragma('journal_mode = WAL');
-  initSchema(_db, options.outboxMaxRows ?? DEFAULT_OUTBOX_MAX_ROWS);
+  initSchema(_db, {
+    outboxMaxRows: options.outboxMaxRows ?? DEFAULT_OUTBOX_MAX_ROWS,
+    diagnosticMaxRows: options.diagnosticMaxRows ?? DEFAULT_DIAGNOSTIC_MAX_ROWS,
+  });
   return _db;
 }
 
@@ -86,7 +90,13 @@ export function checkOutboxPressure(logger, maxRows = DEFAULT_OUTBOX_MAX_ROWS) {
   return { oturum, reklam, threshold, warned };
 }
 
-function initSchema(db, outboxMaxRows = DEFAULT_OUTBOX_MAX_ROWS) {
+function initSchema(db, options = {}) {
+  const outboxMaxRows = typeof options === 'number'
+    ? options
+    : options.outboxMaxRows ?? DEFAULT_OUTBOX_MAX_ROWS;
+  const diagnosticMaxRows = typeof options === 'number'
+    ? DEFAULT_DIAGNOSTIC_MAX_ROWS
+    : options.diagnosticMaxRows ?? DEFAULT_DIAGNOSTIC_MAX_ROWS;
   db.exec(`
     CREATE TABLE IF NOT EXISTS schema_meta (version INTEGER NOT NULL);
 
@@ -270,6 +280,26 @@ function initSchema(db, outboxMaxRows = DEFAULT_OUTBOX_MAX_ROWS) {
     );
     CREATE INDEX IF NOT EXISTS playlist_items_playlist_idx ON playlist_items(playlist_id, playback_order);
     CREATE INDEX IF NOT EXISTS playlists_date_hour_idx     ON playlists(target_date, target_hour);
+
+    -- TEKNIK LOG OUTBOX (bounded diagnostic)
+    -- Yalnizca WARNING/ERROR/CRITICAL kayitlari icin. INFO/DEBUG YAZILMAZ.
+    -- Backend'e batch olarak gonderilir; backend bunlari DB'ye yazmadan JSON stdout'a doner.
+    CREATE TABLE IF NOT EXISTS diagnostic_outbox (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      created_at     TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      level          TEXT    NOT NULL,
+      event          TEXT    NOT NULL,
+      message        TEXT    NOT NULL DEFAULT '',
+      context_json   TEXT    NOT NULL DEFAULT '{}',
+      correlation_id TEXT,
+      retry_count    INTEGER NOT NULL DEFAULT 0,
+      next_retry_at  TEXT,
+      sent_at        TEXT
+    );
+    CREATE INDEX IF NOT EXISTS diagnostic_outbox_pending_idx
+      ON diagnostic_outbox(sent_at, next_retry_at);
+    CREATE INDEX IF NOT EXISTS diagnostic_outbox_event_idx
+      ON diagnostic_outbox(event, created_at);
   `);
 
   const meta = db.prepare('SELECT version FROM schema_meta LIMIT 1').get();
@@ -280,6 +310,30 @@ function initSchema(db, outboxMaxRows = DEFAULT_OUTBOX_MAX_ROWS) {
   }
 
   installOutboxFifoTriggers(db, outboxMaxRows);
+  installDiagnosticFifoTrigger(db, diagnosticMaxRows);
+}
+
+export function installDiagnosticFifoTrigger(db, maxRows = DEFAULT_DIAGNOSTIC_MAX_ROWS) {
+  const limit = Math.max(100, Number(maxRows) | 0);
+  db.exec('DROP TRIGGER IF EXISTS diagnostic_outbox_fifo_cap;');
+  db.exec(`
+    CREATE TRIGGER diagnostic_outbox_fifo_cap
+    AFTER INSERT ON diagnostic_outbox
+    WHEN (SELECT COUNT(*) FROM diagnostic_outbox) > ${limit}
+    BEGIN
+      DELETE FROM diagnostic_outbox
+       WHERE id IN (
+         SELECT id FROM diagnostic_outbox
+          -- Once basariyla gonderilmis olanlar, sonra en eski dusuk oncelikli DEBUG/INFO (yoksa WARNING).
+          ORDER BY CASE WHEN sent_at IS NOT NULL THEN 0
+                        WHEN level IN ('DEBUG','INFO') THEN 1
+                        WHEN level = 'WARNING' THEN 2
+                        ELSE 3 END,
+                   id ASC
+          LIMIT ((SELECT COUNT(*) FROM diagnostic_outbox) - ${limit})
+       );
+    END;
+  `);
 }
 
 export function installOutboxFifoTriggers(db, maxRows = DEFAULT_OUTBOX_MAX_ROWS) {

@@ -57,15 +57,16 @@ ENV EISA_PORT=8765
 ENV EISA_HOST=127.0.0.1
 ENV EISA_SQLITE_PATH=/var/lib/eisa/local.db
 ENV EISA_MEDIA_DIR=/var/lib/eisa/media
-ENV EISA_LOG_DIR=/var/log/eisa
+ENV LOG_FORMAT=json
+ENV LOG_LEVEL=info
+ENV SERVICE_NAME=eisa-kiosk-api
 
 # Node doğrudan merkezi API'ye değil, aynı container'daki Nginx proxy'sine gider.
 ENV EISA_CENTRAL_API_BASE=http://127.0.0.1/_central-api
 
-# Veri, log ve Nginx runtime dizinleri
+# Sadece veri ve Nginx runtime dizinleri; log dosyasi olusturulmuyor.
 RUN mkdir -p \
     /var/lib/eisa/media \
-    /var/log/eisa \
     /run/nginx \
     /var/lib/nginx/logs \
     /var/lib/nginx/tmp/client_body \
@@ -143,7 +144,8 @@ RUN printf 'server {\n\
 RUN printf '[supervisord]\n\
 nodaemon=true\n\
 user=root\n\
-logfile=/var/log/supervisord.log\n\
+logfile=/dev/stdout\n\
+logfile_maxbytes=0\n\
 pidfile=/run/supervisord.pid\n\
 \n\
 [program:api]\n\

@@ -44,6 +44,7 @@ Backend'de kampanya/creative tanımı → Merkezi playlist üretimi → Kiosk'a 
 | **DOOH Advertising** | [08-dooh-advertising.md](08-dooh-advertising.md) — Campaign, playlist, slot calculation, proof-of-play |
 | **Cross-Project Flows** | [05-cross-project-flows.md](05-cross-project-flows.md) — Proje arası veri akışları |
 | **API Contracts** | [06-db-and-api-contracts.md](06-db-and-api-contracts.md) — DB schema, API endpoints, frontend/backend contracts |
+| **Logging (2026-07-16)** | [../operations/logging.md](../operations/logging.md) — JSON stdout, correlation ID, diagnostic outbox, hassas veri politikası |
 
 ---
 

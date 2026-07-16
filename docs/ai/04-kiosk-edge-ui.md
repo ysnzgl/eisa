@@ -25,6 +25,11 @@
 - `kiosk_edge/ui/src/lib/api.js` — Lokal API client:
   - `submitSession()` — session submission
   - `logAdImpression({ assetId, assetType, shownAt, durationMs })` (line 166) — impression logging
+- `kiosk_edge/ui/src/lib/logger.js` — Frontend hata köprüsü (2026-07-16):
+  - Prod'da INFO/DEBUG bastırılır; yalnızca WARNING+ işlenir.
+  - `installGlobalHandlers()` `window.onerror` + `unhandledrejection`'ı yakalar (main.js içinde çağrılır).
+  - Kritik hatalar yerel Fastify'ye `POST /api/log/client` ile gönderilir; sadece allow-list edilen event kodları kabul edilir (`screen_render_failed`, `local_api_unreachable`, `media_playback_failed`, `session_submit_failed`, `playlist_invalid`, `window_error`, `unhandled_rejection`, `wifi_operation_failed`).
+  - Kullanıcı verisi, QR içeriği, cevaplar, öneri listesi GÖNDERİLMEZ. Rate limit (15sn) ile aynı hata yüzlerce kez tetiklenmez. Detay: [docs/operations/logging.md](../operations/logging.md).
 - `kiosk_edge/ui/src/lib/ingredients.js` — Etken madde recommendation
 - `kiosk_edge/ui/src/components/Logo.svelte` — Tekrar kullanilabilir marka logosu (SVG):
   - `height` + `light` (koyu zeminde beyaz varyant) prop'lari. Tum "e-İSA" yazilari bununla degistirildi.

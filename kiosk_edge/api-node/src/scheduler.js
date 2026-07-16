@@ -4,6 +4,20 @@ import { checkOutboxPressure } from './db.js';
 import { syncMediaCache } from './mediaCache.js';
 import { getAuthHeaders, getProvisioningState, refreshIotTokenIfNeeded, handle403Error } from './provisioning.js';
 import { istanbulNow } from './timezone.js';
+import {
+  CORRELATION_HEADER_PRETTY,
+  derivedId,
+  getCorrelationId,
+  newCorrelationId,
+  runWithCorrelation,
+} from './correlationId.js';
+import {
+  cleanupOldDiagnostics,
+  fetchPendingDiagnostics,
+  markDiagnosticsSent,
+  recordDiagnostic,
+  reschedulePendingDiagnostics,
+} from './diagnosticOutbox.js';
 
 let _tasks = [];
 let _undiciAgent = null;
@@ -30,6 +44,9 @@ async function request(db, settings, method, pathPart, body) {
   const url = settings.centralApiBase.replace(/\/+$/, '') + pathPart;
   const headers = authHeaders(db, settings);
   if (body !== undefined) headers['Content-Type'] = 'application/json';
+  // Correlation ID: aktif contextvars degeri varsa iletir, yoksa yeni uretir.
+  const correlationId = getCorrelationId() || newCorrelationId();
+  headers[CORRELATION_HEADER_PRETTY] = correlationId;
   const res = await fetch(url, {
     method,
     headers,
@@ -44,22 +61,34 @@ async function request(db, settings, method, pathPart, body) {
 export async function requestWithRetry(db, settings, method, pathPart, body, log) {
   const delays = [0, 1000, 3000];
   let lastErr;
+  const target = pathPart;
   for (let attempt = 0; attempt < delays.length; attempt++) {
     if (delays[attempt] > 0) await new Promise((r) => setTimeout(r, delays[attempt]));
     try {
       const res = await request(db, settings, method, pathPart, body);
       if (res.status >= 500) {
         lastErr = new Error(`HTTP ${res.status}`);
-        log?.warn?.(`PUSH ${pathPart} HTTP ${res.status} (deneme ${attempt + 1}/${delays.length})`);
+        log?.warn?.({
+          event: 'central_request_retry',
+          target_service: target,
+          attempt: attempt + 1,
+          max_attempts: delays.length,
+          retry_delay_ms: delays[attempt],
+          status_code: res.status,
+        }, `PUSH ${target} HTTP ${res.status}`);
         continue;
       }
       return res;
     } catch (err) {
       lastErr = err;
-      log?.warn?.(
-        { err: err.message },
-        `PUSH ${pathPart} ag hatasi (deneme ${attempt + 1}/${delays.length})`,
-      );
+      log?.warn?.({
+        event: 'central_request_retry',
+        target_service: target,
+        attempt: attempt + 1,
+        max_attempts: delays.length,
+        retry_delay_ms: delays[attempt],
+        err: err?.message,
+      }, `PUSH ${target} ag hatasi`);
     }
   }
   throw lastErr;
@@ -388,7 +417,12 @@ export async function pullFromCentral(db, settings, log = console) {
       log.warn?.(`PULL products/sync HTTP ${r1.status}`);
     }
   } catch (err) {
-    log.error?.({ err: err.message || String(err) }, 'PULL basarisiz (offline mod)');
+    log.error?.({ event: 'pull_scheduler_error', err: err.message || String(err) }, 'PULL basarisiz (offline mod)');
+    recordDiagnostic(db, {
+      level: 'ERROR',
+      event: 'pull_scheduler_error',
+      message: err?.message || 'pull scheduler error',
+    });
   }
 }
 
@@ -519,7 +553,7 @@ export async function pingAndSyncPlaylist(db, settings, log = console) {
 // ── PUSH ─────────────────────────────────────────────────────────────────
 export async function pushToCentral(db, settings, log = console) {
   if (!hasCentralAuth(db, settings)) {
-    log.warn?.('PUSH atlandi: kiosk kimligi henuz provision edilmedi');
+    log.warn?.({ event: 'push_skipped_no_auth' }, 'PUSH atlandi: kiosk kimligi henuz provision edilmedi');
     return;
   }
   try {
@@ -542,7 +576,13 @@ export async function pushToCentral(db, settings, log = console) {
           await consumeBulkPushResponse(db, 'oturum_outbox', oturumlar, r, log, 'sessions');
         }
       } catch (err) {
-        log.warn?.({ err: err.message }, 'PUSH sessions kalici hata; kayitlar saklaniyor');
+        log.warn?.({ event: 'push_sessions_failed', err: err.message }, 'PUSH sessions kalici hata; kayitlar saklaniyor');
+        recordDiagnostic(db, {
+          level: 'WARNING',
+          event: 'sync_sessions_failed',
+          message: err?.message || 'sessions push failed',
+          context: { count: oturumlar.length, target_service: '/api/analytics/sessions/' },
+        });
       }
     }
 
@@ -557,7 +597,7 @@ export async function pushToCentral(db, settings, log = console) {
       try {
         const kioskId = settings.kioskId;
         if (!kioskId) {
-          log.warn?.('PUSH proof-of-play atlandi: kiosk_id bilinmiyor');
+          log.warn?.({ event: 'push_proof_of_play_skipped' }, 'PUSH proof-of-play atlandi: kiosk_id bilinmiyor');
           return;
         }
         const logs = gosterimler.map((i) => {
@@ -575,20 +615,37 @@ export async function pushToCentral(db, settings, log = console) {
           const del = db.prepare('DELETE FROM reklam_gosterim_outbox WHERE id = ?');
           const tx = db.transaction((items) => { for (const it of items) del.run(it.id); });
           tx(gosterimler);
-          log.info?.(`PUSH proof-of-play: ${gosterimler.length} kayit gonderildi`);
+          log.info?.({ event: 'proof_of_play_pushed', count: gosterimler.length }, 'PUSH proof-of-play basarili');
         } else if (r.status === 403) {
           handle403Error(db, settings, log);
         } else {
           let body = null;
           try { body = await r.json(); } catch { body = null; }
-          log.warn?.({ status: r.status, body }, 'PUSH proof-of-play basarisiz; kayitlar saklaniyor');
+          log.warn?.({ event: 'proof_of_play_push_failed', status: r.status, body }, 'PUSH proof-of-play basarisiz; kayitlar saklaniyor');
+          recordDiagnostic(db, {
+            level: 'WARNING',
+            event: 'sync_proof_of_play_failed',
+            message: `HTTP ${r.status}`,
+            context: { count: gosterimler.length, status: r.status },
+          });
         }
       } catch (err) {
-        log.warn?.({ err: err.message }, 'PUSH proof-of-play kalici hata; kayitlar saklaniyor');
+        log.warn?.({ event: 'proof_of_play_push_error', err: err.message }, 'PUSH proof-of-play kalici hata; kayitlar saklaniyor');
+        recordDiagnostic(db, {
+          level: 'WARNING',
+          event: 'sync_proof_of_play_failed',
+          message: err?.message || 'proof-of-play push failed',
+          context: { count: gosterimler.length },
+        });
       }
     }
   } catch (err) {
-    log.error?.({ err }, 'PUSH basarisiz (offline mod)');
+    log.error?.({ event: 'push_scheduler_error', err: err?.message }, 'PUSH basarisiz (offline mod)');
+    recordDiagnostic(db, {
+      level: 'ERROR',
+      event: 'push_scheduler_error',
+      message: err?.message || 'push scheduler error',
+    });
   }
 }
 
@@ -636,43 +693,103 @@ export function startScheduler(db, settings, log = console) {
   const pullEvery = settings.pullIntervalSec * 1000;
   const pushEvery = settings.pushIntervalSec * 1000;
   const pingEvery = (settings.pingIntervalSec ?? 60) * 1000;
+  const diagEvery = (settings.diagnosticPushIntervalSec ?? 120) * 1000;
 
-  const pullTimer    = setInterval(() => pullFromCentral(db, settings, log), pullEvery);
-  const pushTimer    = setInterval(() => pushToCentral(db, settings, log), pushEvery);
-  const pingTimer = setInterval(async () => {
-    // PENDING_APPROVAL durumunda token yenileme bootstrap'i tekrar dener (backoff)
+  const wrap = (label, fn) => () => {
+    const cid = derivedId(label);
+    runWithCorrelation(cid, () => Promise.resolve(fn()).catch((err) => {
+      log?.warn?.({ event: `${label}_scheduler_error`, err: err?.message }, `${label} scheduler hatasi`);
+    }));
+  };
+
+  const pullTimer = setInterval(wrap('pull', () => pullFromCentral(db, settings, log)), pullEvery);
+  const pushTimer = setInterval(wrap('push', () => pushToCentral(db, settings, log)), pushEvery);
+  const pingTimer = setInterval(wrap('ping', async () => {
     await refreshIotTokenIfNeeded(db, settings, log).catch(() => {});
-    pingAndSyncPlaylist(db, settings, log);
-  }, pingEvery);
+    return pingAndSyncPlaylist(db, settings, log);
+  }), pingEvery);
   const pressureTimer = setInterval(() => {
     try { checkOutboxPressure(log, settings.outboxMaxRows); }
-    catch (err) { log?.warn?.({ err: err?.message }, 'Outbox basinc kontrolu basarisiz'); }
+    catch (err) { log?.warn?.({ event: 'outbox_pressure_check_failed', err: err?.message }, 'Outbox basinc kontrolu basarisiz'); }
   }, pushEvery);
+  const diagTimer = setInterval(wrap('diag', () => pushDiagnostics(db, settings, log)), diagEvery);
+  const cleanupTimer = setInterval(() => {
+    try {
+      const removed = cleanupOldDiagnostics(db, settings.diagnosticMaxAgeDays);
+      if (removed) log?.debug?.({ event: 'diagnostic_cleanup', removed }, 'Yaslanmis diagnostic kayitlari silindi');
+    } catch (err) { log?.warn?.({ event: 'diagnostic_cleanup_failed', err: err?.message }, 'Diagnostic temizlik basarisiz'); }
+  }, Math.max(3600, (settings.diagnosticPushIntervalSec ?? 120) * 10) * 1000);
+
   pullTimer.unref?.();
   pushTimer.unref?.();
   pingTimer.unref?.();
   pressureTimer.unref?.();
-  _tasks.push(pullTimer, pushTimer, pingTimer, pressureTimer);
+  diagTimer.unref?.();
+  cleanupTimer.unref?.();
+  _tasks.push(pullTimer, pushTimer, pingTimer, pressureTimer, diagTimer, cleanupTimer);
 
   // Provisioning durumunu logla
   try {
     const provState = getProvisioningState(db);
     if (provState === 'PENDING_APPROVAL') {
-      log.warn?.('Kiosk provisioning PENDING_APPROVAL — admin onayi bekleniyor, veri senkronizasyonu askiya alindi');
+      log.warn?.({ event: 'provisioning_pending' }, 'Kiosk provisioning PENDING_APPROVAL — admin onayi bekleniyor');
     } else if (provState === 'REJECTED') {
-      log.warn?.('Kiosk provisioning REJECTED — admin ile iletisime gecin');
+      log.warn?.({ event: 'provisioning_rejected' }, 'Kiosk provisioning REJECTED — admin ile iletisime gecin');
     }
   } catch { /* DB henuz hazir degil */ }
 
   // İlk açılışta hemen bir ping yap
   pingAndSyncPlaylist(db, settings, log);
   syncMediaCache(db, settings, log).catch((err) =>
-    log.warn?.({ err: err?.message }, 'Baslangicta medya cache senkronizasyonu basarisiz'),
+    log.warn?.({ event: 'media_cache_bootstrap_failed', err: err?.message }, 'Baslangicta medya cache senkronizasyonu basarisiz'),
   );
 
-  log.info?.(
-    `Scheduler baslatildi - pull:${settings.pullIntervalSec}s push:${settings.pushIntervalSec}s ping:${settings.pingIntervalSec ?? 60}s`,
-  );
+  log.info?.({
+    event: 'scheduler_started',
+    pull_interval_sec: settings.pullIntervalSec,
+    push_interval_sec: settings.pushIntervalSec,
+    ping_interval_sec: settings.pingIntervalSec ?? 60,
+    diagnostic_push_interval_sec: settings.diagnosticPushIntervalSec ?? 120,
+  }, 'Scheduler baslatildi');
+}
+
+/**
+ * Diagnostic outbox → backend /api/analytics/diagnostic-ingest/
+ * Backend gelen kayitlari DB'ye YAZMAZ; normalize edip kendi stdout'una JSON log yazar.
+ */
+export async function pushDiagnostics(db, settings, log = console) {
+  if (!hasCentralAuth(db, settings)) return;
+  const batchSize = Math.min(100, settings.diagnosticBatchSize || 100);
+  const pending = fetchPendingDiagnostics(db, batchSize);
+  if (!pending.length) return;
+  const ids = pending.map((r) => r.id);
+  try {
+    const res = await requestWithRetry(
+      db, settings, 'POST', '/api/analytics/diagnostic-ingest/',
+      { items: pending.map((r) => ({
+        id: r.id,
+        level: r.level,
+        event: r.event,
+        message: r.message,
+        context: r.context,
+        correlation_id: r.correlation_id,
+        occurred_at: r.occurred_at,
+      })) }, log,
+    );
+    if (res.status === 202 || res.status === 200) {
+      markDiagnosticsSent(db, ids);
+      log?.debug?.({ event: 'diagnostic_pushed', count: pending.length }, 'Diagnostic kayitlari gonderildi');
+    } else if (res.status === 403) {
+      handle403Error(db, settings, log);
+      reschedulePendingDiagnostics(db, ids, pending[0].retry_count);
+    } else {
+      reschedulePendingDiagnostics(db, ids, pending[0].retry_count);
+      log?.warn?.({ event: 'diagnostic_push_failed', status: res.status }, 'Diagnostic gonderim reddedildi');
+    }
+  } catch (err) {
+    reschedulePendingDiagnostics(db, ids, pending[0]?.retry_count ?? 0);
+    log?.warn?.({ event: 'diagnostic_push_error', err: err?.message }, 'Diagnostic gonderim hatasi');
+  }
 }
 
 export function stopScheduler() {

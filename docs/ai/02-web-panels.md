@@ -228,6 +228,15 @@ window.EISA_API_BASE_URL = 'http://localhost:8000';
 ```
 - Prod deployment'ta nginx tarafından override edilebilir (config.js dosyası dinamik oluşturulur)
 
+### Loglama (2026-07-16)
+
+- `src/lib/logger.js`: Prod'da INFO/DEBUG bastırılır; sadece WARNING/ERROR/CRITICAL işlenir.
+- `main.js` içinde `installGlobalHandlers(app)` ile `app.config.errorHandler` + `window.onerror` + `unhandledrejection` yakalanır.
+- Axios interceptor response'daki `X-Correlation-ID` başlığını `window.__EISA_LAST_CORRELATION_ID__` üzerinde tutar.
+- Kritik hatalar `POST /api/analytics/client-events/` ile backend'e gönderilir (allow-list: level/event/message/stack/component/route/correlation_id/occurred_at).
+- Kullanıcı verisi, form içeriği, query string DEĞERLERİ gönderilmez. Sonsuz döngü koruması: kendi bildirim hatası tekrar loglanmaz.
+- Detay: [docs/operations/logging.md](../operations/logging.md).
+
 ---
 
 ## Kritik UI Akışları

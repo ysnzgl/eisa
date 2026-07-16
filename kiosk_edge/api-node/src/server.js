@@ -9,11 +9,20 @@ import {
   QR_RE,
   reklamGosterimSchema,
   oturumGonderSchema,
+  clientLogSchema,
 } from './validators.js';
 import { requireLocalSecret } from './auth.js';
 import { encodeQrCode } from './qrBitpack.js';
 import { printReceipt } from './printer.js';
 import { buildLoggerOptions } from './logger.js';
+import {
+  CORRELATION_HEADER,
+  CORRELATION_HEADER_PRETTY,
+  newCorrelationId,
+  runWithCorrelation,
+  sanitizeIncoming,
+} from './correlationId.js';
+import { recordDiagnostic } from './diagnosticOutbox.js';
 import { getWifiStatus, scanWifi, connectWifi } from './wifi.js';
 import { buildMediaUrl, getLocalMediaMeta } from './mediaCache.js';
 import { istanbulNow } from './timezone.js';
@@ -27,7 +36,70 @@ import { handle403Error } from './provisioning.js';
  */
 export async function buildServer({ db, settings, logger }) {
   const loggerOption = logger ?? buildLoggerOptions(settings);
-  const app = Fastify({ logger: loggerOption });
+  const app = Fastify({
+    logger: loggerOption,
+    // Fastify istek ID'sini uretirken bizim correlation degerimizi kullansin.
+    genReqId(req) {
+      const incoming = sanitizeIncoming(req.headers[CORRELATION_HEADER]);
+      return incoming || newCorrelationId();
+    },
+    disableRequestLogging: false,
+  });
+
+  // ── Korelasyon ID + request-lifecycle hooks ──────────────────────────
+  app.addHook('onRequest', (req, reply, done) => {
+    const cid = req.id;
+    reply.header(CORRELATION_HEADER_PRETTY, cid);
+    // Her istegi kendi contextvars uzerinde calistir; nested async cagrilar da ayni ID'yi gorur.
+    runWithCorrelation(cid, () => {
+      req.log = req.log.child({ correlation_id: cid });
+      done();
+    });
+  });
+
+  // Sadece 4xx/5xx icin ek "request_failed" log; basarili istekler Fastify'in
+  // varsayilan onResponse loguyla yeterli.
+  app.addHook('onResponse', (req, reply, done) => {
+    const status = reply.statusCode;
+    // Health endpoint gurultusunu azalt.
+    if ((req.url === '/health' || req.url === '/healthz') && status < 400) {
+      return done();
+    }
+    if (status >= 500) {
+      req.log.error({
+        event: 'request_failed',
+        request_method: req.method,
+        request_path: req.url,
+        status_code: status,
+      }, 'request_failed');
+      recordDiagnostic(db, {
+        level: 'ERROR',
+        event: 'request_failed',
+        message: `HTTP ${status} ${req.method} ${req.url}`,
+        context: { status },
+        correlationId: req.id,
+      });
+    }
+    done();
+  });
+
+  app.setErrorHandler((err, req, reply) => {
+    const status = err?.statusCode && err.statusCode >= 400 ? err.statusCode : 500;
+    if (status >= 500) {
+      req.log.error({ event: 'request_error', err: err?.message, stack: err?.stack }, 'request_error');
+      recordDiagnostic(db, {
+        level: 'ERROR',
+        event: 'request_error',
+        message: err?.message || 'request_error',
+        context: { status, path: req.url },
+        correlationId: req.id,
+      });
+    }
+    reply.code(status).send({
+      detail: status >= 500 ? 'Beklenmeyen bir hata olustu.' : (err?.message || 'Hata'),
+      correlation_id: req.id,
+    });
+  });
 
   await app.register(cors, {
     origin: (origin, cb) => {
@@ -40,6 +112,7 @@ export async function buildServer({ db, settings, logger }) {
     },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: '*',
+    exposedHeaders: [CORRELATION_HEADER_PRETTY],
   });
 
   // ── helpers ────────────────────────────────────────────────────────────
@@ -480,6 +553,39 @@ export async function buildServer({ db, settings, logger }) {
     const wifiResult = await connectWifi(ssid, password ?? null);
     if (!wifiResult.success) return fail(reply, 422, wifiResult.message);
     return wifiResult;
+  });
+
+  // ── UI hata koprusu ───────────────────────────────────────────────────
+  // Svelte UI'nin yakaladigi kritik hatalari alir; sanitize edip JSON stdout'a
+  // yazar ve WARNING/ERROR ise diagnostic outbox'a dusurur. Kullanici verisi,
+  // QR kodu, cevaplar, ilaç listesi vb. buraya gonderilmemelidir.
+  app.post('/api/log/client', async (req, reply) => {
+    const body = parseBody(clientLogSchema, req.body, reply);
+    if (!body) return;
+    const level = body.level;
+    req.log[level === 'CRITICAL' ? 'error' : level.toLowerCase()]({
+      event: body.event,
+      source: 'kiosk_ui',
+      route: body.route,
+      component: body.component,
+      stack: body.stack,
+      context: body.context,
+    }, body.message || body.event);
+    recordDiagnostic(db, {
+      level,
+      event: body.event,
+      message: body.message || body.event,
+      correlationId: body.correlation_id || req.id,
+      occurredAt: body.occurred_at,
+      context: {
+        route: body.route,
+        component: body.component,
+        stack: body.stack,
+        ...body.context,
+      },
+    });
+    reply.code(202);
+    return { durum: 'kaydedildi', correlation_id: req.id };
   });
 
   return app;

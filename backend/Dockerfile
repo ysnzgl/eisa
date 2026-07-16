@@ -38,6 +38,5 @@ CMD ["gunicorn", "core_api.wsgi:application", \
      "--workers", "4", \
      "--timeout", "30", \
      "--graceful-timeout", "10", \
-     "--access-logfile", "-", \
      "--error-logfile", "-", \
-     "--log-level", "info"]
+     "--log-level", "warning"]

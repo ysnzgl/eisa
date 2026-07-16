@@ -27,3 +27,19 @@ export const reklamGosterimSchema = z.object({
   played_at: z.string().max(64),
   duration_played: z.number().int().min(0).max(24 * 60 * 60).default(0),
 });
+
+// Svelte UI'den gelen client (frontend) hata bildirimi.
+// Sadece izin verilen kucuk bir alan seti kabul edilir; kullanici verisi loglanmaz.
+const CLIENT_LEVELS = ['WARNING', 'ERROR', 'CRITICAL'];
+export const clientLogSchema = z.object({
+  level: z.enum(CLIENT_LEVELS).default('ERROR'),
+  event: z.string().trim().min(1).max(128),
+  message: z.string().max(4096).default(''),
+  stack: z.string().max(8192).optional(),
+  route: z.string().max(256).optional(),
+  component: z.string().max(128).optional(),
+  correlation_id: z.string().max(64).optional(),
+  occurred_at: z.string().max(64).optional(),
+  context: z.record(z.any()).optional(),
+});
+

@@ -262,6 +262,22 @@
 - Request: `{ "note": "Optional pharmacist note." }`
 - Response: (single updated `OturumLoguSerializer` object)
 
+**POST /api/analytics/diagnostic-ingest/** *(2026-07-16)*
+- Auth: Kiosk (IoT Bearer / AppKey)
+- Rate limit: `kiosk_diagnostic` scope (varsayılan 60/min)
+- Request: `{ "items": [{ "id": 1, "level": "ERROR", "event": "sync_sessions_failed", "message": "backend 503", "context": {...}, "correlation_id": "...", "occurred_at": "..." }, ...] }`
+- Response 202: `{ "accepted": N, "rejected": M, "errors": [...], "accepted_keys": ["1", ...] }`
+- Backend gelen kayıtları **DB'ye YAZMAZ**; sanitize edip JSON log stdout'a çevirir (`logger=eisa.kiosk.diagnostic`). Batch max 100 kayıt, mesaj 4 KB, stack 8 KB, context sanitize.
+
+**POST /api/analytics/client-events/** *(2026-07-16)*
+- Auth: JWT (SuperAdmin/Pharmacist)
+- Rate limit: `client_event` scope (varsayılan 30/min)
+- Request: `{ "items": [{ "level": "ERROR", "event": "vue_error_handler", "message": "...", "stack": "...", "component": "...", "route": "...", "correlation_id": "...", "occurred_at": "..." }, ...] }`
+- Response 202: `{ "accepted": N }`
+- Backend gelen kayıtları **DB'ye YAZMAZ**; sanitize edip JSON log stdout'a çevirir (`logger=eisa.client`). Allow-list dışı alanlar (`password`, `token` vb.) düşürülür.
+
+**Ortak:** Tüm response'lar `X-Correlation-ID` başlığı içerir. Detay: [docs/operations/logging.md](../operations/logging.md).
+
 ---
 
 ### Campaigns Endpoints (DOOH v2)

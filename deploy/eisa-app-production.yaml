@@ -21,6 +21,13 @@ data:
   SECURE_PROXY_SSL_HEADER: "HTTP_X_FORWARDED_PROTO,https"
   USE_X_FORWARDED_HOST: "True"
 
+  # Loglama — JSON stdout / stderr; node collector (Alloy) tarafindan toplanir.
+  LOG_LEVEL: "INFO"
+  LOG_FORMAT: "json"
+  SERVICE_NAME: "eisa-backend"
+  APP_ENV: "production"
+  APP_VERSION: "1.0.0"
+
   DB_HOST: "10.200.201.10"
   DB_PORT: "6432"
   DB_NAME: "eisa_db"
@@ -58,7 +65,9 @@ metadata:
   namespace: eisa-app
   labels:
     app.kubernetes.io/name: eisa-api
+    app.kubernetes.io/component: backend-api
     app.kubernetes.io/part-of: eisa
+    app.kubernetes.io/version: "1.0.0"
 spec:
   replicas: 2
   revisionHistoryLimit: 5
@@ -74,7 +83,9 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: eisa-api
+        app.kubernetes.io/component: backend-api
         app.kubernetes.io/part-of: eisa
+        app.kubernetes.io/version: "1.0.0"
     spec:
       automountServiceAccountToken: false
       imagePullSecrets:
@@ -103,11 +114,6 @@ spec:
           env:
             - name: PORT
               value: "8080"
-            - name: ASPNETCORE_URLS
-              value: "http://+:8080"
-          volumeMounts:
-            - name: api-logs
-              mountPath: /app/logs
           readinessProbe:
             httpGet:
               path: /healthz
@@ -143,9 +149,6 @@ spec:
             limits:
               cpu: "1000m"
               memory: "768Mi"
-      volumes:
-        - name: api-logs
-          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -171,7 +174,9 @@ metadata:
   namespace: eisa-app
   labels:
     app.kubernetes.io/name: eisa-portal
+    app.kubernetes.io/component: web-panel
     app.kubernetes.io/part-of: eisa
+    app.kubernetes.io/version: "1.0.0"
 spec:
   replicas: 2
   revisionHistoryLimit: 5
@@ -187,7 +192,9 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: eisa-portal
+        app.kubernetes.io/component: web-panel
         app.kubernetes.io/part-of: eisa
+        app.kubernetes.io/version: "1.0.0"
     spec:
       automountServiceAccountToken: false
       imagePullSecrets:
@@ -214,7 +221,7 @@ spec:
                   key: API_BASE_URL
           readinessProbe:
             httpGet:
-              path: /
+              path: /healthz
               port: http
             initialDelaySeconds: 5
             periodSeconds: 10
@@ -222,7 +229,7 @@ spec:
             failureThreshold: 6
           livenessProbe:
             httpGet:
-              path: /
+              path: /healthz
               port: http
             initialDelaySeconds: 30
             periodSeconds: 30

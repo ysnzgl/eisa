@@ -251,6 +251,7 @@ Toplanan veriler `device_metadata` JSON alanı olarak `KioskProvisioningRequest`
 | `POST` | `/ad-impressions` | Impression log kaydı (outbox'a ekler) |
 | `GET` | `/wifi-status` | WiFi bağlantı durumu (nmcli çağrısı, Linux) |
 | `POST` | `/wifi-connect` | WiFi bağlantısı kur (nmcli, Linux) |
+| `POST` | `/api/log/client` | *(2026-07-16)* Svelte UI kritik hata köprüsü — allow-list edilen event kodlarını JSON log + diagnostic_outbox'a yazar |
 
 ---
 
@@ -309,11 +310,29 @@ EISA_PORT=8765
 EISA_HOST=127.0.0.1
 EISA_SQLITE_PATH=/var/lib/eisa/local.db
 EISA_MEDIA_DIR=/var/lib/eisa/media
-EISA_LOG_DIR=/var/log/eisa
 EISA_CENTRAL_API_BASE=https://api.eisa.com.tr
+
+# Loglama (2026-07-16)
+LOG_LEVEL=info
+LOG_FORMAT=json
+SERVICE_NAME=eisa-kiosk-api
+APP_ENV=production
+APP_VERSION=1.0.2
 ```
 
-> Not: API `EISA_` prefix'li env değişkenleri kullanır (`config.js`).
+> Not: API `EISA_` prefix'li env değişkenleri kullanır (`config.js`). `EISA_LOG_DIR` KALDIRILDI — loglar JSON stdout'a yazılır.
+
+### Loglama ve Diagnostic Outbox (2026-07-16)
+
+- `src/logger.js`: Pino tabanlı JSON stdout. `logRedaction.js` üzerinden `Authorization`, `Cookie`, `token`, `iot_token`, `fleet_key`, `qr_kodu`, `cevaplar` vb. maskelenir.
+- `src/correlationId.js`: `AsyncLocalStorage` ile korelasyon ID takibi; scheduler her döngü için `derivedId('pull'|'push'|'ping'|'diag')` üretir; `X-Correlation-ID` başlığı Fastify hook + backend çağrılarında iletilir.
+- `src/diagnosticOutbox.js` + SQLite `diagnostic_outbox` tablosu (şema v10):
+  - Yalnızca `WARNING/ERROR/CRITICAL`; `INFO/DEBUG` YAZILMAZ.
+  - Sınırlar: 5000 kayıt, 7 gün, batch 100, mesaj 4 KB, stack 8 KB.
+  - FIFO trigger + exponential backoff (max 6 retry). Uygulama outbox dolarsa DURMAZ.
+- Scheduler `pushDiagnostics()` → `POST /api/analytics/diagnostic-ingest/` (backend DB'ye yazmaz, JSON stdout'a çevirir).
+- Yeni endpoint: `POST /api/log/client` — Svelte UI hata köprüsü (yalnızca allow-list edilen event kodları).
+- Detay: [docs/operations/logging.md](../operations/logging.md).
 
 ### Docker Compose
 

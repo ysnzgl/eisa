@@ -208,6 +208,8 @@ Kiosk provisioning (kayıtlı cihaz):
 
 **JWT ayarları:** `core_api/settings.py` içinde `SIMPLE_JWT` dict (access/refresh token TTL, algorithm, vb.)
 
+**Loglama (2026-07-16):** Dosyaya YAZILMAZ; JSON stdout. Env: `LOG_LEVEL`, `LOG_FORMAT`, `SERVICE_NAME`, `APP_ENV`, `APP_VERSION`. Middleware: `apps.core.logging.middleware.CorrelationIdMiddleware` + `RequestLoggingMiddleware`. Formatter: `apps.core.logging.formatters.JsonFormatter`. Detay: [docs/operations/logging.md](../operations/logging.md). Ek endpoint'ler: `POST /api/analytics/diagnostic-ingest/` (kiosk auth; DB'ye yazmaz, JSON log üretir), `POST /api/analytics/client-events/` (JWT; rate limited).
+
 ---
 
 ## Dış Sistem Entegrasyonları

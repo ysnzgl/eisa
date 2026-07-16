@@ -44,10 +44,16 @@ data:
   EISA_PORT: "8765"
   EISA_HOST: "127.0.0.1"
 
-  # Yerel veri ve log yolları
+  # Yerel veri yolu (loglar dosyaya yazilmaz; JSON stdout kullanilir).
   EISA_SQLITE_PATH: "/var/lib/eisa/local.db"
   EISA_MEDIA_DIR: "/var/lib/eisa/media"
-  EISA_LOG_DIR: "/var/log/eisa"
+
+  # Loglama — JSON stdout / stderr; node collector (Alloy) toplayacak.
+  LOG_LEVEL: "info"
+  LOG_FORMAT: "json"
+  SERVICE_NAME: "eisa-kiosk-api"
+  APP_ENV: "production"
+  APP_VERSION: "1.0.2"
 
   # Merkezi E-İSA API
   EISA_CENTRAL_API_BASE: "https://api.eisa.com.tr"
@@ -116,8 +122,6 @@ spec:
           volumeMounts:
             - name: kiosk-data
               mountPath: /var/lib/eisa
-            - name: kiosk-logs
-              mountPath: /var/log/eisa
           startupProbe:
             httpGet:
               path: /healthz
@@ -163,8 +167,6 @@ spec:
       volumes:
         # Demo ortamında Pod yeniden oluşturulduğunda SQLite ve medya silinir.
         - name: kiosk-data
-          emptyDir: {}
-        - name: kiosk-logs
           emptyDir: {}
 
 ---

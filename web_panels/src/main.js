@@ -2,6 +2,8 @@ import { createApp } from 'vue';
 import { createPinia } from 'pinia';
 import App from './App.vue';
 import router from './router';
+import { http } from './services/api';
+import { installGlobalHandlers, initLogger } from './lib/logger';
 import '@fortawesome/fontawesome-free/css/all.min.css';
 import '@fontsource/figtree/300.css';
 import '@fontsource/figtree/400.css';
@@ -32,4 +34,14 @@ import '@fontsource/dm-mono/500.css';
 import 'vue-sonner/style.css';
 import './styles.css';
 
-createApp(App).use(createPinia()).use(router).mount('#app');
+const app = createApp(App).use(createPinia()).use(router);
+
+// Merkezi frontend logger — production'da INFO/DEBUG bastirilir.
+initLogger({
+  appVersion: import.meta.env.VITE_APP_VERSION || 'dev',
+  apiClient: http,
+  correlationSource: () => window.__EISA_LAST_CORRELATION_ID__ ?? null,
+});
+installGlobalHandlers(app);
+
+app.mount('#app');

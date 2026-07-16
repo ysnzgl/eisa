@@ -2,9 +2,9 @@
 Django ayarları — E-İSA Merkezi API.
 
 KVKK uyumu: tüm kişisel olmayan demografik veriler anonim toplanır.
+Loglama: dosya yerine JSON stdout üretilir; toplama Kubernetes node collector
+(Grafana Alloy) tarafından yapılır. Detay: docs/operations/logging.md.
 """
-import json
-import logging
 from datetime import timedelta
 from pathlib import Path
 
@@ -62,6 +62,8 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    "apps.core.logging.middleware.CorrelationIdMiddleware",
+    "apps.core.logging.middleware.RequestLoggingMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -149,6 +151,9 @@ REST_FRAMEWORK = {
         "login": config("THROTTLE_LOGIN", default="5/min"),
         # SEC-008: Hassas admin işlemleri (örn. kiosk app_key yenileme).
         "admin_sensitive": config("THROTTLE_ADMIN_SENSITIVE", default="10/hour"),
+        # Log ingestion endpoint'leri — kötüye kullanımı engelle.
+        "kiosk_diagnostic": config("THROTTLE_KIOSK_DIAGNOSTIC", default="60/min"),
+        "client_event": config("THROTTLE_CLIENT_EVENT", default="30/min"),
     },
 }
 
@@ -297,122 +302,99 @@ if DEBUG:
     }
 
 
-# ─── Loglama: Yapısal JSON + Rotasyonlu Dosya ────────────────────────────────
-# ElasticSearch/Logstash gibi ağır araçlar yerine; uygulama hatalarını ve
-# isteklerini standart yapısal JSON olarak rotasyonlu dosyalara yazıyoruz.
-# Audit (iş-mantığı) logları PostgreSQL'deki AuditLog modelinde tutulur.
+# ─── Loglama: Yapısal JSON stdout (Kubernetes standardı) ─────────────────────
+# Uygulama logları hiçbir dosyaya yazılmaz. Grafana Alloy container stdout/stderr
+# akışlarını okuyarak Loki'ye iletir. Detay: docs/operations/logging.md.
+# İş kayıtları (AuditLog, OturumLogu, PlayLog vb.) etkilenmez; onlar
+# PostgreSQL'de kalmaya devam eder.
 
-LOG_DIR = Path(config("DJANGO_LOG_DIR", default=str(BASE_DIR / "logs")))
-LOG_DIR.mkdir(parents=True, exist_ok=True)
+SERVICE_NAME = config("SERVICE_NAME", default="eisa-backend")
+APP_ENV = config(
+    "APP_ENV",
+    default=config("EISA_ENVIRONMENT", default="development" if DEBUG else "production"),
+)
+APP_VERSION = config("APP_VERSION", default="0.0.0")
 
-LOG_LEVEL = config("DJANGO_LOG_LEVEL", default="INFO" if not DEBUG else "INFO")
-LOG_MAX_BYTES = config("DJANGO_LOG_MAX_BYTES", default=10 * 1024 * 1024, cast=int)  # 10 MB
-LOG_BACKUP_COUNT = config("DJANGO_LOG_BACKUP_COUNT", default=5, cast=int)
+LOG_LEVEL = config("LOG_LEVEL", default="DEBUG" if DEBUG else "INFO").upper()
+_default_log_format = "console" if DEBUG else "json"
+LOG_FORMAT = config("LOG_FORMAT", default=_default_log_format).lower()
+if LOG_FORMAT not in ("json", "console"):
+    LOG_FORMAT = "json"
 
-
-class _JsonFormatter(logging.Formatter):
-    """Hafif, bağımlılıksız JSON satır formatlayıcı."""
-
-    _RESERVED = {
-        "name", "msg", "args", "levelname", "levelno", "pathname", "filename",
-        "module", "exc_info", "exc_text", "stack_info", "lineno", "funcName",
-        "created", "msecs", "relativeCreated", "thread", "threadName",
-        "processName", "process", "asctime", "message",
-    }
-
-    def format(self, record: logging.LogRecord) -> str:  # pragma: no cover
-        payload = {
-            "ts": self.formatTime(record, "%Y-%m-%dT%H:%M:%S%z"),
-            "level": record.levelname,
-            "logger": record.name,
-            "message": record.getMessage(),
-            "module": record.module,
-            "line": record.lineno,
-        }
-        if record.exc_info:
-            payload["exc"] = self.formatException(record.exc_info)
-        for key, value in record.__dict__.items():
-            if key in self._RESERVED or key.startswith("_"):
-                continue
-            try:
-                json.dumps(value)
-                payload[key] = value
-            except TypeError:
-                payload[key] = repr(value)
-        return json.dumps(payload, ensure_ascii=False)
-
+_root_handler = "console_json" if LOG_FORMAT == "json" else "console_readable"
 
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
     "formatters": {
-        "json": {"()": _JsonFormatter},
-        "console": {
+        "json": {
+            "()": "apps.core.logging.formatters.JsonFormatter",
+            "service_name": SERVICE_NAME,
+            "environment": APP_ENV,
+            "version": APP_VERSION,
+        },
+        "readable": {
             "format": "[{asctime}] {levelname} {name}: {message}",
             "style": "{",
         },
     },
-    "filters": {
-        "require_debug_false": {"()": "django.utils.log.RequireDebugFalse"},
-    },
     "handlers": {
-        "console": {
+        "console_json": {
             "class": "logging.StreamHandler",
-            "formatter": "console",
+            "formatter": "json",
             "level": LOG_LEVEL,
         },
-        "app_file": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "filename": str(LOG_DIR / "app.log"),
-            "maxBytes": LOG_MAX_BYTES,
-            "backupCount": LOG_BACKUP_COUNT,
-            "encoding": "utf-8",
-            "formatter": "json",
-            "level": "INFO",
-        },
-        "error_file": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "filename": str(LOG_DIR / "error.log"),
-            "maxBytes": LOG_MAX_BYTES,
-            "backupCount": LOG_BACKUP_COUNT,
-            "encoding": "utf-8",
-            "formatter": "json",
-            "level": "ERROR",
-        },
-        "request_file": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "filename": str(LOG_DIR / "request.log"),
-            "maxBytes": LOG_MAX_BYTES,
-            "backupCount": LOG_BACKUP_COUNT,
-            "encoding": "utf-8",
-            "formatter": "json",
-            "level": "WARNING",  # 4xx/5xx
+        "console_readable": {
+            "class": "logging.StreamHandler",
+            "formatter": "readable",
+            "level": LOG_LEVEL,
         },
     },
     "root": {
-        "handlers": ["console", "app_file", "error_file"],
+        "handlers": [_root_handler],
         "level": LOG_LEVEL,
     },
     "loggers": {
+        # Django kendi zaten AccessLog/Server log üretir; biz request lifecycle
+        # middleware ile tek satırlık completion log üretiyoruz. `django.server`
+        # yalnızca development runserver çıktısı içindir.
         "django": {
-            "handlers": ["console", "app_file", "error_file"],
+            "handlers": [_root_handler],
             "level": LOG_LEVEL,
             "propagate": False,
         },
-        # 5xx ve unhandled exception'lar buraya düşer.
         "django.request": {
-            "handlers": ["console", "request_file", "error_file"],
+            # 4xx/5xx için handler zaten kendi request middleware'imiz tarafından
+            # üretiliyor; Django'nun kendi warning'lerini INFO'a bastırmıyoruz ama
+            # aynı hatayı iki kez yazmasını engellemek için sadece warning+ tutuyoruz.
+            "handlers": [_root_handler],
             "level": "WARNING",
             "propagate": False,
         },
         "django.server": {
-            "handlers": ["console"],
-            "level": "INFO",
+            "handlers": [_root_handler],
+            "level": "INFO" if DEBUG else "WARNING",
+            "propagate": False,
+        },
+        "django.db.backends": {
+            # Prod'da SQL parametrelerinin loglanmasını engelle.
+            "handlers": [_root_handler],
+            "level": "WARNING",
             "propagate": False,
         },
         "eisa": {
-            "handlers": ["console", "app_file", "error_file"],
+            "handlers": [_root_handler],
             "level": LOG_LEVEL,
+            "propagate": False,
+        },
+        "eisa.request": {
+            "handlers": [_root_handler],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "eisa.errors": {
+            "handlers": [_root_handler],
+            "level": "INFO",
             "propagate": False,
         },
     },

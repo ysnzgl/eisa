@@ -1,63 +1,73 @@
-// Fastify (pino) için dosya bazlı, rotasyonlu logger.
-// Kiosk diski (16/32 GB eMMC) dolmasın diye:
-//   - Tek dosya en fazla `logMaxSizeMb` MB (varsayılan 5 MB)
-//   - En fazla `logMaxFiles` dosya saklanır (varsayılan 3) → eskiler otomatik silinir
-//   - Stdout'a da yazılır (development / systemd journal için)
-import path from 'node:path';
-import fs from 'node:fs';
-import pino from 'pino';
+// Fastify (Pino) JSON stdout logger.
+// Loglar dosyaya yazilmaz; container stdout/stderr uzerinden Kubernetes
+// node collector (Alloy) tarafindan Loki'ye iletilir.
+// Detay: docs/operations/logging.md
+import { redactionPaths } from './logRedaction.js';
+
+const LEVEL_MAP = { trace: 'DEBUG', debug: 'DEBUG', info: 'INFO', warn: 'WARNING', error: 'ERROR', fatal: 'CRITICAL' };
 
 /**
- * @param {object} settings — config.js çıktısı
- * @returns {import('pino').LoggerOptions | import('pino').Logger | object} Fastify `logger` opsiyonu
+ * Fastify icin Pino logger opsiyonlarini uretir.
+ * Production: JSON stdout (level, service, environment, version alanlariyla).
+ * Development: pino-pretty istenirse acilabilir; varsayilan yine JSON stdout.
+ *
+ * @param {object} settings — config.js ciktisi. Beklenen alanlar:
+ *   logLevel, serviceName, appEnv, appVersion, devMode, pretty
  */
 export function buildLoggerOptions(settings) {
-  // Dev modda renkli, tek satır insan-okur log; üretimde JSON + dosyaya rotate.
-  if (settings.devMode) {
-    return {
-      level: settings.logLevel,
-      transport: {
-        target: 'pino-pretty',
-        options: { translateTime: 'SYS:HH:MM:ss', singleLine: true },
+  const level = (settings.logLevel || (settings.devMode ? 'debug' : 'info')).toLowerCase();
+  const serviceName = settings.serviceName || 'eisa-kiosk-api';
+  const environment = settings.appEnv || (settings.devMode ? 'development' : 'production');
+  const version = settings.appVersion || '0.0.0';
+
+  const base = {
+    level,
+    base: {
+      service: serviceName,
+      environment,
+      version,
+    },
+    formatters: {
+      level(label) {
+        return { level: LEVEL_MAP[label] || label.toUpperCase() };
       },
+      // Merkezi log semasi ile hizali cikti; req/res nesnelerini duz alanlara indir.
+      log(object) {
+        const { req, res, ...rest } = object;
+        if (req && typeof req === 'object') {
+          rest.request_method = req.method;
+          rest.request_path   = _safePath(req.url);
+        }
+        if (res && typeof res === 'object') {
+          rest.status_code = res.statusCode;
+        }
+        return rest;
+      },
+    },
+    timestamp: () => `,"timestamp":"${new Date().toISOString()}"`,
+    messageKey: 'message',
+    redact: {
+      paths: redactionPaths(),
+      censor: '***',
+      remove: false,
+    },
+  };
+
+  if (settings.devMode && settings.pretty) {
+    base.transport = {
+      target: 'pino-pretty',
+      options: { translateTime: 'SYS:HH:MM:ss', singleLine: true, colorize: true },
     };
   }
 
-  try {
-    fs.mkdirSync(settings.logDir, { recursive: true });
-  } catch {
-    // Yetkisiz/okunaksız dizinde uygulamayı çökertme; stdout fallback.
-    return { level: settings.logLevel };
-  }
-
-  const logFile = path.join(settings.logDir, 'kiosk-api.log');
-  const sizeLimit = `${Math.max(1, settings.logMaxSizeMb)}m`;
-  const limit = { count: Math.max(1, settings.logMaxFiles) };
-
-  // pino-roll: boyut tabanlı rotasyon + tutulacak dosya sayısı.
-  // mkdir: true → dizin yoksa oluştur. limit.count → en eski dosyaları sil.
-  return {
-    level: settings.logLevel,
-    transport: {
-      targets: [
-        {
-          target: 'pino-roll',
-          level: settings.logLevel,
-          options: {
-            file: logFile,
-            frequency: 'daily',  // günlük + boyut sınırı; ikisinden biri tetiklendiğinde rotate.
-            size: sizeLimit,
-            limit,
-            mkdir: true,
-            dateFormat: 'yyyy-MM-dd',
-          },
-        },
-        {
-          target: 'pino/file',
-          level: 'info',
-          options: { destination: 1 }, // stdout
-        },
-      ],
-    },
-  };
+  return base;
 }
+
+function _safePath(value) {
+  if (!value || typeof value !== 'string') return '/';
+  if (value.length > 256) return value.slice(0, 256) + '…';
+  // Query string'i kes; parametreler hassas olabilir.
+  const q = value.indexOf('?');
+  return q >= 0 ? value.slice(0, q) : value;
+}
+

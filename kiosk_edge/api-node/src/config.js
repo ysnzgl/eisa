@@ -21,6 +21,14 @@ const kioskProvisioningSecret = process.env.EISA_KIOSK_PROVISIONING_SECRET || pr
 // Opsiyonel: legacy AppKey override (bootstrapsiz dev/test ortami icin)
 const appKey = process.env.EISA_KIOSK_APP_KEY || process.env.APP_KEY || '';
 
+// Loglama — Kubernetes stdout/stderr uyumlu. Detay: docs/operations/logging.md
+const serviceName = process.env.SERVICE_NAME || 'eisa-kiosk-api';
+const appEnv      = process.env.APP_ENV || process.env.EISA_ENVIRONMENT || (devMode ? 'development' : 'production');
+const appVersion  = process.env.APP_VERSION || '0.0.0';
+const logLevel    = (process.env.LOG_LEVEL || process.env.EISA_LOG_LEVEL || (devMode ? 'debug' : 'info')).toLowerCase();
+const logFormat   = (process.env.LOG_FORMAT || 'json').toLowerCase();
+const prettyLogs  = devMode && logFormat !== 'json';
+
 export const settings = Object.freeze({
   sqlitePath:               process.env.EISA_SQLITE_PATH  || '/var/lib/eisa/local.db',
   mediaDir:                 process.env.EISA_MEDIA_DIR    || '/var/lib/eisa/media',
@@ -41,13 +49,21 @@ export const settings = Object.freeze({
   pullIntervalSec:          readInt(process.env.EISA_PULL_INTERVAL_SEC,   900),
   pushIntervalSec:          readInt(process.env.EISA_PUSH_INTERVAL_SEC,   300),
   pingIntervalSec:          readInt(process.env.EISA_PING_INTERVAL_SEC,    60),
+  diagnosticPushIntervalSec: readInt(process.env.EISA_DIAG_PUSH_INTERVAL_SEC, 120),
   verifyTls:                readBool(process.env.EISA_VERIFY_TLS, true),
   devMode,
   host:                     process.env.EISA_HOST || '127.0.0.1',
   port:                     readInt(process.env.EISA_PORT, 8765),
-  logDir:                   process.env.EISA_LOG_DIR      || '/var/log/eisa',
-  logLevel:                 process.env.EISA_LOG_LEVEL    || 'info',
-  logMaxSizeMb:             readInt(process.env.EISA_LOG_MAX_SIZE_MB, 5),
-  logMaxFiles:              readInt(process.env.EISA_LOG_MAX_FILES,   3),
+  // Loglama — dosya yerine JSON stdout.
+  serviceName,
+  appEnv,
+  appVersion,
+  logLevel,
+  logFormat,
+  pretty:                   prettyLogs,
   outboxMaxRows:            readInt(process.env.EISA_OUTBOX_MAX_ROWS, 10000),
+  diagnosticMaxRows:        readInt(process.env.EISA_DIAG_MAX_ROWS,    5000),
+  diagnosticMaxAgeDays:     readInt(process.env.EISA_DIAG_MAX_AGE_DAYS,   7),
+  diagnosticBatchSize:      readInt(process.env.EISA_DIAG_BATCH_SIZE,   100),
 });
+

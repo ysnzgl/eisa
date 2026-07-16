@@ -7,6 +7,21 @@
 
 ## 2026-07-16
 
+### [Tüm modüller] — Merkezi Loglama: JSON stdout + Correlation ID + Diagnostic Outbox
+**Değişiklik:** Kubernetes uyumlu yapısal loglama altyapısı kuruldu. Uygulamalar dosyaya log YAZMIYOR; JSON stdout üretiyor. Loki/Alloy/Grafana bu görevde kurulmadı.
+**Backend:** `apps/core/logging/` paketi (JSON formatter + correlation middleware + redaction), settings dosyasında RotatingFileHandler kaldırıldı, `LOG_LEVEL`/`LOG_FORMAT`/`SERVICE_NAME`/`APP_ENV`/`APP_VERSION` env eklendi. Yeni endpoint'ler: `POST /api/analytics/diagnostic-ingest/` (kiosk auth, DB'ye YAZMAZ, JSON stdout), `POST /api/analytics/client-events/` (JWT auth, rate limited). `X-Correlation-ID` her response'a eklenir; exception handler double-log'u engellemek için `_eisa_exception_logged` bayrağı kullanır.
+**Fastify:** Pino JSON stdout, `logRedaction.js` (Authorization/token/qr_kodu/cevaplar vb. maskelenir), `correlationId.js` AsyncLocalStorage, `diagnosticOutbox.js` (SQLite v10: max 5000 kayıt, 7 gün, batch 100, exponential backoff, FIFO trigger), scheduler `pushDiagnostics()` + `X-Correlation-ID` propagation. Yeni endpoint: `POST /api/log/client` (Svelte UI hata köprüsü).
+**Vue:** `src/lib/logger.js` production-safe wrapper, `app.config.errorHandler` + `window.onerror` + `unhandledrejection`, axios interceptor `X-Correlation-ID` yakalar; kritik hatalar backend'e allow-list ile bildirilir.
+**Svelte:** `src/lib/logger.js` yerel Fastify'ye rate-limited hata köprüsü (yalnızca `screen_render_failed`, `local_api_unreachable`, `media_playback_failed`, `session_submit_failed`, `playlist_invalid` + tarayıcı global'leri).
+**Docker/K8s:** `EISA_LOG_DIR`, `DJANGO_LOG_DIR`, log emptyDir/PVC, `/app/logs` mount, kiosk `/var/log/eisa` volume kaldırıldı; standart label seti (`app.kubernetes.io/component`, `.../version`) eklendi.
+**AuditLog / OturumLogu / PlayLog dokunulmadı** — iş kayıtları PostgreSQL'de kalıyor.
+**Testler:** Backend 76/76 (test_logging.py), Fastify 42/42 (12 yeni). web_panels + kiosk_edge/ui build başarılı. Not: `apps/campaigns/tests/test_dooh_v2.py` ve `web_panels api.test.js` pre-existing (bu görev öncesi) hatalar; loglama değişiklikleriyle ilgisi yok.
+**Doküman:** `docs/operations/logging.md` (yeni), 01/02/03/04/05 kısaca güncellendi.
+**Breaking:** Yok. Eski `error_id` alanı 500 yanıtlarında `correlation_id` ile değişti — panel bunu göstermek istiyorsa alan adına dikkat etmeli.
+
+---
+
+
 ### [kiosk_edge/ui] — Dead Code Temizliği: SensitiveScreen Kaldırıldı
 **Değişiklik:** Runtime'da hiçbir yerden çağrılmayan `SensitiveScreen.svelte` silindi. Yalnız bu dosyada kullanılan ölü CSS selector'ları (`.cat-card.sensitive*`, `.sensitive-badge`, `.sensitive-info-box`) temizlendi. `stores/kiosk.js` ekran state yorumu gerçek akışla hizalandı (`sensitive` → `consult`).  
 **Dosyalar:** `kiosk_edge/ui/src/components/SensitiveScreen.svelte` (silindi), `kiosk_edge/ui/src/app.css`, `kiosk_edge/ui/src/stores/kiosk.js`  

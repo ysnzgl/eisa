@@ -16,6 +16,16 @@ export const http = axios.create({
   withCredentials: true,
 });
 
+// Response'daki X-Correlation-ID degerini yakalayalim; frontend logger'i bu
+// degeri hata bildirimine ekliyor ve backend log akisiyla ayni ID kullanilir.
+http.interceptors.response.use((response) => {
+  const cid = response.headers?.['x-correlation-id'] || response.headers?.['X-Correlation-ID'];
+  if (cid && typeof window !== 'undefined') {
+    window.__EISA_LAST_CORRELATION_ID__ = String(cid).slice(0, 64);
+  }
+  return response;
+});
+
 // Belirli endpoint'ler için varsayılan toast bastırılabilsin (örn. login formu
 // kendi hata mesajını göstermek istiyorsa `{ __silent: true }` flag'i ile çağırır).
 function _isSilent(config) {

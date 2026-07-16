@@ -14,6 +14,45 @@
 
 ---
 
+## 6. Teknik Log Akışı *(2026-07-16)*
+
+Uygulama operasyonel logları PostgreSQL'e yazılmaz; standart JSON stdout üzerinden Kubernetes node collector'a (ileride Alloy/Loki) gider.
+
+### 6.1 Kiosk Diagnostic Outbox → Backend
+```
+kiosk_edge/api-node (WARN/ERROR/CRITICAL event)
+  → SQLite diagnostic_outbox (bounded: 5000 satir, 7 gun, FIFO)
+  → scheduler.pushDiagnostics (varsayilan 120 sn)
+  → POST /api/analytics/diagnostic-ingest/  { items: [{level, event, message, context, correlation_id, occurred_at}] }
+    Header: X-Kiosk-Key + Authorization Bearer <iot_token> + X-Correlation-ID
+  → Backend: kiosk auth + rate limit + allow-list; sanitize eder; DB'ye YAZMAZ
+  → Backend: JSON log stdout (`logger=eisa.kiosk.diagnostic`)
+  → Response 202 { accepted, rejected, errors, accepted_keys } → outbox kayitlari silinir
+```
+
+### 6.2 Vue Panel Kritik Hata → Backend
+```
+web_panels (app.config.errorHandler / window.onerror / unhandledrejection)
+  → src/lib/logger.js: prod'da WARNING+ islenir
+  → POST /api/analytics/client-events/  { items: [{level, event, message, stack, component, route, correlation_id}] }
+    JWT httpOnly cookie; rate limit 30/min (scope=client_event); allow-list
+  → Backend: sanitize; DB'ye YAZMAZ; JSON log stdout (`logger=eisa.client`)
+```
+
+### 6.3 Svelte UI Kritik Hata → Fastify → Backend
+```
+kiosk_edge/ui (window.onerror / unhandledrejection / operational event)
+  → src/lib/logger.js: yalnizca izin verilen event kodlari
+  → POST http://127.0.0.1:8765/api/log/client
+  → Fastify: JSON log stdout + diagnostic_outbox'a ekler
+  → (yukaridaki 6.1 akisiyla merkeze iletir)
+```
+
+### Correlation ID
+Tum akislarda `X-Correlation-ID` basligi tasinir; backend uretir veya guvenli girisi kabul eder, response'a geri yazar. Panel/kiosk axios/fetch response'daki degeri yakalayip sonraki hata bildirimlerine ekler.
+
+---
+
 ## 0. Kiosk Provisioning (Onay) Akışı *(2026-07-14)*
 
 ### kiosk_edge → Backend → web_panels → Backend → kiosk_edge
