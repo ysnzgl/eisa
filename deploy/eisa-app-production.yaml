@@ -39,11 +39,12 @@ data:
   POSTGRES_DB: "eisa_db"
   POSTGRES_USER: "eisa_user"
 
-  S3_ENDPOINT: "http://10.200.201.11:9000"
+  S3_ENDPOINT: "files.eisa.com.tr"
   S3_REGION: "us-east-1"
   S3_BUCKET: "eisa-files"
   S3_FORCE_PATH_STYLE: "true"
-  S3_SECURE: "false"
+  S3_SECURE: "true"
+  S3_PRESIGNED_URL_TTL_MINUTES: "60"
 
   JWT_AUTH_COOKIE: "eisa_access"
   JWT_REFRESH_COOKIE: "eisa_refresh"

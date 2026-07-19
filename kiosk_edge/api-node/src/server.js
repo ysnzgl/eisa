@@ -103,12 +103,18 @@ export async function buildServer({ db, settings, logger }) {
 
   await app.register(cors, {
     origin: (origin, cb) => {
-      // Allow any localhost / 127.0.0.1 origin regardless of port (dev kiosk UI)
-      if (!origin || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
-        cb(null, true);
-      } else {
-        cb(new Error('CORS: not allowed'), false);
+      // Same-origin (server-to-server, curl vb.) — origin bos olabilir.
+      if (!origin) return cb(null, true);
+      // Localhost / 127.0.0.1 herhangi bir port (dev kiosk UI)
+      if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+        return cb(null, true);
       }
+      // Deployment icin acikca izin verilen origin'ler (EISA_CORS_ALLOWED_ORIGINS)
+      const allowList = settings?.corsAllowedOrigins || [];
+      if (allowList.includes(origin) || allowList.includes('*')) {
+        return cb(null, true);
+      }
+      cb(new Error('CORS: not allowed'), false);
     },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: '*',

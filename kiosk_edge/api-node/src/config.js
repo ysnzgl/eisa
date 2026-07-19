@@ -11,6 +11,14 @@ function readInt(value, fallback) {
   return Number.isFinite(n) ? n : fallback;
 }
 
+function readList(value) {
+  if (!value) return [];
+  return String(value)
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 const central = process.env.EISA_CENTRAL_API_BASE || 'https://api.eisa.com.tr';
 const devMode = readBool(process.env.EISA_DEV_MODE, false);
 
@@ -65,5 +73,8 @@ export const settings = Object.freeze({
   diagnosticMaxRows:        readInt(process.env.EISA_DIAG_MAX_ROWS,    5000),
   diagnosticMaxAgeDays:     readInt(process.env.EISA_DIAG_MAX_AGE_DAYS,   7),
   diagnosticBatchSize:      readInt(process.env.EISA_DIAG_BATCH_SIZE,   100),
+  // CORS — localhost/127.0.0.1 her zaman izinli; ek origin'ler bu env ile eklenir.
+  // Ornek: "https://demo.eisa.com.tr,https://kiosk.eisa.com.tr"
+  corsAllowedOrigins:       readList(process.env.EISA_CORS_ALLOWED_ORIGINS),
 });
 
