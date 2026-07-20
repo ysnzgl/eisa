@@ -12,13 +12,9 @@ from .views_v2 import (
     HouseAdViewSet,
     HourPlanViewSet,
     InventoryAvailabilityView,
-    KioskPingView,
-    KioskPlaylistView,
-    KioskSyncView,
     PlaylistGenerateView,
     PlaylistTemplateViewSet,
     PricingMatrixView,
-    ProofOfPlayView,
     ScheduleRuleViewSet,
 )
 
@@ -49,11 +45,4 @@ urlpatterns = [
 
 inventory_urlpatterns = [
     path("availability/", InventoryAvailabilityView.as_view(), name="dooh-inventory-availability"),
-]
-
-kiosk_v1_urlpatterns = [
-    path("<int:kiosk_id>/ping/", KioskPingView.as_view(), name="kiosk-ping-v1"),
-    path("<int:kiosk_id>/sync/", KioskSyncView.as_view(), name="kiosk-sync-v1"),
-    path("<int:kiosk_id>/playlist/", KioskPlaylistView.as_view(), name="kiosk-playlist-v1"),
-    path("<int:kiosk_id>/proof-of-play/", ProofOfPlayView.as_view(), name="kiosk-pop-v1"),
 ]

@@ -59,6 +59,7 @@ INSTALLED_APPS = [
     "apps.analytics",
     "apps.campaigns",
     "apps.audit",
+    "apps.kiosk_api",
 ]
 
 MIDDLEWARE = [
@@ -172,12 +173,10 @@ SIMPLE_JWT = {
 # ─── Kiosk IoT Kimlik Dogrulama ──────────────────────────────────────────────
 # KIOSK_FLEET_KEY   : Tum kiosk cihazlarin gonderdigi ortak header (X-Kiosk-Key).
 #                     Backend, bu olmayan istekleri kiosk istegi olarak isleme almaz.
-# KIOSK_PROVISIONING_SECRET : HMAC-SHA256 provision imzasi VE IoT token imzasi icin ortak sir.
+# KIOSK_PROVISIONING_SECRET : HMAC-SHA256 provision imzasi icin ortak sir (yalniz bootstrap).
 #                     Kiosk + backend'de ayni deger olmali.
-# KIOSK_IOT_TOKEN_TTL_DAYS  : Token suresi (varsayilan 7 gun).
 KIOSK_FLEET_KEY              = config("KIOSK_FLEET_KEY", default="dev_fleet_key")
 KIOSK_PROVISIONING_SECRET    = config("KIOSK_PROVISIONING_SECRET", default="dev_provisioning_secret")
-KIOSK_IOT_TOKEN_TTL_DAYS     = config("KIOSK_IOT_TOKEN_TTL_DAYS", default=7, cast=int)
 
 # ─── JWT httpOnly Çerez Ayarları (SEC-002) ──────────────────────────────────
 JWT_AUTH_COOKIE = config("JWT_AUTH_COOKIE", default="eisa_access")

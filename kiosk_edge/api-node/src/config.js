@@ -22,12 +22,11 @@ function readList(value) {
 const central = process.env.EISA_CENTRAL_API_BASE || 'https://api.eisa.com.tr';
 const devMode = readBool(process.env.EISA_DEV_MODE, false);
 
-// IoT auth
+// Provisioning kimlik bilgileri (SADECE bunlar env'den okunur).
 const kioskFleetKey           = process.env.EISA_KIOSK_FLEET_KEY           || process.env.KIOSK_FLEET_KEY           || '';
 const kioskProvisioningSecret = process.env.EISA_KIOSK_PROVISIONING_SECRET || process.env.KIOSK_PROVISIONING_SECRET || '';
-
-// Opsiyonel: legacy AppKey override (bootstrapsiz dev/test ortami icin)
-const appKey = process.env.EISA_KIOSK_APP_KEY || process.env.APP_KEY || '';
+// NOT: App Key / MAC / kiosk ID / pharmacy ID env'den OKUNMAZ; provision sonrasi
+// SQLite kiosk_meta icinde tutulur (bkz. provisioning.js).
 
 // Loglama — Kubernetes stdout/stderr uyumlu. Detay: docs/operations/logging.md
 const serviceName = process.env.SERVICE_NAME || 'eisa-kiosk-api';
@@ -41,16 +40,12 @@ export const settings = Object.freeze({
   sqlitePath:               process.env.EISA_SQLITE_PATH  || '/var/lib/eisa/local.db',
   mediaDir:                 process.env.EISA_MEDIA_DIR    || '/var/lib/eisa/media',
   centralApiBase:           central,
-  // IoT auth (ana yontem)
+  // Provisioning kimlik bilgileri (yalniz bootstrap'ta kullanilir).
   kioskFleetKey,
   kioskProvisioningSecret,
-  kioskBootstrapPath:       process.env.EISA_KIOSK_BOOTSTRAP_PATH || '/api/pharmacies/kiosks/bootstrap/',
-  // Legacy AppKey (opsiyonel, dev/test icin)
-  kioskAppKey:              appKey,
-  kioskMac:                 process.env.EISA_KIOSK_MAC || '',
-  // Provision sonrasi kiosk kimlik bilgileri (provisioning.js tarafindan doldurulur).
-  kioskId:                  readInt(process.env.EISA_KIOSK_ID,     0),
-  pharmacyId:               readInt(process.env.EISA_PHARMACY_ID,  0),
+  kioskBootstrapPath:       process.env.EISA_KIOSK_BOOTSTRAP_PATH || '/api/kiosk/v1/bootstrap/',
+  // App Key / MAC / kiosk ID / pharmacy ID env'den OKUNMAZ; provisioning.js
+  // tarafindan SQLite kiosk_meta'dan (runtime) doldurulur.
   // Termal yazici (opsiyonel — TCP raw 9100). Tanimsizsa fis basilmaz.
   thermalPrinterHost:       process.env.EISA_THERMAL_PRINTER_HOST || '',
   thermalPrinterPort:       readInt(process.env.EISA_THERMAL_PRINTER_PORT, 9100),

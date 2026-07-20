@@ -48,6 +48,14 @@ export function openDb(sqlitePath, options = {}) {
 
   _db = new Database(sqlitePath);
   _db.pragma('journal_mode = WAL');
+  // Yerel guvenlik: App Key iceren DB yalniz servis kullanicisina acik olsun.
+  // Linux hedefi; Windows'ta chmod etkisizdir ve sessizce gecilir.
+  if (process.platform !== 'win32') {
+    try { fs.chmodSync(dir, 0o700); } catch { /* dizin izni ayarlanamadi */ }
+    for (const ext of ['', '-wal', '-shm']) {
+      try { fs.chmodSync(sqlitePath + ext, 0o600); } catch { /* dosya henuz olusmamis olabilir */ }
+    }
+  }
   initSchema(_db, {
     outboxMaxRows: options.outboxMaxRows ?? DEFAULT_OUTBOX_MAX_ROWS,
     diagnosticMaxRows: options.diagnosticMaxRows ?? DEFAULT_DIAGNOSTIC_MAX_ROWS,

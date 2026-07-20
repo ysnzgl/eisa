@@ -275,7 +275,7 @@ def test_inventory_availability_after_generation(admin_client, kiosk, active_cam
 
 @pytest.mark.django_db
 def test_kiosk_sync_returns_creatives(kiosk_client, kiosk, active_campaign, creative_15s, house_ad_10s):
-    r = kiosk_client.get(f"/api/kiosk/v1/{kiosk.pk}/sync/")
+    r = kiosk_client.get("/api/kiosk/v1/sync/")
     assert r.status_code == 200, r.content
     body = r.json()
     assert body["kiosk_id"] == kiosk.pk
@@ -285,21 +285,10 @@ def test_kiosk_sync_returns_creatives(kiosk_client, kiosk, active_campaign, crea
 
 
 @pytest.mark.django_db
-def test_kiosk_sync_forbids_other_kiosk(kiosk_client, kiosk, eczane):
-    other = type(kiosk).objects.create(
-        eczane=eczane,
-        mac_adresi="11:22:33:44:55:66",
-        uygulama_anahtari="other-key" + "x" * 40,
-    )
-    r = kiosk_client.get(f"/api/kiosk/v1/{other.pk}/sync/")
-    assert r.status_code == 403
-
-
-@pytest.mark.django_db
 def test_kiosk_playlist_endpoint(kiosk_client, kiosk, house_ad_10s):
     target_date = timezone.now().date()
     generate_for_kiosk(kiosk, target_date)
-    r = kiosk_client.get(f"/api/kiosk/v1/{kiosk.pk}/playlist/?date={target_date}")
+    r = kiosk_client.get(f"/api/kiosk/v1/playlist/?date={target_date}")
     assert r.status_code == 200, r.content
     body = r.json()
     assert len(body["playlists"]) == 24
@@ -325,7 +314,7 @@ def test_kiosk_proof_of_play_bulk_ingest(kiosk_client, kiosk, creative_15s):
         },
     ]}
     r = kiosk_client.post(
-        f"/api/kiosk/v1/{kiosk.pk}/proof-of-play/", payload, format="json",
+        "/api/kiosk/v1/proof-of-play/", payload, format="json",
     )
     assert r.status_code == 201, r.content
     assert r.json()["ingested"] == 2
@@ -339,7 +328,7 @@ def test_kiosk_proof_of_play_validation(kiosk_client, kiosk):
         {"played_at": timezone.now().isoformat(), "duration_played": 15},
     ]}
     r = kiosk_client.post(
-        f"/api/kiosk/v1/{kiosk.pk}/proof-of-play/", payload, format="json",
+        "/api/kiosk/v1/proof-of-play/", payload, format="json",
     )
     assert r.status_code == 400
 

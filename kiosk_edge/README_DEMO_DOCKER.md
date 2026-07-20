@@ -180,7 +180,7 @@ supervisorctl status
 
 ## Güvenlik Notları
 
-- Demo kiosk kimlik bilgileri (`KIOSK_MAC`, `KIOSK_APP_KEY`) gerçek production'da kullanılmamalı
+- Demo kiosk kimlik bilgileri production'da kullanılmamalı; App Key ve MAC SQLite'ta saklanır
 - `.env` dosyası git'e commit edilmemeli (`.gitignore`'da ekli)
 - Production'da SSL/TLS zorunlu (Let's Encrypt)
 

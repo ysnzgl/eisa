@@ -5,7 +5,7 @@ from rest_framework.views import APIView
 from core_api.cookie_jwt import JWTCookieAuthentication as JWTAuthentication
 
 from apps.core.uow import UnitOfWork
-from apps.pharmacies.auth import KioskAppKeyAuthentication, KioskIoTTokenAuthentication
+from apps.pharmacies.auth import KioskAppKeyAuthentication
 from apps.pharmacies.permissions import IsKioskOrAuthenticated, IsSuperAdmin
 
 from .models import Cevap, Danisma, EtkenMadde, Kategori, Soru, SoruEtkenMadde
@@ -43,9 +43,9 @@ class _UoWWritableViewSet(viewsets.ModelViewSet):
 
 
 class UrunSyncView(APIView):
-    """GET /api/products/sync/ — kiosk yerel DB icin tam katalog."""
+    """GET /api/kiosk/v1/catalog/ — kiosk yerel DB icin tam katalog."""
 
-    authentication_classes = [KioskIoTTokenAuthentication, KioskAppKeyAuthentication, JWTAuthentication]
+    authentication_classes = [KioskAppKeyAuthentication, JWTAuthentication]
     permission_classes = [IsKioskOrAuthenticated]
 
     def get(self, request):

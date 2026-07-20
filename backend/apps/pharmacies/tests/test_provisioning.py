@@ -31,7 +31,7 @@ from apps.pharmacies.models import Eczane, Kiosk, KioskProvisioningRequest
 
 FLEET_KEY = "test-fleet-key-xxx"
 PROVISION_SECRET = "test-provision-secret-yyy"
-BOOTSTRAP_URL = "/api/pharmacies/kiosks/bootstrap/"
+BOOTSTRAP_URL = "/api/kiosk/v1/bootstrap/"
 PROVISIONING_LIST_URL = "/api/pharmacies/kiosks/provisioning/"
 UNKNOWN_MAC = "AA:BB:CC:DD:EE:FF"
 REGISTERED_MAC = "11:22:33:44:55:66"
@@ -59,7 +59,6 @@ def _bootstrap_payload(mac: str, secret: str = PROVISION_SECRET) -> dict:
 def _override_settings(settings):
     settings.KIOSK_FLEET_KEY = FLEET_KEY
     settings.KIOSK_PROVISIONING_SECRET = PROVISION_SECRET
-    settings.KIOSK_IOT_TOKEN_TTL_DAYS = 7
 
 
 @pytest.fixture
@@ -365,8 +364,8 @@ class TestAdminApproval:
 # ── 7. Onay sonrasi cihaz bootstrap ──────────────────────────────────────────
 
 class TestBootstrapAfterApproval:
-    def test_approved_device_gets_iot_token(self, db, admin_client, eczane, api_client):
-        """Onaylanmış cihaz tekrar bootstrap yaptığında iot_token alır."""
+    def test_approved_device_gets_app_key(self, db, admin_client, eczane, api_client):
+        """Onaylanmış cihaz tekrar bootstrap yaptığında App Key alır (iot_token DEĞIL)."""
         # Pending oluştur
         payload = _bootstrap_payload(UNKNOWN_MAC)
         api_client.post(BOOTSTRAP_URL, payload, format="json", HTTP_X_KIOSK_KEY=FLEET_KEY)
@@ -386,9 +385,11 @@ class TestBootstrapAfterApproval:
         )
         assert response.status_code == 200, response.data
         data = response.json()
-        assert "iot_token" in data
-        assert data["iot_token"]
+        assert data["status"] == "APPROVED"
+        assert data["app_key"]
         assert data["kiosk_id"] is not None
+        assert data["pharmacy_id"] is not None
+        assert "iot_token" not in data
 
 
 # ── 8. Reddedilen cihaz ──────────────────────────────────────────────────────
@@ -467,13 +468,15 @@ class TestDuplicateApproval:
 
 class TestExistingKioskNotAffected:
     def test_registered_kiosk_still_gets_token(self, db, api_client, registered_kiosk):
-        """Önceden kayıtlı kiosk hâlâ iot_token alabilmeli (eski akış bozulmaz)."""
+        """Önceden kayıtlı kiosk App Key alır; aynı key doner (eski akış bozulmaz)."""
         payload = _bootstrap_payload(REGISTERED_MAC)
         response = api_client.post(
             BOOTSTRAP_URL, payload, format="json", HTTP_X_KIOSK_KEY=FLEET_KEY
         )
         assert response.status_code == 200, response.data
-        assert "iot_token" in response.json()
+        data = response.json()
+        assert data["status"] == "APPROVED"
+        assert data["app_key"] == registered_kiosk.uygulama_anahtari
 
     def test_registered_kiosk_no_pending_created(self, db, api_client, registered_kiosk):
         """Kayıtlı kiosk için pending kayıt oluşmamalı."""

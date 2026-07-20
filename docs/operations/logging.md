@@ -83,7 +83,7 @@ Detaylar: [`backend/apps/core/logging/formatters.py`](../../backend/apps/core/lo
 
 ## 5. Hassas Veri Politikası
 
-Sanitize edilen anahtarlar (büyük-küçük harf duyarsız): `Authorization`, `Cookie`, `X-CSRFToken`, `X-*-Key`, `password`, `secret`, `token`, `access`, `refresh`, `jwt`, `iot_token`, `fleet_key`, `provisioning_secret`, `signature`, `hmac`, `s3_*_key`, `db_password`, `email`, `telefon`, `qr_kodu`, `qr_payload`, `cevaplar`, `onerilen_etken_maddeler`, `raw_body`, `response_body`.
+Sanitize edilen anahtarlar (büyük-küçük harf duyarsız): `Authorization`, `Cookie`, `X-CSRFToken`, `X-*-Key`, `password`, `secret`, `token`, `access`, `refresh`, `jwt`, `fleet_key`, `provisioning_secret`, `signature`, `hmac`, `s3_*_key`, `db_password`, `email`, `telefon`, `qr_kodu`, `qr_payload`, `cevaplar`, `onerilen_etken_maddeler`, `raw_body`, `response_body`.
 
 - Request/response body’si loglanmaz; yalnızca güvenli metadata (`payload_size`, `item_count`, `status_code`) yazılabilir.
 - Django ORM SQL parametreleri prod'da `django.db.backends` logger'ı `WARNING` seviyesine indirilerek yazılmaz.
@@ -114,8 +114,8 @@ Sanitize edilen anahtarlar (büyük-küçük harf duyarsız): `Authorization`, `
 - FIFO trigger: kapasite aşılırsa önce gönderilmiş kayıtlar, sonra en eski düşük öncelikli (INFO/DEBUG için zaten yasak; WARNING sırayla) satırlar silinir.
 - Rate limit: aynı event/message 5sn içinde tekrarlanmaz.
 - Exponential backoff: retry sayısı 6'yı geçerse kayıt otomatik silinir.
-- Scheduler `pushDiagnostics` → `POST /api/analytics/diagnostic-ingest/`
-  - Fleet key + IoT token doğrulaması.
+- Scheduler `pushDiagnostics` → `POST /api/kiosk/v1/diagnostics/`
+  - Fleet key + provisioning secret doğrulaması.
   - Batch başına 100 kayıt, payload sınırlı.
   - Backend sanitize eder ve **JSON stdout**'a yazar; DB tablosuna yazmaz.
   - Response: `{ accepted, rejected, errors, accepted_keys }`.

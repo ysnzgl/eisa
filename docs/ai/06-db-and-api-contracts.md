@@ -179,15 +179,37 @@
 
 ### Provisioning Endpoints *(2026-07-14)*
 
-**POST /api/pharmacies/kiosks/bootstrap/**
-- Auth: `X-Kiosk-Key: <fleet_key>` (header), body: `{ "mac_adresi": "...", "timestamp": "ISO", "hmac": "...", "hostname": "...", "device_metadata": { ... } }`
+**POST /api/kiosk/v1/bootstrap/** *(2026-07-20; provisioning bootstrap yolu)*
+- Auth: `X-Kiosk-Key: <fleet_key>` (header) + HMAC; body: `{ "mac_adresi": "...", "timestamp": "ISO", "hmac": "...", "hostname": "...", "device_metadata": { ... } }`
 - `hostname` ve `device_metadata` opsiyonel; kiosk_edge `collectDeviceMetadata()` ile otomatik doldurur
-- `device_metadata` içeriği: hostname, os_type, os_platform, os_release, arch, cpu_model, cpu_cores, total_memory_mb, ip_addresses, node_version, uptime_seconds
-- Response 200 (kayıtlı cihaz): `{ "iot_token": "...", "kiosk_id": 1, "pharmacy_id": 1, "kiosk_adi": "...", "expires_in_days": 7 }`
-- Response 202 (bilinmeyen cihaz, PENDING): `{ "status": "PENDING", "registration_id": "uuid", "message": "...", "retry_after_seconds": 30 }`
-- Response 403 (reddedilmiş): `{ "status": "REJECTED", "message": "..." }`
+- Response 200 (onaylı+aktif+eczaneli kiosk): `{ "status": "APPROVED", "kiosk_id": 1, "pharmacy_id": 1, "app_key": "..." }` — aynı kiosk tekrar bootstrap yaptığında AYNI `app_key` döner (rotasyon yok)
+- Response 202 (bilinmeyen/onay bekleyen cihaz, PENDING): `{ "status": "PENDING", "registration_id": "uuid", "retry_after_seconds": 30 }`
+- Response 403 (reddedilmiş): `{ "status": "REJECTED" }`
 - Response 401: Geçersiz fleet key veya HMAC (hangi credential yanlış belirtilmez)
-- **Breaking change (2026-07-14):** Kayıtsız MAC için artık 404 yerine 202 döner.
+- Provisioning admin API'leri değişmedi: `/api/pharmacies/kiosks/provisioning/` list/detail/approve/reject (JWT SuperAdmin). Onay anında `Kiosk.uygulama_anahtari = secrets.token_urlsafe(48)` üretilir; bootstrap bu değeri döner.
+
+### Kiosk API (facade) — Operasyonel Endpoint'ler *(2026-07-20)*
+
+Namespace `/api/kiosk/v1/` (backend `apps/kiosk_api/`). **Tek auth contract'ı** (bootstrap hariç):
+```
+Authorization: AppKey <APP_KEY>
+X-Kiosk-MAC:   <NORMALIZED_MAC>   # AA:BB:CC:DD:EE:FF
+```
+- **401** — App Key/MAC eksik veya App Key/MAC çifti geçersiz (`code`: `app_key_missing|mac_missing|app_key_invalid|app_key_malformed`)
+- **403** — kiosk pasif/onaysız veya eczaneye bağlı değil (`code`: `kiosk_inactive|kiosk_unlinked`)
+- Başka auth turleri operasyonel endpoint'lerde **reddedilir**. URL'de kiosk ID **yoktur**; kiosk `request.kiosk` (auth context) üzerinden belirlenir.
+
+| Method | Path | Amaç |
+|--------|------|------|
+| GET  | `/api/kiosk/v1/ping/` | Heartbeat + bugünkü playlist versiyonu |
+| GET  | `/api/kiosk/v1/sync/` | Aktif creative + house_ad + lookup |
+| GET  | `/api/kiosk/v1/catalog/` | Kategori/soru/cevap/etken madde/danışma |
+| GET  | `/api/kiosk/v1/playlist/?date=YYYY-MM-DD` | Günün 24 saatlik playlist'i |
+| POST | `/api/kiosk/v1/sessions/` | Oturum outbox (idempotent) — `OturumLoguItemSerializer` |
+| POST | `/api/kiosk/v1/proof-of-play/` | Reklam gösterim (PlayLog) toplu |
+| POST | `/api/kiosk/v1/diagnostics/` | Diagnostic outbox (DB'ye yazılmaz, JSON stdout) |
+
+**Kaldırılan (hard cutover):** eski id-tabanlı kiosk yolları ve eski bootstrap yolu kaldırıldı. Kiosk oturumları artık `/api/kiosk/v1/sessions/` kullanır; `/api/analytics/sessions/` GET panel/eczacı içindir.
 
 **GET /api/pharmacies/kiosks/provisioning/**
 - Auth: JWT (SuperAdmin)
@@ -217,9 +239,14 @@
 - Request: `{ "eczane_id": 1, "ad": "Kiosk 1", "mac_adresi": "AA:BB:CC:DD:EE:FF", "uygulama_anahtari": "secret-key", "aktif": true }`
 - Response: `{ "id": 1, ... }`
 
-**GET /api/pharmacies/sessions/?qr={qr_kodu}**
-- Auth: JWT (Pharmacist)
-- Response: `{ "id": "uuid", "kiosk": {...}, "yas_araligi": "25-34", "cinsiyet": "Kadın", "kategori": "Uyku Sorunu", "cevaplar": {...}, "onerilen_etken_maddeler": [...], "tamamlandi": true, "danisma_tamamlandi": false, ... }`
+**GET /api/analytics/sessions/?qr_kodu={qr_kodu}**
+- Auth: JWT (SuperAdmin/Pharmacist)
+- QR formatı: `^[0-9A-Z]{8}$`
+- Hata durumları:
+  - `400`: boş veya formatı geçersiz QR
+  - `404`: QR koduna ait oturum bulunamadı
+  - `403`: eczane sahipliği uyuşmuyor veya kullanıcı eczaneye bağlı değil
+- Response: tek oturum objesi (`OturumLoguSerializer`) + normalize detay alanları (`kiosk_detay`, `eczane`, `yas_araligi_detay`, `cinsiyet_detay`, `kategori_detay`, `cevap_detaylari`, `onerilen_etken_madde_detaylari`)
 
 ---
 
@@ -253,17 +280,20 @@
 
 **GET /api/analytics/sessions/**
 - Auth: JWT (SuperAdmin/Pharmacist)
-- Query Params: `qr_kodu`, `hassas_akis`, `page_size`
-- Response: (paginated list of `OturumLoguSerializer` objects)
+- Query Params: `qr_kodu`, `qr_code`, `qr`, `hassas_akis`, `is_sensitive_flow`, `page_size`
+- Response:
+  - `qr*` parametresi yoksa: paginated list
+  - `qr*` parametresi varsa: tek oturum objesi veya 400/403/404
 
 **POST /api/analytics/sessions/{id}/complete/**
 - Auth: JWT (Pharmacist)
 - `{id}` is the integer `OturumLogu.id` primary key
-- Request: `{ "note": "Optional pharmacist note." }`
+- Request: `{ "note": "Optional pharmacist note.", "sale_result": "sold|not_sold" }`
 - Response: (single updated `OturumLoguSerializer` object)
+- Not: Satış sonucu için kalıcı DB alanı yoktur; `sale_result` response'ta `satis_sonucu` metni üretmek için kullanılabilir.
 
-**POST /api/analytics/diagnostic-ingest/** *(2026-07-16)*
-- Auth: Kiosk (IoT Bearer / AppKey)
+**POST /api/kiosk/v1/diagnostics/** *(2026-07-16)*
+- Auth: Kiosk (AppKey + MAC)
 - Rate limit: `kiosk_diagnostic` scope (varsayılan 60/min)
 - Request: `{ "items": [{ "id": 1, "level": "ERROR", "event": "sync_sessions_failed", "message": "backend 503", "context": {...}, "correlation_id": "...", "occurred_at": "..." }, ...] }`
 - Response 202: `{ "accepted": N, "rejected": M, "errors": [...], "accepted_keys": ["1", ...] }`
@@ -332,12 +362,12 @@
 
 ### Kiosk Edge Endpoints (Kiosk Authentication)
 
-**GET /api/kiosk/v1/{kiosk_id}/ping/**
-- Auth: Kiosk (App-Key + MAC veya IoT Token)
+**GET /api/kiosk/v1/ping/**
+- Auth: Kiosk (AppKey + MAC)
 - Response: `{ "playlist_version": 42, "current_time": "2026-06-05T10:30:00Z" }`
 
-**GET /api/kiosk/v1/{kiosk_id}/sync/**
-- Auth: Kiosk
+**GET /api/kiosk/v1/sync/**
+- Auth: Kiosk (AppKey + MAC)
 - Response:
   ```json
   {
@@ -369,8 +399,8 @@
   }
   ```
 
-**GET /api/kiosk/v1/{kiosk_id}/playlist/?date=YYYY-MM-DD**
-- Auth: Kiosk (IoT token / AppKey)
+**GET /api/kiosk/v1/playlist/?date=YYYY-MM-DD**
+- Auth: Kiosk (AppKey + MAC)
 - Response (günün TÜM saatleri tek istekte döner):
   ```json
   {
@@ -399,8 +429,8 @@
   }
   ```
 
-**POST /api/kiosk/v1/{kiosk_id}/proof-of-play/**
-- Auth: Kiosk (IoT token / AppKey)
+**POST /api/kiosk/v1/proof-of-play/**
+- Auth: Kiosk (AppKey + MAC)
 - Request (her log'da creative_id VEYA house_ad_id):
   ```json
   {
@@ -430,7 +460,7 @@
 - Campaign list: `id`, `name`, `status`, `start_date`, `end_date`, `priority`, `is_guaranteed`, `creatives` (array), `schedule_rule` (object)
 - Creative: `id`, `campaign_id`, `media_url`, `duration_seconds`, `name`
 - Kategori: `id`, `ad`, `slug`, `ikon`, `hedef_cinsiyet`, `hedef_yas_araliklari` (array of IDs), `aktif`
-- Session (QR tarama): `id`, `kiosk`, `yas_araligi` (string label), `cinsiyet` (string label), `kategori` (string name), `cevaplar` (object), `onerilen_etken_maddeler` (array of strings), `tamamlandi` (bool)
+- Session (QR tarama): `id`, `qr_kodu` (8 karakter), `kiosk`, `yas_araligi`, `cinsiyet`, `kategori`, `cevaplar`, `cevap_detaylari`, `onerilen_etken_maddeler`, `onerilen_etken_madde_detaylari`, `danisma_*` alanları
 
 **Potential Mismatch:**
 - Backend → `hedef_yas_araliklari` (array of IDs) → Frontend expects labels? (Belirsiz)
@@ -461,8 +491,8 @@
    - Breaking: entire system fails
 
 2. **Kiosk API Response Format:**
-   - `/api/kiosk/v1/{id}/sync/` response structure
-   - `/api/kiosk/v1/{id}/playlist/` response structure
+  - `/api/kiosk/v1/sync/` response structure
+  - `/api/kiosk/v1/playlist/` response structure
    - Breaking: kiosk cannot parse
 
 3. **Session Log Fields:**
@@ -476,7 +506,7 @@
 
 5. **Authentication Headers:**
    - JWT: httpOnly cookies
-   - Kiosk: X-Kiosk-App-Key + X-Kiosk-Mac-Address OR Authorization: Bearer {iot_token}
+  - Kiosk: Authorization: AppKey <APP_KEY> + X-Kiosk-MAC
    - Breaking: auth fails
 
 ---
@@ -500,9 +530,9 @@
    - Kiosk: Backend playlist üretiminde hangi hedefleme kullanılıyor? (Belirsiz)
 
 4. **Session QR response:**
-   - Backend: `yas_araligi_id` FK → response'da `yas_araligi` label (serializer tarafından resolve)
-   - Frontend: Label string bekliyor ("25-34")
-   - (Tutarlı gibi görünüyor ama serializer kontrol edilmeli)
+  - QR 8 karakterdir ve yalnızca merkezi backend'deki oturumu bulmak için kullanılır.
+  - QR içine soru/cevap/kategori/etken madde payload'ı gömülmez.
+  - Response, mevcut alanları bozmadan ek detay alanlarıyla normalize edilir.
 
 5. **PlayLog creative_id vs house_ad_id:**
    - Backend: İki ayrı FK (nullable)

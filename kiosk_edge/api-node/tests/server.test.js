@@ -87,7 +87,7 @@ describe('Kiosk API (Turkce sema)', () => {
     expect(r.statusCode).toBe(200);
     const data = r.json();
     expect(data.durum).toBe('kaydedildi');
-    expect(data.qr_kodu).toMatch(/^[A-F0-9]{12}$/);
+    expect(data.qr_kodu).toMatch(/^[0-9A-Z]{8}$/);
 
     const row = db.prepare('SELECT payload FROM oturum_outbox').get();
     expect(row).toBeTruthy();
@@ -124,9 +124,10 @@ describe('Kiosk API (Turkce sema)', () => {
       },
     });
     expect(submit.statusCode).toBe(200);
+    const submittedQr = submit.json().qr_kodu;
     const r = await app.inject({
       method: 'GET',
-      url: '/api/oturum/ABCDEF123456',
+      url: `/api/oturum/${submittedQr}`,
       headers: { authorization: 'Bearer test-secret' },
     });
     expect(r.statusCode).toBe(200);

@@ -85,13 +85,13 @@ Backend (Kategori/Soru models) → web_panels (MedicalLogic/DanismaYonetimi) →
 Backend (Campaign/Creative/ScheduleRule) → web_panels (CampaignWizard/PlaylistEditor) → Backend playlist generator → Kiosk ping → kiosk_edge/api-node playlist sync → SQLite (playlists/playlist_items) → kiosk_edge/ui (AdStrip)
 
 ### 3. Kullanıcı Session/Log Akışı
-kiosk_edge/ui (App.svelte session) → kiosk_edge/api-node (POST /sessions) → oturum_outbox → Backend (POST /api/kiosk/v1/{id}/sync/) → OturumLogu model
+kiosk_edge/ui (App.svelte session) → kiosk_edge/api-node (POST /sessions) → oturum_outbox → Backend (POST /api/kiosk/v1/sessions/) → OturumLogu model
 
 ### 4. Proof-of-Play Log Akışı
-kiosk_edge/ui (AdStrip impressions) → kiosk_edge/api-node (POST /ad-impressions) → reklam_gosterim_outbox → Backend (POST /api/kiosk/v1/{id}/proof-of-play/) → PlayLog model
+kiosk_edge/ui (AdStrip impressions) → kiosk_edge/api-node (POST /ad-impressions) → reklam_gosterim_outbox → Backend (POST /api/kiosk/v1/proof-of-play/) → PlayLog model
 
 ### 5. QR Tamamlanma Akışı
-kiosk_edge/ui (ResultScreen QR) → web_panels (QrScan) → Backend API (GET /api/pharmacies/sessions/) → OturumLogu fetch
+kiosk_edge/ui (ResultScreen QR) → web_panels (QrScan) → Backend API (GET /api/analytics/sessions/) → OturumLogu fetch
 
 ---
 
@@ -115,7 +115,7 @@ kiosk_edge/ui (ResultScreen QR) → web_panels (QrScan) → Backend API (GET /ap
 ## Güncel Olmayan / Şüpheli Alanlar
 
 1. **Legacy M2M:** `Campaign.target_pharmacies` (M2M) -> Yeni kampanyalar `CampaignTarget` kullanıyor (Il/Ilce/Eczane hiyerarşisi). Eski kayıtlar varsa ikisi de destekleniyor, belirsiz.
-2. **Kiosk authentication:** `KioskAppKeyAuthentication` ve `KioskIoTTokenAuthentication` — iki auth mekanizması mevcut. Hangisinin ne zaman kullanıldığı net değil. (Belirsiz / doğrulanmalı)
+2. **Kiosk authentication:** **Çözüldü (2026-07-20):** Tek `KioskAppKeyAuthentication` (`Authorization: AppKey` + `X-Kiosk-MAC`) tüm operasyonel `/api/kiosk/v1/` endpoint'lerinde (`apps/kiosk_api/` facade). Dual auth kaldırıldı; bootstrap `app_key` döner.
 3. **Offline outbox pressure:** `reklam_gosterim_outbox` ve `oturum_outbox` tablolarında kapasite kontrolü var ama tam dolunca ne olur? Log kaybı mı, overwrite mi? (Belirsiz)
 4. **Playlist generation job:** `GenerationJob` modeli ve async task yapısı mevcut ama `django_apscheduler` kullanımı ve job durumu takibi net değil. (Belirsiz)
 5. **WiFi setup:** `kiosk_edge/ui` içinde `WifiSetupScreen` var ama `kiosk_edge/api-node` içinde `nmcli` (NetworkManager CLI) çağrıları yapılıyor. Bu Linux'a özel, geliştirme ortamında çalışmaz. (Belirsiz / doğrulanmalı)

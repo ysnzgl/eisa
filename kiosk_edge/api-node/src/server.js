@@ -27,7 +27,7 @@ import { getWifiStatus, scanWifi, connectWifi } from './wifi.js';
 import { buildMediaUrl, getLocalMediaMeta } from './mediaCache.js';
 import { istanbulNow } from './timezone.js';
 import { requestWithRetry } from './scheduler.js';
-import { handle403Error } from './provisioning.js';
+import { handle401Error, handle403Error, hasAppKeyCredentials } from './provisioning.js';
 
 /**
  * @param {object} opts
@@ -102,24 +102,14 @@ export async function buildServer({ db, settings, logger }) {
   });
 
   await app.register(cors, {
-    origin: (origin, cb) => {
-      // Same-origin (server-to-server, curl vb.) — origin bos olabilir.
-      if (!origin) return cb(null, true);
-      // Localhost / 127.0.0.1 herhangi bir port (dev kiosk UI)
-      if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
-        return cb(null, true);
-      }
-      // Deployment icin acikca izin verilen origin'ler (EISA_CORS_ALLOWED_ORIGINS)
-      const allowList = settings?.corsAllowedOrigins || [];
-      if (allowList.includes(origin) || allowList.includes('*')) {
-        return cb(null, true);
-      }
-      cb(new Error('CORS: not allowed'), false);
-    },
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-    allowedHeaders: '*',
-    exposedHeaders: [CORRELATION_HEADER_PRETTY],
-  });
+  origin: '*',
+  methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: '*',
+  exposedHeaders: [CORRELATION_HEADER_PRETTY],
+  credentials: false,
+  strictPreflight: false,
+  optionsSuccessStatus: 204,
+});
 
   // ── helpers ────────────────────────────────────────────────────────────
   function fail(reply, status, detail) {
@@ -274,7 +264,23 @@ export async function buildServer({ db, settings, logger }) {
     const cat = db.prepare('SELECT id FROM kategoriler WHERE slug = ? LIMIT 1').get(body.kategori_slug);
     if (!cat) return fail(reply, 422, 'Gecersiz kategori');
 
-    const qr = body.qr_kodu || crypto.randomBytes(6).toString('hex').toUpperCase();
+    // 41-bit bitpack QR payload — offline okunabilir, 8 karakter Base36.
+    let qrPayload = body.qr_kodu;
+    try {
+      const yCount = Object.values(body.cevaplar ?? {}).filter((v) => v === 'Y').length;
+      qrPayload = encodeQrCode({
+        pharmacyId: Math.min(settings.pharmacyId || 0, 32767),
+        kioskId:    Math.min(settings.kioskId    || 0,    15),
+        categoryId: Math.min(cat?.id             ?? 0,   127),
+        qaCombo:    Math.min(yCount,                       63),
+        productId:  0,
+      });
+    } catch (err) {
+      app.log.warn({ err: err.message }, 'QR payload olusturulamadi, fallback kod kullanilacak');
+      qrPayload = body.qr_kodu || crypto.randomBytes(4).toString('hex').toUpperCase();
+    }
+
+    const qr = qrPayload;
     const olusturulmaTarihi = new Date().toISOString();
     const idempotencyAnahtari = crypto.randomUUID();
 
@@ -298,10 +304,10 @@ export async function buildServer({ db, settings, logger }) {
     ).run(idempotencyAnahtari, JSON.stringify(payload));
 
     // QR olusturuldugunda (tamamlandi=true) aninda backend'e ilet
-    if (body.tamamlandi && settings.centralApiBase && (settings.kioskAppKey || settings.kioskId)) {
+    if (body.tamamlandi && settings.centralApiBase && hasAppKeyCredentials(db)) {
       try {
         const res = await requestWithRetry(
-          db, settings, 'POST', '/api/analytics/sessions/',
+          db, settings, 'POST', '/api/kiosk/v1/sessions/',
           { items: [payload] }, app.log
         );
         if (res.status === 201 || res.status === 200) {
@@ -310,6 +316,8 @@ export async function buildServer({ db, settings, logger }) {
             'UPDATE oturum_outbox SET gonderilme_tarihi = ? WHERE idempotency_anahtari = ?'
           ).run(new Date().toISOString(), idempotencyAnahtari);
           app.log.info({ qr: qr }, 'Session aninda backend\'e iletildi');
+        } else if (res.status === 401) {
+          handle401Error(db, settings, app.log);
         } else if (res.status === 403) {
           handle403Error(db, settings, app.log);
         }
@@ -317,22 +325,6 @@ export async function buildServer({ db, settings, logger }) {
         // Hata olursa log'la ama devam et, scheduler tekrar deneyecek
         app.log.warn({ err: err.message, qr: qr }, 'Session aninda iletilemedi, scheduler tekrar deneyecek');
       }
-    }
-
-    // 
-    // 41-bit bitpack QR payload — offline okunabilir, 8 karakter Base36.
-    let qrPayload = qr;
-    try {
-      const yCount = Object.values(body.cevaplar ?? {}).filter((v) => v === 'Y').length;
-      qrPayload = encodeQrCode({
-        pharmacyId: Math.min(settings.pharmacyId || 0, 32767),
-        kioskId:    Math.min(settings.kioskId    || 0,    15),
-        categoryId: Math.min(cat?.id             ?? 0,   127),
-        qaCombo:    Math.min(yCount,                       63),
-        productId:  0,
-      });
-    } catch (err) {
-      app.log.warn({ err: err.message }, 'QR payload olusturulamadi, duz kod kullaniliyor');
     }
 
     // Termal yazici (opsiyonel).

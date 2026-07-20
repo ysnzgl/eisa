@@ -811,10 +811,10 @@ sed -i \
 systemctl restart eisa-api mender-updated
 
 echo "Kiosk provision tamamlandı (MAC: ${MAC})"
-echo "Kiosk ilk açılışta HMAC-imzalı provision ile IoT token alacak."
+echo "Kiosk ilk açılışta HMAC-imzalı provision ile App Key alacak."
 ```
 
-> **Not**: `EISA_KIOSK_PROVISIONING_SECRET` hem IoT token provision imzası hem de eczacı terminali QR sorgusu için kullanılır. Tek bir secret yönetilir.
+> **Not**: `EISA_KIOSK_PROVISIONING_SECRET` hem App Key provisioning imzası hem de eczacı terminali QR sorgusu için kullanılır. Tek bir secret yönetilir.
 
 ---
 

@@ -37,7 +37,7 @@
 1. **Offline-first:** Kiosk internet bağlantısı kesilse bile çalışmaya devam etmeli (kategori/soru/playlist cache)
 2. **Düşük latency:** Kullanıcı etkileşimi hızlı olmalı (lokal SQLite sorguları)
 3. **Outbox pattern:** Session/impression logları lokal toplanır, batch olarak backend'e gönderilir
-4. **Provisioning:** Kiosk ilk açılışta backend'e kayıt olur, IoT token alır
+4. **Provisioning:** Kiosk ilk açılışta backend'e kayıt olur, App Key alır
 
 **Mimari:** Node.js 20+, Fastify 5, better-sqlite3, node-cron scheduler
 
@@ -47,18 +47,18 @@
 
 ### Backend → Kiosk (Pull)
 1. **Kategori/Soru/Danışma/EtkenMadde senkronizasyonu:**
-   - `GET /api/kiosk/v1/{kiosk_id}/sync/` → backend tüm aktif kategori/soru/danışma/etken_madde verilerini JSON döner
+   - `GET /api/kiosk/v1/sync/` → backend tüm aktif kategori/soru/danışma/etken_madde verilerini JSON döner
    - Kiosk edge API → SQLite `kategoriler`, `sorular`, `cevaplar`, `danisma_kategorileri`, `etken_maddeler` tablolarına upsert
    - Scheduler: 5 dakikada bir (veya configurable)
 
 2. **Playlist senkronizasyonu:**
-   - `GET /api/kiosk/v1/{kiosk_id}/ping/` → backend güncel playlist versiyonunu döner
-   - Eğer lokal versiyon farklıysa → `GET /api/kiosk/v1/{kiosk_id}/playlist/?date=YYYY-MM-DD` → günlük playlist JSON
+   - `GET /api/kiosk/v1/ping/` → backend güncel playlist versiyonunu döner
+   - Eğer lokal versiyon farklıysa → `GET /api/kiosk/v1/playlist/?date=YYYY-MM-DD` → günlük playlist JSON
    - Kiosk edge API → SQLite `playlists`, `playlist_items` tablolarına yazar
    - Scheduler: 10 dakikada bir (veya configurable)
 
 3. **Creative/HouseAd medya senkronizasyonu:**
-   - `GET /api/kiosk/v1/{kiosk_id}/sync/` → backend tüm creative/house_ad listesi (media_url, checksum)
+   - `GET /api/kiosk/v1/sync/` → backend tüm creative/house_ad listesi (media_url, checksum)
    - Kiosk edge API → media cache indirme kuyruğuna ekler
    - Media cache: `mediaCache.js` modülü (undici fetch, lokal dosya sistemi veya memory cache)
 
@@ -66,14 +66,14 @@
 1. **Session log outbox:**
    - Kiosk UI → `POST http://localhost:5234/sessions` → lokal API
    - Lokal API → SQLite `oturum_outbox` tablosuna insert
-   - Scheduler: 1 dakikada bir → `POST /api/kiosk/v1/{kiosk_id}/sync/` → backend'e batch gönderim
+   - Scheduler: 1 dakikada bir → `POST /api/kiosk/v1/sessions/` → backend'e batch gönderim
    - Backend → `OturumLogu` modeline kayıt
    - Başarılı gönderimler → `gonderilme_tarihi` set edilir
 
 2. **Impression log outbox:**
    - Kiosk UI → `POST http://localhost:5234/ad-impressions` → lokal API
    - Lokal API → SQLite `reklam_gosterim_outbox` tablosuna insert
-   - Scheduler: 1 dakikada bir → `POST /api/kiosk/v1/{kiosk_id}/proof-of-play/` → backend'e batch gönderim
+   - Scheduler: 1 dakikada bir → `POST /api/kiosk/v1/proof-of-play/` → backend'e batch gönderim
    - Backend → `PlayLog` modeline kayıt
    - Başarılı gönderimler → `gonderilme_tarihi` set edilir
 
@@ -103,7 +103,7 @@
 - `reklam_gosterim_outbox`: id, payload JSON, olusturulma_tarihi, gonderilme_tarihi (null = pending)
 
 **Meta:**
-- `kiosk_meta`: key, value (iot_token, playlist_version, last_sync_at, provisioning_state, registration_id)
+- `kiosk_meta`: key, value (kiosk_app_key, kiosk_id, pharmacy_id, playlist_version, last_sync_at, provisioning_state, registration_id)
 - `media_cache`: url, local_path, cached_at, checksum
 
 **Outbox pressure check (`checkOutboxPressure`):**
@@ -134,8 +134,7 @@
 ```
 UNREGISTERED      → bootstrap dene
 PENDING_APPROVAL  → admin onayi bekleniyor (polling / backoff)
-APPROVED          → iot_token alindi
-PROVISIONED       → normal operation (iot_token gecerli)
+APPROVED          → app_key alindi
 REJECTED          → admin reddetti; normal API'lere erisim engellenir
 ```
 
@@ -143,27 +142,20 @@ REJECTED          → admin reddetti; normal API'lere erisim engellenir
 - `provisioning_state`: UNREGISTERED / PENDING_APPROVAL / APPROVED / REJECTED
 - `registration_id`: 202 PENDING yanıtından gelen UUID
 
-**İlk açılış:**
-1. `resolveRuntimeSettings` fonksiyonu → env'den `KIOSK_APP_KEY` ve `KIOSK_MAC` oku
-2. Eğer SQLite'da geçerli `iot_token` varsa → PROVISIONED (doğrudan kullan)
-3. REJECTED ise → token alınmaz, AppKey fallback denenebilir
-4. Aksi halde `POST /api/pharmacies/kiosks/bootstrap/` → 200 (PROVISIONED) / 202 (PENDING) / 403 (REJECTED)
-5. IoT token → `kiosk_meta` tablosuna yaz
-6. Sonraki isteklerde `Authorization: Bearer {iot_token}` kullanılır
+**İlk açılış (App Key, 2026-07-20):**
+1. `resolveRuntimeSettings` → MAC'i SQLite `kiosk_meta`'dan (yoksa sistemden) okur ve sabitler; legacy provisioning kaydı bir defalık temizlenir.
+2. Provisioning durumu APPROVED ve `kiosk_app_key` mevcutsa → bootstrap atlanır.
+3. REJECTED ise → bootstrap denenmez.
+4. Aksi halde `POST /api/kiosk/v1/bootstrap/` → 200 APPROVED (`app_key`) / 202 PENDING / 403 REJECTED.
+5. APPROVED yanıtında `app_key`, `kiosk_id`, `pharmacy_id` → `kiosk_meta`'ya yazılır.
+6. Sonraki tüm operasyonel isteklerde `Authorization: AppKey <app_key>` + `X-Kiosk-MAC` kullanılır.
 
-**Token refresh:**
-- `refreshIotTokenIfNeeded` fonksiyonu → token expiry kontrolü (scheduler her ping döngüsünde çağrılır)
-- Token süresine 24h'den az kalmışsa ve PENDING_APPROVAL ise → bootstrap tekrar denenir (admin onaylamışsa 200 döner)
-- REJECTED durumunda refresh denemesi yapılmaz
-- **403 Handling (2026-07-14):** Backend'den HTTP 403 alındığında token temizlenir
-  - `clearIotToken(db, log)` → IoT token ve ilişkili meta veriler silinir
-  - `handle403Error(db, settings, log)` → 403 durumunu handle eder, token'ı temizler
-  - Token temizlenince bir sonraki sync döngüsünde provision otomatik yeniden yapılır
-  - **403 kontrolü aktif olan yerler:**
-    - scheduler.js: pullFromCentral (kiosk/v1/sync)
-    - scheduler.js: pushToCentral (sessions, proof-of-play)
-    - scheduler.js: pingAndSyncPlaylist (ping + playlist fetch)
-    - server.js: POST /api/oturum/gonder (immediate session push)
+**Credential okuma:** `getAuthHeaders(db)` her istekte `kiosk_app_key` + `kiosk_mac`'i SQLite'tan okur → provision sonrası process restart gerekmez (freeze/stale sorunu yok).
+
+**401/403 davranışı (2026-07-20):**
+- `handle401Error` / `handle403Error` App Key'i **silmez**; secret loglanmaz (yalnız `has_app_key` bool); başka auth fallback yapılmaz; doğal scheduler aralığında backoff uygulanır.
+- 401 ve 403 tüm çağrılarda ayrı işlenir: scheduler.js (pull sync+catalog, push sessions+proof-of-play, ping+playlist, diagnostics) ve server.js (anlık session).
+- App Key yaşam döngüsü SQLite'tan yönetilir; `Authorization: AppKey` + `X-Kiosk-MAC` **tek operasyonel kontrattır**; SQLite dizin `700` / DB dosyası `600` (Linux) izinleriyle korunur.
 
 **Cihaz metadata (2026-07-14):**
 Bootstrap isteğinde `collectDeviceMetadata()` ile derlenen sistem bilgileri gönderilir:
@@ -179,7 +171,7 @@ Toplanan veriler `device_metadata` JSON alanı olarak `KioskProvisioningRequest`
 ## Reklam, Kategori, Session/Log Akışındaki Rolü
 
 ### Kategori Akışı
-1. Backend → `/api/kiosk/v1/{kiosk_id}/sync/` endpoint'i → kategorileri JSON döner
+1. Backend → `/api/kiosk/v1/sync/` endpoint'i → kategorileri JSON döner
 2. Kiosk edge scheduler → `pullFromCentral` → kategori/soru/cevap verilerini SQLite'a upsert
 3. Kiosk UI → `GET http://localhost:5234/categories` → SQLite'dan aktif kategorileri çeker
 4. Filtreleme: Kullanıcının yaş/cinsiyet bilgisine göre `hedef_yas_araliklari` ve `hedef_cinsiyet_id` kontrolü
@@ -214,7 +206,7 @@ Toplanan veriler `device_metadata` JSON alanı olarak `KioskProvisioningRequest`
    - Başarısız (network/500 error) → log + scheduler sonraki cycle'da tekrar dener
    - Eczacı QR taradığında cevapları ANINDA görebilir (300sn scheduler beklentisi yok)
 5. Scheduler → `pushOutbox` → pending kayıtlar için batch gönderim (retry mekanizması)
-   - `POST /api/kiosk/v1/{kiosk_id}/sync/` → `sessions` array
+   - `POST /api/kiosk/v1/sessions/` → `sessions` array
 6. Backend → `OturumLogu` modeline kayıt (idempotency_anahtari ile duplikasyon koruması)
 
 ### Impression Log Akışı
@@ -231,7 +223,7 @@ Toplanan veriler `device_metadata` JSON alanı olarak `KioskProvisioningRequest`
    ```
 4. Lokal API → SQLite `reklam_gosterim_outbox` → insert
 5. Scheduler → `pushToCentral` → backend'e batch gönderim
-   - `POST /api/kiosk/v1/{kiosk_id}/proof-of-play/` → `logs` array
+   - `POST /api/kiosk/v1/proof-of-play/` → `logs` array
      (her log: `creative_id` VEYA `house_ad_id` + `played_at` + `duration_played`)
 6. Backend → `PlayLog` modeline bulk insert (201 `{ ingested: N }`)
 
@@ -266,7 +258,7 @@ Toplanan veriler `device_metadata` JSON alanı olarak `KioskProvisioningRequest`
    - Breaking: data sync/query fails
 
 2. **Backend Sync Response Format:**
-   - Must match backend `/api/kiosk/v1/{id}/sync/` response
+   - Must match backend `/api/kiosk/v1/sync/` response
    - Breaking: SQLite upsert fails
 
 3. **Outbox Payload Format:**
@@ -324,13 +316,13 @@ APP_VERSION=1.0.2
 
 ### Loglama ve Diagnostic Outbox (2026-07-16)
 
-- `src/logger.js`: Pino tabanlı JSON stdout. `logRedaction.js` üzerinden `Authorization`, `Cookie`, `token`, `iot_token`, `fleet_key`, `qr_kodu`, `cevaplar` vb. maskelenir.
+- `src/logger.js`: Pino tabanlı JSON stdout. `logRedaction.js` üzerinden `Authorization`, `Cookie`, `token`, `fleet_key`, `qr_kodu`, `cevaplar` vb. maskelenir.
 - `src/correlationId.js`: `AsyncLocalStorage` ile korelasyon ID takibi; scheduler her döngü için `derivedId('pull'|'push'|'ping'|'diag')` üretir; `X-Correlation-ID` başlığı Fastify hook + backend çağrılarında iletilir.
 - `src/diagnosticOutbox.js` + SQLite `diagnostic_outbox` tablosu (şema v10):
   - Yalnızca `WARNING/ERROR/CRITICAL`; `INFO/DEBUG` YAZILMAZ.
   - Sınırlar: 5000 kayıt, 7 gün, batch 100, mesaj 4 KB, stack 8 KB.
   - FIFO trigger + exponential backoff (max 6 retry). Uygulama outbox dolarsa DURMAZ.
-- Scheduler `pushDiagnostics()` → `POST /api/analytics/diagnostic-ingest/` (backend DB'ye yazmaz, JSON stdout'a çevirir).
+- Scheduler `pushDiagnostics()` → `POST /api/kiosk/v1/diagnostics/` (backend DB'ye yazmaz, JSON stdout'a çevirir).
 - Yeni endpoint: `POST /api/log/client` — Svelte UI hata köprüsü (yalnızca allow-list edilen event kodları).
 - Detay: [docs/operations/logging.md](../operations/logging.md).
 
@@ -359,7 +351,7 @@ Detay: `kiosk_edge/README_DEMO_DOCKER.md`
 
 1. **Outbox tam dolunca ne olur:** `outboxMaxRows` aşılırsa sadece warning, overwrite/block mekanizması yok. Log kaybı riski. (Riskli)
 2. **Media cache implementasyonu:** `mediaCache.js` placeholder gibi görünüyor, tam çalışır durumda mı? (Belirsiz)
-3. **Token refresh logic:** `refreshIotTokenIfNeeded` fonksiyonu placeholder, token expiry kontrolü tam değil. (Belirsiz)
+3. **App Key rotation logic:** App Key rotasyonu yok; provision sonrası aynı App Key kullanılır. (Belirsiz)
 4. **WiFi setup:** `nmcli` çağrıları Linux'a özel, geliştirme ortamında (Windows/macOS) çalışmaz. (Belirsiz)
 5. **Session idempotency key:** `idempotency_key` kiosk UI tarafından mı üretiliyor, backend duplikasyon kontrolü düzgün çalışıyor mu? (Doğrulanmalı)
 6. **Playlist version mismatch:** Kiosk uzun süre offline kalırsa playlist versiyonu çok eski olur, backend eski versiyonları tutuyor mu? (Belirsiz)

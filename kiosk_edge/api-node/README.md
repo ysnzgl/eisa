@@ -34,8 +34,6 @@ npm run test:coverage
 |---|---|
 | `EISA_KIOSK_FLEET_KEY` | — (zorunlu) |
 | `EISA_KIOSK_PROVISIONING_SECRET` | — (zorunlu) |
-| `EISA_KIOSK_APP_KEY` | — (opsiyonel, legacy dev/test) |
-| `EISA_KIOSK_MAC` | sistemden otomatik tespit |
 | `EISA_SQLITE_PATH` | `/var/lib/eisa/local.db` |
 | `EISA_CENTRAL_API_BASE` | `https://api.eisa.com.tr` |
 | `EISA_PULL_INTERVAL_SEC` | `900` |
@@ -49,7 +47,7 @@ Bootstrap akis:
 
 1. Kiosk, MAC adresini sistemden otomatik okur.
 2. `EISA_KIOSK_FLEET_KEY` + `EISA_KIOSK_PROVISIONING_SECRET` ile HMAC imzali provision istegi gonder.
-3. Backend IoT token doner; `kiosk_id` ve `pharmacy_id` token payload'indan alinir.
+3. Backend App Key doner; `kiosk_id` ve `pharmacy_id` yanit bodysinden alinir.
 4. Bu bilgiler lokal SQLite'a yazilir ve sonraki acilislarda tekrar istenmez.
 
 ## Endpoint'ler

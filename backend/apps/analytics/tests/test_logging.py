@@ -235,7 +235,7 @@ def istanbul_kiosk_client(api_client, istanbul_kiosk):
 @pytest.mark.django_db
 class TestKioskDiagnosticIngest:
     def test_requires_kiosk_auth(self, api_client):
-        r = api_client.post("/api/analytics/diagnostic-ingest/", {}, format="json")
+        r = api_client.post("/api/kiosk/v1/diagnostics/", {}, format="json")
         assert r.status_code in (401, 403)
 
     def test_accepts_batch(self, istanbul_kiosk_client):
@@ -250,7 +250,7 @@ class TestKioskDiagnosticIngest:
         target.addHandler(handler)
         try:
             r = istanbul_kiosk_client.post(
-                "/api/analytics/diagnostic-ingest/",
+                "/api/kiosk/v1/diagnostics/",
                 {
                     "items": [
                         {
@@ -283,5 +283,5 @@ class TestKioskDiagnosticIngest:
 
     def test_batch_limit(self, istanbul_kiosk_client):
         payload = {"items": [{"level": "ERROR", "event": "e"} for _ in range(200)]}
-        r = istanbul_kiosk_client.post("/api/analytics/diagnostic-ingest/", payload, format="json")
+        r = istanbul_kiosk_client.post("/api/kiosk/v1/diagnostics/", payload, format="json")
         assert r.status_code == 413

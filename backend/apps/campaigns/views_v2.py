@@ -14,9 +14,9 @@ Endpoint haritasi:
     GET    /api/inventory/availability/?date=YYYY-MM-DD&hour=18[&kiosk=<id>]
 
   Kiosk Edge API (App-Key + MAC):
-    GET    /api/kiosk/v1/{kiosk_id}/sync/                -> tum aktif creative + house_ad listesi
-    GET    /api/kiosk/v1/{kiosk_id}/playlist/?date=YYYY-MM-DD
-    POST   /api/kiosk/v1/{kiosk_id}/proof-of-play/       -> bulk PlayLog ingest
+    GET    /api/kiosk/v1/sync/                            -> tum aktif creative + house_ad listesi
+    GET    /api/kiosk/v1/playlist/?date=YYYY-MM-DD
+    POST   /api/kiosk/v1/proof-of-play/                   -> bulk PlayLog ingest
 """
 from __future__ import annotations
 
@@ -32,9 +32,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.uow import UnitOfWork
-from apps.pharmacies.auth import KioskAppKeyAuthentication, KioskIoTTokenAuthentication
 from apps.pharmacies.models import Kiosk
-from apps.pharmacies.permissions import IsKiosk, IsSuperAdmin
+from apps.pharmacies.permissions import IsSuperAdmin
 from core_api.cookie_jwt import JWTCookieAuthentication as JWTAuthentication
 
 import threading
@@ -917,190 +916,4 @@ class DayPlanViewSet(viewsets.ModelViewSet):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _ensure_kiosk_match(request, kiosk_id: int) -> Response | None:
-    """Authenticated kiosk request.user; URL'deki id ile eslesmeli."""
-    auth_kiosk: Kiosk = request.user
-    if not isinstance(auth_kiosk, Kiosk) or int(auth_kiosk.pk) != int(kiosk_id):
-        return Response({"error": "Kiosk kimligi URL ile eslesmiyor."},
-                        status=status.HTTP_403_FORBIDDEN)
-    return None
 
-
-class KioskSyncView(APIView):
-    """``GET /api/kiosk/v1/{kiosk_id}/sync/``
-
-    Bu kiosku ilgilendiren TUM aktif creative + tum aktif house_ad listesini doner.
-    Kiosk bunlari local storage'a indirir ve hash ile cache'ler.
-    """
-
-    authentication_classes = [KioskIoTTokenAuthentication, KioskAppKeyAuthentication]
-    permission_classes = [IsKiosk]
-
-    def get(self, request, kiosk_id):
-        guard = _ensure_kiosk_match(request, kiosk_id)
-        if guard is not None:
-            return guard
-        kiosk: Kiosk = request.user
-        now = timezone.now()
-        eczane_id = kiosk.eczane_id
-
-        creatives_qs = (
-            Creative.objects
-            .select_related("campaign")
-            .filter(
-                campaign__status=Campaign.Status.ACTIVE,
-                campaign__start_date__lte=now,
-                campaign__end_date__gte=now,
-            )
-        )
-        # Hedef eczane filtresi (bos liste = herkese)
-        creative_payload: list[dict] = []
-        for c in creatives_qs:
-            targets = c.campaign.target_pharmacies.all()
-            if targets.exists() and not targets.filter(pk=eczane_id).exists():
-                continue
-            creative_payload.append(KioskCreativeSyncSerializer(c).data)
-
-        house_ads = HouseAd.objects.filter(aktif=True)
-
-        from apps.lookups.models import Cinsiyet, Il, Ilce, YasAraligi
-        return Response({
-            "kiosk_id": int(kiosk.pk),
-            "generated_at": now.isoformat(),
-            "creatives": creative_payload,
-            "house_ads": KioskHouseAdSyncSerializer(house_ads, many=True).data,
-            "lookups": {
-                "cinsiyetler": list(Cinsiyet.objects.values("id", "kod", "ad").order_by("id")),
-                "yas_araliklari": list(YasAraligi.objects.values("id", "kod", "ad", "alt_sinir", "ust_sinir").order_by("id")),
-                "iller": list(Il.objects.values("id", "ad").order_by("ad")),
-                "ilceler": list(Ilce.objects.values("id", "il_id", "ad").order_by("il_id", "ad")),
-            },
-        })
-
-
-class KioskPlaylistView(APIView):
-    """``GET /api/kiosk/v1/{kiosk_id}/playlist/?date=YYYY-MM-DD``
-
-    Ilgili gunun 24 saatlik playlist'lerini siralayarak doner.
-    """
-
-    authentication_classes = [KioskIoTTokenAuthentication, KioskAppKeyAuthentication]
-    permission_classes = [IsKiosk]
-
-    def get(self, request, kiosk_id):
-        guard = _ensure_kiosk_match(request, kiosk_id)
-        if guard is not None:
-            return guard
-        try:
-            target_date = _parse_date(request.query_params.get("date"))
-        except ValueError as exc:
-            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-
-        kiosk: Kiosk = request.user
-        playlists = (
-            Playlist.objects
-            .filter(kiosk=kiosk, target_date=target_date)
-            .order_by("target_hour")
-            .prefetch_related("items__creative", "items__house_ad")
-        )
-        return Response({
-            "kiosk_id": int(kiosk.pk),
-            "target_date": str(target_date),
-            "loop_duration_seconds": 60,
-            "playlists": KioskPlaylistSerializer(playlists, many=True).data,
-        })
-
-
-class KioskPingView(APIView):
-    """``GET /api/kiosk/v1/{kiosk_id}/ping/``
-
-    Heartbeat (Ping-Pong) endpoint. Kiosk bu endpoint'i periyodik olarak cagirir.
-    Yanit olarak o kiosk icin bugunun playlist versiyon numarasini doner.
-
-    Kiosk, kendi versiyonu ile gelen versiyonu karsilastirir:
-      - Eger yeni versiyon varsa => /playlist/ endpoint'ini cagirarak
-        guncellenmis playlist'i indirir (Delta Sync).
-      - Ayni versiyon ise => hicbir islem yapmaz, yerel playlist'i oynatir.
-
-    Yani doner::
-
-        {
-          "kiosk_id": 12,
-          "date": "2026-05-15",
-          "playlist_version": 7,
-          "updated_at": "2026-05-15T03:00:00Z",
-          "server_time": "2026-05-15T14:22:01Z"
-        }
-    """
-
-    authentication_classes = [KioskIoTTokenAuthentication, KioskAppKeyAuthentication]
-    permission_classes = [IsKiosk]
-
-    def get(self, request, kiosk_id):
-        guard = _ensure_kiosk_match(request, kiosk_id)
-        if guard is not None:
-            return guard
-        kiosk: Kiosk = request.user
-        now = timezone.now()
-        today = now.date()
-
-        # Bugunun playlist versiyonunu doner (en guncellenmis saat'in versiyonu)
-        from django.db.models import Max
-        agg = (
-            Playlist.objects
-            .filter(kiosk=kiosk, target_date=today)
-            .aggregate(max_version=Max("version"), max_updated=Max("guncellenme_tarihi"))
-        )
-
-        # Kiosun son-goruldu zamanini ve online durumunu guncelle
-        Kiosk.objects.filter(pk=kiosk.pk).update(son_goruldu=now, is_online=True)
-
-        return Response({
-            "kiosk_id": int(kiosk.pk),
-            "date": str(today),
-            "playlist_version": agg["max_version"] or 0,
-            "updated_at": agg["max_updated"].isoformat() if agg["max_updated"] else None,
-            "server_time": now.isoformat(),
-        })
-
-
-class ProofOfPlayView(APIView):
-    """``POST /api/kiosk/v1/{kiosk_id}/proof-of-play/`` (bulk ingest).
-
-    Body::
-
-        { "logs": [
-            {"creative_id": "<uuid>", "played_at": "2026-...Z", "duration_played": 15},
-            {"house_ad_id": "<uuid>", "played_at": "2026-...Z", "duration_played": 10}
-        ]}
-    """
-
-    authentication_classes = [KioskIoTTokenAuthentication, KioskAppKeyAuthentication]
-    permission_classes = [IsKiosk]
-
-    def post(self, request, kiosk_id):
-        guard = _ensure_kiosk_match(request, kiosk_id)
-        if guard is not None:
-            return guard
-        kiosk: Kiosk = request.user
-
-        serializer = ProofOfPlayBulkSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        logs_data = serializer.validated_data["logs"]
-
-        bulk = []
-        for entry in logs_data:
-            bulk.append(PlayLog(
-                kiosk=kiosk,
-                creative_id=entry.get("creative_id"),
-                house_ad_id=entry.get("house_ad_id"),
-                played_at=entry["played_at"],
-                duration_played=entry["duration_played"],
-            ))
-        if bulk:
-            PlayLog.objects.bulk_create(bulk, batch_size=500)
-
-        # Kiosku canli olarak isaretle
-        Kiosk.objects.filter(pk=kiosk.pk).update(son_goruldu=timezone.now())
-
-        return Response({"ingested": len(bulk)}, status=status.HTTP_201_CREATED)

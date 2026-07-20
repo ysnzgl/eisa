@@ -12,5 +12,8 @@ export const getSessions = (params = {}) =>
   http.get('/api/analytics/sessions/', { params });
 
 /** Bir oturum danışmasını tamamlandı olarak işaretler. */
-export const completeSession = (sessionId, note = '') =>
-  http.post(`/api/analytics/sessions/${sessionId}/complete/`, { note });
+export const completeSession = (sessionId, note = '', saleResult = null) => {
+  const payload = { note };
+  if (saleResult) payload.sale_result = saleResult;
+  return http.post(`/api/analytics/sessions/${sessionId}/complete/`, payload);
+};

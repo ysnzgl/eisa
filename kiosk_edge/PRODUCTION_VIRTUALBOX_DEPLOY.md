@@ -134,10 +134,9 @@ Environment dosyasi (`/etc/eisa/kiosk.env`):
 # ── IoT Kimlik Dogrulama ───────────────────────────────────────────────────
 # Tum kiosklar ve backend'de AYNI iki deger:
 EISA_KIOSK_FLEET_KEY=<FLEET_KEY>              # Fleet kimlik baslik degeri
-EISA_KIOSK_PROVISIONING_SECRET=<SECRET>       # HMAC imzasi + IoT token icin
+EISA_KIOSK_PROVISIONING_SECRET=<SECRET>       # HMAC imzasi + App Key provisioning icin
 
-# Kiosk MAC sistemden otomatik okunur; acik override icin:
-# EISA_KIOSK_MAC=
+# Kiosk MAC sistemden otomatik okunur; env override yok.
 
 # ── Genel ─────────────────────────────────────────────────────────────────
 EISA_SQLITE_PATH=/var/lib/eisa/local.db
@@ -245,15 +244,14 @@ Uygulanan guvenlikler:
    - `EISA_VERIFY_TLS=true`
    - Uretimde `http://` endpoint kullanma
 
-2. **Iki katmanli IoT kimlik dogrulama**
+2. **App Key provisioning**
    - Her istekte `X-Kiosk-Key: <FLEET_KEY>` — butun cihazlarda ve backend'de ayni
-   - Her istekte `Authorization: Bearer <iot_token>` — cihaza ozel, TTL'li
-   - Provision akisi:
+   - Bootstrap akisi:
      - Kiosk MAC'i isletim sisteminden okur
      - `HMAC-SHA256(MAC + timestamp, PROVISIONING_SECRET)` imzalar
-     - Backend: HMAC dogrular + timestamp tazelik kontrolu (replay koruyu, +/-5 dk)
-     - Basarili provision: backend TTL'li IoT token doner
-     - Token suresine 24h kaldikca arka planda yenilenir
+     - Backend: HMAC dogrular + timestamp tazelik kontrolu (replay koruma, +/-5 dk)
+     - Basarili bootstrap: backend `app_key`, `kiosk_id`, `pharmacy_id` doner
+     - App Key SQLite `kiosk_meta`'ya yazilir ve sonraki isteklerde kullanilir
 
 3. **Lokal API korumasi** (eczaci terminali)
    - `/api/oturum/:qr` endpoint'i eczaci tabletinden gelen QR sorgularini korur

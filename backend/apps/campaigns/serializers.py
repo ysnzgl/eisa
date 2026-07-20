@@ -142,7 +142,7 @@ class PricingMatrixSerializer(serializers.ModelSerializer):
 # ── Kiosk Edge DTOs ──
 
 class KioskCreativeSyncSerializer(serializers.ModelSerializer):
-    """`/api/kiosk/v1/{kiosk_id}/sync` icindeki tek bir creative."""
+    """`/api/kiosk/v1/sync` icindeki tek bir creative."""
 
     type = serializers.SerializerMethodField()
 

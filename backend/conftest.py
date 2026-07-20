@@ -17,8 +17,8 @@ def _seed_lookups(db):
 
 @pytest.fixture
 def eczane(db):
-    il = Il.objects.get(ad="Istanbul")
-    ilce = Ilce.objects.filter(il=il).first()
+    il, _ = Il.objects.get_or_create(ad="Istanbul")
+    ilce, _ = Ilce.objects.get_or_create(il=il, ad="Kadikoy")
     return Eczane.objects.create(
         ad="Test Eczanesi",
         il=il,

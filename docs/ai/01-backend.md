@@ -23,7 +23,8 @@
 - `backend/apps/campaigns/services/scheduler.py` — Playlist generation
 - `backend/apps/products/models.py` — Kategori/Soru/EtkenMadde models
 - `backend/apps/pharmacies/models.py` — Eczane/Kiosk models
-- `backend/apps/pharmacies/auth.py` — Kiosk authentication
+- `backend/apps/pharmacies/auth.py` — Kiosk authentication (tek `KioskAppKeyAuthentication`)
+- `backend/apps/kiosk_api/` — Kiosk API facade (`/api/kiosk/v1/`; bootstrap + operasyonel endpoint'ler)
 - `backend/apps/analytics/models.py` — OturumLogu/PlayLog models
 
 ---
@@ -31,7 +32,7 @@
 ## Teknoloji ve Giriş Noktası
 
 - **Framework:** Django 5 + djangorestframework
-- **Auth:** `djangorestframework-simplejwt` (httpOnly çerez tabanlı JWT) + Kiosk auth (App-Key + MAC veya IoT Token)
+- **Auth:** `djangorestframework-simplejwt` (httpOnly çerez tabanlı JWT) + Kiosk auth (yalnız App Key + MAC — `Authorization: AppKey` + `X-Kiosk-MAC`)
 - **DB:** PostgreSQL (prod), SQLite (dev)
 - **Entrypoint:** `backend/manage.py` (Django CLI), `core_api/wsgi.py` (WSGI), `core_api/asgi.py` (ASGI)
 - **Settings:** `core_api/settings.py` (env: `DJANGO_DEBUG`, `DJANGO_SECRET_KEY`, `DB_*`, `ALLOWED_HOSTS`)
@@ -54,16 +55,20 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 | `/api/auth/logout/` | `CookieLogoutView` | JWT | Çerez temizleme |
 | `/api/lookups/` | `apps.lookups.urls` | JWT/Kiosk | Il/Ilce/Cinsiyet/YasAraligi sabitleri |
 | `/api/users/` | `apps.users.urls` | JWT | Kullanıcı CRUD |
-| `/api/pharmacies/` | `apps.pharmacies.urls` | JWT | Eczane/Kiosk CRUD, QR session fetch, provisioning yönetimi |
+| `/api/pharmacies/` | `apps.pharmacies.urls` | JWT | Eczane/Kiosk CRUD, provisioning yönetimi |
 | `/api/products/` | `apps.products.urls` | JWT | Kategori/Soru/EtkenMadde/Danışma CRUD |
 | `/api/analytics/` | `apps.analytics.urls` | JWT | Session log raporlama |
 | `/api/campaigns/` | `apps.campaigns.urls` | JWT (SuperAdmin) | Campaign/Creative/ScheduleRule yönetimi |
 | `/api/campaigns/v2/*` | `apps.campaigns.views_v2` | JWT (SuperAdmin) | DOOH v2 API (playlist, pricing, house ads) |
 | `/api/inventory/availability/` | `InventoryAvailabilityView` | JWT | Slot kapasite sorgusu |
-| `/api/kiosk/v1/{id}/ping/` | `KioskPingView` | Kiosk auth | Playlist versiyonu kontrolü |
-| `/api/kiosk/v1/{id}/sync/` | `KioskSyncView` | Kiosk auth | Creative/HouseAd listesi + outbox push |
-| `/api/kiosk/v1/{id}/playlist/` | `KioskPlaylistView` | Kiosk auth | Günlük playlist çekme |
-| `/api/kiosk/v1/{id}/proof-of-play/` | `ProofOfPlayView` | Kiosk auth | Bulk PlayLog ingest |
+| `/api/kiosk/v1/bootstrap/` | `kiosk_api.KioskBootstrapView` | Fleet+HMAC | Provisioning; App Key döner |
+| `/api/kiosk/v1/ping/` | `kiosk_api.KioskPingView` | AppKey+MAC | Playlist versiyonu kontrolü |
+| `/api/kiosk/v1/sync/` | `kiosk_api.KioskSyncView` | AppKey+MAC | Creative/HouseAd + lookup |
+| `/api/kiosk/v1/catalog/` | `kiosk_api.KioskCatalogView` | AppKey+MAC | Kategori/soru/etken madde/danışma |
+| `/api/kiosk/v1/playlist/` | `kiosk_api.KioskPlaylistView` | AppKey+MAC | Günlük playlist |
+| `/api/kiosk/v1/sessions/` | `kiosk_api.KioskSessionsView` | AppKey+MAC | Oturum outbox (idempotent) |
+| `/api/kiosk/v1/proof-of-play/` | `kiosk_api.KioskProofOfPlayView` | AppKey+MAC | Bulk PlayLog ingest |
+| `/api/kiosk/v1/diagnostics/` | `kiosk_api.KioskDiagnosticsView` | AppKey+MAC | Diagnostic (DB'ye yazılmaz) |
 
 **RBAC:** `IsSuperAdmin`, `IsPharmacist`, `IsKiosk` permission sınıfları mevcut.
 
@@ -138,7 +143,7 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 
 ### Kategori Akışı
 1. SuperAdmin → web_panels MedicalLogic → `POST /api/products/kategoriler/` → `Kategori` model kaydı
-2. Kiosk → `GET /api/kiosk/v1/{id}/sync/` → backend kategorileri çeker (`products.Kategori.objects.filter(aktif=True)`)
+2. Kiosk → `GET /api/kiosk/v1/sync/` → backend kategorileri çeker (`products.Kategori.objects.filter(aktif=True)`)
 3. Backend → kategorileri + hedef_cinsiyet + hedef_yas_araliklari ile JSON response
 4. Kiosk edge API → SQLite `kategoriler` tablosuna upsert
 
@@ -147,42 +152,42 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 2. SuperAdmin → Creative upload → `POST /api/campaigns/upload-media/` → MinIO/S3'e upload → `POST /api/campaigns/v2/creatives/` → `Creative` kaydı
 3. SuperAdmin → ScheduleRule tanımlama → `POST /api/campaigns/v2/campaigns/{id}/rules/` → `ScheduleRule` kaydı
 4. Backend scheduler (cron job) → `generate_for_kiosk(date, kiosk_id)` → slot hesaplama → `Playlist` + `PlaylistItem` oluşturma
-5. Kiosk → `GET /api/kiosk/v1/{id}/ping/` → backend playlist versiyonu döner
-6. Kiosk → `GET /api/kiosk/v1/{id}/playlist/?date=YYYY-MM-DD` → günlük playlist JSON
+5. Kiosk → `GET /api/kiosk/v1/ping/` → backend playlist versiyonu döner
+6. Kiosk → `GET /api/kiosk/v1/playlist/?date=YYYY-MM-DD` → günlük playlist JSON
 7. Kiosk edge API → SQLite `playlists` + `playlist_items` tablolarına yazar
 8. Kiosk UI → AdStrip → playlist'ten sırayla creative oynatır
 
 ### Kiosk Authentication
-İki yöntem:
-- **App-Key + MAC:** `KioskAppKeyAuthentication` (HTTP header `X-Kiosk-App-Key`, `X-Kiosk-Mac-Address`)
-- **IoT Token:** `KioskIoTTokenAuthentication` (HTTP header `Authorization: Bearer <iot_token>`)
+Tek yöntem:
+- **App-Key + MAC:** `KioskAppKeyAuthentication` (HTTP header `Authorization: AppKey <app_key>`, `X-Kiosk-MAC`)
 
-Kiosk provisioning (kayıtlı cihaz):
-1. `POST /api/pharmacies/kiosks/bootstrap/` → IoT token alınır (Fleet Key + HMAC body ile)
-2. Token kiosk_edge SQLite'a `kiosk_meta` tablosuna kaydedilir
-3. Sonraki isteklerde IoT token kullanılır (refresh ile yenilenir)
-
-**Pending provisioning (kayıtsız cihaz — 2026-07-14):**
-1. `POST /api/pharmacies/kiosks/bootstrap/` → Fleet key + HMAC doğrulaması
+Kiosk provisioning (bootstrap):
+1. `POST /api/kiosk/v1/bootstrap/` → Fleet Key + HMAC doğrulaması
 2. Kiosk bulunamazsa → `KioskProvisioningRequest` PENDING kaydı oluşturulur → `202 Accepted`
 3. SuperAdmin → `GET /api/pharmacies/kiosks/provisioning/` → pending cihazları listeler
 4. SuperAdmin → `POST /api/pharmacies/kiosks/provisioning/{id}/approve/` → eczane seçer, Kiosk oluşturulur, APPROVED
-5. Cihaz tekrar `POST /api/pharmacies/kiosks/bootstrap/` → 200 iot_token (APPROVED path)
-6. REJECTED cihaz → 403 REJECTED, token verilmez
+5. Cihaz tekrar `POST /api/kiosk/v1/bootstrap/` → 200 app_key (APPROVED path)
+6. REJECTED cihaz → 403 REJECTED, App Key verilmez
 
 ### Log/Session Akışı
 1. Kiosk UI → kullanıcı kategori/soru akışını tamamlar → QR üretilir
 2. Kiosk UI → `POST http://localhost:5234/sessions` (local edge API) → session JSON gönderilir
 3. Kiosk edge API → SQLite `oturum_outbox` tablosuna yazar
-4. Kiosk edge scheduler (cron) → `POST /api/kiosk/v1/{id}/sync/` → backend'e batch gönderim
+4. Kiosk edge scheduler (cron) → `POST /api/kiosk/v1/sessions/` → backend'e batch gönderim
 5. Backend → `OturumLogu` modeline kayıt (idempotency_anahtari ile duplikasyon koruması)
-6. Eczacı → web_panels QrScan → `GET /api/pharmacies/sessions/?qr={qr_kodu}` → session detayı çekme
+6. Eczacı → web_panels QrScan → `GET /api/analytics/sessions/?qr_kodu={qr_kodu}` → session detayı çekme
+
+Notlar (QR contract, 2026-07-20):
+- QR üretimi 8 karakter Base36 (0-9A-Z) olarak korunur; algoritma değiştirilmez.
+- QR içine soru/cevap/kategori/etken madde gömülmez; QR yalnızca backend'deki `OturumLogu` kaydını bulmak için kullanılır.
+- Kiosk session verisini mevcut `POST /api/oturum/gonder` akışıyla lokal API'ye yazar; bu akış merkezi backend'e `POST /api/analytics/sessions/` ile gönderilir.
+- Eczacı sorgusunda sahiplik kontrolü backend'de zorunludur (`kiosk__eczane_id == request.user.eczane_id`).
 
 ### Proof-of-Play Akışı
 1. Kiosk UI AdStrip → creative oynatma başlangıç/bitiş zamanlarını kaydeder
 2. Kiosk UI → `POST http://localhost:5234/ad-impressions` → impression JSON gönderilir
 3. Kiosk edge API → SQLite `reklam_gosterim_outbox` tablosuna yazar
-4. Kiosk edge scheduler → `POST /api/kiosk/v1/{id}/proof-of-play/` → backend'e batch gönderim
+4. Kiosk edge scheduler → `POST /api/kiosk/v1/proof-of-play/` → backend'e batch gönderim
 5. Backend → `PlayLog` modeline kayıt (bulk insert)
 6. SuperAdmin → web_panels analytics → PlayLog raporları (tamamlanma oranı, toplam impression, vb.)
 
@@ -208,7 +213,7 @@ Kiosk provisioning (kayıtlı cihaz):
 
 **JWT ayarları:** `core_api/settings.py` içinde `SIMPLE_JWT` dict (access/refresh token TTL, algorithm, vb.)
 
-**Loglama (2026-07-16):** Dosyaya YAZILMAZ; JSON stdout. Env: `LOG_LEVEL`, `LOG_FORMAT`, `SERVICE_NAME`, `APP_ENV`, `APP_VERSION`. Middleware: `apps.core.logging.middleware.CorrelationIdMiddleware` + `RequestLoggingMiddleware`. Formatter: `apps.core.logging.formatters.JsonFormatter`. Detay: [docs/operations/logging.md](../operations/logging.md). Ek endpoint'ler: `POST /api/analytics/diagnostic-ingest/` (kiosk auth; DB'ye yazmaz, JSON log üretir), `POST /api/analytics/client-events/` (JWT; rate limited).
+**Loglama (2026-07-16):** Dosyaya YAZILMAZ; JSON stdout. Env: `LOG_LEVEL`, `LOG_FORMAT`, `SERVICE_NAME`, `APP_ENV`, `APP_VERSION`. Middleware: `apps.core.logging.middleware.CorrelationIdMiddleware` + `RequestLoggingMiddleware`. Formatter: `apps.core.logging.formatters.JsonFormatter`. Detay: [docs/operations/logging.md](../operations/logging.md). Ek endpoint'ler: `POST /api/kiosk/v1/diagnostics/` (AppKey+MAC; DB'ye yazmaz, JSON log üretir), `POST /api/analytics/client-events/` (JWT; rate limited).
 
 ---
 
@@ -226,14 +231,13 @@ Kiosk provisioning (kayıtlı cihaz):
 
 1. **Kiosk Authentication Contract:**
    - `KioskAppKeyAuthentication`: X-Kiosk-App-Key + X-Kiosk-Mac-Address headers
-   - `KioskIoTTokenAuthentication`: Authorization: Bearer {iot_token}
-   - Breaking: kiosk_edge/api-node cannot authenticate
+   - Breaking: kiosk_edge/api-node cannot authenticate without App Key + MAC
 
 2. **Campaign/Playlist Structure:**
    - `Campaign` → `Creative` → `ScheduleRule` → `Playlist` → `PlaylistItem`
    - Breaking: playlist generation/sync fails
 
-3. **Kiosk Sync Payload (`/api/kiosk/v1/{id}/sync/`):**
+3. **Kiosk Sync Payload (`/api/kiosk/v1/sync/`):**
    - Response: `{ kategoriler, sorular, cevaplar, etken_maddeler, danisma_kategorileri, creatives, house_ads }`
    - Request (outbox push): `{ sessions: [...] }`
    - Breaking: kiosk SQLite sync breaks
@@ -242,7 +246,7 @@ Kiosk provisioning (kayıtlı cihaz):
    - Required: `idempotency_anahtari`, `yas_araligi_id`, `cinsiyet_id`, `kategori_id`, `qr_kodu`, `tamamlandi`
    - Breaking: session recording fails
 
-5. **Proof-of-Play Contract (`/api/kiosk/v1/{id}/proof-of-play/`):**
+5. **Proof-of-Play Contract (`/api/kiosk/v1/proof-of-play/`):**
    - Implementation:
      - File: `backend/apps/campaigns/views_v2.py`
      - Class: `ProofOfPlayView` (line 1068)
@@ -262,7 +266,7 @@ Kiosk provisioning (kayıtlı cihaz):
 
 1. **Playlist generation job'ları:** `GenerationJob` modeli ve `django_apscheduler` kullanımı mevcut ama job tracking ve error handling net değil.
 2. **Campaign.target_pharmacies (legacy M2M):** Yeni kampanyalar `CampaignTarget` kullanıyor. İki mekanizma birlikte destekleniyor mu, priority? (Belirsiz)
-3. **Kiosk authentication order:** `KioskAppKeyAuthentication` ve `KioskIoTTokenAuthentication` — hangi sırayla deneniyor? (Belirsiz)
+3. **Kiosk authentication order:** App Key + MAC tek operasyonel kontrattir. (Belirsiz)
 4. **OturumLogu idempotency:** `idempotency_anahtari` var ama backend'de `get_or_create` mi kullanılıyor, unique constraint yeterli mi? (Doğrulanmalı)
 5. **PlayLog duplikasyon:** Kiosk aynı impression'ı iki kez gönderirse ne olur? Duplikasyon koruması yok gibi görünüyor. (Riskli)
 

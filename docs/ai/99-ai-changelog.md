@@ -5,6 +5,26 @@
 
 ---
 
+## 2026-07-20
+
+### [Backend + kiosk_edge] — Kiosk API Facade + Tek App Key Authentication (IoT/dual auth kaldırıldı)
+**Değişiklik:** Kioskların Main API ile tüm operasyonel iletişimi tek namespace, tek auth ve tek merkezi client altında toplandı.
+**Backend:** Yeni `apps/kiosk_api/` facade uygulaması (authentication/permissions/mixins/views/urls/serializers/tests). Tüm operasyonel kiosk endpoint'leri `/api/kiosk/v1/` altında ve **kiosk ID içermez** (`request.kiosk` auth context'inden gelir): `bootstrap, ping, sync, catalog, playlist, sessions, proof-of-play, diagnostics`. Facade domain mantığını kopyalamaz; mevcut model+serializer'ları ve yeni domain servislerini (`analytics.services.ingest_session_items`, `products.services.build_catalog_payload`, `analytics.log_ingest.ingest_kiosk_diagnostic_items`) yeniden kullanır.
+**Auth:** Tek operasyonel sınıf `KioskAppKeyAuthentication` (`Authorization: AppKey <key>` + `X-Kiosk-MAC`); `request.kiosk` atar; **401** (App Key/MAC eksik/geçersiz) ve **403** (kiosk pasif/onaysız/eczanesiz) ayrımı + makine-okunur `code`. `KioskIoTTokenAuthentication`, `create_iot_token`, `verify_iot_token`, `_create_iot_token_for_kiosk`, `KIOSK_IOT_TOKEN_TTL_DAYS` **tamamen kaldırıldı** (fiziksel kolon yok → migration yok). Bootstrap artık `iot_token` yerine **`app_key`** döner (APPROVED/PENDING/REJECTED). Bootstrap `pharmacies` app'inden facade'e taşındı; eski `/api/pharmacies/kiosks/bootstrap/` ve `/api/kiosk/v1/{id}/...` route'ları kaldırıldı (hard cutover). Provisioning admin API'leri (`/api/pharmacies/kiosks/provisioning/*`) ve panel endpoint'leri değişmedi.
+**Kiosk edge:** `provisioning.js` App Key'i bootstrap yanıtından SQLite `kiosk_meta`'ya yazar; `getAuthHeaders(db)` her istekte SQLite'tan `kiosk_app_key`+`kiosk_mac` okur (freeze/stale sorunu çözüldü, restart gerekmez); IoT/Bearer/Fleet üretimi kaldırıldı; `handle401Error`/`handle403Error` App Key'i **silmez**, backoff uygular; `cleanupLegacyIotToken` eski `iot_token`'ı bir defalık siler. `config.js` yalnız `EISA_KIOSK_FLEET_KEY`+`EISA_KIOSK_PROVISIONING_SECRET` credential okur (App Key/MAC/ID/pharmacy env fallback kaldırıldı; MAC otomatik tespit + SQLite'ta sabit). `scheduler.js` tüm çağrılar merkezi client'tan yeni `/api/kiosk/v1/` endpoint'lerine; 401+403 ayrı. `server.js` anlık session `/api/kiosk/v1/sessions/`'e, koşul `hasAppKeyCredentials(db)`. `db.js` SQLite dizin `700` / dosya `600` (Linux).
+**Migration:** Yok. Mevcut `Kiosk.uygulama_anahtari` kullanıldı; yeni tablo/kolon yok.
+**Test:** Backend 153/153 (yeni `apps/kiosk_api/tests` dahil), kiosk-edge 49/49 (yeni `provisioning.test.js`). `conftest.eczane` fixture'ı Il/Ilce için `get_or_create`'e çevrildi (önceden kırık, DOOH testlerini de düzeltti). `server.test.js`'teki iki eski QR beklentisi 8 karakter bitpack QR'a hizalandı (mevcut davranış).
+**Breaking:** Operasyonel kiosk auth artık yalnız App Key + MAC; Bearer/IoT/Fleet/JWT reddedilir. `/api/kiosk/v1/{id}/...` ve `/api/pharmacies/kiosks/bootstrap/` kaldırıldı. Bootstrap `iot_token` yerine `app_key` döner.
+
+### [analytics + web_panels + kiosk_edge] — Eczacı QR sorgu düzeltmesi, kamera kaldırma, detay response normalizasyonu
+**Değişiklik:** Eczacı QR sorgusunda endpoint/contract uyumsuzlukları düzeltildi. `GET /api/analytics/sessions/` QR parametresi ile çağrıldığında 400/403/404 ayrımı netleşti; eczane sahipliği backend'de zorunlu hale getirildi. Response mevcut alanlar korunarak normalize edildi (`kiosk_detay`, `eczane`, `yas_araligi_detay`, `cinsiyet_detay`, `kategori_detay`, `cevap_detaylari`, `onerilen_etken_madde_detaylari`, `satis_sonucu`).
+**Frontend:** `QrScan.vue` ekranından kamera akışı tamamen kaldırıldı (getUserMedia/BarcodeDetector/video state yok). Sayfa input-focus ile açılır; barkod okuyucu Enter ile tek istek tetikler; loading sırasında çift istek engellenir; hata/başarı durumlarında input yeniden focus alır. Hata mesajları ayrıştırıldı: boş, format, bulunamadı, başka eczane.
+**Kiosk edge:** `POST /api/oturum/gonder` response ve backend'e gönderilen `qr_kodu` değeri 8 karakter bitpack QR ile hizalandı; QR üretim algoritması değiştirilmedi.
+**Danışma tamamlama:** `POST /api/analytics/sessions/{id}/complete/` isteği opsiyonel `sale_result` alır (`sold|not_sold`). Not: satış sonucu için kalıcı DB kolonu yok; mevcut şema korunmuştur (migration yok).
+**Test/Build:** Backend `apps/analytics/tests/test_qr_flow.py` eklendi ve geçti. Web build başarılı. Frontend unit testlerinde pre-existing bir `api.test.js` beklenti uyumsuzluğu devam ediyor. Tam backend suite'te pre-existing `campaigns` testlerinde lookup fixture kaynaklı hatalar mevcut.
+
+---
+
 ## 2026-07-16
 
 ### [Tüm modüller] — Merkezi Loglama: JSON stdout + Correlation ID + Diagnostic Outbox

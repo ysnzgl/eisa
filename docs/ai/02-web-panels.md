@@ -147,7 +147,7 @@ Tüm API çağrıları `axios` üzerinden `/api/*` endpoint'lerine yapılır.
 - `PATCH /api/pharmacies/kiosklar/{id}/` → Kiosk güncelleme (ad, mac, aktif)
 - `PUT /api/pharmacies/kiosklar/{id}/`
 - `DELETE /api/pharmacies/kiosklar/{id}/`
-- `GET /api/pharmacies/sessions/?qr={qr_kodu}` → QR ile session detayı
+- `GET /api/analytics/sessions/?qr_kodu={qr_kodu}` → QR ile session detayı
 
 **Products API:**
 - `GET /api/products/kategoriler/`
@@ -279,10 +279,12 @@ window.EISA_API_BASE_URL = 'http://localhost:8000';
 ### 4. QR Tarama (QrScan.vue)
 
 1. Eczacı → `/pharmacist/qr`
-2. QR kodu okutulur (kamera veya manuel input)
-3. `GET /api/pharmacies/sessions/?qr={qr_kodu}` → session detayı
-4. Modal: Kullanıcı demografisi, kategori, cevaplar, önerilen etken maddeler
-5. Eczacı → danışmanlık sonuçlandırma (bu akış backend'de şu an eksik olabilir)
+2. Fiziksel barkod okuyucu (keyboard wedge) input'a 8 karakter QR yazar ve Enter gönderir.
+3. Kamera akışı kaldırılmıştır (getUserMedia/video/BarcodeDetector yoktur).
+4. `GET /api/analytics/sessions/?qr_kodu={qr_kodu}` çağrılır.
+5. Backend 400/403/404 durumlarını ayrıştırır; UI bunu ayrı mesajlarla gösterir.
+6. Başarılı response'da oturum detayları, soru-cevap çözümü ve önerilen etken madde detayları gösterilir.
+7. `POST /api/analytics/sessions/{id}/complete/` ile danışma tamamlanır; `sale_result` (`sold`/`not_sold`) opsiyonel gönderilir.
 
 ### 5. Dashboard Analytics (Dashboard.vue)
 
@@ -303,7 +305,7 @@ window.EISA_API_BASE_URL = 'http://localhost:8000';
 
 ## Belirsiz / Riskli Noktalar
 
-1. **QR tarama sonrası akış:** Eczacı QR okutunca session detayını görüyor ama sonrasında ne yapılacak? Danışmanlık sonuçlandırma endpoint'i yok gibi görünüyor. (Belirsiz)
+1. **Satış sonucu saklama:** Mevcut şemada ayrı satış sonucu alanı yok; completion endpoint `sale_result` değerini anlık response için döner ancak kalıcı kolon bulunmaz.
 2. **Playlist generation job polling:** Job durumu polling yapılıyor mu, yoksa kullanıcı manuel yenileme mi yapıyor? (Belirsiz)
 3. **Campaign targeting UI:** `CampaignTarget` hiyerarşisi UI'da tam destekleniyor mu, yoksa legacy `target_pharmacies` M2M mi kullanılıyor? (Belirsiz)
 4. **Pharmacist kısıtlamaları:** Backend'de pharmacist'in kendi eczanesine ait verileri filtreleme mantığı var mı? (Doğrulanmalı)

@@ -7,12 +7,12 @@
 - Backend ile iletisim scheduler uzerinden Pull + Push dongusu ile yapilir.
 
 Akis:
-1. Pull katalog: /api/products/sync/
-2. Pull kiosk reklam + lookup: /api/kiosk/v1/{kiosk_id}/sync/
-3. Ping versiyon kontrolu: /api/kiosk/v1/{kiosk_id}/ping/
-4. Playlist guncelleme: /api/kiosk/v1/{kiosk_id}/playlist/?date=YYYY-MM-DD
-5. Push oturum outbox: /api/analytics/sessions/
-6. Push proof-of-play outbox: /api/kiosk/v1/{kiosk_id}/proof-of-play/
+1. Pull katalog: /api/kiosk/v1/catalog/
+2. Pull kiosk reklam + lookup: /api/kiosk/v1/sync/
+3. Ping versiyon kontrolu: /api/kiosk/v1/ping/
+4. Playlist guncelleme: /api/kiosk/v1/playlist/?date=YYYY-MM-DD
+5. Push oturum outbox: /api/kiosk/v1/sessions/
+6. Push proof-of-play outbox: /api/kiosk/v1/proof-of-play/
 
 ## 2) Veri Guncelligi Stratejisi
 
@@ -43,8 +43,8 @@ Akis:
 
 ## 5) Operasyonel Oneriler
 
-- EISA_KIOSK_ID degeri backend'deki Kiosk.pk ile birebir ayni olmali.
-- EISA_KIOSK_APP_KEY + EISA_KIOSK_MAC backend kaydiyla eslesmeli.
+- Yalniz `EISA_KIOSK_FLEET_KEY` ve `EISA_KIOSK_PROVISIONING_SECRET` env'den okunur.
+- App Key ve MAC SQLite `kiosk_meta` icinde tutulur; backend kaydiyla eslesme bootstrap sonrasinda saglanir.
 - Pull/Push/Ping araliklari saha kosullarina gore ayarlanabilir:
   - Pull: 10-15 dk
   - Push: 1-5 dk

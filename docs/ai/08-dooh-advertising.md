@@ -19,7 +19,7 @@
 - `backend/apps/campaigns/models.py` — Campaign/Creative/Playlist/PlayLog models
 - `backend/apps/campaigns/services/scheduler.py` — Playlist generation
 - `backend/apps/campaigns/views_v2.py` → `ProofOfPlayView` (line 1068), DOOH v2 API
-- `backend/apps/campaigns/urls.py` → `/api/kiosk/v1/{id}/proof-of-play/` mapping (line 58)
+- `backend/apps/campaigns/urls.py` → `/api/kiosk/v1/proof-of-play/` mapping (line 58)
 - `kiosk_edge/api-node/src/db.js` — playlists/playlist_items/reklam_gosterim_outbox tables
 - `kiosk_edge/api-node/src/server.js` → `POST /api/reklam-gosterim` handler (line 406)
 - `kiosk_edge/api-node/src/scheduler.js` → `pushToCentral()` proof-of-play forwarding
@@ -212,9 +212,9 @@ class Playlist(BaseModel):
 ### Versioning
 ```
 1. Playlist üretildiğinde version artırılır
-2. Kiosk → GET /api/kiosk/v1/{id}/ping/ → { playlist_version: 42 }
+2. Kiosk → GET /api/kiosk/v1/ping/ → { playlist_version: 42 }
 3. Eğer lokal version != server version → playlist indir
-4. GET /api/kiosk/v1/{id}/playlist/?date=YYYY-MM-DD
+4. GET /api/kiosk/v1/playlist/?date=YYYY-MM-DD
 ```
 
 ---
@@ -267,13 +267,13 @@ class HouseAd(BaseModel):
 ```
 1. Scheduler (kiosk_edge/api-node: pingAndSyncPlaylist, ping ~60sn;
    ayrica pull 900sn / push 300sn — config.js varsayilanlari)
-   → GET /api/kiosk/v1/{kiosk_id}/ping/
+  → GET /api/kiosk/v1/ping/
    → Response: { kiosk_id, date, playlist_version: 42, updated_at, server_time }
 
 2. Lokal version kontrolü (SQLite kiosk_meta.playlist_version)
    → Eğer server > lokal ise:
 
-3. GET /api/kiosk/v1/{kiosk_id}/playlist/?date=YYYY-MM-DD  (Istanbul yerel tarih)
+3. GET /api/kiosk/v1/playlist/?date=YYYY-MM-DD  (Istanbul yerel tarih)
    → Response (GÜNÜN TÜM SAATLERİ tek istekte):
      {
        "kiosk_id": 12,
@@ -361,7 +361,7 @@ class PlayLog(BaseModel):
 **Backend implementation:**
 - File: `backend/apps/campaigns/views_v2.py`
 - Class: `ProofOfPlayView` (line 1068)
-- URL: `POST /api/kiosk/v1/{kiosk_id}/proof-of-play/`
+- URL: `POST /api/kiosk/v1/proof-of-play/`
 - Bulk ingest: `PlayLog.objects.bulk_create(bulk, batch_size=500)` (line 1101)
 
 ### Outbox Flow
@@ -375,7 +375,7 @@ class PlayLog(BaseModel):
 
 3. Scheduler → pushToCentral() (push ~300sn interval)
    → reads reklam_gosterim_outbox WHERE gonderilme_tarihi IS NULL
-   → POST /api/kiosk/v1/{kiosk_id}/proof-of-play/ { logs: [...] }
+  → POST /api/kiosk/v1/proof-of-play/ { logs: [...] }
 
 4. Backend (ProofOfPlayView) → PlayLog.bulk_create()
 

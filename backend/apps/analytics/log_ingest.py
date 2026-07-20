@@ -2,7 +2,7 @@
 Log ingestion görünümleri (teknik loglar için).
 
 İki uç sunar:
-  * `POST /api/analytics/diagnostic-ingest/` — kiosk cihazlarından batch olarak
+    * `POST /api/kiosk/v1/diagnostics/` — kiosk cihazlarından batch olarak
     gelen diagnostic outbox kayıtlarını normalize edip standart JSON logu olarak
     stdout'a yazar. Kayıtlar PostgreSQL'e YAZILMAZ; iş verisi değildir.
   * `POST /api/analytics/client-events/` — web panelinden gelen kritik client
@@ -27,11 +27,6 @@ from rest_framework.views import APIView
 
 from apps.core.logging.correlation import get_correlation_id
 from apps.core.logging.redaction import sanitize
-from apps.pharmacies.auth import (
-    KioskAppKeyAuthentication,
-    KioskIoTTokenAuthentication,
-)
-from apps.pharmacies.permissions import IsKiosk
 from core_api.cookie_jwt import JWTCookieAuthentication as JWTAuthentication
 
 # Kiosk diagnostic outbox event kayıtları için ayrı bir logger; formatter ortak
@@ -94,78 +89,59 @@ def _pick_allowed(item: dict[str, Any], allowed: Iterable[str]) -> dict[str, Any
     return {key: value for key, value in item.items() if key in allowed}
 
 
-class KioskDiagnosticIngestView(APIView):
-    """Kiosk diagnostic outbox batch ingestion endpoint'i."""
+def ingest_kiosk_diagnostic_items(kiosk, items: list[Any]) -> dict[str, Any]:
+    """Kiosk diagnostic outbox kayitlarini sanitize edip JSON stdout log'a yazar.
 
-    authentication_classes = [KioskIoTTokenAuthentication, KioskAppKeyAuthentication]
-    permission_classes = [IsKiosk]
-    throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "kiosk_diagnostic"
+    DB'ye YAZILMAZ; is verisi degildir. `items` cagirandan once dogrulanmis
+    (liste + boyut siniri) olmalidir. Doner: {accepted, rejected, errors,
+    accepted_keys}.
+    """
+    kiosk_id = getattr(kiosk, "pk", None)
+    pharmacy_id = getattr(kiosk, "eczane_id", None)
 
-    def post(self, request):
-        payload = request.data if isinstance(request.data, dict) else {}
-        items = payload.get("items")
-        if not isinstance(items, list) or not items:
-            return Response(
-                {"detail": "`items` boş olmayan bir liste olmalı."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        if len(items) > MAX_BATCH_ITEMS:
-            return Response(
-                {"detail": f"Batch en fazla {MAX_BATCH_ITEMS} kayıt içerebilir."},
-                status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            )
+    accepted_keys: list[str] = []
+    errors: list[dict[str, Any]] = []
+    base_correlation = get_correlation_id()
 
-        kiosk = request.user  # KioskIoTTokenAuthentication → (kiosk, token)
-        kiosk_id = getattr(kiosk, "pk", None)
-        pharmacy_id = getattr(kiosk, "eczane_id", None)
+    for index, raw in enumerate(items):
+        if not isinstance(raw, dict):
+            errors.append({"index": index, "error": "item_not_object"})
+            continue
+        filtered = _pick_allowed(raw, KIOSK_ALLOWED_FIELDS)
+        level = _normalize_level(filtered.get("level"))
+        event = _truncate(filtered.get("event") or "kiosk_diagnostic", MAX_EVENT_LEN)
+        message = _truncate(filtered.get("message") or event, MAX_MESSAGE_LEN)
+        context = filtered.get("context") if isinstance(filtered.get("context"), dict) else {}
+        if len(context) > MAX_CONTEXT_KEYS:
+            context = dict(list(context.items())[:MAX_CONTEXT_KEYS])
+        context = sanitize(context)
+        correlation_id = filtered.get("correlation_id") or base_correlation
 
-        accepted_keys: list[str] = []
-        errors: list[dict[str, Any]] = []
-        base_correlation = get_correlation_id()
+        extra = {
+            "event": event,
+            "kiosk_id": kiosk_id,
+            "pharmacy_id": pharmacy_id,
+            "source": "kiosk_diagnostic",
+            "context": context,
+        }
+        if correlation_id and isinstance(correlation_id, str):
+            extra["correlation_id"] = correlation_id[:64]
+        occurred_at = filtered.get("occurred_at")
+        if isinstance(occurred_at, str) and len(occurred_at) <= 64:
+            extra["occurred_at"] = occurred_at
 
-        for index, raw in enumerate(items):
-            if not isinstance(raw, dict):
-                errors.append({"index": index, "error": "item_not_object"})
-                continue
-            filtered = _pick_allowed(raw, KIOSK_ALLOWED_FIELDS)
-            level = _normalize_level(filtered.get("level"))
-            event = _truncate(filtered.get("event") or "kiosk_diagnostic", MAX_EVENT_LEN)
-            message = _truncate(filtered.get("message") or event, MAX_MESSAGE_LEN)
-            context = filtered.get("context") if isinstance(filtered.get("context"), dict) else {}
-            if len(context) > MAX_CONTEXT_KEYS:
-                context = dict(list(context.items())[:MAX_CONTEXT_KEYS])
-            context = sanitize(context)
-            correlation_id = filtered.get("correlation_id") or base_correlation
+        kiosk_diag_logger.log(_level_number(level), message, extra=extra)
 
-            extra = {
-                "event": event,
-                "kiosk_id": kiosk_id,
-                "pharmacy_id": pharmacy_id,
-                "source": "kiosk_diagnostic",
-                "context": context,
-            }
-            if correlation_id and isinstance(correlation_id, str):
-                extra["correlation_id"] = correlation_id[:64]
-            occurred_at = filtered.get("occurred_at")
-            if isinstance(occurred_at, str) and len(occurred_at) <= 64:
-                extra["occurred_at"] = occurred_at
+        key = raw.get("id") or raw.get("correlation_id")
+        if isinstance(key, (str, int)):
+            accepted_keys.append(str(key))
 
-            kiosk_diag_logger.log(_level_number(level), message, extra=extra)
-
-            key = raw.get("id") or raw.get("correlation_id")
-            if isinstance(key, (str, int)):
-                accepted_keys.append(str(key))
-
-        return Response(
-            {
-                "accepted": len(items) - len(errors),
-                "rejected": len(errors),
-                "errors": errors,
-                "accepted_keys": accepted_keys,
-            },
-            status=status.HTTP_202_ACCEPTED,
-        )
+    return {
+        "accepted": len(items) - len(errors),
+        "rejected": len(errors),
+        "errors": errors,
+        "accepted_keys": accepted_keys,
+    }
 
 
 class ClientEventIngestView(APIView):

@@ -1,190 +1,112 @@
 <script setup>
-/**
- * QR Scan — Eczacının kiosk QR kodunu okutarak hastanın anket oturumunu görmesi.
- *
- * AKIŞ:
- *  1. QR string'i okunur (kamera veya manuel).
- *  2. Önce LOKAL olarak bit-packing çözümü yapılır (offline destek).
- *     - Başarılıysa: payload.pharmacyId eczacının pharmacyId'siyle
- *       eşleşmeli. Eşleşmiyorsa "Bu barkod size ait değil" uyarısı.
- *     - Başarılı + sahip ise: ekranda görüntüle.
- *  3. Online ise opsiyonel olarak backend'den session detayı çekilerek
- *     görünüm zenginleştirilir.
- *
- * Format: 41-bit bit-packing → 8 karakter Base36 QR kod (şifreleme yok).
- */
-import { ref, onMounted, onUnmounted } from 'vue';
+import { nextTick, ref, onMounted } from 'vue';
 import { http } from '../../services/api';
-import { useAuthStore } from '../../stores/auth';
-import { decodeQrCode, QR_BITPACK_RE } from '../../services/qrBitpack';
 import { completeSession } from '../../services/analytics';
 
-const auth = useAuthStore();
+const QR_PATTERN = /^[0-9A-Z]{8}$/;
 
 const qrInput = ref('');
+const qrInputRef = ref(null);
 const session = ref(null);
 const loading = ref(false);
-const notFound = ref(false);
-const apiError = ref('');
-const ownershipError = ref('');
-const offlineMode = ref('');
+const lookupError = ref('');
 const completionNote = ref('');
 const completionLoading = ref(false);
 const completionError = ref('');
 
-// Kamera desteği
-const cameraSupported = ref(false);
-const cameraActive = ref(false);
-const videoRef = ref(null);
-let barcodeDetector = null;
-let scanInterval = null;
-let stream = null;
-
 onMounted(() => {
-  if ('BarcodeDetector' in window) {
-    cameraSupported.value = true;
-    barcodeDetector = new BarcodeDetector({ formats: ['qr_code'] });
-  }
+  focusQrInput();
 });
 
-onUnmounted(() => stopCamera());
-
-async function startCamera() {
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-    cameraActive.value = true;
-    setTimeout(() => {
-      if (videoRef.value) {
-        videoRef.value.srcObject = stream;
-        videoRef.value.play();
-      }
-      scanInterval = setInterval(scanFrame, 500);
-    }, 100);
-  } catch {
-    apiError.value = 'Kameraya erişilemedi. Lütfen tarayıcı izinlerini kontrol edin.';
-  }
-}
-
-function stopCamera() {
-  clearInterval(scanInterval);
-  if (stream) {
-    stream.getTracks().forEach((t) => t.stop());
-    stream = null;
-  }
-  cameraActive.value = false;
-}
-
-async function scanFrame() {
-  if (!videoRef.value || !barcodeDetector) return;
-  try {
-    const barcodes = await barcodeDetector.detect(videoRef.value);
-    if (barcodes.length > 0) {
-      qrInput.value = barcodes[0].rawValue;
-      stopCamera();
-      await lookup();
-    }
-  } catch {
-    /* kare okunamadı */
-  }
-}
-
-function payloadToSession(p) {
-  // Bitpack yalnızca 5 integer alan taşır; detaylar online zenginleştirmeyle gelir.
-  return {
-    pharmacy_id: p.pharmacyId,
-    kiosk_id:    p.kioskId,
-    category_id: p.categoryId,
-    qa_combo:    p.qaCombo,
-    product_id:  p.productId,
-    _source: 'qr',
-  };
+function focusQrInput() {
+  nextTick(() => {
+    qrInputRef.value?.focus();
+    qrInputRef.value?.select?.();
+  });
 }
 
 async function lookup() {
+  if (loading.value) return;
+
   const raw = qrInput.value.trim();
-  if (!raw) return;
-
-  loading.value = true;
-  notFound.value = false;
   session.value = null;
-  apiError.value = '';
-  ownershipError.value = '';
-  offlineMode.value = false;
+  lookupError.value = '';
+  completionError.value = '';
 
-  let decoded = null;
-  if (QR_BITPACK_RE.test(raw)) {
-    try {
-      decoded = decodeQrCode(raw);
-    } catch {
-      apiError.value =
-        'QR çözülemedi. Bu kod e-İSA sisteminden çıkmamış olabilir veya bozulmuş.';
-      loading.value = false;
-      return;
-    }
-
-    // Sahiplik kontrolü
-    if (auth.pharmacyId != null && decoded.pharmacyId != null && decoded.pharmacyId !== auth.pharmacyId) {
-      ownershipError.value = 'Bu barkod size ait değil.';
-      loading.value = false;
-      return;
-    }
-
-    session.value = payloadToSession(decoded);
+  if (!raw) {
+    lookupError.value = 'QR kodu giriniz.';
+    focusQrInput();
+    return;
   }
 
-  // Online zenginleştirme
-  const lookupCode = raw.toUpperCase();
+  if (!QR_PATTERN.test(raw)) {
+    lookupError.value = 'Geçersiz QR kodu.';
+    focusQrInput();
+    return;
+  }
+
+  loading.value = true;
   try {
-    const res = await http.get('/api/analytics/sessions/', {
-      params: { qr_code: lookupCode },
-    });
-    const results = Array.isArray(res.data) ? res.data : res.data.results ?? [];
-    if (results.length > 0) {
-      session.value = { ...(session.value ?? {}), ...results[0], _source: 'server' };
-    } else if (!session.value) {
-      notFound.value = true;
+    const res = await http.get('/api/analytics/sessions/', { params: { qr_kodu: raw } });
+    const payload = Array.isArray(res.data)
+      ? res.data[0]
+      : Array.isArray(res.data?.results)
+        ? res.data.results[0]
+        : res.data;
+
+    if (!payload) {
+      lookupError.value = 'QR koduna ait oturum bulunamadı.';
+      return;
     }
+
+    session.value = payload;
+    qrInput.value = '';
   } catch (err) {
-    if (err?.response?.status === 403) {
-      // Backend de sahibi olmadığını söyledi.
-      ownershipError.value = 'Bu barkod size ait değil.';
-      session.value = null;
-    } else if (!session.value) {
-      apiError.value = 'Sunucuya ulaşılamadı.';
+    const status = err?.response?.status;
+    if (status === 404) {
+      lookupError.value = 'QR koduna ait oturum bulunamadı.';
+    } else if (status === 403) {
+      lookupError.value = 'Bu QR kodu eczanenize ait değildir.';
+    } else if (status === 400) {
+      lookupError.value = err?.response?.data?.detail || 'Geçersiz QR kodu.';
     } else {
-      offlineMode.value = true;
+      lookupError.value = 'Sunucuya ulaşılamadı. Lütfen tekrar deneyin.';
     }
   } finally {
     loading.value = false;
+    focusQrInput();
   }
 }
 
-async function handleCompleteSession() {
+function onEnter() {
+  if (!loading.value) lookup();
+}
+
+async function handleCompleteSession(saleResult) {
   if (!session.value?.id || completionLoading.value) return;
 
   completionLoading.value = true;
   completionError.value = '';
   try {
-    const res = await completeSession(session.value.id, completionNote.value);
-    session.value = { ...session.value, ...res.data }; // Update local state with response
+    const res = await completeSession(session.value.id, completionNote.value, saleResult);
+    session.value = { ...session.value, ...res.data };
   } catch (err) {
     completionError.value =
       err?.response?.data?.detail || 'Danışma tamamlanırken bir hata oluştu.';
   } finally {
     completionLoading.value = false;
+    focusQrInput();
   }
 }
 
 function reset() {
   qrInput.value = '';
   session.value = null;
-  notFound.value = false;
-  apiError.value = '';
-  ownershipError.value = '';
-  offlineMode.value = false;
+  lookupError.value = '';
   completionNote.value = '';
   completionLoading.value = false;
   completionError.value = '';
+  focusQrInput();
 }
 
 const GENDER_LABEL = { F: 'Kadın', M: 'Erkek', O: 'Diğer', male: 'Erkek', female: 'Kadın' };
@@ -219,14 +141,16 @@ function formatDT(iso) {
         <div class="eisa-modal-body" style="padding:1.25rem 1.5rem;">
           <div style="display:flex;gap:0.75rem;margin-bottom:1rem;">
             <input
+              ref="qrInputRef"
               id="qr-input"
               name="qr_code"
               v-model="qrInput"
-              @keyup.enter="lookup"
+              @keydown.enter.prevent="onEnter"
               placeholder="8 karakterlik QR kod (ör. A1B2C3D4)"
               class="eisa-field"
               style="flex:1;font-family:'DM Mono',monospace;letter-spacing:0.05em;"
               :disabled="loading"
+              autocomplete="off"
             />
             <button
               id="qr-lookup-btn"
@@ -239,72 +163,30 @@ function formatDT(iso) {
               {{ loading ? '…' : 'Sorgula' }}
             </button>
           </div>
-
-          <div v-if="cameraSupported" style="display:flex;align-items:center;gap:0.75rem;">
-            <button
-              id="camera-toggle-btn"
-              class="eisa-btn"
-              :class="cameraActive ? 'eisa-btn-danger' : 'eisa-btn-ghost'"
-              @click="cameraActive ? stopCamera() : startCamera()"
-            >
-              <i class="fa-solid fa-camera"></i>
-              {{ cameraActive ? 'Kamerayı Durdur' : 'Kamera ile Tara' }}
-            </button>
-            <span v-if="cameraActive" style="font-size:0.75rem;color:#9CA3AF;animation:pulse 1s infinite;">QR bekleniyor…</span>
-          </div>
-
-          <div v-if="cameraActive" class="qr-video-wrap" style="margin-top:1rem;">
-            <video ref="videoRef" class="qr-video" muted playsinline />
-          </div>
         </div>
       </div>
 
-      <!-- Ownership Error -->
-      <div v-if="ownershipError" class="eisa-error-banner" style="margin-bottom:1.5rem;text-align:center;flex-direction:column;gap:0.5rem;padding:1.5rem;">
-        <i class="fa-solid fa-ban" style="font-size:1.5rem;"></i>
-        <p style="font-weight:700;">{{ ownershipError }}</p>
-        <p style="font-size:0.8rem;">Bu QR kod başka bir eczanenin kioskundan üretilmiş.</p>
-        <button class="eisa-btn eisa-btn-ghost" style="margin-top:0.5rem;" @click="reset">Yeniden Dene</button>
-      </div>
-
-      <!-- API Error -->
-      <div v-else-if="apiError" class="eisa-error-banner" style="margin-bottom:1.5rem;">
+      <div v-if="lookupError" class="eisa-error-banner" style="margin-bottom:1.5rem;">
         <i class="fa-solid fa-triangle-exclamation"></i>
-        {{ apiError }}
-      </div>
-
-      <!-- Offline Warning -->
-      <div v-if="offlineMode" class="eisa-error-banner" style="background:rgba(245,158,11,0.06);border-color:rgba(245,158,11,0.3);color:#92400E;margin-bottom:1.5rem;">
-        <i class="fa-solid fa-wifi-slash"></i>
-        Sunucuya ulaşılamadı; veriler QR'dan okundu (offline mod).
-      </div>
-
-      <!-- Not Found -->
-      <div v-if="notFound" style="text-align:center;padding:2rem;color:#6B7280;">
-        <i class="fa-solid fa-circle-question" style="font-size:2rem;margin-bottom:0.75rem;display:block;"></i>
-        <p style="font-weight:600;margin-bottom:0.3rem;">Oturum bulunamadı</p>
-        <p style="font-size:0.8rem;margin-bottom:0.75rem;">
-          <code style="font-family:'DM Mono',monospace;font-weight:700;">{{ qrInput.trim() }}</code> koduna ait kayıt yok.
-        </p>
-        <button class="eisa-btn eisa-btn-ghost" @click="reset">Yeniden Dene</button>
+        {{ lookupError }}
       </div>
 
       <!-- Session Result -->
-      <div v-if="session && !ownershipError" class="qr-result-card">
+      <div v-if="session" class="qr-result-card">
 
         <div class="qr-result-header">
           <div>
             <h2 style="font-size:1rem;font-weight:700;color:#111827;margin-bottom:0.2rem;">Hasta Oturumu</h2>
-            <p style="font-size:0.72rem;color:#9CA3AF;">{{ formatDT(session.created_at) }}</p>
+            <p style="font-size:0.72rem;color:#9CA3AF;">{{ formatDT(session.olusturulma_tarihi || session.created_at) }}</p>
           </div>
           <div style="text-align:right;">
             <p style="font-size:0.7rem;color:#9CA3AF;margin-bottom:0.2rem;">QR Kodu</p>
-            <p style="font-family:'DM Mono',monospace;font-weight:700;font-size:1.25rem;letter-spacing:0.1em;color:#111827;">{{ session.qr_code }}</p>
+            <p style="font-family:'DM Mono',monospace;font-weight:700;font-size:1.25rem;letter-spacing:0.1em;color:#111827;">{{ session.qr_kodu || session.qr_code }}</p>
           </div>
         </div>
 
         <!-- Sensitive Alert -->
-        <div v-if="session.is_sensitive_flow" class="qr-sensitive-bar">
+        <div v-if="session.hassas_akis || session.is_sensitive_flow" class="qr-sensitive-bar">
           <i class="fa-solid fa-triangle-exclamation"></i>
           <span>Hassas Konu — Hasta bu konuyu kalabalık içinde söylemek istemedi.</span>
         </div>
@@ -313,29 +195,52 @@ function formatDT(iso) {
         <div class="qr-result-section qr-grid-2">
           <div>
             <p class="qr-detail-label">Yaş Aralığı</p>
-            <p class="qr-detail-value">{{ session.age_range || session.yas_araligi_kod }}</p>
+            <p class="qr-detail-value">{{ session.yas_araligi_detay?.ad || session.age_range || session.yas_araligi_kod || '—' }}</p>
           </div>
           <div>
             <p class="qr-detail-label">Cinsiyet</p>
-            <p class="qr-detail-value">{{ GENDER_LABEL[session.gender || session.cinsiyet_kod] ?? (session.gender || session.cinsiyet_kod) }}</p>
+            <p class="qr-detail-value">{{ session.cinsiyet_detay?.ad || (GENDER_LABEL[session.gender || session.cinsiyet_kod] ?? (session.gender || session.cinsiyet_kod)) }}</p>
           </div>
           <div style="grid-column:1/span 2;">
             <p class="qr-detail-label">Seçilen Kategori</p>
             <p class="qr-detail-value">
-              {{ session.kategori_adi ?? session.category?.name ?? session.category_name ?? session.category_slug ?? '—' }}
+              {{ session.kategori_detay?.ad ?? session.kategori_adi ?? session.category?.name ?? session.category_name ?? session.category_slug ?? '—' }}
             </p>
+          </div>
+          <div>
+            <p class="qr-detail-label">Kiosk</p>
+            <p class="qr-detail-value">{{ session.kiosk_detay?.ad || session.kiosk_mac || '—' }}</p>
+          </div>
+          <div>
+            <p class="qr-detail-label">Eczane</p>
+            <p class="qr-detail-value">{{ session.eczane?.ad || session.eczane_adi || '—' }}</p>
           </div>
         </div>
 
+        <div class="qr-result-section" v-if="session.cevap_detaylari?.length">
+          <p class="qr-detail-label" style="margin-bottom:0.5rem;">Soru ve Cevaplar</p>
+          <ol style="margin:0;padding-left:1rem;display:grid;gap:0.5rem;">
+            <li v-for="item in session.cevap_detaylari" :key="`${item.soru_id}-${item.cevap_id}-${item.sira}`" style="font-size:0.85rem;color:#111827;">
+              <strong>{{ item.soru_metni }}</strong>
+              <div style="color:#4B5563;">Yanıt: {{ item.cevap_metni }}</div>
+            </li>
+          </ol>
+        </div>
+
         <!-- Suggested Ingredients -->
-        <div v-if="session.suggested_ingredients?.length" class="qr-result-section">
+        <div
+          v-if="session.onerilen_etken_madde_detaylari?.length || session.onerilen_etken_maddeler?.length || session.suggested_ingredients?.length"
+          class="qr-result-section"
+        >
           <p class="qr-detail-label" style="margin-bottom:0.5rem;">Önerilen Etken Maddeler</p>
           <div style="display:flex;flex-wrap:wrap;gap:0.5rem;">
             <span
-              v-for="ing in session.suggested_ingredients"
-              :key="ing"
+              v-for="ing in (session.onerilen_etken_madde_detaylari?.length
+                ? session.onerilen_etken_madde_detaylari
+                : (session.onerilen_etken_maddeler || session.suggested_ingredients || []).map((v) => ({ id: v?.id || v, ad: v?.ad || v })))"
+              :key="ing.id || ing.ad"
               class="eisa-pill eisa-pill-info"
-            >{{ ing }}</span>
+            >{{ ing.ad }}</span>
           </div>
         </div>
 
@@ -352,10 +257,13 @@ function formatDT(iso) {
             {{ session.danisma_tamamlayan_eczaci_adi }} tarafından
             {{ formatDT(session.danisma_tamamlanma_tarihi) }} tarihinde tamamlandı.
           </p>
+          <p class="qr-completion-meta" style="padding-left:1.75rem; margin-top:0.4rem;">
+            Satış sonucu: {{ session.satis_sonucu || 'Mevcut şemada kayıtlı değil' }}
+          </p>
         </div>
 
         <!-- Completion Action (if not completed) -->
-        <div v-if="!session.danisma_tamamlandi && session._source === 'server'" class="qr-result-section qr-completion-action">
+        <div v-if="!session.danisma_tamamlandi" class="qr-result-section qr-completion-action">
           <p class="qr-detail-label" style="margin-bottom:0.5rem;">Danışma Notu (Opsiyonel)</p>
           <textarea
             v-model="completionNote"
@@ -364,16 +272,26 @@ function formatDT(iso) {
             class="eisa-field"
             style="margin-bottom:0.75rem;"
           ></textarea>
-          <button
-            class="eisa-btn eisa-btn-success"
-            style="width:100%;"
-            :disabled="completionLoading"
-            @click="handleCompleteSession"
-          >
-            <i v-if="completionLoading" class="fa-solid fa-circle-notch fa-spin"></i>
-            <i v-else class="fa-solid fa-check"></i>
-            Danışmayı Tamamlandı Olarak İşaretle
-          </button>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;">
+            <button
+              class="eisa-btn eisa-btn-success"
+              :disabled="completionLoading"
+              @click="handleCompleteSession('sold')"
+            >
+              <i v-if="completionLoading" class="fa-solid fa-circle-notch fa-spin"></i>
+              <i v-else class="fa-solid fa-check"></i>
+              Satış Yaptım
+            </button>
+            <button
+              class="eisa-btn eisa-btn-ghost"
+              :disabled="completionLoading"
+              @click="handleCompleteSession('not_sold')"
+            >
+              <i v-if="completionLoading" class="fa-solid fa-circle-notch fa-spin"></i>
+              <i v-else class="fa-solid fa-xmark"></i>
+              Satış Yapmadım
+            </button>
+          </div>
           <p v-if="completionError" class="eisa-error-text" style="margin-top:0.5rem;text-align:center;">
             {{ completionError }}
           </p>
@@ -382,7 +300,7 @@ function formatDT(iso) {
         <!-- Footer -->
         <div class="qr-result-section" style="display:flex;align-items:center;justify-content:space-between;background:#F9FAFB;border-radius:0 0 0.875rem 0.875rem;margin:-0;padding:0.75rem 1.25rem;">
           <span style="font-size:0.75rem;color:#6B7280;">
-            Kiosk: <span style="font-weight:600;color:#374151;">{{ session.kiosk?.mac_address ?? session.kiosk_mac ?? '—' }}</span>
+            Kiosk MAC: <span style="font-weight:600;color:#374151;">{{ session.kiosk_detay?.mac_adresi ?? session.kiosk?.mac_address ?? session.kiosk_mac ?? '—' }}</span>
           </span>
           <button class="eisa-btn eisa-btn-ghost" style="font-size:0.78rem;" @click="reset">Yeni Sorgulama</button>
         </div>

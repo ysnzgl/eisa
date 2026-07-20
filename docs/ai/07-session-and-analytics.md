@@ -50,7 +50,7 @@ QuestionScreen: soru/cevap akışı
 ### 3. Session Tamamlanması (Başarılı)
 ```
 ResultScreen
-  → QR kodu üretimi: "EISA-" + timestamp + "-" + randomHex(8)
+  → QR kodu üretimi: 8 karakter Base36 (0-9A-Z)
   → QR canvas'a render (qr-creator library)
   → POST http://localhost:5234/sessions
     {
@@ -59,7 +59,7 @@ ResultScreen
       "cinsiyet_id": 1,
       "kategori_id": 5,
       "hassas_akis": false,
-      "qr_kodu": "EISA-...",
+      "qr_kodu": "A1B2C3D4",
       "cevaplar": { soru_id: cevap_id, ... },
       "onerilen_etken_maddeler": ["Melatonin", "Valerian"],
       "tamamlandi": true
@@ -105,8 +105,8 @@ WelcomeScreen → "Eczacınıza Danışın" butonu
 
 ### Format
 ```
-"EISA-" + timestamp + "-" + randomHex(8)
-Örnek: "EISA-1717592400-A3F8D2E1"
+8 karakter Base36 (0-9A-Z)
+Örnek: "A1B2C3D4"
 ```
 
 ### Generation Logic (kiosk_edge/ui)
@@ -169,7 +169,7 @@ CREATE UNIQUE INDEX idx_oturum_idempotency
    }
 3. Scheduler (pushOutbox, 1dk interval)
    → SELECT * FROM oturum_outbox WHERE gonderilme_tarihi IS NULL
-   → Batch POST /api/kiosk/v1/{kiosk_id}/sync/ { sessions: [...] }
+  → Batch POST /api/kiosk/v1/sessions/ { sessions: [...] }
 4. Backend → OturumLogu bulk create
 5. Lokal API → UPDATE oturum_outbox SET gonderilme_tarihi = NOW()
 ```
@@ -244,9 +244,9 @@ GET /api/analytics/oturum-loglari/
 #### Flow
 ```
 1. Eczacı → /pharmacist/qr sayfası
-2. QR okutma (kamera veya manuel input)
+2. Fiziksel barkod okuyucu input'a QR yazar ve Enter gönderir (kamera akışı yok)
 3. GET /api/analytics/sessions/?qr_kodu={qr_kodu}
-4. Backend → OturumLogu.objects.filter(qr_kodu=qr, kiosk__eczane_id=user.eczane_id).first()
+4. Backend → QR format doğrulama + oturum bulma + sahiplik kontrolü
 5. Response:
    {
      "id": "uuid",
@@ -266,7 +266,7 @@ GET /api/analytics/oturum-loglari/
 6. Modal gösterimi: Oturum detayı ve "Danışmayı Tamamla" butonu gösterilir.
 7. Eczacı not ekler (opsiyonel) ve butona tıklar.
 8. POST /api/analytics/sessions/{id}/complete/
-   { "note": "Hastaya X ürünü tavsiye edildi." }
+  { "note": "Hastaya danışmanlık verildi.", "sale_result": "sold|not_sold" }
 9. Backend:
    - OturumLogu'nu bulur ve eczane sahipliğini kontrol eder.
    - `danisma_tamamlandi`, `danisma_tamamlanma_tarihi`, `danisma_notu`, `danisma_tamamlayan_eczaci` alanlarını günceller.
@@ -284,7 +284,7 @@ GET /api/analytics/oturum-loglari/
 3. **Outbox tam dolunca:** Log kaybı riski, overwrite/block mekanizması yok
 4. **Session timeout:** 10sn çok kısa olabilir, configurable değil
 5. **Abandoned session tracking:** Terk edilmiş session'lar analytics'te görünüyor mu?
-- **QR tarama sonrası akış:** Danışmanlık sonuçlandırma eksik
+- **Satış sonucu kalıcılığı:** Mevcut şemada ayrı satış sonucu kolonu yok; completion response'ta anlık metin üretilebilir, ancak DB'de kalıcı alan bulunmaz.
 
 ---
 

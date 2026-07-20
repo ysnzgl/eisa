@@ -1,23 +1,21 @@
 """Kiosk kimlik dogrulama.
 
-Iki katmanli IoT auth modeli:
-  1. X-Kiosk-Key  : Fleet anahtari — tum cihazlarda ayni, her istekte gonder.
-  2. IoT Token    : Per-device, TTL'li, provision sonrasi verilir.
-                    Header: Authorization: Bearer <token>
+Operasyonel endpoint'ler icin TEK contract::
+    Authorization: AppKey <APP_KEY>
+    X-Kiosk-MAC:   <NORMALIZED_MAC>
 
-Provision akisi:
-  - Kiosk: HMAC-SHA256(MAC_UPPER + iso_timestamp, KIOSK_PROVISIONING_SECRET) gonderir.
-  - Backend: HMAC dogrular, timestamp tazelik kontrolu yapar, IoT token verir.
+Provisioning (bootstrap) icin ayri dogrulama (kiosk_api.views.KioskBootstrapView):
+  - Kiosk: HMAC-SHA256(MAC_UPPER + iso_timestamp, KIOSK_PROVISIONING_SECRET) + X-Kiosk-Key (fleet).
+  - Backend: fleet key + HMAC + timestamp tazelik kontrolu yapar.
+
+Bu endpoint'lerde App Key + MAC disinda kimlik kullanilmaz.
 """
 from __future__ import annotations
 
-import base64
 import hashlib
 import hmac as _hmac
-import json
 import logging
 import secrets
-import time as _time
 from datetime import datetime, timedelta, timezone as _tz
 
 from django.conf import settings
@@ -29,46 +27,7 @@ from apps.audit.models import DenetimLogu, kayit_birak
 from .models import Kiosk
 
 
-# ── IoT Token (HMAC-SHA256 imzali, base64url payload) ────────────────────────
-
-def _provisioning_secret() -> str:
-    return getattr(settings, "KIOSK_PROVISIONING_SECRET", "") or ""
-
-
-def create_iot_token(kiosk_id: int, pharmacy_id: int, mac: str) -> str:
-    """Kiosk icin imzali IoT token uretir."""
-    secret = _provisioning_secret()
-    ttl_days: int = getattr(settings, "KIOSK_IOT_TOKEN_TTL_DAYS", 7)
-    exp = int(_time.time()) + ttl_days * 86400
-    payload = json.dumps(
-        {"kiosk_id": kiosk_id, "pharmacy_id": pharmacy_id, "mac": mac.upper(), "exp": exp},
-        separators=(",", ":"),
-        sort_keys=True,
-    )
-    payload_b64 = base64.urlsafe_b64encode(payload.encode()).decode().rstrip("=")
-    sig = _hmac.new(secret.encode(), payload_b64.encode(), hashlib.sha256).hexdigest()
-    return f"{payload_b64}.{sig}"
-
-
-def verify_iot_token(token: str) -> dict | None:
-    """Token'i dogrular; gecersiz/suresi dolmussa None doner."""
-    secret = _provisioning_secret()
-    if not secret or not token:
-        return None
-    try:
-        payload_b64, sig = token.rsplit(".", 1)
-        expected = _hmac.new(secret.encode(), payload_b64.encode(), hashlib.sha256).hexdigest()
-        if not _hmac.compare_digest(sig, expected):
-            return None
-        padding = 4 - len(payload_b64) % 4
-        padded = payload_b64 + "=" * (padding % 4)
-        data = json.loads(base64.urlsafe_b64decode(padded).decode())
-        if data.get("exp", 0) < _time.time():
-            return None
-        return data
-    except Exception:
-        return None
-
+# ── Legacy provisioning temizligi (App Key'e gecildi) ───────────────────
 
 # ── Provision HMAC dogrulama ─────────────────────────────────────────────────
 
@@ -131,69 +90,67 @@ def _update_last_seen(kiosk: "Kiosk", request) -> None:
             logger.exception("Kiosk online audit kaydi olusturulamadi (mac=%s)", kiosk.mac_adresi)
 
 
-class KioskIoTTokenAuthentication(authentication.BaseAuthentication):
-    """IoT token (Bearer) + X-Kiosk-Key fleet anahtari ile kimlik dogrulama.
-
-    Her istekte:
-      - X-Kiosk-Key: <KIOSK_FLEET_KEY>          (fleet kimlik)
-      - Authorization: Bearer <iot_token>        (cihaz kimlik, TTL'li)
-    """
-
-    def authenticate(self, request):
-        # Fleet key kontrolu
-        if not check_fleet_key(request):
-            return None  # kiosk istegi degil
-
-        auth_header = request.headers.get("Authorization", "")
-        if not auth_header.startswith("Bearer "):
-            return None
-        token = auth_header[7:].strip()
-
-        data = verify_iot_token(token)
-        if data is None:
-            raise exceptions.AuthenticationFailed(
-                "Gecersiz veya suresi dolmus IoT token. Yeniden provision gerekiyor."
-            )
-
-        kiosk_id = data.get("kiosk_id")
-        try:
-            kiosk = Kiosk.objects.select_related("eczane").get(pk=kiosk_id, aktif=True)
-        except Kiosk.DoesNotExist:
-            raise exceptions.AuthenticationFailed("IoT token'a ait kiosk bulunamadi veya pasif.")
-
-        _update_last_seen(kiosk, request)
-        return (kiosk, token)
+def normalize_mac(raw: str) -> str:
+    """MAC'i tek bicime getirir: buyuk harf + ':' ayirici (AA:BB:CC:DD:EE:FF)."""
+    return (raw or "").strip().upper().replace("-", ":")
 
 
 class KioskAppKeyAuthentication(authentication.BaseAuthentication):
-    """Legacy: `Authorization: AppKey <key>` ile kimlik dogrulama.
-    Geriye donuk uyumluluk icin korunur. Yeni cihazlar IoT token kullanmali.
+    """App Key + MAC ile kiosk kimlik dogrulama (TEK operasyonel yontem).
+
+    Contract::
+        Authorization: AppKey <APP_KEY>
+        X-Kiosk-MAC:   <MAC>
+
+    Bearer / IoT / JWT / Fleet key bu yol icin gecersizdir. Basarili
+    dogrulamada ``request.kiosk`` atanir ve ``(kiosk, app_key)`` doner.
+
+    Durum kodlari:
+      401 — App Key/MAC eksik veya App Key gecersiz (kimlik saglanamadi).
+      403 — Kiosk pasif/onaysiz veya eczaneye bagli degil (yetki yok).
     """
 
     keyword = "AppKey"
 
+    def authenticate_header(self, request):
+        # Kimlik saglanamadiginda DRF'nin 401 (403 degil) donmesini saglar.
+        return self.keyword
+
     def authenticate(self, request):
         auth = request.headers.get("Authorization", "").split()
+        # Bu contract disinda bir sema (Bearer vb.) => bu authenticator kimlik saglamaz.
         if not auth or auth[0] != self.keyword:
             return None
         if len(auth) != 2:
-            raise exceptions.AuthenticationFailed("Gecersiz App-Key basligi.")
-
+            raise exceptions.AuthenticationFailed(
+                {"detail": "Gecersiz App-Key basligi.", "code": "app_key_malformed"}
+            )
         key = auth[1]
-        mac = request.headers.get("X-Kiosk-MAC", "")
-        if not mac:
-            raise exceptions.AuthenticationFailed("X-Kiosk-MAC basligi eksik.")
 
-        candidates = Kiosk.objects.select_related("eczane").filter(
-            mac_adresi=mac, aktif=True
-        )
-        kiosk = None
-        for candidate in candidates:
-            if secrets.compare_digest(str(candidate.uygulama_anahtari), key):
-                kiosk = candidate
-                break
-        if kiosk is None:
-            raise exceptions.AuthenticationFailed("Kiosk dogrulanamadi.")
+        mac = normalize_mac(request.headers.get("X-Kiosk-MAC", ""))
+        if not mac:
+            raise exceptions.AuthenticationFailed(
+                {"detail": "X-Kiosk-MAC basligi eksik.", "code": "mac_missing"}
+            )
+
+        # MAC ile kiosk bul (aktif filtresi YOK; once App Key dogrula, sonra durum).
+        kiosk = Kiosk.objects.select_related("eczane").filter(mac_adresi=mac).first()
+        if kiosk is None or not secrets.compare_digest(str(kiosk.uygulama_anahtari), key):
+            # MAC/App Key cifti gecersiz — hangi tarafin hatali oldugu belirtilmez.
+            raise exceptions.AuthenticationFailed(
+                {"detail": "Kimlik dogrulanamadi.", "code": "app_key_invalid"}
+            )
+
+        # App Key gecerli; yetki/durum kontrolleri => 403.
+        if not kiosk.aktif:
+            raise exceptions.PermissionDenied(
+                {"detail": "Kiosk pasif veya onaysiz.", "code": "kiosk_inactive"}
+            )
+        if kiosk.eczane_id is None:
+            raise exceptions.PermissionDenied(
+                {"detail": "Kiosk bir eczaneye bagli degil.", "code": "kiosk_unlinked"}
+            )
 
         _update_last_seen(kiosk, request)
+        request.kiosk = kiosk
         return (kiosk, key)

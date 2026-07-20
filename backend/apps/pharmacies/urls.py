@@ -5,7 +5,6 @@ from rest_framework.routers import DefaultRouter
 from .dashboard import EczaciDashboardView
 from .views import (
     EczaneViewSet,
-    KioskBootstrapView,
     KioskProvisioningApproveView,
     KioskProvisioningDetailView,
     KioskProvisioningListView,
@@ -18,7 +17,6 @@ kiosk_router.register(r"kiosks", KioskViewSet, basename="kiosk")
 
 urlpatterns = [
     path("me/dashboard/", EczaciDashboardView.as_view(), name="eczaci-dashboard"),
-    path("kiosks/bootstrap/", KioskBootstrapView.as_view(), name="kiosk-bootstrap"),
     # Admin: onay bekleyen cihaz yonetimi
     path("kiosks/provisioning/", KioskProvisioningListView.as_view(), name="kiosk-provisioning-list"),
     path("kiosks/provisioning/<uuid:pk>/", KioskProvisioningDetailView.as_view(), name="kiosk-provisioning-detail"),

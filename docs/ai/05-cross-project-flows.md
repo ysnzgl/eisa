@@ -23,8 +23,8 @@ Uygulama operasyonel logları PostgreSQL'e yazılmaz; standart JSON stdout üzer
 kiosk_edge/api-node (WARN/ERROR/CRITICAL event)
   → SQLite diagnostic_outbox (bounded: 5000 satir, 7 gun, FIFO)
   → scheduler.pushDiagnostics (varsayilan 120 sn)
-  → POST /api/analytics/diagnostic-ingest/  { items: [{level, event, message, context, correlation_id, occurred_at}] }
-    Header: X-Kiosk-Key + Authorization Bearer <iot_token> + X-Correlation-ID
+  → POST /api/kiosk/v1/diagnostics/  { items: [{level, event, message, context, correlation_id, occurred_at}] }
+    Header: Authorization: AppKey <app_key> + X-Kiosk-MAC + X-Correlation-ID
   → Backend: kiosk auth + rate limit + allow-list; sanitize eder; DB'ye YAZMAZ
   → Backend: JSON log stdout (`logger=eisa.kiosk.diagnostic`)
   → Response 202 { accepted, rejected, errors, accepted_keys } → outbox kayitlari silinir
@@ -60,7 +60,7 @@ Tum akislarda `X-Correlation-ID` basligi tasinir; backend uretir veya guvenli gi
 **0.1. Kayıtsız Cihaz Bootstrap İsteği**
 ```
 kiosk_edge/api-node (provisioning.js: resolveRuntimeSettings)
-  → POST /api/pharmacies/kiosks/bootstrap/
+  → POST /api/kiosk/v1/bootstrap/
     Header: X-Kiosk-Key: <fleet_key>
     Body: { "mac_adresi": "AA:BB:CC:DD:EE:FF", "timestamp": "...", "hmac": "..." }
   → Backend: fleet_key + HMAC doğrulama
@@ -86,12 +86,12 @@ SuperAdmin (web_panels/PendingDevices.vue)
 
 **0.3. Onaylanmış Cihaz Bootstrap**
 ```
-kiosk_edge/api-node (scheduler: refreshIotTokenIfNeeded, her 60s)
-  → POST /api/pharmacies/kiosks/bootstrap/ (aynı credentials)
-  → Backend: MAC ile Kiosk bulunur (artık kayıtlı)
-  → Response 200: { "iot_token": "...", "kiosk_id": 1, ... }
-  → kiosk_edge: iot_token SQLite'a yazılır, provisioning_state = 'APPROVED'
-  → Normal scheduler syncs başlar
+kiosk_edge/api-node (provisioning.js: resolveRuntimeSettings, açılışta/scheduler döngüsünde)
+  → POST /api/kiosk/v1/bootstrap/ (aynı credentials)
+  → Backend: MAC ile Kiosk bulunur (artık kayıtlı, aktif, eczaneli)
+  → Response 200: { "status": "APPROVED", "kiosk_id": 1, "pharmacy_id": 1, "app_key": "..." }
+  → kiosk_edge: app_key + kiosk_id + pharmacy_id SQLite kiosk_meta'ya yazılır, provisioning_state = 'APPROVED'
+  → Operasyonel çağrılar Authorization: AppKey + X-Kiosk-MAC ile başlar
 ```
 
 **0.4. Reddedilen Cihaz**
@@ -142,7 +142,7 @@ SuperAdmin (web_panels)
 **1.3. Kiosk Senkronizasyonu**
 ```
 kiosk_edge/api-node (scheduler: pullFromCentral, her 5dk)
-  → GET /api/kiosk/v1/{kiosk_id}/sync/
+  → GET /api/kiosk/v1/catalog/
   → Backend: Kategori.objects.filter(aktif=True) + Soru + Cevap + EtkenMadde
   → Response JSON:
     {
@@ -225,11 +225,11 @@ Backend (django_apscheduler job, her gece veya manuel)
 **2.5. Kiosk Playlist Senkronizasyonu**
 ```
 kiosk_edge/api-node (scheduler: pingAndSyncPlaylist, her 10dk)
-  → GET /api/kiosk/v1/{kiosk_id}/ping/
+  → GET /api/kiosk/v1/ping/
   → Backend: { "playlist_version": 42 }
   → kiosk_edge/api-node: Lokal version kontrolü (SQLite kiosk_meta.playlist_version)
   → Eğer farklıysa:
-    → GET /api/kiosk/v1/{kiosk_id}/playlist/?date=2026-06-05
+    → GET /api/kiosk/v1/playlist/?date=2026-06-05
     → Backend: Playlist + PlaylistItem JSON
     → kiosk_edge/api-node: SQLite upsert (playlists, playlist_items)
 ```
@@ -291,7 +291,7 @@ kiosk_edge/api-node (scheduler: pushToCentral, her ~5dk)
         }
       ]
     }
-  → POST /api/kiosk/v1/{kiosk_id}/proof-of-play/
+  → POST /api/kiosk/v1/proof-of-play/
   → Backend: PlayLog bulk insert
   → kiosk_edge/api-node: UPDATE reklam_gosterim_outbox SET gonderilme_tarihi = NOW() WHERE id IN (...)
 ```
@@ -328,7 +328,7 @@ kiosk_edge/ui (ResultScreen)
       "cinsiyet_id": 1,
       "kategori_id": 5,
       "hassas_akis": false,
-      "qr_kodu": "EISA-1717592400-A3F8D2E1",
+      "qr_kodu": "A1B2C3D4",
       "cevaplar": { "soru_1": "cevap_1", ... },
       "onerilen_etken_maddeler": ["Melatonin", "Valerian"],
       "tamamlandi": true
@@ -360,7 +360,7 @@ kiosk_edge/api-node (scheduler: pushOutbox, her 1dk)
         ...
       ]
     }
-  → POST /api/kiosk/v1/{kiosk_id}/sync/
+  → POST /api/kiosk/v1/sessions/
   → Backend: OturumLogu bulk get_or_create (idempotency_anahtari ile duplikasyon koruması)
   → kiosk_edge/api-node: UPDATE oturum_outbox SET gonderilme_tarihi = NOW() WHERE id IN (...)
 ```
@@ -368,9 +368,9 @@ kiosk_edge/api-node (scheduler: pushOutbox, her 1dk)
 **4.5. QR Tarama (Eczacı — web_panels)**
 ```
 Eczacı (web_panels/QrScan)
-  → QR okutma → qr_kodu = "EISA-1717592400-A3F8D2E1"
-  → GET /api/pharmacies/sessions/?qr=EISA-1717592400-A3F8D2E1
-  → Backend: OturumLogu.objects.filter(qr_kodu=qr)
+  → Fiziksel barkod okuyucu ile input'a 8 karakter QR yazılır + Enter
+  → GET /api/analytics/sessions/?qr_kodu=A1B2C3D4
+  → Backend: QR format doğrulama + sahiplik kontrolü + OturumLogu detay response
   → Response:
     {
       "id": "uuid",
@@ -395,7 +395,7 @@ Eczacı (web_panels/QrScan)
 **5.1. QR Üretimi (Kiosk UI — ResultScreen)**
 ```
 kiosk_edge/ui (ResultScreen.svelte)
-  → QR kodu string: "EISA-" + timestamp + "-" + randomHex(8)
+  → QR kodu string: 8 karakter Base36 (0-9A-Z)
   → qr-creator library: QR kod canvas'a render
   → Ekranda gösterim: "Eczaciniza bu QR kodu okutunuz"
   → Session log (4.2'deki gibi) → qr_kodu alanı ile kaydedilir
@@ -404,10 +404,9 @@ kiosk_edge/ui (ResultScreen.svelte)
 **5.2. QR Tarama (Eczacı — web_panels QrScan)**
 ```
 Eczacı (web_panels/QrScan.vue)
-  → Kamera ile QR okutma (HTML5 getUserMedia + canvas)
-  → veya manuel QR kodu girişi (input field)
-  → qr_kodu = "EISA-1717592400-A3F8D2E1" → trim, uppercase
-  → GET /api/pharmacies/sessions/?qr={qr_kodu}
+  → Kamera kullanılmaz; yalnız input + Enter akışı vardır
+  → qr_kodu = "A1B2C3D4" → trim (case dönüştürme yok)
+  → GET /api/analytics/sessions/?qr_kodu={qr_kodu}
   → Backend: OturumLogu lookup
   → Modal: Session detayı + önerilen etken maddeler
   → (Belirsiz: Danışmanlık sonuçlandırma endpoint'i yok gibi)
@@ -429,7 +428,7 @@ Eczacı → session detayı görüntüleme sonrası:
 **Critical cross-project data flows:**
 
 1. **Kategori Sync Chain:**
-   - Backend models → `/api/kiosk/v1/{id}/sync/` → kiosk_edge SQLite → kiosk UI
+  - Backend models → `/api/kiosk/v1/sync/` → kiosk_edge SQLite → kiosk UI
    - Breaking: kategori filtering/display fails
 
 2. **Playlist Generation Flow:**

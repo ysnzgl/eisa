@@ -2,7 +2,7 @@ import cron from 'node-cron';
 import { Agent, fetch } from 'undici';
 import { checkOutboxPressure } from './db.js';
 import { syncMediaCache } from './mediaCache.js';
-import { getAuthHeaders, getProvisioningState, refreshIotTokenIfNeeded, handle403Error } from './provisioning.js';
+import { getAuthHeaders, getProvisioningState, handle401Error, handle403Error, hasAppKeyCredentials } from './provisioning.js';
 import { istanbulNow } from './timezone.js';
 import {
   CORRELATION_HEADER_PRETTY,
@@ -28,21 +28,17 @@ function getAgent(verifyTls) {
   return _undiciAgent;
 }
 
-function authHeaders(db, settings) {
-  return getAuthHeaders(db, settings);
+function authHeaders(db) {
+  return getAuthHeaders(db);
 }
 
-function hasCentralAuth(db, settings) {
-  try {
-    const row = db.prepare("SELECT value FROM kiosk_meta WHERE key='iot_token'").get();
-    if (row?.value) return true;
-  } catch { /* DB henuz acilmamis */ }
-  return Boolean(settings?.kioskAppKey && settings?.kioskMac);
+function hasCentralAuth(db) {
+  return hasAppKeyCredentials(db);
 }
 
 async function request(db, settings, method, pathPart, body) {
   const url = settings.centralApiBase.replace(/\/+$/, '') + pathPart;
-  const headers = authHeaders(db, settings);
+  const headers = authHeaders(db);
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   // Correlation ID: aktif contextvars degeri varsa iletir, yoksa yeni uretir.
   const correlationId = getCorrelationId() || newCorrelationId();
@@ -347,36 +343,29 @@ export async function pullFromCentral(db, settings, log = console) {
     log.warn?.('PULL atlandi: kiosk kimligi henuz provision edilmedi');
     return;
   }
-  // Token suresi dolmussa veya yaklasiyorsa istekten once yenile.
-  await refreshIotTokenIfNeeded(db, settings, log).catch((err) =>
-    log.warn?.({ err: err?.message }, 'PULL oncesi token yenileme basarisiz'),
-  );
   try {
-    // 1) kiosk/v1/{id}/sync — { creatives: [...], house_ads: [...], lookups: {...} }
-    const kioskId = settings.kioskId;
-    if (!kioskId) {
-      log.warn?.('PULL kiosk/v1/sync atlandi: EISA_KIOSK_ID ayarlanmamis');
+    // 1) kiosk/v1/sync — { creatives: [...], house_ads: [...], lookups: {...} }
+    const r2 = await requestWithRetry(db, settings, 'GET', '/api/kiosk/v1/sync/', undefined, log);
+    if (r2.ok) {
+      const data = await r2.json();
+      const tx = db.transaction((payload) => {
+        upsertLookups(db, payload.lookups);
+        for (const c of payload.creatives || []) upsertCreative(db, c);
+        for (const h of payload.house_ads || []) upsertHouseAd(db, h);
+      });
+      tx(data);
+      await syncMediaCache(db, settings, log);
+      log.info?.(`PULL: ${(data.creatives || []).length} creative, ${(data.house_ads || []).length} house_ad guncellendi`);
+    } else if (r2.status === 401) {
+      handle401Error(db, settings, log);
+    } else if (r2.status === 403) {
+      handle403Error(db, settings, log);
     } else {
-      const r2 = await requestWithRetry(db, settings, 'GET', `/api/kiosk/v1/${kioskId}/sync/`, undefined, log);
-      if (r2.ok) {
-        const data = await r2.json();
-        const tx = db.transaction((payload) => {
-          upsertLookups(db, payload.lookups);
-          for (const c of payload.creatives || []) upsertCreative(db, c);
-          for (const h of payload.house_ads || []) upsertHouseAd(db, h);
-        });
-        tx(data);
-        await syncMediaCache(db, settings, log);
-        log.info?.(`PULL: ${(data.creatives || []).length} creative, ${(data.house_ads || []).length} house_ad guncellendi`);
-      } else if (r2.status === 403) {
-        handle403Error(db, settings, log);
-      } else {
-        log.warn?.(`PULL kiosk/v1/sync HTTP ${r2.status}`);
-      }
+      log.warn?.(`PULL kiosk/v1/sync HTTP ${r2.status}`);
     }
 
-    // 2) products/sync — { kategoriler: [...], etken_maddeler: [...], lookups: {...} }
-    const r1 = await requestWithRetry(db, settings, 'GET', '/api/products/sync/', undefined, log);
+    // 2) kiosk/v1/catalog — { kategoriler: [...], etken_maddeler: [...], danisma_kategorileri: [...], lookups: {...} }
+    const r1 = await requestWithRetry(db, settings, 'GET', '/api/kiosk/v1/catalog/', undefined, log);
     if (r1.ok) {
       const data = await r1.json();
       
@@ -413,8 +402,12 @@ export async function pullFromCentral(db, settings, log = console) {
       db.exec('PRAGMA foreign_keys = ON');
       tx(data);
       log.info?.(`PULL: ${(data.kategoriler || []).length} kategori, ${(data.etken_maddeler || []).length} etken madde, ${(data.danisma_kategorileri || []).length} danisma guncellendi`);
+    } else if (r1.status === 401) {
+      handle401Error(db, settings, log);
+    } else if (r1.status === 403) {
+      handle403Error(db, settings, log);
     } else {
-      log.warn?.(`PULL products/sync HTTP ${r1.status}`);
+      log.warn?.(`PULL kiosk/v1/catalog HTTP ${r1.status}`);
     }
   } catch (err) {
     log.error?.({ event: 'pull_scheduler_error', err: err.message || String(err) }, 'PULL basarisiz (offline mod)');
@@ -428,23 +421,23 @@ export async function pullFromCentral(db, settings, log = console) {
 
 // ── PING + PLAYLIST SYNC ─────────────────────────────────────────────────
 /**
- * 1) /api/kiosk/v1/{id}/ping/ → sunucudan bugünkü playlist versiyonunu al.
+ * 1) /api/kiosk/v1/ping/ → sunucudan bugünkü playlist versiyonunu al.
  * 2) Yerel kayıtlı versiyondan farklıysa → playlist'i çek ve SQLite'a yaz.
  *
  * Kiosk offline ise hata yutulur; mevcut yerel playlist oynatılmaya devam eder.
  */
 export async function pingAndSyncPlaylist(db, settings, log = console) {
   if (!hasCentralAuth(db, settings)) return;
-  const kioskId = settings.kioskId;
-  if (!kioskId) return;
 
   try {
     const today = istanbulNow().date;
     const pingRes = await requestWithRetry(
-      db, settings, 'GET', `/api/kiosk/v1/${kioskId}/ping/`, undefined, log,
+      db, settings, 'GET', '/api/kiosk/v1/ping/', undefined, log,
     );
     if (!pingRes.ok) {
-      if (pingRes.status === 403) {
+      if (pingRes.status === 401) {
+        handle401Error(db, settings, log);
+      } else if (pingRes.status === 403) {
         handle403Error(db, settings, log);
       } else {
         log.warn?.(`PING HTTP ${pingRes.status}`);
@@ -475,11 +468,13 @@ export async function pingAndSyncPlaylist(db, settings, log = console) {
     // Bugün için tüm saatleri çek (tek istek — ?date=YYYY-MM-DD)
     const plRes = await requestWithRetry(
       db, settings, 'GET',
-      `/api/kiosk/v1/${kioskId}/playlist/?date=${today}`,
+      `/api/kiosk/v1/playlist/?date=${today}`,
       undefined, log,
     );
     if (!plRes.ok) {
-      if (plRes.status === 403) {
+      if (plRes.status === 401) {
+        handle401Error(db, settings, log);
+      } else if (plRes.status === 403) {
         handle403Error(db, settings, log);
       } else {
         log.warn?.(`PLAYLIST çekme HTTP ${plRes.status}`);
@@ -557,7 +552,7 @@ export async function pushToCentral(db, settings, log = console) {
     return;
   }
   try {
-    // 1) oturum_outbox → /api/analytics/sessions/
+    // 1) oturum_outbox → /api/kiosk/v1/sessions/
     const oturumlar = db
       .prepare(
         `SELECT id, idempotency_anahtari, payload FROM oturum_outbox
@@ -567,10 +562,12 @@ export async function pushToCentral(db, settings, log = console) {
     if (oturumlar.length) {
       try {
         const r = await requestWithRetry(
-          db, settings, 'POST', '/api/analytics/sessions/',
+          db, settings, 'POST', '/api/kiosk/v1/sessions/',
           { items: oturumlar.map((s) => JSON.parse(s.payload)) }, log,
         );
-        if (r.status === 403) {
+        if (r.status === 401) {
+          handle401Error(db, settings, log);
+        } else if (r.status === 403) {
           handle403Error(db, settings, log);
         } else {
           await consumeBulkPushResponse(db, 'oturum_outbox', oturumlar, r, log, 'sessions');
@@ -581,12 +578,12 @@ export async function pushToCentral(db, settings, log = console) {
           level: 'WARNING',
           event: 'sync_sessions_failed',
           message: err?.message || 'sessions push failed',
-          context: { count: oturumlar.length, target_service: '/api/analytics/sessions/' },
+          context: { count: oturumlar.length, target_service: '/api/kiosk/v1/sessions/' },
         });
       }
     }
 
-    // 2) reklam_gosterim_outbox → /api/kiosk/v1/{id}/proof-of-play/
+    // 2) reklam_gosterim_outbox → /api/kiosk/v1/proof-of-play/
     const gosterimler = db
       .prepare(
         `SELECT id, payload FROM reklam_gosterim_outbox
@@ -595,11 +592,6 @@ export async function pushToCentral(db, settings, log = console) {
       .all();
     if (gosterimler.length) {
       try {
-        const kioskId = settings.kioskId;
-        if (!kioskId) {
-          log.warn?.({ event: 'push_proof_of_play_skipped' }, 'PUSH proof-of-play atlandi: kiosk_id bilinmiyor');
-          return;
-        }
         const logs = gosterimler.map((i) => {
           const p = JSON.parse(i.payload);
           const entry = { played_at: p.played_at, duration_played: p.duration_played ?? 0 };
@@ -608,7 +600,7 @@ export async function pushToCentral(db, settings, log = console) {
           return entry;
         });
         const r = await requestWithRetry(
-          db, settings, 'POST', `/api/kiosk/v1/${kioskId}/proof-of-play/`,
+          db, settings, 'POST', '/api/kiosk/v1/proof-of-play/',
           { logs }, log,
         );
         if (r.status === 201) {
@@ -616,6 +608,8 @@ export async function pushToCentral(db, settings, log = console) {
           const tx = db.transaction((items) => { for (const it of items) del.run(it.id); });
           tx(gosterimler);
           log.info?.({ event: 'proof_of_play_pushed', count: gosterimler.length }, 'PUSH proof-of-play basarili');
+        } else if (r.status === 401) {
+          handle401Error(db, settings, log);
         } else if (r.status === 403) {
           handle403Error(db, settings, log);
         } else {
@@ -704,10 +698,7 @@ export function startScheduler(db, settings, log = console) {
 
   const pullTimer = setInterval(wrap('pull', () => pullFromCentral(db, settings, log)), pullEvery);
   const pushTimer = setInterval(wrap('push', () => pushToCentral(db, settings, log)), pushEvery);
-  const pingTimer = setInterval(wrap('ping', async () => {
-    await refreshIotTokenIfNeeded(db, settings, log).catch(() => {});
-    return pingAndSyncPlaylist(db, settings, log);
-  }), pingEvery);
+  const pingTimer = setInterval(wrap('ping', () => pingAndSyncPlaylist(db, settings, log)), pingEvery);
   const pressureTimer = setInterval(() => {
     try { checkOutboxPressure(log, settings.outboxMaxRows); }
     catch (err) { log?.warn?.({ event: 'outbox_pressure_check_failed', err: err?.message }, 'Outbox basinc kontrolu basarisiz'); }
@@ -754,7 +745,7 @@ export function startScheduler(db, settings, log = console) {
 }
 
 /**
- * Diagnostic outbox → backend /api/analytics/diagnostic-ingest/
+ * Diagnostic outbox → backend /api/kiosk/v1/diagnostics/
  * Backend gelen kayitlari DB'ye YAZMAZ; normalize edip kendi stdout'una JSON log yazar.
  */
 export async function pushDiagnostics(db, settings, log = console) {
@@ -765,7 +756,7 @@ export async function pushDiagnostics(db, settings, log = console) {
   const ids = pending.map((r) => r.id);
   try {
     const res = await requestWithRetry(
-      db, settings, 'POST', '/api/analytics/diagnostic-ingest/',
+      db, settings, 'POST', '/api/kiosk/v1/diagnostics/',
       { items: pending.map((r) => ({
         id: r.id,
         level: r.level,
@@ -779,6 +770,9 @@ export async function pushDiagnostics(db, settings, log = console) {
     if (res.status === 202 || res.status === 200) {
       markDiagnosticsSent(db, ids);
       log?.debug?.({ event: 'diagnostic_pushed', count: pending.length }, 'Diagnostic kayitlari gonderildi');
+    } else if (res.status === 401) {
+      handle401Error(db, settings, log);
+      reschedulePendingDiagnostics(db, ids, pending[0].retry_count);
     } else if (res.status === 403) {
       handle403Error(db, settings, log);
       reschedulePendingDiagnostics(db, ids, pending[0].retry_count);

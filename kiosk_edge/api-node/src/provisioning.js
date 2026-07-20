@@ -1,31 +1,30 @@
 /**
- * Kiosk otomatik kimlik yonetimi (provisioning + IoT token).
+ * Kiosk otomatik kimlik yonetimi (provisioning + App Key).
  *
  * Durum makinesi:
  *   UNREGISTERED      — Henuz bootstrap yapilmamis
  *       ↓ bootstrap request (fleet key + HMAC)
  *   PENDING_APPROVAL  — Backend 202 dondu, admin onayi bekleniyor
  *       ↓ polling (retry_after_seconds veya backoff)
- *   APPROVED          — Admin onayladi, kiosk_id ve iot_token mevcut
- *       ↓ normal IoT auth akisina gec
- *   PROVISIONED       — iot_token SQLite'a yazildi, normal operation
+ *   APPROVED          — Admin onayladi, kiosk_id ve app_key mevcut
+ *       ↓ normal App Key akisi
  *   REJECTED          — Admin reddetti, manuel mudahale gerekir
  *
  * Akis:
  *   1. MAC adresi sistemden okunur (veya DB cache'ten).
- *   2. Gecerli bir IoT token varsa (suresine en az 24h kalmis) kullanilir.
- *   3. Token yoksa:
+ *   2. Gecerli bir App Key varsa kullanilir.
+ *   3. App Key yoksa:
  *      a. PENDING_APPROVAL durumundaysa → bootstrap yeniden dene (backoff)
  *      b. Aksi halde → HMAC-SHA256(MAC_UPPER + iso_timestamp, provisioningSecret) imzalanir.
- *      c. POST /api/pharmacies/kiosks/bootstrap/ cagrilir.
- *      d. 200  → IoT token kiosk_meta'ya yazilir (PROVISIONED)
+ *      c. POST /api/kiosk/v1/bootstrap/ cagrilir.
+ *      d. 200  → app_key, kiosk_id, pharmacy_id kiosk_meta'ya yazilir (APPROVED)
  *      e. 202  → PENDING_APPROVAL, registration_id kiosk_meta'ya yazilir
- *      f. 403  → REJECTED durumu; token alinmaz
+ *      f. 403  → REJECTED durumu; app_key alinmaz
  *   4. getAuthHeaders(db, settings): her backend istegi icin header nesnesi doner.
  *
  * Guvenlik:
  *   - KIOSK_PROVISIONING_SECRET ve KIOSK_FLEET_KEY loglarda goruntulenmez.
- *   - REJECTED durumunda iot_token verilmez, normal API'lere erisim engellenir.
+ *   - REJECTED durumunda App Key verilmez, normal API'lere erisim engellenir.
  */
 import crypto from 'node:crypto';
 import os from 'node:os';
@@ -34,8 +33,13 @@ import { Agent, fetch } from 'undici';
 // ── Yardimcilar ──────────────────────────────────────────────────────────────
 
 function getMeta(db, key) {
-  const row = db.prepare('SELECT value FROM kiosk_meta WHERE key = ?').get(key);
-  return row?.value ?? '';
+  try {
+    const row = db.prepare('SELECT value FROM kiosk_meta WHERE key = ?').get(key);
+    return row?.value ?? '';
+  } catch {
+    // kiosk_meta yoksa/erisilemezse guvenli varsayilan (500 yerine bos).
+    return '';
+  }
 }
 
 function setMeta(db, key, value) {
@@ -122,25 +126,10 @@ function signProvisionRequest(mac, isoTimestamp, secret) {
   return crypto.createHmac('sha256', secret).update(message).digest('hex');
 }
 
-// ── IoT token ayristirma (imza dogrulamadan sadece payload) ──────────────────
+// ── App Key durum yardimcisi ──────────────────
 
-function parseIotTokenPayload(token) {
-  try {
-    const [payloadB64] = token.split('.');
-    const padding = 4 - (payloadB64.length % 4);
-    const padded = payloadB64 + '='.repeat(padding % 4);
-    return JSON.parse(Buffer.from(padded, 'base64url').toString('utf8'));
-  } catch {
-    return null;
-  }
-}
-
-function isIotTokenAlive(token, minRemainingHours = 24) {
-  if (!token) return false;
-  const payload = parseIotTokenPayload(token);
-  if (!payload?.exp) return false;
-  const remaining = payload.exp - Math.floor(Date.now() / 1000);
-  return remaining > minRemainingHours * 3600;
+function isProvisioned(db) {
+  return getProvisioningState(db) === PROVISIONING_STATE.APPROVED && Boolean(getMeta(db, 'kiosk_app_key'));
 }
 
 // ── Provisioning state yardimcilari ─────────────────────────────────────────
@@ -180,7 +169,7 @@ function setProvisioningState(db, state, registrationId = null) {
 /**
  * Bootstrap endpoint'ine istek gonderir.
  * Dondurulen nesne: { status, httpStatus, data }
- *   status:     'PROVISIONED' | 'PENDING_APPROVAL' | 'REJECTED' | 'ERROR'
+ *   status:     'APPROVED' | 'PENDING_APPROVAL' | 'REJECTED' | 'ERROR'
  *   httpStatus: HTTP durum kodu (200, 202, 403, ...)
  *   data:       backend'den gelen JSON
  *
@@ -217,17 +206,14 @@ async function fetchBootstrapResult(settings, mac, log) {
     let data = null;
     try { data = await res.json(); } catch { /* JSON parse basarisiz */ }
 
-    if (res.ok && res.status === 200 && data?.iot_token) {
-      return { status: 'PROVISIONED', httpStatus: 200, data };
+    if (res.ok && res.status === 200 && data?.app_key) {
+      return { status: 'APPROVED', httpStatus: 200, data };
     }
     if (res.status === 202 && data?.status === 'PENDING') {
       return { status: 'PENDING_APPROVAL', httpStatus: 202, data };
     }
-    if (res.status === 403 && data?.status === 'REJECTED') {
+    if (res.status === 403) {
       return { status: 'REJECTED', httpStatus: 403, data };
-    }
-    if (res.ok && res.status === 200 && data?.iot_token) {
-      return { status: 'PROVISIONED', httpStatus: 200, data };
     }
     log?.warn?.({ httpStatus: res.status }, 'Bootstrap yaniti tanimsiz');
     return { status: 'ERROR', httpStatus: res.status, data };
@@ -244,49 +230,46 @@ async function fetchBootstrapResult(settings, mac, log) {
 export async function resolveRuntimeSettings(db, baseSettings, log = console) {
   const runtime = { ...baseSettings };
 
-  // 1) MAC
-  runtime.kioskMac = normalizeMac(
-    runtime.kioskMac || getMeta(db, 'kiosk_mac') || detectSystemMacAddress(),
-  );
+  // Legacy kimlik kaydini (varsa) bir defalik temizle.
+  cleanupLegacyIotToken(db, log);
+
+  // 1) MAC — once SQLite cache, sonra sistem tespiti; restart'ta sabit kalir.
+  runtime.kioskMac = normalizeMac(getMeta(db, 'kiosk_mac') || detectSystemMacAddress());
   if (runtime.kioskMac) setMeta(db, 'kiosk_mac', runtime.kioskMac);
 
-  // 2) Mevcut IoT token kontrolu (PROVISIONED durumu)
-  const cachedToken = getMeta(db, 'iot_token');
-  if (isIotTokenAlive(cachedToken)) {
-    const payload = parseIotTokenPayload(cachedToken);
-    runtime.iotToken    = cachedToken;
-    runtime.kioskId     = runtime.kioskId     || payload?.kiosk_id    || 0;
-    runtime.pharmacyId  = runtime.pharmacyId  || payload?.pharmacy_id || 0;
-    // Onaylanmis durumu guncelle
-    setProvisioningState(db, PROVISIONING_STATE.APPROVED);
-    log?.info?.({ kioskId: runtime.kioskId }, 'IoT token gecerli, provision atlanıyor');
+  const applyStoredIdentity = () => {
+    runtime.kioskAppKey = getMeta(db, 'kiosk_app_key');
+    runtime.kioskId     = parseIntSafe(getMeta(db, 'kiosk_id'));
+    runtime.pharmacyId  = parseIntSafe(getMeta(db, 'pharmacy_id'));
+  };
+
+  const currentState = getProvisioningState(db);
+
+  // 2) Zaten onayli + App Key mevcut → bootstrap gerekmez.
+  if (isProvisioned(db)) {
+    applyStoredIdentity();
+    log?.info?.({ kioskId: runtime.kioskId, has_app_key: true }, 'App Key mevcut, provision atlaniyor');
     return Object.freeze(runtime);
   }
 
-  // 3) REJECTED durumu — token alinmaz, normal API'lere erisim engellenir
-  const currentState = getProvisioningState(db);
+  // 3) REJECTED → bootstrap denenmez.
   if (currentState === PROVISIONING_STATE.REJECTED) {
     log?.warn?.('Provisioning durumu REJECTED. Admin onayi gerekmektedir.');
-    // Legacy AppKey fallback (dev/test ortami icin)
-    runtime.kioskAppKey = runtime.kioskAppKey || getMeta(db, 'kiosk_app_key');
-    runtime.kioskId     = runtime.kioskId     || parseIntSafe(getMeta(db, 'kiosk_id'));
-    runtime.pharmacyId  = runtime.pharmacyId  || parseIntSafe(getMeta(db, 'pharmacy_id'));
+    applyStoredIdentity();
     return Object.freeze(runtime);
   }
 
-  // 4) Token yok — bootstrap dene (UNREGISTERED veya PENDING_APPROVAL)
+  // 4) App Key yok → bootstrap dene (UNREGISTERED veya PENDING_APPROVAL).
   if (runtime.kioskMac && runtime.kioskProvisioningSecret && runtime.kioskFleetKey) {
     const result = await fetchBootstrapResult(runtime, runtime.kioskMac, log);
 
-    if (result.status === 'PROVISIONED' && result.data?.iot_token) {
-      runtime.iotToken   = result.data.iot_token;
-      runtime.kioskId    = result.data.kiosk_id    || 0;
-      runtime.pharmacyId = result.data.pharmacy_id || 0;
-      setMeta(db, 'iot_token',   runtime.iotToken);
-      setMeta(db, 'kiosk_id',    runtime.kioskId);
-      setMeta(db, 'pharmacy_id', runtime.pharmacyId);
+    if (result.status === 'APPROVED' && result.data?.app_key) {
+      setMeta(db, 'kiosk_app_key', result.data.app_key);
+      setMeta(db, 'kiosk_id',      result.data.kiosk_id ?? 0);
+      setMeta(db, 'pharmacy_id',   result.data.pharmacy_id ?? 0);
       setProvisioningState(db, PROVISIONING_STATE.APPROVED);
-      log?.info?.({ kioskId: runtime.kioskId, pharmacyId: runtime.pharmacyId }, 'Kiosk provision tamamlandi');
+      log?.info?.({ kioskId: result.data.kiosk_id, pharmacyId: result.data.pharmacy_id, has_app_key: true },
+        'Kiosk provision tamamlandi (App Key alindi)');
 
     } else if (result.status === 'PENDING_APPROVAL') {
       const registrationId = result.data?.registration_id || '';
@@ -298,114 +281,69 @@ export async function resolveRuntimeSettings(db, baseSettings, log = console) {
       setProvisioningState(db, PROVISIONING_STATE.REJECTED);
       log?.warn?.('Kiosk provision reddedildi (REJECTED). Sistem yoneticiyle iletisime gecin.');
 
-    } else if (result.status === 'ERROR') {
-      // Agdaki hata: mevcut state'i koru, bir sonraki dogu denemesinde tekrar denenir
+    } else {
+      // Agdaki hata: mevcut state korunur, bir sonraki dongude tekrar denenir.
       log?.warn?.({ httpStatus: result.httpStatus }, 'Bootstrap yaniti alinamadi, sonraki dongude tekrar denecek');
     }
   } else {
-    log?.warn?.('Provision atlanıyor: kioskMac, kioskFleetKey veya kioskProvisioningSecret eksik');
+    log?.warn?.('Provision atlaniyor: kioskMac, kioskFleetKey veya kioskProvisioningSecret eksik');
   }
 
-  // 5) Legacy AppKey fallback (dev/test)
-  if (!runtime.iotToken) {
-    runtime.kioskAppKey = runtime.kioskAppKey || getMeta(db, 'kiosk_app_key');
-    runtime.kioskId     = runtime.kioskId     || parseIntSafe(getMeta(db, 'kiosk_id'));
-    runtime.pharmacyId  = runtime.pharmacyId  || parseIntSafe(getMeta(db, 'pharmacy_id'));
-  }
-
+  applyStoredIdentity();
   return Object.freeze(runtime);
 }
 
 // ── Public: her backend istegi icin auth header nesnesi ─────────────────────
 
 /**
- * Her scheduler/push/pull isteginde cagrilir.
- * Token suresine 24h'den az kalmissa arka planda yeniler.
+ * Operasyonel Main API istekleri icin TEK auth contract'i.
+ * Credential'lar HER istekte SQLite'tan okunur (provision sonrasi restart gerekmez).
+ * Fleet Key / IoT / Bearer EKLENMEZ.
  */
-export function getAuthHeaders(db, settings) {
+export function getAuthHeaders(db) {
   const headers = {};
-
-  if (settings.kioskFleetKey) {
-    headers['X-Kiosk-Key'] = settings.kioskFleetKey;
+  const appKey = getMeta(db, 'kiosk_app_key');
+  const mac = getMeta(db, 'kiosk_mac');
+  if (appKey && mac) {
+    headers['Authorization'] = `AppKey ${appKey}`;
+    headers['X-Kiosk-MAC']   = mac;
   }
-
-  // IoT token tercih edilir — sadece suresi dolmamis token gonder
-  const iotToken = getMeta(db, 'iot_token');
-  if (iotToken && isIotTokenAlive(iotToken, 0)) {
-    headers['Authorization'] = `Bearer ${iotToken}`;
-    return headers;
-  }
-
-  // Legacy AppKey fallback
-  if (settings.kioskAppKey && settings.kioskMac) {
-    headers['Authorization'] = `AppKey ${settings.kioskAppKey}`;
-    headers['X-Kiosk-MAC']   = settings.kioskMac;
-  }
-
   return headers;
 }
 
-/**
- * Arka planda token yenileme — scheduler her ping dongusunde cagirabilir.
- * Token suresine 24h'den az kaldiysa provision yenilenir.
- *
- * PENDING_APPROVAL durumundaysa da dener: admin onaylamissa 200 ile token alir.
- */
-export async function refreshIotTokenIfNeeded(db, settings, log = console) {
-  const token = getMeta(db, 'iot_token');
-  if (isIotTokenAlive(token, 24)) return; // henuz erken
-
-  // REJECTED durumunda token yenileme denemesi yapilmaz
-  const currentState = getProvisioningState(db);
-  if (currentState === PROVISIONING_STATE.REJECTED) return;
-
-  const mac = getMeta(db, 'kiosk_mac') || settings.kioskMac;
-  if (!mac || !settings.kioskProvisioningSecret || !settings.kioskFleetKey) return;
-
-  log?.info?.('IoT token yenileniyor');
-  const result = await fetchBootstrapResult(settings, mac, log);
-  if (result.status === 'PROVISIONED' && result.data?.iot_token) {
-    setMeta(db, 'iot_token', result.data.iot_token);
-    if (result.data.kiosk_id) setMeta(db, 'kiosk_id', result.data.kiosk_id);
-    if (result.data.pharmacy_id) setMeta(db, 'pharmacy_id', result.data.pharmacy_id);
-    setProvisioningState(db, PROVISIONING_STATE.APPROVED);
-    log?.info?.('IoT token yenilendi');
-  } else if (result.status === 'PENDING_APPROVAL') {
-    const registrationId = result.data?.registration_id || getMeta(db, 'registration_id') || '';
-    setProvisioningState(db, PROVISIONING_STATE.PENDING_APPROVAL, registrationId);
-    log?.info?.({ registrationId }, 'Token yenileme: hala onay bekliyor (PENDING_APPROVAL)');
-  } else if (result.status === 'REJECTED') {
-    setProvisioningState(db, PROVISIONING_STATE.REJECTED);
-    log?.warn?.('Token yenileme: provision reddedildi (REJECTED)');
-  }
+/** App Key + MAC credential'lari SQLite'ta mevcut mu? */
+export function hasAppKeyCredentials(db) {
+  return Boolean(getMeta(db, 'kiosk_app_key') && getMeta(db, 'kiosk_mac'));
 }
 
 /**
- * IoT token'i temizle — 403 hatasi alindiginda cagrilir.
- * Token gecersiz kalmis olabilir (kiosk silinmis, token revoke edilmis, vb.).
- * Token temizlenince bir sonraki sync dongusunde provision yeniden yapilir.
+ * Legacy kimlik kaydini SQLite'tan bir defalik temizler (kullanimdan kaldirildi).
+ * Migration gerektirmez; kayit yoksa sorun degil.
  */
-export function clearIotToken(db, log = console) {
+export function cleanupLegacyIotToken(db, log = console) {
   try {
-    db.prepare('DELETE FROM kiosk_meta WHERE key IN (?, ?, ?)').run('iot_token', 'kiosk_id', 'pharmacy_id');
-    log?.warn?.('IoT token temizlendi, bir sonraki sync\'te provision yeniden yapilacak');
-  } catch (err) {
-    log?.error?.({ err: err?.message }, 'IoT token temizleme basarisiz');
-  }
+    const info = db.prepare("DELETE FROM kiosk_meta WHERE key = 'iot_token'").run();
+    if (info?.changes) log?.info?.('Legacy kimlik kaydi kiosk_meta\'dan temizlendi');
+  } catch { /* yoksa sorun degil */ }
 }
 
 /**
- * Backend'den 403 hatasi alindiysa token'i temizle.
- * HTTP 403 = Unauthorized, token backend tarafinda gecersiz.
+ * Backend 401 → App Key eksik/gecersiz.
+ * Bearer/Fleet/IoT fallback YAPILMAZ. App Key hemen silinmez; kontrollu backoff
+ * icin isaretlenir (scheduler dogal araliginda tekrar dener).
+ */
+export function handle401Error(db, settings, log = console) {
+  try { setMeta(db, 'app_key_last_401_at', new Date().toISOString()); } catch {}
+  log?.warn?.({ event: 'central_auth_401', has_app_key: Boolean(getMeta(db, 'kiosk_app_key')) },
+    'Backend 401: App Key gecersiz/eksik olabilir (fallback yok, backoff)');
+}
+
+/**
+ * Backend 403 → kiosk pasif/onaysiz/eczanesiz veya bloke.
+ * App Key SILINMEZ; provisioning dongusu baslatilmaz; backoff uygulanir.
  */
 export function handle403Error(db, settings, log = console) {
-  const token = getMeta(db, 'iot_token');
-  if (token) {
-    log?.warn?.('Backend HTTP 403 dondu, IoT token gecersiz olabilir — token temizleniyor');
-    clearIotToken(db, log);
-  } else if (settings.kioskAppKey) {
-    log?.warn?.('Backend HTTP 403 dondu: KIOSK_APP_KEY veya KIOSK_MAC eslesmesini kontrol edin');
-  } else {
-    log?.warn?.('Backend HTTP 403 dondu: kiosk kimligi provision edilmemis veya gecersiz');
-  }
+  try { setMeta(db, 'app_key_last_403_at', new Date().toISOString()); } catch {}
+  log?.warn?.({ event: 'central_auth_403', has_app_key: Boolean(getMeta(db, 'kiosk_app_key')) },
+    'Backend 403: kiosk pasif/onaysiz/eczanesiz olabilir (App Key korunuyor, backoff)');
 }
