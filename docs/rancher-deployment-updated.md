@@ -98,7 +98,7 @@ Sebep: Registry'yi kurmadan image push/pull akışı hemen çalışır. Daha son
 Örnek GHCR akışı:
 
 $GH_USER = "ysnzgl"
-$GHCR_PAT = "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" 
+$GHCR_PAT = "" 
 
 $GHCR_PAT | docker login ghcr.io -u $GH_USER --password-stdin
 

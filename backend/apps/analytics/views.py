@@ -175,7 +175,7 @@ class OturumLoguCompleteView(APIView):
                 update_fields=[
                     "danisma_tamamlandi",
                     "danisma_tamamlanma_tarihi",
-                    "danisma_tamamlayan_eczaci",
+                    "danisma_tamamlayan_eczaci_id",
                     "danisma_notu",
                     "guncellenme_tarihi",
                     "guncelleyen",
