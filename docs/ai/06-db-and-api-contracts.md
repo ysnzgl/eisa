@@ -29,15 +29,16 @@
 - olusturulma_tarihi, olusturan, guncellenme_tarihi, guncelleyen, surum
 
 **kiosklar**
-- id, eczane_id FK, ad, mac_adresi (unique), uygulama_anahtari (unique), aktif, is_online, son_goruldu, last_playlist_version
+- id, eczane_id FK, ad, mac_adresi (unique), device_id (unique, nullable), uygulama_anahtari (unique), aktif, is_online, son_goruldu, last_playlist_version
 - olusturulma_tarihi, guncellenme_tarihi
+- **device_id:** Kalici cihaz UUID, bootstrap sirasinda kilit (MAC spoofing onlenir)
 
-**kiosk_provisioning_requests** *(2026-07-14)*
-- id (UUID), mac_adresi, hostname, device_metadata (JSON — token/secret içermez)
+**kiosk_provisioning_requests** *(2026-07-14, updated 2026-07-20)*
+- id (UUID), mac_adresi, device_id, hostname, device_metadata (JSON — token/secret içermez)
 - status (PENDING/APPROVED/REJECTED), last_seen_at, request_count
 - approved_at, approved_by FK (nullable), rejected_at, rejected_by FK (nullable), rejection_reason
 - kiosk FK (nullable, SET_NULL — OneToOne), olusturulma_tarihi, guncellenme_tarihi, surum
-- **Güvenlik:** Raw fleet_key veya provision_secret bu tabloda saklanmaz.
+- **Güvenlik:** Raw fleet_key veya provision_secret bu tabloda saklanmaz. device_id bootstrap HMAC'e dahil edilir.
 
 ### Lookups
 
@@ -111,15 +112,28 @@
 
 ### Analytics
 
-**oturum_loglari**
+**oturum_loglari** *(updated 2026-07-20)*
 - id, idempotency_anahtari (UUID, unique), kiosk_id FK
-- yas_araligi_id FK, cinsiyet_id FK, kategori_id FK
-- hassas_akis (bool), qr_kodu (indexed), cevaplar (JSON), onerilen_etken_maddeler (JSON), tamamlandi (bool)
+- yas_araligi_id FK, cinsiyet_id FK
+- kategori_id FK (nullable), danisma_kategorisi_id FK (nullable)
+- oturum_tipi (SIKAYET/OZEL_DANISMANLIK, indexed)
+- hassas_akis (bool), qr_kodu (unique, indexed)
+- cevaplar (JSON, backup), onerilen_etken_maddeler (JSON, backup), tamamlandi (bool)
 - olusturulma_tarihi
 - danisma_tamamlandi (bool, default=false)
 - danisma_tamamlanma_tarihi (datetime, nullable)
 - danisma_notu (text, blank)
 - danisma_tamamlayan_eczaci_id FK (users_eisauser, nullable)
+
+**oturum_cevaplar** *(new 2026-07-20)*
+- id, oturum_id FK (CASCADE), soru_id FK (PROTECT, nullable), cevap_id FK (PROTECT, nullable)
+- soru_metni_snapshot, cevap_metni_snapshot, cevap_degeri_snapshot
+- unique (oturum_id, soru_id)
+
+**oturum_onerilen_etken_maddeler** *(new 2026-07-20)*
+- id, oturum_id FK (CASCADE), etken_madde_id FK (PROTECT, nullable)
+- etken_madde_adi_snapshot
+- unique (oturum_id, etken_madde_id)
 
 ---
 
@@ -179,8 +193,9 @@
 
 ### Provisioning Endpoints *(2026-07-14)*
 
-**POST /api/kiosk/v1/bootstrap/** *(2026-07-20; provisioning bootstrap yolu)*
-- Auth: `X-Kiosk-Key: <fleet_key>` (header) + HMAC; body: `{ "mac_adresi": "...", "timestamp": "ISO", "hmac": "...", "hostname": "...", "device_metadata": { ... } }`
+**POST /api/kiosk/v1/bootstrap/** *(2026-07-20; provisioning bootstrap yolu, updated 2026-07-20)*
+- Auth: `X-Kiosk-Key: <fleet_key>` (header) + HMAC; body: `{ "mac_adresi": "...", "device_id": "...", "timestamp": "ISO", "hmac": "...", "hostname": "...", "device_metadata": { ... } }`
+- `device_id`: Kalici cihaz UUID (crypto.randomUUID), HMAC'e dahil edilir: `HMAC-SHA256(MAC_UPPER + iso_timestamp + device_id, provision_secret)`
 - `hostname` ve `device_metadata` opsiyonel; kiosk_edge `collectDeviceMetadata()` ile otomatik doldurur
 - Response 200 (onaylı+aktif+eczaneli kiosk): `{ "status": "APPROVED", "kiosk_id": 1, "pharmacy_id": 1, "app_key": "..." }` — aynı kiosk tekrar bootstrap yaptığında AYNI `app_key` döner (rotasyon yok)
 - Response 202 (bilinmeyen/onay bekleyen cihaz, PENDING): `{ "status": "PENDING", "registration_id": "uuid", "retry_after_seconds": 30 }`
@@ -194,8 +209,9 @@ Namespace `/api/kiosk/v1/` (backend `apps/kiosk_api/`). **Tek auth contract'ı**
 ```
 Authorization: AppKey <APP_KEY>
 X-Kiosk-MAC:   <NORMALIZED_MAC>   # AA:BB:CC:DD:EE:FF
+X-Kiosk-Device-ID: <DEVICE_UUID>  # zorunlu (device_id set edildiyse)
 ```
-- **401** — App Key/MAC eksik veya App Key/MAC çifti geçersiz (`code`: `app_key_missing|mac_missing|app_key_invalid|app_key_malformed`)
+- **401** — App Key/MAC eksik veya App Key/MAC çifti geçersiz; device_id eksik/uyumsuz (`code`: `app_key_missing|mac_missing|device_id_missing|device_id_mismatch|app_key_invalid|app_key_malformed`)
 - **403** — kiosk pasif/onaysız veya eczaneye bağlı değil (`code`: `kiosk_inactive|kiosk_unlinked`)
 - Başka auth turleri operasyonel endpoint'lerde **reddedilir**. URL'de kiosk ID **yoktur**; kiosk `request.kiosk` (auth context) üzerinden belirlenir.
 

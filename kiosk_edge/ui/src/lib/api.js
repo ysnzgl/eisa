@@ -81,21 +81,25 @@ export async function fetchQuestions(categorySlug) {
  * @param {object} payload
  * @param {string} payload.ageRange       — yas araligi kodu (ornek: "18-25")
  * @param {'M'|'F'|'O'} payload.gender    — cinsiyet kodu
- * @param {string} payload.categorySlug
+ * @param {string} [payload.oturumTipi]   — 'SIKAYET' veya 'OZEL_DANISMANLIK' (varsayilan: SIKAYET)
+ * @param {string} [payload.categorySlug] — sikayet icin kategori slug
+ * @param {string} [payload.danismaKategorisiSlug] — ozel danismanlik icin danisma kategorisi slug
  * @param {boolean} payload.isSensitiveFlow
  * @param {object} payload.answersPayload — { seed_id: 'Y'|'N' }
  * @param {string[]} payload.ingredientList
  * @param {boolean} [payload.completed]  — false ise 10sn etkilesimsizlik ile terk edilmis oturum
  * @returns {Promise<{qrCode: string, qrPayload: string}>}
  */
-export async function submitSession({ ageRange, gender, categorySlug, isSensitiveFlow, answersPayload, ingredientList, completed = true }) {
+export async function submitSession({ ageRange, gender, oturumTipi, categorySlug, danismaKategorisiSlug, isSensitiveFlow, answersPayload, ingredientList, completed = true }) {
   // Backend'e gönderirken tamamlanma durumunu bildir
   const data = await _request(`${API_BASE}/api/oturum/gonder`, {
     method: 'POST',
     body: {
       yas_araligi_kod:         ageRange,
       cinsiyet_kod:            gender,
-      kategori_slug:           categorySlug,
+      oturum_tipi:             oturumTipi || 'SIKAYET',
+      kategori_slug:           categorySlug || null,
+      danisma_kategorisi_slug: danismaKategorisiSlug || null,
       hassas_akis:             isSensitiveFlow,
       cevaplar:                answersPayload,
       onerilen_etken_maddeler: ingredientList,

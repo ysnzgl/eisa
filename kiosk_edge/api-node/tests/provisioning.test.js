@@ -1,5 +1,5 @@
 // Kiosk provisioning + App Key auth birim testleri (ag gerektirmez).
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import {
   getAuthHeaders,
@@ -8,6 +8,7 @@ import {
   handle403Error,
   cleanupLegacyIotToken,
   resolveRuntimeSettings,
+  enrollDeviceId,
 } from '../src/provisioning.js';
 
 function metaDb() {
@@ -95,5 +96,64 @@ describe('kiosk provisioning + App Key auth', () => {
     // App Key yok; operasyonel auth uretilemez.
     expect(hasAppKeyCredentials(db)).toBe(false);
     expect(rt.kioskAppKey).toBe('');
+  });
+
+  it('enrollDeviceId: device_id yoksa error doner', async () => {
+    const result = await enrollDeviceId(db, baseSettings, silent);
+    expect(result).toBe('error');
+  });
+
+  it('enrollDeviceId: zaten enrolled ise already_enrolled doner', async () => {
+    setMeta(db, 'device_id', 'aaaa-bbbb-cccc');
+    setMeta(db, 'kiosk_app_key', 'APPKEY');
+    setMeta(db, 'kiosk_mac', 'AA:BB:CC:DD:EE:FF');
+    setMeta(db, 'device_id_enrolled', '1');
+    const result = await enrollDeviceId(db, baseSettings, silent);
+    expect(result).toBe('already_enrolled');
+  });
+
+  it('enrollDeviceId: credential eksikse error doner', async () => {
+    setMeta(db, 'device_id', 'aaaa-bbbb-cccc');
+    // No app_key set
+    const result = await enrollDeviceId(db, { centralApiBase: '' }, silent);
+    expect(result).toBe('error');
+  });
+
+  it('enrollDeviceId: 200 yanıtında enrolled ve flag kaydeder', async () => {
+    setMeta(db, 'device_id', 'aaaa-bbbb-cccc');
+    setMeta(db, 'kiosk_app_key', 'APPKEY');
+    setMeta(db, 'kiosk_mac', 'AA:BB:CC:DD:EE:FF');
+
+    const mockFetch = async () => ({
+      status: 200,
+      json: async () => ({ status: 'enrolled', device_id: 'aaaa-bbbb-cccc' }),
+    });
+
+    const result = await enrollDeviceId(db, baseSettings, silent, mockFetch);
+    expect(result).toBe('enrolled');
+    expect(getMeta(db, 'device_id_enrolled')).toBe('1');
+  });
+
+  it('enrollDeviceId: 409 already_bound (ayni deger) → enrolled kaydeder', async () => {
+    setMeta(db, 'device_id', 'aaaa-bbbb-cccc');
+    setMeta(db, 'kiosk_app_key', 'APPKEY');
+    setMeta(db, 'kiosk_mac', 'AA:BB:CC:DD:EE:FF');
+
+    const mockFetch = async () => ({
+      status: 409,
+      json: async () => ({ code: 'already_bound' }),
+    });
+
+    const result = await enrollDeviceId(db, baseSettings, silent, mockFetch);
+    expect(result).toBe('enrolled');
+    expect(getMeta(db, 'device_id_enrolled')).toBe('1');
+  });
+
+  it('enrollDeviceId: getAuthHeaders device_id header tasir (enrolled sonrasi)', () => {
+    setMeta(db, 'kiosk_app_key', 'APPKEY123');
+    setMeta(db, 'kiosk_mac', 'AA:BB:CC:DD:EE:FF');
+    setMeta(db, 'device_id', 'test-uuid-1234');
+    const h = getAuthHeaders(db);
+    expect(h['X-Kiosk-Device-ID']).toBe('test-uuid-1234');
   });
 });

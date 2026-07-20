@@ -107,6 +107,20 @@ export function makeMemoryDb() {
       payload TEXT NOT NULL,
       olusturulma_tarihi TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
       gonderilme_tarihi TEXT);
+
+    CREATE TABLE danisma_kategorileri (
+      id INTEGER PRIMARY KEY,
+      slug TEXT NOT NULL UNIQUE,
+      ad TEXT NOT NULL,
+      ikon TEXT NOT NULL DEFAULT 'fa-comments',
+      ust_kategori_id INTEGER,
+      aktif INTEGER NOT NULL DEFAULT 1,
+      olusturulma_tarihi TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      guncellenme_tarihi TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')));
+
+    CREATE TABLE kiosk_meta (
+      key   TEXT PRIMARY KEY,
+      value TEXT NOT NULL DEFAULT '');
   `);
   return db;
 }

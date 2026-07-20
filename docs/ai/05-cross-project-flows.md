@@ -317,35 +317,51 @@ kiosk_edge/ui (App.svelte)
   → Inactivity timer başlat (10sn)
 ```
 
-**4.2. Session Tamamlanma (Kiosk UI)**
+**4.2. Session Tamamlanma (Kiosk UI) — Updated 2026-07-20**
 ```
-kiosk_edge/ui (ResultScreen)
-  → Kullanıcı tüm soruları cevapladı → QR üretildi
-  → POST http://localhost:5234/sessions
+kiosk_edge/ui (App.svelte)
+  → Kullanıcı tüm soruları cevapladı
+  → POST http://localhost:5234/api/oturum/gonder
     {
-      "idempotency_key": "uuid",
-      "yas_araligi_id": 2,
-      "cinsiyet_id": 1,
-      "kategori_id": 5,
+      "idempotency_anahtari": "uuid",   ← edge üretir
+      "oturum_tipi": "SIKAYET" | "OZEL_DANISMANLIK",
+      "yas_araligi_kod": "26-35",
+      "cinsiyet_kod": "M",
+      "kategori_slug": "uyku",          ← SIKAYET için
+      "danisma_kategorisi_slug": null,   ← DANISMANLIK için
       "hassas_akis": false,
-      "qr_kodu": "A1B2C3D4",
-      "cevaplar": { "soru_1": "cevap_1", ... },
-      "onerilen_etken_maddeler": ["Melatonin", "Valerian"],
+      "cevaplar": { soru_id: cevap_id },
+      "onerilen_etken_maddeler": [etken_madde_id],
       "tamamlandi": true
+      // qr_kodu gönderilmez — backend üretir
     }
-  → kiosk_edge/api-node: SQLite insert (oturum_outbox)
+  → kiosk_edge/api-node: backend'e SYNC ilet
+  → Backend: QR üret (8 char [A-Z0-9], unique, IntegrityError retry)
+  → Backend response: { results: [{ idempotency_key, status, qr_kodu }] }
+  → Edge: outbox'a backend QR ile kaydet → UI'a { qr_kodu } döndür
+  → UI: Backend QR göster (sahte/fallback QR yok)
+  → Backend erişilemez: Edge 503 döner, UI retry gösterir
 ```
 
-**4.3. Session Terk Edilmesi (Kiosk UI)**
+**4.3. Danışmanlık Session (DANISMANLIK) — New 2026-07-20**
+```
+Akış: CategoryScreen → ConsultScreen → danisma kategorisi seç
+  → oturum_tipi=DANISMANLIK, danisma_kategorisi_slug=... , kategori_slug=null
+  → Backend: OturumLogu.danisma_kategorisi = Danisma FK; kategori=None
+  → Eczacı paneli: danisma_kategorisi_detay.ad gösterilir
+```
+
+**4.4. Session Terk Edilmesi (Kiosk UI)**
 ```
 kiosk_edge/ui (App.svelte: onInactivityTimeout)
-  → 10sn cevap verilmedi → session finalize
-  → POST http://localhost:5234/sessions
+  → 20sn (INACTIVITY_MS = 20_000) cevap verilmedi → session finalize
+  → POST http://localhost:5234/api/oturum/gonder
     { ..., "tamamlandi": false }
-  → kiosk_edge/api-node: SQLite insert (oturum_outbox)
+  → kiosk_edge/api-node: SQLite insert (outbox, QR yok)
+  → Background'da backend'e gönder; hata olursa scheduler tekrar dener
 ```
 
-**4.4. Outbox Push (Kiosk Edge Scheduler)**
+**4.5. Outbox Push (Kiosk Edge Scheduler)**
 ```
 kiosk_edge/api-node (scheduler: pushOutbox, her 1dk)
   → SQLite query: SELECT * FROM oturum_outbox WHERE gonderilme_tarihi IS NULL

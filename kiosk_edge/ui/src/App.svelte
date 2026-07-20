@@ -247,20 +247,18 @@
     let age, sex;
     selectedAge.update(v => { age = v; return v; });
     selectedSex.update(v => { sex = v; return v; });
-    try {
-      return await submitSession({
-        ageRange:       age,
-        gender:         sex,
-        categorySlug,
-        isSensitiveFlow: true,
-        answersPayload:  {},
-        ingredientList:  [],
-        completed:       true,  // Danışma anında tamamlanır
-      });
-    } catch {
-      const fallback = Math.random().toString(36).slice(2, 10).toUpperCase();
-      return { qrCode: fallback, qrPayload: fallback };
-    }
+    // No try/catch: backend QR is authoritative. Caller handles error.
+    return await submitSession({
+      ageRange:       age,
+      gender:         sex,
+      oturumTipi:     'OZEL_DANISMANLIK',
+      categorySlug:   null,
+      danismaKategorisiSlug: categorySlug,
+      isSensitiveFlow: true,
+      answersPayload:  {},
+      ingredientList:  [],
+      completed:       true,
+    });
   }
 
   async function doSubmitSession(categorySlug, isSensitiveFlow, ingredientList, completed = true) {
@@ -269,20 +267,36 @@
     selectedSex.update(v => { sex = v; return v; });
     currentAnswers.update(v => { answers = v; return v; });
 
-    try {
-      return await submitSession({
-        ageRange:       age,
-        gender:         sex,
-        categorySlug,
-        isSensitiveFlow,
-        answersPayload: Object.fromEntries(answers.map(a => [a.id, a.answer])),
-        ingredientList,
-        completed,
-      });
-    } catch {
-      const fallback = Math.random().toString(36).slice(2, 10).toUpperCase();
-      return { qrCode: fallback, qrPayload: fallback };
+    // No try/catch for completed sessions: backend QR is authoritative.
+    // For abandoned sessions, errors are silently ignored.
+    if (!completed) {
+      try {
+        return await submitSession({
+          ageRange:       age,
+          gender:         sex,
+          oturumTipi:     'URUN_ONERI',
+          categorySlug,
+          danismaKategorisiSlug: null,
+          isSensitiveFlow,
+          answersPayload: Object.fromEntries(answers.map(a => [a.id, a.answer])),
+          ingredientList,
+          completed,
+        });
+      } catch {
+        return { qrCode: null }; // Abandoned sessions silently fail
+      }
     }
+    return await submitSession({
+      ageRange:       age,
+      gender:         sex,
+      oturumTipi:     'SIKAYET',
+      categorySlug,
+      danismaKategorisiSlug: null,
+      isSensitiveFlow,
+      answersPayload: Object.fromEntries(answers.map(a => [a.id, a.answer])),
+      ingredientList,
+      completed,
+    });
   }
 </script>
 

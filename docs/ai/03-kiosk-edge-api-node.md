@@ -18,16 +18,28 @@
 
 - `kiosk_edge/api-node/src/index.js` — Entry point, scheduler startup
 - `kiosk_edge/api-node/src/server.js` — Fastify routes:
-  - `POST /api/oturum/gonder` (line 189) — session submission handler
-  - `POST /api/reklam-gosterim` (line 406) — proof-of-play ingestion handler
+  - `POST /api/oturum/gonder` — session submission handler (**2026-07-20:** tamamlandi=true → backend QR zorunlu; sahte QR yok; backend erişilemezse 503)
+  - `POST /api/reklam-gosterim` — proof-of-play ingestion handler
 - `kiosk_edge/api-node/src/db.js` — SQLite schema (oturum_outbox, reklam_gosterim_outbox), outbox logic
-- `kiosk_edge/api-node/src/scheduler.js` — Sync/push scheduler:
-  - `pullFromCentral()` (line 315) — backend data pull
-  - `pushToCentral()` (line 494) — outbox forwarding
-  - `pingAndSyncPlaylist()` — playlist version check
-- `kiosk_edge/api-node/src/provisioning.js` — Kiosk provisioning
+- `kiosk_edge/api-node/src/scheduler.js` — Sync/push scheduler
+- `kiosk_edge/api-node/src/provisioning.js` — Kiosk provisioning (**device_id**: `crypto.randomUUID()` ile üretilir, kiosk_meta'ya saklanır; HMAC'e dahil edilir; `/api/kiosk/v1/identity/enroll/` ile tek-seferlik bağlanır)
 - `kiosk_edge/api-node/src/mediaCache.js` — Media download cache
 - `kiosk_edge/api-node/src/config.js` — Config management
+
+### Session QR Akışı (2026-07-20)
+```
+UI → POST /api/oturum/gonder { ..., tamamlandi: true }
+  → Edge: hasAppKeyCredentials? YES
+  → Edge: POST /api/kiosk/v1/sessions/ { items: [payload_without_qr] }
+  → Backend: generate_qr_candidate() + DB insert + IntegrityError retry
+  → Backend response: { results: [{ idempotency_key, status: "created", qr_kodu: "XXXXXXXX" }] }
+  → Edge: outbox'a backend QR ile kaydet → UI'a { qr_kodu: "XXXXXXXX" } döndür
+  → UI: Backend QR göster (sahte QR yok!)
+
+Backend erişilemezse:
+  → Edge: 503 { error: "...", code: "backend_unreachable" }
+  → UI: Retry seçeneği göster
+```
 
 ---
 

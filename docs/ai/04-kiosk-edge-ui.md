@@ -23,7 +23,7 @@
   - Global `pointerdown`/`keydown` dinleyicileri + reaktif ekran-bazli arm/clear
 - `kiosk_edge/ui/src/stores/kiosk.js` — State management
 - `kiosk_edge/ui/src/lib/api.js` — Lokal API client:
-  - `submitSession()` — session submission
+  - `submitSession({ ageRange, gender, oturumTipi, categorySlug, danismaKategorisiSlug, ... })` — session submission; **backend QR döner; sahte QR yok; backend erişilemezse error propagate edilir** (2026-07-20)
   - `logAdImpression({ assetId, assetType, shownAt, durationMs })` (line 166) — impression logging
 - `kiosk_edge/ui/src/lib/logger.js` — Frontend hata köprüsü (2026-07-16):
   - Prod'da INFO/DEBUG bastırılır; yalnızca WARNING+ işlenir.

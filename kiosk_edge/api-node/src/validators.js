@@ -12,7 +12,9 @@ export const oturumGonderSchema = z.object({
   cinsiyet_kod: z.enum(CINSIYET_SET, {
     errorMap: () => ({ message: 'Gecersiz cinsiyet kodu' }),
   }),
-  kategori_slug: z.string().min(1).max(64),
+  oturum_tipi: z.enum(['SIKAYET', 'OZEL_DANISMANLIK']).default('SIKAYET'),
+  kategori_slug: z.string().min(1).max(64).nullable().optional(),
+  danisma_kategorisi_slug: z.string().min(1).max(64).nullable().optional(),
   hassas_akis: z.boolean().default(false),
   qr_kodu: z.string().max(256).regex(QR_RE, 'Gecersiz QR kodu formati').nullable().optional(),
   cevaplar: z.record(z.any()).default({}),

@@ -62,11 +62,12 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 | `/api/campaigns/v2/*` | `apps.campaigns.views_v2` | JWT (SuperAdmin) | DOOH v2 API (playlist, pricing, house ads) |
 | `/api/inventory/availability/` | `InventoryAvailabilityView` | JWT | Slot kapasite sorgusu |
 | `/api/kiosk/v1/bootstrap/` | `kiosk_api.KioskBootstrapView` | Fleet+HMAC | Provisioning; App Key döner |
+| `/api/kiosk/v1/identity/enroll/` | `kiosk_api.KioskIdentityEnrollView` | AppKey+MAC | Kalıcı device_id tek-seferlik bağlama |
 | `/api/kiosk/v1/ping/` | `kiosk_api.KioskPingView` | AppKey+MAC | Playlist versiyonu kontrolü |
 | `/api/kiosk/v1/sync/` | `kiosk_api.KioskSyncView` | AppKey+MAC | Creative/HouseAd + lookup |
 | `/api/kiosk/v1/catalog/` | `kiosk_api.KioskCatalogView` | AppKey+MAC | Kategori/soru/etken madde/danışma |
 | `/api/kiosk/v1/playlist/` | `kiosk_api.KioskPlaylistView` | AppKey+MAC | Günlük playlist |
-| `/api/kiosk/v1/sessions/` | `kiosk_api.KioskSessionsView` | AppKey+MAC | Oturum outbox (idempotent) |
+| `/api/kiosk/v1/sessions/` | `kiosk_api.KioskSessionsView` | AppKey+MAC | Oturum outbox; backend QR üretir; response: `{results:[{idempotency_key,status,qr_kodu}]}` |
 | `/api/kiosk/v1/proof-of-play/` | `kiosk_api.KioskProofOfPlayView` | AppKey+MAC | Bulk PlayLog ingest |
 | `/api/kiosk/v1/diagnostics/` | `kiosk_api.KioskDiagnosticsView` | AppKey+MAC | Diagnostic (DB'ye yazılmaz) |
 
@@ -105,8 +106,13 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 
 ### Pharmacies (`apps.pharmacies`)
 - `Eczane`: Eczane (il/ilce, ad, sahip, telefon, aktif)
-- `Kiosk`: Kiosk cihaz (eczane FK, mac_adresi, uygulama_anahtari, aktif, is_online, son_goruldu, last_playlist_version)
-- `KioskProvisioningRequest`: Kayıtsız kiosk onay talebi (UUID pk, mac_adresi, hostname, device_metadata JSON, status PENDING/APPROVED/REJECTED, last_seen_at, request_count, approved_by/at, rejected_by/at, rejection_reason, kiosk FK nullable). DB tablo: `kiosk_provisioning_requests`. **Raw fleet_key/provision_secret saklanmaz.**
+- `Kiosk`: Kiosk cihaz (eczane FK, mac_adresi, **device_id** (UUID, unique, nullable), uygulama_anahtari, aktif, is_online, son_goruldu, last_playlist_version). device_id ilk enrollment'ta tek-seferlik bağlanır, değiştirilemez. TPM tabanlı değil; runtime DB kopyalanırsa kopyalanabilir.
+- `KioskProvisioningRequest`: Kayıtsız kiosk onay talebi (UUID pk, mac_adresi, **device_id** (max 36, partial-unique non-empty), hostname, device_metadata JSON, status PENDING/APPROVED/REJECTED, last_seen_at, request_count, approved_by/at, rejected_by/at, rejection_reason, kiosk FK nullable). Onay anında `device_id` `Kiosk.device_id`'ye aktarılır. **Raw fleet_key/provision_secret saklanmaz.**
+
+### Analytics (`apps.analytics`) *(updated 2026-07-20)*
+- `OturumLogu`: Anonim kullanici session (**oturum_tipi** [SIKAYET/OZEL_DANISMANLIK],RUN_ONERI/DANISMANLIK], kategori FK (nullable), **danisma_kategorisi** FK (nullable, products.Danisma), hassas_akis bool, **qr_kodu** (max_length=8, unique, DB constraint), cevaplar JSON (backup), onerilen_etken_maddeler JSON (backup), tamamlandi bool). **QR backend tarafından üretilir; istemciden gelen qr_kodu yoksayılır.**
+- `OturumCevap`: Normalize cevaplar (oturum FK CASCADE, soru FK PROTECT nullable, cevap FK PROTECT nullable, soru_metni_snapshot, cevap_metni_snapshot, cevap_degeri_snapshot). unique_together (oturum, soru).
+- `OturumOnerilenEtkenMadde`: Normalize önerilen etken maddeler (oturum FK CASCADE, etken_madde FK PROTECT nullable, etken_madde_adi_snapshot). unique_together (oturum, etken_madde).
 
 ### Products (`apps.products`)
 - `Kategori`: Şikayet kategorisi (ad, slug, ikon, hedef_cinsiyet, hedef_yas_araliklari M2M, bagli_kategori self-FK)
@@ -132,7 +138,7 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 - `PricingMatrix`: Fiyatlandırma matrisi (singleton, JSON field)
 
 ### Analytics (`apps.analytics`)
-- `OturumLogu`: Anonim kullanıcı session (kiosk FK, idempotency_anahtari UUID, yas_araligi FK, cinsiyet FK, kategori FK, hassas_akis bool, qr_kodu, cevaplar JSON, onerilen_etken_maddeler JSON, tamamlandi bool)
+- `OturumLogu`: (see above — updated 2026-07-20)
 
 ### Audit (`apps.audit`)
 - `AuditLog`: Model değişiklik loglama (model_type, object_id, action, user FK, timestamp, old_values JSON, new_values JSON)

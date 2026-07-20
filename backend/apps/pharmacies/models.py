@@ -52,6 +52,10 @@ class Kiosk(BaseModel):
     )
     ad = models.CharField(max_length=50, unique=False, blank=False, null=False)
     mac_adresi = models.CharField(max_length=17, unique=True)
+    device_id = models.CharField(
+        max_length=36, unique=True, null=True, blank=True,
+        help_text="Kalici cihaz UUID; bootstrap sirasinda kilit (spoofing onlenir)."
+    )
     uygulama_anahtari = models.CharField(max_length=128, unique=True)
     aktif = models.BooleanField(default=True)
     son_goruldu = models.DateTimeField(null=True, blank=True)
@@ -98,6 +102,10 @@ class KioskProvisioningRequest(BaseModel):
 
     # Cihaz kimlik bilgileri (istemci tarafindan gonderilir; tek basina guven unsuru sayilmaz)
     mac_adresi = models.CharField(max_length=17, db_index=True)
+    device_id = models.CharField(
+        max_length=36, blank=True, default="",
+        help_text="Kalici cihaz UUID (bootstrap HMAC'e dahil edilir)."
+    )
     hostname = models.CharField(max_length=255, blank=True, default="")
     device_metadata = models.JSONField(
         default=dict, blank=True,
@@ -140,6 +148,16 @@ class KioskProvisioningRequest(BaseModel):
 
     class Meta:
         db_table = "kiosk_provisioning_requests"
+        constraints = [
+            # Non-empty device_id values must be unique across all provisioning requests.
+            # Empty string = legacy device without device_id; multiple allowed.
+            # Condition: NOT(device_id='') — valid for VARCHAR in both SQLite and PostgreSQL.
+            models.UniqueConstraint(
+                condition=~models.Q(device_id=''),
+                fields=['device_id'],
+                name='uniq_provisioning_device_id_nonempty',
+            ),
+        ]
         ordering = ("-olusturulma_tarihi",)
         verbose_name = "Kiosk Provision Talebi"
         verbose_name_plural = "Kiosk Provision Talepleri"

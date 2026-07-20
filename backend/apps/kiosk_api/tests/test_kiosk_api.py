@@ -208,21 +208,26 @@ class TestOperationalBehaviour:
         yas = YasAraligi.objects.first()
         cins = Cinsiyet.objects.first()
         _appkey_creds(api_client, kiosk)
+        idem_key = str(uuid.uuid4())
         payload = {"items": [{
-            "idempotency_anahtari": str(uuid.uuid4()),
+            "idempotency_anahtari": idem_key,
             "yas_araligi_kod": yas.kod,
             "cinsiyet_kod": cins.kod,
             "kategori_slug": "uyku",
-            "qr_kodu": "A1B2C3D4",
             "cevaplar": {},
             "onerilen_etken_maddeler": [],
             "tamamlandi": True,
         }]}
         r = api_client.post("/api/kiosk/v1/sessions/", payload, format="json")
         assert r.status_code == 200, r.content
-        assert r.json()["accepted"] == 1
-        # Oturum, payload'a degil dogrulanmis kiosk'a baglanir
-        assert OturumLogu.objects.filter(kiosk=kiosk, qr_kodu="A1B2C3D4").exists()
+        data = r.json()
+        # New response format: results list with qr_kodu per item
+        assert len(data["results"]) == 1
+        assert data["results"][0]["status"] == "created"
+        assert len(data["results"][0]["qr_kodu"]) == 8
+        assert not data["errors"]
+        # Session bound to authenticated kiosk (not payload kiosk)
+        assert OturumLogu.objects.filter(kiosk=kiosk, idempotency_anahtari=idem_key).exists()
 
     def test_diagnostics_ingest(self, db, api_client, kiosk):
         _appkey_creds(api_client, kiosk)

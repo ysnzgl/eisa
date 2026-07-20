@@ -201,10 +201,26 @@ function formatDT(iso) {
             <p class="qr-detail-label">Cinsiyet</p>
             <p class="qr-detail-value">{{ session.cinsiyet_detay?.ad || (GENDER_LABEL[session.gender || session.cinsiyet_kod] ?? (session.gender || session.cinsiyet_kod)) }}</p>
           </div>
-          <div style="grid-column:1/span 2;">
-            <p class="qr-detail-label">Seçilen Kategori</p>
+          <div>
+            <p class="qr-detail-label">Oturum Tipi</p>
             <p class="qr-detail-value">
-              {{ session.kategori_detay?.ad ?? session.kategori_adi ?? session.category?.name ?? session.category_name ?? session.category_slug ?? '—' }}
+              {{ session.oturum_tipi === 'OZEL_DANISMANLIK' ? 'Ozel Danismanlik' : 'Sikayet' }}
+            </p>
+          </div>
+          <div style="grid-column:1/span 2;">
+            <p class="qr-detail-label">Kategori</p>
+            <p class="qr-detail-value">
+              <template v-if="session.oturum_tipi === 'OZEL_DANISMANLIK'">
+                {{ session.danisma_kategorisi_detay?.ad
+                   || session.danisma_kategorisi_adi
+                   || '—' }}
+              </template>
+              <template v-else>
+                {{ session.kategori_detay?.ad
+                   ?? session.kategori_adi
+                   ?? session.category?.name
+                   ?? '—' }}
+              </template>
             </p>
           </div>
           <div>
@@ -268,7 +284,7 @@ function formatDT(iso) {
           <textarea
             v-model="completionNote"
             rows="2"
-            placeholder="Hastaya verilen tavsiye veya ürün önerisi..."
+            placeholder="Hastaya verilen tavsiye veya onerilen etken maddeler..."
             class="eisa-field"
             style="margin-bottom:0.75rem;"
           ></textarea>

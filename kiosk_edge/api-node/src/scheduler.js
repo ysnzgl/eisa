@@ -2,7 +2,7 @@ import cron from 'node-cron';
 import { Agent, fetch } from 'undici';
 import { checkOutboxPressure } from './db.js';
 import { syncMediaCache } from './mediaCache.js';
-import { getAuthHeaders, getProvisioningState, handle401Error, handle403Error, hasAppKeyCredentials } from './provisioning.js';
+import { getAuthHeaders, getProvisioningState, handle401Error, handle403Error, hasAppKeyCredentials, enrollDeviceId } from './provisioning.js';
 import { istanbulNow } from './timezone.js';
 import {
   CORRELATION_HEADER_PRETTY,
@@ -343,6 +343,12 @@ export async function pullFromCentral(db, settings, log = console) {
     log.warn?.('PULL atlandi: kiosk kimligi henuz provision edilmedi');
     return;
   }
+
+  // Device ID enrollment — App Key alındıktan sonra henüz enrolled değilse bağla.
+  // İdempotent: zaten enrolled ise hızla döner.
+  await enrollDeviceId(db, settings, log).catch((err) =>
+    log.warn?.({ err: err?.message }, 'enrollDeviceId pull sirasinda basarisiz')
+  );
   try {
     // 1) kiosk/v1/sync — { creatives: [...], house_ads: [...], lookups: {...} }
     const r2 = await requestWithRetry(db, settings, 'GET', '/api/kiosk/v1/sync/', undefined, log);

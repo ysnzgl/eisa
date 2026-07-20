@@ -9,6 +9,7 @@ from .views import (
     KioskBootstrapView,
     KioskCatalogView,
     KioskDiagnosticsView,
+    KioskIdentityEnrollView,
     KioskPingView,
     KioskPlaylistView,
     KioskProofOfPlayView,
@@ -21,6 +22,8 @@ app_name = "kiosk_api"
 urlpatterns = [
     # Provisioning (Fleet Key + HMAC)
     path("bootstrap/", KioskBootstrapView.as_view(), name="kiosk-bootstrap"),
+    # Identity enrollment (AppKey + MAC, one-time device_id binding)
+    path("identity/enroll/", KioskIdentityEnrollView.as_view(), name="kiosk-identity-enroll"),
     # Operasyonel (AppKey + MAC)
     path("ping/", KioskPingView.as_view(), name="kiosk-ping"),
     path("sync/", KioskSyncView.as_view(), name="kiosk-sync"),

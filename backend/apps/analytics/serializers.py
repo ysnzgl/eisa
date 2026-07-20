@@ -19,9 +19,16 @@ class OturumLoguItemSerializer(serializers.Serializer):
     kiosk_mac = serializers.CharField(max_length=17, required=False, allow_blank=True)
     yas_araligi_kod = serializers.CharField(max_length=8)
     cinsiyet_kod = serializers.CharField(max_length=4)
-    kategori_slug = serializers.SlugField()
+    oturum_tipi = serializers.ChoiceField(
+        choices=["SIKAYET", "OZEL_DANISMANLIK"], default="SIKAYET"
+    )
+    kategori_slug = serializers.SlugField(required=False, allow_null=True, allow_blank=True)
+    danisma_kategorisi_id = serializers.IntegerField(required=False, allow_null=True)
+    danisma_kategorisi_slug = serializers.SlugField(required=False, allow_null=True, allow_blank=True)
     hassas_akis = serializers.BooleanField(default=False)
-    qr_kodu = serializers.CharField(max_length=64)
+    # qr_kodu: backend generates it — client value is IGNORED.
+    # Field kept optional so existing edge code sending qr_kodu doesn't break.
+    qr_kodu = serializers.CharField(max_length=64, required=False, allow_blank=True, allow_null=True)
     cevaplar = serializers.JSONField(default=dict)
     onerilen_etken_maddeler = serializers.JSONField(default=list)
     tamamlandi = serializers.BooleanField(default=True)
@@ -46,6 +53,7 @@ class OturumLoguSerializer(serializers.ModelSerializer):
     yas_araligi_detay = serializers.SerializerMethodField()
     cinsiyet_detay = serializers.SerializerMethodField()
     kategori_detay = serializers.SerializerMethodField()
+    danisma_kategorisi_detay = serializers.SerializerMethodField()
     cevap_detaylari = serializers.SerializerMethodField()
     onerilen_etken_madde_detaylari = serializers.SerializerMethodField()
     satis_sonucu = serializers.SerializerMethodField()
@@ -64,8 +72,10 @@ class OturumLoguSerializer(serializers.ModelSerializer):
             "yas_araligi_kod",
             "cinsiyet",
             "cinsiyet_kod",
+            "oturum_tipi",
             "kategori",
             "kategori_adi",
+            "danisma_kategorisi",
             "hassas_akis",
             "qr_kodu",
             "qr_code",
@@ -80,6 +90,7 @@ class OturumLoguSerializer(serializers.ModelSerializer):
             "yas_araligi_detay",
             "cinsiyet_detay",
             "kategori_detay",
+            "danisma_kategorisi_detay",
             "satis_sonucu",
             "danisma_tamamlandi",
             "danisma_tamamlanma_tarihi",
@@ -211,6 +222,16 @@ class OturumLoguSerializer(serializers.ModelSerializer):
             "id": category.id,
             "ad": getattr(category, "ad", "") or "",
             "slug": getattr(category, "slug", "") or "",
+        }
+
+    def get_danisma_kategorisi_detay(self, obj):
+        danisma = getattr(obj, "danisma_kategorisi", None)
+        if not danisma:
+            return None
+        return {
+            "id": danisma.id,
+            "ad": getattr(danisma, "ad", "") or "",
+            "slug": getattr(danisma, "slug", "") or "",
         }
 
     def get_cevap_detaylari(self, obj):

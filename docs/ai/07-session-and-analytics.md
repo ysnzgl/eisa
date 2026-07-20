@@ -16,68 +16,93 @@
 
 ## Important Source Files
 
-- `backend/apps/analytics/models.py` — OturumLogu model
+- `backend/apps/analytics/models.py` — OturumLogu, OturumCevap, OturumOnerilenEtkenMadde models
+- `backend/apps/analytics/services.py` — `ingest_session_items()`, `generate_qr_candidate()`
 - `kiosk_edge/ui/src/App.svelte` → `INACTIVITY_MS`, `onInactivityTimeout()`, session lifecycle
-- `kiosk_edge/ui/src/components/ResultScreen.svelte` — QR generation
 - `kiosk_edge/ui/src/lib/api.js` → `submitSession()` client function
 - `kiosk_edge/api-node/src/db.js` — oturum_outbox table
-- `kiosk_edge/api-node/src/server.js` → `POST /api/oturum/gonder` handler (line 189)
+- `kiosk_edge/api-node/src/server.js` → `POST /api/oturum/gonder` handler
 - `kiosk_edge/api-node/src/scheduler.js` → `pushToCentral()` function
-- `web_panels/src/views/pharmacist/QrScan.vue` — QR scanning
+- `web_panels/src/views/pharmacist/QrScan.vue` — QR scanning + danışmanlık detayı
+- `backend/apps/analytics/management/commands/verify_session_data.py` — Data quality report
+- `backend/apps/analytics/management/commands/backfill_session_normalization.py` — JSON backfill
+
+---
+
+## QR Tasarımı (2026-07-20 güncellemesi)
+
+**Authoritative QR:** Backend üretir, istemci almaz.
+- Format: 8 karakter `[A-Z0-9]`, kriptografik rastgele (secrets.choice)
+- DB: `OturumLogu.qr_kodu` → `CharField(max_length=8, unique=True)` — DB seviyesinde constraint
+- Retry: `IntegrityError` yakalanır, yeni aday üretilir (max 5 deneme, her biri savepoint)
+- **"QR collision imkansız" değil; DB onu saklar, retry çözüm sağlar**
+
+**Edge:** Tamamlanan oturumlar için backend'i sync olarak çağırır. Response'taki `qr_kodu`'nu kullanır.
+- Backend erişilemezse → 503 döner (sahte QR gösterilmez)
+- Terk edilen oturumlar (tamamlandi=false) QR gerektirmez
+
+**Geriye dönük:** `qrBitpack` encodeQrCode() hala çalışır ama sadece termal yazıcı metadata'sı için kullanılır.
 
 ---
 
 ## Session Lifecycle
 
-### 1. Session Başlangıcı
+### 1. Sikayet Session (SIKAYET)
 ```
-User → İdeal ekran → "Başla" butonu
-  → DemographicsScreen: yaş aralığı + cinsiyet seçimi
-  → WelcomeScreen
-  → CategoryScreen: kategori seçimi
-  → sessionId = uuid() (lokal state)
-  → Inactivity timer başlat (10sn)
-```
-
-### 2. Session Devam Ediyor
-```
-QuestionScreen: soru/cevap akışı
-  → Her cevap → currentAnswers array'e ekle
-  → Her etkileşim → inactivity timer reset (10sn)
-  → Son soru → etken madde recommendation hesaplama
+Kategori seçimi → Soru akışı → Sonuç ekranı
+  → UI: POST /api/oturum/gonder { oturum_tipi: "SIKAYET", kategori_slug, cevaplar, ... }
+  → Edge: Backend'e sync ilet, backend QR üret
+  → Backend: ingest_session_items() → generate_qr_candidate() + DB insert
+  → Response: { results: [{ idempotency_key, status, qr_kodu }] }
+  → UI: Backend QR'ı göster (sahte QR yok)
 ```
 
-### 3. Session Tamamlanması (Başarılı)
+### 2. Danışmanlık Session (DANISMANLIK)
 ```
-ResultScreen
-  → QR kodu üretimi: 8 karakter Base36 (0-9A-Z)
-  → QR canvas'a render (qr-creator library)
-  → POST http://localhost:5234/sessions
-    {
-      "idempotency_key": uuid(),
-      "yas_araligi_id": 2,
-      "cinsiyet_id": 1,
-      "kategori_id": 5,
-      "hassas_akis": false,
-      "qr_kodu": "A1B2C3D4",
-      "cevaplar": { soru_id: cevap_id, ... },
-      "onerilen_etken_maddeler": ["Melatonin", "Valerian"],
-      "tamamlandi": true
-    }
-  → Lokal API → oturum_outbox insert
-  → ÖNEMLİ (2026-07-07): tamamlandi=true → ANINDA backend sync
-     • requestWithRetry() ile POST /api/analytics/sessions/ (exponential backoff)
-     • Başarılı → outbox.gonderilme_tarihi set edilir
-     • Başarısız → log, scheduler tekrar dener
-     • Eczacı QR taradığında cevapları ANINDA görebilir
-  → sessionFinalized = true
-  → 30sn sonra otomatik idle'a dön
+"Eczacıya Danış" butonu → Danışma kategorisi seçimi
+  → UI: POST /api/oturum/gonder { oturum_tipi: "DANISMANLIK", danisma_kategorisi_slug, ... }
+  → kategori_slug gönderilmez (nullable)
+  → Edge → Backend → QR
+  → Eczacı paneli: danisma_kategorisi_detay.ad gösterilir (kategori değil)
 ```
 
-### 4. Session Terk Edilmesi (Abandoned)
+### 3. Terk Edilen Session (Abandoned)
 ```
-10sn inactivity timeout trigger
-  → onInactivityTimeout()
+20sn inactivity → tamamlandi=false
+  → Edge: outbox'a yaz, QR yok
+  → Backend'e async gönder (scheduler)
+  → UI'a qr_kodu: null döner
+```
+
+---
+
+## Normalizasyon Mimarisi
+
+### JSON vs Relational (Expand/Contract)
+- `OturumLogu.cevaplar` JSON ve `OturumLogu.onerilen_etken_maddeler` JSON **backup** olarak korunur
+- `OturumCevap` ve `OturumOnerilenEtkenMadde` normalize tablolar (yeni kayıtlar her ikisine de yazılır)
+- Eski kayıtlar için: `python manage.py backfill_session_normalization`
+
+### Soru-Cevap Doğrulama
+- `cevap.soru_id == soru_id` kontrol edilir
+- Uyumsuz cevap: FK null, snapshot'ta `[uyumsuz: ...]` notu
+
+### Deployment Sırası (production)
+1. `python manage.py migrate` (0006, 0007, 0008 uygulanır — QR cleanup dahil)
+2. `python manage.py verify_session_data` (veri kalitesini raporla)
+3. `python manage.py backfill_session_normalization` (JSON → relational backfill)
+4. `python manage.py verify_session_data` (tekrar doğrula)
+
+---
+
+## Oturum Tipi Doğrulama
+
+| oturum_tipi | kategori_slug | danisma_kategorisi_slug |
+|-------------|--------------|------------------------|
+| SIKAYET | zorunlu | opsiyonel / null |
+| OZEL_DANISMANLIK | null | zorunlu |
+
+---
   → POST http://localhost:5234/sessions
     { ..., "tamamlandi": false }
   → sessionFinalized = true

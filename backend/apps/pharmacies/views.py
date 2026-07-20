@@ -168,6 +168,8 @@ class KioskProvisioningApproveView(APIView):
                 eczane=eczane,
                 ad=kiosk_ad,
                 mac_adresi=provision_req.mac_adresi.upper(),
+                # Transfer device_id from provisioning request (None if legacy/empty)
+                device_id=provision_req.device_id or None,
                 uygulama_anahtari=secrets.token_urlsafe(48),
                 aktif=True,
             )

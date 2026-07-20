@@ -1,4 +1,4 @@
-"""Kiosk API facade — view'ler.
+﻿"""Kiosk API facade â€” view'ler.
 
 Kiosk <-> Main API operasyonel yuzeyinin tamami burada toplanir. Domain
 modelleri ve serializer'lari YENIDEN KULLANILIR; is mantigi kopyalanmaz
@@ -13,6 +13,7 @@ import datetime as _dt
 import re
 
 from django.conf import settings
+from django.db import transaction
 from django.db.models import F, Max
 from django.utils import timezone
 from rest_framework import status
@@ -55,7 +56,7 @@ def _parse_date(raw):
         raise ValueError("Gecersiz tarih formati (YYYY-MM-DD bekleniyor).") from exc
 
 
-# ── Bootstrap / Provisioning ─────────────────────────────────────────────────
+# â”€â”€ Bootstrap / Provisioning â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _approved_response(kiosk: Kiosk) -> dict:
     """Onayli + aktif + eczaneli kiosk icin App Key contract'i.
@@ -80,18 +81,18 @@ def _pending_response(provision_req) -> dict:
 
 
 class KioskBootstrapView(APIView):
-    """``POST /api/kiosk/v1/bootstrap/`` — provisioning giris noktasi.
+    """``POST /api/kiosk/v1/bootstrap/`` â€” provisioning giris noktasi.
 
     Fleet Key + HMAC + timestamp ile dogrulanir (App Key auth KULLANILMAZ).
     Onayli+aktif+eczaneli kiosk icin App Key doner.
 
     Yanitlar:
-      200 APPROVED — {status, kiosk_id, pharmacy_id, app_key}
-      202 PENDING  — {status, registration_id, retry_after_seconds}
-      403 REJECTED — {status}
-      401          — fleet key veya HMAC gecersiz
-      400          — eksik/hatali format
-      503          — sunucu yapilandirmasi eksik
+      200 APPROVED â€” {status, kiosk_id, pharmacy_id, app_key}
+      202 PENDING  â€” {status, registration_id, retry_after_seconds}
+      403 REJECTED â€” {status}
+      401          â€” fleet key veya HMAC gecersiz
+      400          â€” eksik/hatali format
+      503          â€” sunucu yapilandirmasi eksik
     """
 
     authentication_classes = []
@@ -113,6 +114,7 @@ class KioskBootstrapView(APIView):
         # 2) Body alanlari
         raw_mac = request.data.get("mac_adresi") or request.headers.get("X-Kiosk-MAC", "")
         mac = normalize_mac(raw_mac)
+        device_id = (request.data.get("device_id") or "").strip()
         timestamp = (request.data.get("timestamp") or "").strip()
         received_hmac = (request.data.get("hmac") or "").strip()
 
@@ -131,8 +133,8 @@ class KioskBootstrapView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # 4) HMAC (hangi credential hatali oldugu belirtilmez)
-        if not verify_provision_hmac(mac, timestamp, received_hmac, provisioning_secret):
+        # 4) HMAC (device_id dahil)
+        if not verify_provision_hmac(mac, timestamp, received_hmac, provisioning_secret, device_id):
             return Response({"detail": "Kimlik dogrulanamadi."}, status=status.HTTP_401_UNAUTHORIZED)
 
         # 5) Aktif kayitli kiosk var mi? -> App Key ver
@@ -168,7 +170,7 @@ class KioskBootstrapView(APIView):
                 linked = provision_req.kiosk
                 if linked and linked.aktif:
                     return Response(_approved_response(linked), status=status.HTTP_200_OK)
-                # Kiosk silinmis/pasif — PENDING'e geri don
+                # Kiosk silinmis/pasif â€” PENDING'e geri don
                 KioskProvisioningRequest.objects.filter(pk=provision_req.pk).update(
                     status=KioskProvisioningRequest.Status.PENDING,
                     last_seen_at=now,
@@ -185,22 +187,34 @@ class KioskBootstrapView(APIView):
                 last_seen_at=now,
                 request_count=F("request_count") + 1,
                 hostname=hostname or provision_req.hostname,
+                device_id=device_id or provision_req.device_id,
                 device_metadata=device_metadata or provision_req.device_metadata,
             )
             return Response(_pending_response(provision_req), status=status.HTTP_202_ACCEPTED)
 
-        # Yeni cihaz — PENDING kayit olustur
+        # Yeni cihaz â€” PENDING kayit olustur
+        from django.db import IntegrityError as _IntegrityError
         try:
-            provision_req = KioskProvisioningRequest(
-                mac_adresi=mac,
-                hostname=hostname,
-                device_metadata=device_metadata,
-                status=KioskProvisioningRequest.Status.PENDING,
-                last_seen_at=now,
-                request_count=1,
-            )
-            provision_req.save()
-        except Exception:  # es-zamanli istek zaten olusturmus olabilir
+            with transaction.atomic():    # savepoint: isolates IntegrityError
+                provision_req = KioskProvisioningRequest(
+                    mac_adresi=mac,
+                    device_id=device_id,
+                    hostname=hostname,
+                    device_metadata=device_metadata,
+                    status=KioskProvisioningRequest.Status.PENDING,
+                    last_seen_at=now,
+                    request_count=1,
+                )
+                provision_req.save()
+        except _IntegrityError as exc:
+            err_str = str(exc).lower()
+            if "device_id" in err_str or "uniq_provisioning_device_id" in err_str:
+                # Another provisioning request already claims this device_id
+                return Response(
+                    {"detail": "Bu device_id baska bir kayit talebiyle iliskilendirilmistir.", "code": "device_id_conflict"},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            # mac_adresi collision: concurrent request created a record for this MAC
             provision_req = (
                 KioskProvisioningRequest.objects
                 .filter(mac_adresi__iexact=mac)
@@ -219,10 +233,10 @@ class KioskBootstrapView(APIView):
         return Response(_pending_response(provision_req), status=status.HTTP_202_ACCEPTED)
 
 
-# ── Operasyonel endpoint'ler (AppKey + MAC) ──────────────────────────────────
+# â”€â”€ Operasyonel endpoint'ler (AppKey + MAC) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class KioskPingView(KioskAPIView):
-    """``GET /api/kiosk/v1/ping/`` — heartbeat + bugunun playlist versiyonu."""
+    """``GET /api/kiosk/v1/ping/`` â€” heartbeat + bugunun playlist versiyonu."""
 
     def get(self, request):
         kiosk = self.kiosk
@@ -244,7 +258,7 @@ class KioskPingView(KioskAPIView):
 
 
 class KioskSyncView(KioskAPIView):
-    """``GET /api/kiosk/v1/sync/`` — aktif creative + house_ad + lookup listesi."""
+    """``GET /api/kiosk/v1/sync/`` â€” aktif creative + house_ad + lookup listesi."""
 
     def get(self, request):
         kiosk = self.kiosk
@@ -283,14 +297,14 @@ class KioskSyncView(KioskAPIView):
 
 
 class KioskCatalogView(KioskAPIView):
-    """``GET /api/kiosk/v1/catalog/`` — kategori/soru/cevap/etken madde/danisma."""
+    """``GET /api/kiosk/v1/catalog/`` â€” kategori/soru/cevap/etken madde/danisma."""
 
     def get(self, request):
         return Response(build_catalog_payload())
 
 
 class KioskPlaylistView(KioskAPIView):
-    """``GET /api/kiosk/v1/playlist/?date=YYYY-MM-DD`` — gunun 24 saatlik playlist'i."""
+    """``GET /api/kiosk/v1/playlist/?date=YYYY-MM-DD`` â€” gunun 24 saatlik playlist'i."""
 
     def get(self, request):
         try:
@@ -313,23 +327,27 @@ class KioskPlaylistView(KioskAPIView):
 
 
 class KioskSessionsView(KioskAPIView):
-    """``POST /api/kiosk/v1/sessions/`` — oturum outbox toplu-yazma (idempotent)."""
+    """``POST /api/kiosk/v1/sessions/`` â€” oturum outbox toplu-yazma (idempotent).
+
+    Response per item:
+      {"idempotency_key": "...", "status": "created"|"existing", "qr_kodu": "XXXXXXXX"}
+    """
 
     def post(self, request):
         items = request.data.get("items", [])
         if not isinstance(items, list):
             return Response({"detail": "'items' alani bir liste olmalidir."},
                             status=status.HTTP_400_BAD_REQUEST)
-        accepted, errors = ingest_session_items(self.kiosk, items)
+        results, errors = ingest_session_items(self.kiosk, items)
         return_status = status.HTTP_207_MULTI_STATUS if errors else status.HTTP_200_OK
         return Response(
-            {"accepted": len(accepted), "accepted_keys": accepted, "errors": errors},
+            {"results": results, "errors": errors},
             status=return_status,
         )
 
 
 class KioskProofOfPlayView(KioskAPIView):
-    """``POST /api/kiosk/v1/proof-of-play/`` — reklam gosterim (PlayLog) toplu-yazma."""
+    """``POST /api/kiosk/v1/proof-of-play/`` â€” reklam gosterim (PlayLog) toplu-yazma."""
 
     def post(self, request):
         kiosk = self.kiosk
@@ -354,7 +372,7 @@ class KioskProofOfPlayView(KioskAPIView):
 
 
 class KioskDiagnosticsView(KioskAPIView):
-    """``POST /api/kiosk/v1/diagnostics/`` — diagnostic outbox (DB'ye yazilmaz)."""
+    """``POST /api/kiosk/v1/diagnostics/`` â€” diagnostic outbox (DB'ye yazilmaz)."""
 
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "kiosk_diagnostic"
@@ -372,3 +390,74 @@ class KioskDiagnosticsView(KioskAPIView):
             )
         result = ingest_kiosk_diagnostic_items(self.kiosk, items)
         return Response(result, status=status.HTTP_202_ACCEPTED)
+
+
+_UUID_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
+
+
+class KioskIdentityEnrollView(KioskAPIView):
+    """``POST /api/kiosk/v1/identity/enroll/`` â€” device ID tek-seferlik baglama.
+
+    Amac: Onceden kaydedilmis (App Key'i olan) bir kiosk'a kalici device_id baglamak.
+    Guvenlik ozeti:
+      - Mevcut AppKey + MAC ile dogrulama gereklidir.
+      - Sadece ``Kiosk.device_id IS NULL`` iken gerceklesebilir (tek seferlik).
+      - Bir kez baglanan device_id DEGISTIRILEMEZ (concurrent race condition icin
+        SELECT...UPDATE filter kullanilir; yalnizca NULL â†’ deger atomik gecisi yapilir).
+
+    Sinir: device_id, cihazin yazilimi tarafindan uretilir (crypto.randomUUID).
+    TPM tabanli degildir; SQLite DB kopyalanirsa kopyalanabilir. Bu gercek
+    dokumante edilmistir â€” donanim guvencesi saglanmaz.
+
+    Yanitlar:
+      200 enrolled  â€” {\"status\": \"enrolled\", \"device_id\": \"...\"}
+      200 noop      â€” device_id zaten bu degerle bagli (idempotent)
+      409 conflict  â€” device_id zaten FARKLI bir degerle bagli
+      400           â€” gecersiz format
+    """
+
+    def post(self, request):
+        kiosk = self.kiosk
+        device_id = (request.data.get("device_id") or "").strip().lower()
+
+        if not device_id:
+            return Response(
+                {"detail": "device_id zorunlu.", "code": "device_id_required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not _UUID_RE.match(device_id):
+            return Response(
+                {"detail": "device_id gecerli bir UUID olmali (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx).",
+                 "code": "device_id_invalid_format"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Idempotent: zaten bu degerle bagliysa basarili say
+        if kiosk.device_id:
+            if kiosk.device_id.lower() == device_id:
+                return Response({"status": "enrolled", "device_id": kiosk.device_id})
+            return Response(
+                {"detail": "Bu kiosk'a farkli bir device_id zaten baglidir. Degistirilemez.",
+                 "code": "already_bound"},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        # Atomic one-time binding: only update if still NULL
+        updated = Kiosk.objects.filter(pk=kiosk.pk, device_id__isnull=True).update(
+            device_id=device_id
+        )
+        if updated:
+            return Response({"status": "enrolled", "device_id": device_id})
+
+        # Race condition: someone else bound it between our check and update
+        kiosk.refresh_from_db(fields=["device_id"])
+        if kiosk.device_id and kiosk.device_id.lower() == device_id:
+            return Response({"status": "enrolled", "device_id": kiosk.device_id})
+        return Response(
+            {"detail": "Device ID baglama yarisi durumu. Mevcut device_id degistirilemez.",
+             "code": "already_bound"},
+            status=status.HTTP_409_CONFLICT,
+        )

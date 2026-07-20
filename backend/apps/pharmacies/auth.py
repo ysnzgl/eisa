@@ -1,4 +1,4 @@
-"""Kiosk kimlik dogrulama.
+﻿"""Kiosk kimlik dogrulama.
 
 Operasyonel endpoint'ler icin TEK contract::
     Authorization: AppKey <APP_KEY>
@@ -27,13 +27,16 @@ from apps.audit.models import DenetimLogu, kayit_birak
 from .models import Kiosk
 
 
-# ── Legacy provisioning temizligi (App Key'e gecildi) ───────────────────
+# â”€â”€ Legacy provisioning temizligi (App Key'e gecildi) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-# ── Provision HMAC dogrulama ─────────────────────────────────────────────────
+# â”€â”€ Provision HMAC dogrulama â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-def verify_provision_hmac(mac: str, iso_timestamp: str, received_hmac: str, secret: str) -> bool:
-    """HMAC-SHA256(MAC_UPPER + iso_timestamp, secret) karsilastirir."""
-    message = mac.upper() + iso_timestamp
+def verify_provision_hmac(mac: str, iso_timestamp: str, received_hmac: str, secret: str, device_id: str = "") -> bool:
+    """HMAC-SHA256(MAC_UPPER + iso_timestamp + device_id, secret) karsilastirir.
+
+    device_id: Kalici cihaz UUID (spoofing onleme). Eski sistemlerde bos olabilir (legacy uyum).
+    """
+    message = mac.upper() + iso_timestamp + device_id
     expected = _hmac.new(secret.encode(), message.encode(), hashlib.sha256).hexdigest()
     return _hmac.compare_digest(expected, received_hmac)
 
@@ -48,7 +51,7 @@ def is_timestamp_fresh(iso_timestamp: str, tolerance_sec: int = 300) -> bool:
         return False
 
 
-# ── Fleet key yardimcisi ─────────────────────────────────────────────────────
+# â”€â”€ Fleet key yardimcisi â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def check_fleet_key(request) -> bool:
     """X-Kiosk-Key header'ini KIOSK_FLEET_KEY ile karsilastirir."""
@@ -106,8 +109,8 @@ class KioskAppKeyAuthentication(authentication.BaseAuthentication):
     dogrulamada ``request.kiosk`` atanir ve ``(kiosk, app_key)`` doner.
 
     Durum kodlari:
-      401 — App Key/MAC eksik veya App Key gecersiz (kimlik saglanamadi).
-      403 — Kiosk pasif/onaysiz veya eczaneye bagli degil (yetki yok).
+      401 â€” App Key/MAC eksik veya App Key gecersiz (kimlik saglanamadi).
+      403 â€” Kiosk pasif/onaysiz veya eczaneye bagli degil (yetki yok).
     """
 
     keyword = "AppKey"
@@ -133,13 +136,26 @@ class KioskAppKeyAuthentication(authentication.BaseAuthentication):
                 {"detail": "X-Kiosk-MAC basligi eksik.", "code": "mac_missing"}
             )
 
+        device_id = request.headers.get("X-Kiosk-Device-ID", "").strip()
+
         # MAC ile kiosk bul (aktif filtresi YOK; once App Key dogrula, sonra durum).
         kiosk = Kiosk.objects.select_related("eczane").filter(mac_adresi=mac).first()
         if kiosk is None or not secrets.compare_digest(str(kiosk.uygulama_anahtari), key):
-            # MAC/App Key cifti gecersiz — hangi tarafin hatali oldugu belirtilmez.
+            # MAC/App Key cifti gecersiz â€” hangi tarafin hatali oldugu belirtilmez.
             raise exceptions.AuthenticationFailed(
                 {"detail": "Kimlik dogrulanamadi.", "code": "app_key_invalid"}
             )
+
+        # Device ID validation: eger kiosk'ta device_id set edilmisse match olmali
+        if kiosk.device_id:
+            if not device_id:
+                raise exceptions.AuthenticationFailed(
+                    {"detail": "X-Kiosk-Device-ID basligi eksik.", "code": "device_id_missing"}
+                )
+            if not secrets.compare_digest(kiosk.device_id, device_id):
+                raise exceptions.AuthenticationFailed(
+                    {"detail": "Device ID eslesmedi.", "code": "device_id_mismatch"}
+                )
 
         # App Key gecerli; yetki/durum kontrolleri => 403.
         if not kiosk.aktif:
