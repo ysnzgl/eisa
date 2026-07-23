@@ -41,9 +41,9 @@ Backend'de kampanya/creative tanımı → Merkezi playlist üretimi → Kiosk'a 
 | Konu | Dosya |
 |------|-------|
 | **Session/Analytics** | [07-session-and-analytics.md](07-session-and-analytics.md) — Session lifecycle, QR, idempotency, analytics |
-| **DOOH Advertising** | [08-dooh-advertising.md](08-dooh-advertising.md) — Campaign, playlist, slot calculation, proof-of-play |
+| **DOOH Advertising** | [08-dooh-advertising.md](08-dooh-advertising.md) — Campaign, playlist, slot calculation, proof-of-play; Faz 1-7 durumu |
 | **Cross-Project Flows** | [05-cross-project-flows.md](05-cross-project-flows.md) — Proje arası veri akışları |
-| **API Contracts** | [06-db-and-api-contracts.md](06-db-and-api-contracts.md) — DB schema, API endpoints, frontend/backend contracts |
+| **API Contracts** | [06-db-and-api-contracts.md](06-db-and-api-contracts.md) — DB schema, API endpoints, Faz 7 deprecated alanlar |
 | **Logging (2026-07-16)** | [../operations/logging.md](../operations/logging.md) — JSON stdout, correlation ID, diagnostic outbox, hassas veri politikası |
 
 ---

@@ -174,31 +174,44 @@ kiosk_edge/ui (CategoryScreen)
 SuperAdmin (web_panels/CampaignWizard)
   → POST /api/campaigns/v2/campaigns/
     {
-      "name": "Vitamin C Kampanyası",
+      "name": "Vitamin C Kampanyasi",
       "advertiser_name": "XYZ Pharma",
       "start_date": "2026-06-01T00:00:00Z",
       "end_date": "2026-06-30T23:59:59Z",
       "priority": 50,
-      "is_guaranteed": false,
-      "impression_goal": 10000,
-      "frequency_cap_per_hour": 2
+      "target_scope": "ALL"
     }
-  → Backend: Campaign model kaydı
+    // NOT (Faz 7): is_guaranteed, impression_goal, frequency_cap_per_hour gonderilenince 400
+  → Backend: Campaign model kaydi
 ```
 
-**2.2. Creative Upload (SuperAdmin)**
+**2.2. Creative Upload (SuperAdmin) — Faz 0.5+ canonical akış**
 ```
 SuperAdmin (web_panels/CampaignWizard)
   → POST /api/campaigns/upload-media/ (multipart/form-data: file)
-  → Backend: MinIO/S3 upload → media_url
+  → Backend (DOOH_PERSISTENT_MEDIA_URL=True): kalici URL
+    Response: { object_key, media_url, checksum: "sha256:<hex>", url[alias] }
   → POST /api/campaigns/v2/creatives/
     {
       "campaign_id": "uuid",
-      "media_url": "https://cdn.example.com/creative.mp4",
-      "duration_seconds": 15,
+      "media_url": "https://files.eisa.com.tr/eisa-files/ads/uuid.mp4",  // kalici
+      "object_key": "ads/uuid.mp4",
+      "checksum": "sha256:...",
+      "duration_seconds": 15,  // 15/30/45/60 zorunlu (yeni kayit)
       "name": "Vitamin C 15s"
     }
-  → Backend: Creative model kaydı
+  → Backend: Creative model kaydı (object_key + kalici media_url)
+
+Checksum sozlesmesi:
+  - Backend: sha256:<hex> formatinda (upload_file_with_checksum)
+  - Kiosk creatives.checksum: sha256:<hex> (source_checksum olarak saklanir)
+  - Kiosk media_cache.file_checksum: <hex> (raw, downloadToFile tarafindan hesaplanir)
+  - Karsilastirma: source_checksum freshness icin; file_checksum bilgi amacli
+
+target_scope ve follows sozlesmesi (Faz 1):
+  - POST /api/campaigns/v2/campaigns/: target_scope zorunlu (ALL|RULES)
+  - Campaign.follows: yalniz set_campaign_follows() servisi uzerinden
+  - is_guaranteed/impression_goal/frequency_cap_per_hour gonderilenince 400 (Faz 7'de kaldirilan alanlar)
 ```
 
 **2.3. ScheduleRule Tanımlama (SuperAdmin)**

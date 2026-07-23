@@ -1,0 +1,33 @@
+# Docker Compose — PostgreSQL Integration Test Ortamı
+# Kullanım: docker-compose -f docker-compose.test-pg.yml up -d
+#          pytest -m postgresql
+
+version: '3.8'
+
+services:
+  postgres_test:
+    image: postgres:15-alpine
+    container_name: eisa_test_postgres
+    environment:
+      POSTGRES_DB: eisa_test
+      POSTGRES_USER: eisa_test_user
+      POSTGRES_PASSWORD: eisa_test_pass
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5433:5432"  # 5433 (host) → 5432 (container) çakışma engellemek için
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eisa_test_user -d eisa_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - test_network
+
+volumes:
+  postgres_test_data:
+
+networks:
+  test_network:
+    driver: bridge

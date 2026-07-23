@@ -253,6 +253,25 @@ S3_PRESIGNED_URL_TTL_MINUTES = config("S3_PRESIGNED_URL_TTL_MINUTES",
                                        default=config("RUSTFS_PRESIGNED_URL_TTL_MINUTES", default=60, cast=int),
                                        cast=int)
 
+# Kalıcı medya erişim URL'si tabanı (bucket adını dahil edin).
+# Format: https://<endpoint>/<bucket>  (örn. https://files.eisa.com.tr/eisa-files)
+# Sözleşme: media_url = S3_PUBLIC_BASE_URL + "/" + object_key
+# Boş bırakılırsa DOOH_PERSISTENT_MEDIA_URL=True iken ImproperlyConfigured üretilir.
+# Production deploy YAML'ında S3_ENDPOINT=files.eisa.com.tr, S3_BUCKET=eisa-files
+# olduğundan: S3_PUBLIC_BASE_URL=https://files.eisa.com.tr/eisa-files
+S3_PUBLIC_BASE_URL = config("S3_PUBLIC_BASE_URL", default="")
+
+# DOOH kalıcı medya URL feature flag.
+DOOH_PERSISTENT_MEDIA_URL = config("DOOH_PERSISTENT_MEDIA_URL", default=False, cast=bool)
+
+# DOOH Horizon — rolling horizon gün sayısı (bugün dahil). Operasyonel ayar.
+# Default 3: bugün, bugün+1, bugün+2.
+DOOH_HORIZON_DAYS = config("DOOH_HORIZON_DAYS", default=3, cast=int)
+
+# NOT (Faz 7): DOOH_ENGINE_V2, DOOH_ASYNC_QUEUE, DOOH_KIOSK_ACK flag'leri
+# kaldırıldı. V2 engine, async queue ve kiosk ACK canonical ve her zaman aktiftir.
+# Ortam değişkenlerinden okumak hataya neden olmaz (okunmaz, ignore edilir).
+
 # Geri uyumlu alias'lar (mevcut kod RUSTFS_* okuyabilir).
 RUSTFS_ENDPOINT                   = S3_ENDPOINT
 RUSTFS_ACCESS_KEY                 = S3_ACCESS_KEY

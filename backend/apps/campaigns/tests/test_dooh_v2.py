@@ -210,6 +210,7 @@ def test_admin_create_campaign_201(admin_client):
         "start_date": now.isoformat(),
         "end_date": (now + _dt.timedelta(days=10)).isoformat(),
         "status": "ACTIVE",
+        "target_scope": "ALL",  # Faz 1: create'te zorunlu
     }
     r = admin_client.post("/api/campaigns/v2/campaigns/", payload, format="json")
     assert r.status_code == 201, r.content

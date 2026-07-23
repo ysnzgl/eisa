@@ -99,7 +99,9 @@ export function makeMemoryDb() {
       idempotency_anahtari TEXT UNIQUE,
       payload TEXT NOT NULL,
       olusturulma_tarihi TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-      gonderilme_tarihi TEXT);
+      gonderilme_tarihi TEXT,
+      retry_count INTEGER NOT NULL DEFAULT 0,
+      error_reason TEXT);
 
     CREATE TABLE reklam_gosterim_outbox (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

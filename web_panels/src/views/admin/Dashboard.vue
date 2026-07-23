@@ -141,7 +141,7 @@ const kpiCards = [
   },
   {
     id: 'ads',
-    label: 'Yayındaki Reklam',
+    label: 'Yayındaki İlan',
     valueKey: 'activeAds',
     color: '#7C3AED',
     icon: 'fa-bullhorn',
@@ -356,17 +356,17 @@ onMounted(async () => {
         <div class="eisa-panel-header">
           <div>
             <p class="eisa-eyebrow" style="font-size:0.65rem;">SON EKLENENLER</p>
-            <h2 class="eisa-panel-title">Reklamlar</h2>
+            <h2 class="eisa-panel-title">İlanlar</h2>
           </div>
           <router-link to="/admin/campaigns" class="dash-see-all">Tümünü Gör →</router-link>
         </div>
         <div class="eisa-table-wrap">
           <div v-if="loading" class="empty-row">Yükleniyor…</div>
-          <div v-else-if="!recentAds.length" class="empty-row">Henüz reklam yok.</div>
+          <div v-else-if="!recentAds.length" class="empty-row">Henüz ilan yok.</div>
           <table v-else class="eisa-table">
             <thead>
               <tr>
-                <th>Reklam Adı</th>
+                <th>İlan Adı</th>
                 <th>Müşteri</th>
                 <th>Durum</th>
               </tr>

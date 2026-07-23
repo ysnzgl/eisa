@@ -177,9 +177,6 @@ class OturumLoguCompleteView(APIView):
                     "danisma_tamamlanma_tarihi",
                     "danisma_tamamlayan_eczaci_id",
                     "danisma_notu",
-                    "guncellenme_tarihi",
-                    "guncelleyen",
-                    "surum",
                 ],
             )
 

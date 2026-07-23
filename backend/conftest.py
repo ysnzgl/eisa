@@ -27,6 +27,40 @@ def eczane(db):
 
 
 @pytest.fixture
+def il_ist(db):
+    """Istanbul ili fixture."""
+    il, _ = Il.objects.get_or_create(ad="Istanbul")
+    return il
+
+
+@pytest.fixture
+def ilce_kad(db, il_ist):
+    """Kadikoy ilcesi fixture."""
+    ilce, _ = Ilce.objects.get_or_create(il=il_ist, ad="Kadikoy")
+    return ilce
+
+
+@pytest.fixture
+def eczane_a(db, il_ist, ilce_kad):
+    """Istanbul/Kadikoy test eczanesi A."""
+    return Eczane.objects.create(
+        ad="Test Eczanesi A",
+        il=il_ist,
+        ilce=ilce_kad,
+    )
+
+
+@pytest.fixture
+def eczane_b(db, il_ist, ilce_kad):
+    """Istanbul/Kadikoy test eczanesi B."""
+    return Eczane.objects.create(
+        ad="Test Eczanesi B",
+        il=il_ist,
+        ilce=ilce_kad,
+    )
+
+
+@pytest.fixture
 def superadmin(db):
     return Kullanici.objects.create_user(
         username="superadmin",
@@ -49,6 +83,7 @@ def eczaci(db, eczane):
 def kiosk(db, eczane):
     return Kiosk.objects.create(
         eczane=eczane,
+        ad="Test Kiosk",
         mac_adresi="AA:BB:CC:DD:EE:FF",
         uygulama_anahtari="test-app-key-secure-48chars-xxxxxxxxxxxxxxxxxxx",
     )

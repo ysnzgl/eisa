@@ -66,6 +66,12 @@ class KioskSerializer(serializers.ModelSerializer):
             "aktif",
             "son_goruldu",
             "is_online",
+            # Faz 4/5: DOOH playlist version bilgisi (read-only)
+            "last_playlist_version",
+            "applied_playlist_version",
+            "playlist_applied_at",
+            "applied_horizon_start",
+            "applied_horizon_end",
             "olusturulma_tarihi",
             "guncellenme_tarihi",
             "surum",
@@ -79,6 +85,11 @@ class KioskSerializer(serializers.ModelSerializer):
             "surum",
             "eczane_adi",
             "il_id", "il_adi", "ilce_id", "ilce_adi",
+            "last_playlist_version",
+            "applied_playlist_version",
+            "playlist_applied_at",
+            "applied_horizon_start",
+            "applied_horizon_end",
         )
 
 

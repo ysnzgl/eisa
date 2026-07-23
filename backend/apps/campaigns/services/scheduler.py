@@ -173,10 +173,6 @@ class PlaylistGenerator:
                 continue
             d = int(creative.duration_seconds)
             f = max(1, int(rule.frequency_value))
-            # frequency_cap_per_hour kısıtı: kampanyanın kendi cap'i varsa f'yi limitler
-            cap = rule.campaign.frequency_cap_per_hour
-            if cap is not None:
-                f = min(f, int(cap))
             for hour in self._rule_hours(rule):
                 candidates = [l for l in self.plan[hour].loops if l.fits(d)]
                 self.rng.shuffle(candidates)
@@ -291,8 +287,8 @@ class PlaylistGenerator:
                 campaign__start_date__lte=when,
                 campaign__end_date__gte=when,
             )
-            # Önce guaranteed, sonra priority (küçük = yüksek öncelik)
-            .order_by("-campaign__is_guaranteed", "campaign__priority")
+            # Priority sıralaması (küçük = yüksek öncelik)
+            .order_by("campaign__priority")
         )
 
         rules: List[ScheduleRule] = []
@@ -348,7 +344,13 @@ class PlaylistGenerator:
 
 
 def generate_for_kiosk(kiosk: Kiosk, target_date: date) -> List[Playlist]:
-    """Cron / management komutundan kullanilan kisa-yol."""
+    """
+    Kiosk + tarih için playlist üretimi (V1 scheduler).
+
+    Faz 7: V2 engine canonical (queue worker üzerinden); bu fonksiyon artık
+    yalnız PlaylistEditor manuel üretim ve backward compat içindir.
+    """
+    # V1 üretimi
     return PlaylistGenerator(kiosk, target_date).generate()
 
 

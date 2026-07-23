@@ -24,6 +24,8 @@ import datetime as _dt
 import logging
 from typing import Iterable
 
+from django.conf import settings
+
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status, viewsets
@@ -53,6 +55,7 @@ from .models import (
     ScheduleRule,
 )
 from .serializers import (
+    ActivationResultSerializer,
     CampaignSerializer,
     CampaignTargetSerializer,
     CreativeSerializer,
@@ -68,6 +71,7 @@ from .serializers import (
     PricingMatrixSerializer,
     ProofOfPlayBulkSerializer,
     ScheduleRuleSerializer,
+    SimulationResultSerializer,
 )
 from .services.scheduler import available_seconds, generate_for_kiosk, simulate_campaign_capacity
 
@@ -90,29 +94,24 @@ def _parse_date(raw: str | None) -> _dt.date:
 
 class CampaignViewSet(viewsets.ModelViewSet):
     queryset = Campaign.objects.prefetch_related(
-        "creatives", "target_pharmacies", "targets__il", "targets__ilce", "targets__eczane"
+        "creatives", "targets__il", "targets__ilce", "targets__eczane"
     ).select_related("schedule_rule")
     serializer_class = CampaignSerializer
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsSuperAdmin]
 
     def perform_create(self, serializer):
-        targets = serializer.validated_data.pop("target_pharmacies", [])
         instance = Campaign(**serializer.validated_data)
         with UnitOfWork(user=self.request.user) as uow:
             uow.add(instance)
-            instance.target_pharmacies.set(targets)
         serializer.instance = instance
 
     def perform_update(self, serializer):
         instance: Campaign = serializer.instance
-        targets = serializer.validated_data.pop("target_pharmacies", None)
         for k, v in serializer.validated_data.items():
             setattr(instance, k, v)
         with UnitOfWork(user=self.request.user) as uow:
             uow.update(instance)
-            if targets is not None:
-                instance.target_pharmacies.set(targets)
 
     def perform_destroy(self, instance):
         with UnitOfWork(user=self.request.user) as uow:
@@ -424,6 +423,88 @@ class CampaignViewSet(viewsets.ModelViewSet):
             "days": days,
             "cells": cells,
         })
+
+    # ── Faz 3: Simulate ───────────────────────────────────────────────────────
+
+    @action(detail=True, methods=["post"], url_path="simulate")
+    def simulate(self, request, pk=None):
+        """``POST /api/campaigns/v2/campaigns/{id}/simulate/``
+
+        Read-only simulation: PlacementEngine V2 ile hedef kiosk+tarih
+        kombinasyonlarını hesaplar; hiçbir tabloya yazma yapmaz.
+
+        Response::
+
+            {
+              "campaign_id": "uuid",
+              "fingerprint": "hex16",
+              "target_kiosks": [1, 2],
+              "date_range": ["2026-07-22", ...],
+              "kiosk_days": [...],
+              "total_requested": N,
+              "total_placed": N,
+              "total_unplaced": N,
+              "would_succeed": true,
+              "blocking_reasons": []
+            }
+        """
+        from apps.campaigns.services.activation_service import ActivationService
+
+        campaign = self.get_object()
+
+        result = ActivationService.simulate(campaign)
+
+        ser = SimulationResultSerializer(result)
+        return Response(ser.data)
+
+    # ── Faz 3: Activate ───────────────────────────────────────────────────────
+
+    @action(detail=True, methods=["post"], url_path="activate")
+    def activate(self, request, pk=None):
+        """``POST /api/campaigns/v2/campaigns/{id}/activate/``
+
+        Kampanyayı V2 motoru ile aktive et.
+        DOOH_ENGINE_V2=active gerektirir.
+
+        GUARANTEED: all-or-nothing — herhangi bir hedef başarısızsa 409 döner.
+        BEST_EFFORT: mevcut kapasiteye sığan hedefler aktive edilir.
+
+        Response::
+
+            {
+              "campaign_id": "uuid",
+              "planning_run_id": "uuid",
+              "activated_kiosks": N,
+              "activated_dates": N,
+              "total_placements": N,
+              "fingerprint": "hex16",
+              "is_complete": true,
+              "blocking_reasons": []
+            }
+        """
+        from apps.campaigns.services.activation_service import (
+            ActivationService,
+            ActivationValidationError,
+            CapacityError,
+        )
+
+        campaign = self.get_object()
+
+        try:
+            result = ActivationService.activate(campaign, user=request.user)
+        except ActivationValidationError as exc:
+            return Response(
+                {"error": str(exc), "validation_errors": exc.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except CapacityError as exc:
+            return Response(
+                {"error": str(exc), "blocking_reasons": exc.blocking_reasons},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        ser = ActivationResultSerializer(result)
+        return Response(ser.data, status=status.HTTP_200_OK)
 
 
 class CreativeViewSet(viewsets.ModelViewSet):
@@ -777,50 +858,25 @@ class PlaylistGenerateView(APIView):
         kiosk_id = None  # kept for GenerationJob FK (NULL = multi-kiosk run)
 
         kiosks = list(kiosks_qs)
-        job = GenerationJob.objects.create(
-            target_date=target_date,
-            kiosk_id=kiosk_id,
-            total_kiosks=len(kiosks),
-            triggered_by="manual",
-            status=GenerationJob.JobStatus.PENDING,
-        )
 
-        def _run(j_pk, kiosk_list, t_date, dp):
-            from django.utils import timezone as _tz
-            from apps.campaigns.models import GenerationJob as GJ
-            GJ.objects.filter(pk=j_pk).update(
-                status=GJ.JobStatus.RUNNING, started_at=_tz.now()
-            )
-            done = failed = total = 0
-            for k in kiosk_list:
-                try:
-                    if dp is not None:
-                        playlists = _generate_from_day_plan(k, t_date, dp)
-                    else:
-                        playlists = generate_for_kiosk(k, t_date)
-                    total += len(playlists)
-                    done += 1
-                except Exception:
-                    failed += 1
-                    logger.exception("Playlist uretimi basarisiz kiosk=%s", k.pk)
-                GJ.objects.filter(pk=j_pk).update(
-                    done_kiosks=done, failed_kiosks=failed, playlists_generated=total
-                )
-            final = GJ.JobStatus.DONE if done > 0 else GJ.JobStatus.FAILED
-            GJ.objects.filter(pk=j_pk).update(
-                status=final, finished_at=_tz.now()
-            )
+        # Faz 7: Async queue canonical — sadece PENDING job oluştur, worker bağımsız işler
+        from apps.campaigns.services.invalidation_service import _create_or_coalesce_job
+        created_jobs = []
+        for k in kiosks:
+            job_obj = _create_or_coalesce_job(k.id, target_date, "manual_generate")
+            if job_obj:
+                created_jobs.append(job_obj)
 
-        threading.Thread(
-            target=_run,
-            args=(str(job.pk), kiosks, target_date, day_plan),
-            daemon=True,
-            name=f"gen-{job.pk}",
-        ).start()
-
+        first_job = created_jobs[0] if created_jobs else None
         return Response(
-            {"job_id": str(job.pk), "total_kiosks": len(kiosks),
-             "target_date": str(target_date)},
+            {
+                "job_id": str(first_job.pk) if first_job else None,
+                "total_kiosks": len(kiosks),
+                "target_date": str(target_date),
+                "status": "PENDING",
+                "queue_mode": True,
+                "note": None if first_job else "Tum kiosklar icin is zaten kuyrukta.",
+            },
             status=status.HTTP_202_ACCEPTED,
         )
 

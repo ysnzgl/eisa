@@ -75,21 +75,33 @@
 
 ### Campaigns (DOOH v2)
 
-**dooh_campaigns**
+**dooh_campaigns** *(Faz 7 sonrasi — 0020 migrasyonu)*
 - id (UUID), advertiser_id (UUID, nullable), advertiser_name, name
-- start_date, end_date, status (ACTIVE/PAUSED/COMPLETED)
-- impression_goal (nullable), frequency_cap_per_hour (nullable)
-- priority (default 50), is_guaranteed (bool)
-- target_pharmacies M2M (legacy)
+- start_date, end_date, status (DRAFT/ACTIVE/PAUSED/COMPLETED/CANCELLED)
+- target_scope (ALL|RULES|null-legacy), follows_id FK self (nullable)
+- priority (default 50)
+- target_pharmacies M2M (legacy, fiziksel korunuyor; API write path kapali)
+- **Kaldirildi (migration 0020):** is_guaranteed, impression_goal, frequency_cap_per_hour
+- **Canonical:** DeliveryRule.guarantee_mode + max_per_hour + CAMPAIGN_TOTAL
+- **constraints:** dooh_campaign_no_self_follow, dooh_campaign_follows_unique_predecessor
 
-**dooh_campaign_targets**
-- id (UUID), campaign_id FK, target_type (IL/ILCE/ECZANE)
-- il_id FK (nullable), ilce_id FK (nullable), eczane_id FK (nullable)
+**dooh_campaign_targets** *(Faz 1: KIOSK + mode)*
+- id (UUID), campaign_id FK, target_type (IL/ILCE/ECZANE/KIOSK), mode (INCLUDE/EXCLUDE|null)
+- il_id FK (nullable), ilce_id FK (nullable), eczane_id FK (nullable), kiosk_id FK (nullable)
 
-**dooh_creatives**
-- id (UUID), campaign_id FK, media_url, duration_seconds (1-60), name, checksum
+**dooh_delivery_rules** *(Faz 1 yeni)*
+- id (UUID), campaign_id FK (1to1), delivery_type (TIME_WINDOW/PER_HOUR/PER_DAY/CAMPAIGN_TOTAL/LEGACY_PER_LOOP)
+- count (>=1), window_start/end_time, active_hours JSON, active_weekdays JSON
+- guarantee_mode (GUARANTEED/BEST_EFFORT), max_per_hour (nullable)
+- API: LEGACY_PER_LOOP yazılamaz; TIME_WINDOW için window zorunlu
 
-**dooh_schedule_rules**
+**dooh_planning_runs** / **dooh_campaign_total_allocations** / **dooh_kiosk_day_quotas** *(Faz 1 yeni)*
+- KioskDayQuota: placed>=0, quota>=0, placed<=quota DB constraint; unique(run,campaign,kiosk,date)
+
+**dooh_creatives** *(Faz 0.5: object_key, Faz 1: weight)*
+- id (UUID), campaign_id FK, media_url (kalici URL Faz 0.5+), duration_seconds (grid:{15,30,45,60} yeni kayıt), name, checksum ('sha256:<hex>'), object_key (nullable, 0015), weight (default 1)
+
+**dooh_schedule_rules** *(Legacy, ScheduleRule → DeliveryRule geçiş)*
 - id (UUID), campaign_id FK (1to1), frequency_type (PER_LOOP/PER_HOUR/PER_DAY), frequency_value, target_hours (JSON)
 
 **dooh_playlists**
@@ -100,8 +112,8 @@
 - id (UUID), playlist_id FK, creative_id FK (nullable), house_ad_id FK (nullable), playback_order, estimated_start_offset_seconds (SAAT-mutlak 0..3599)
 - API contract'ta creative/house_ad -> asset_id + asset_type + media_url + duration_seconds olarak duzlestirilir
 
-**dooh_house_ads**
-- id (UUID), name, media_url, duration_seconds (1-60), aktif (bool), priority
+**dooh_house_ads** *(Faz 0.5: object_key eklendi)*
+- id (UUID), name, media_url (kalici URL Faz 0.5+), duration_seconds (1-60), aktif (bool), priority, object_key (nullable, Faz 0.5 migration 0015)
 
 **dooh_play_logs**
 - id (UUID), kiosk_id FK, creative_id FK (nullable, SET_NULL), house_ad_id FK (nullable, SET_NULL)
@@ -330,17 +342,22 @@ X-Kiosk-Device-ID: <DEVICE_UUID>  # zorunlu (device_id set edildiyse)
 
 **GET /api/campaigns/v2/campaigns/**
 - Auth: JWT (SuperAdmin)
-- Response: `[{ "id": "uuid", "name": "Vitamin C Kampanyası", "start_date": "2026-06-01T00:00:00Z", "end_date": "2026-06-30T23:59:59Z", "status": "ACTIVE", "priority": 50, "is_guaranteed": false, "creatives": [...], "schedule_rule": {...} }, ...]`
+- Response: `[{ "id": "uuid", "name": "...", "start_date": "...", "end_date": "...", "status": "ACTIVE", "priority": 50, "target_scope": "ALL", "creatives": [...], "targets": [...] }, ...]`
+- **Faz 7:** is_guaranteed, impression_goal, frequency_cap_per_hour, target_pharmacies response'da YOK
 
 **POST /api/campaigns/v2/campaigns/**
 - Auth: JWT (SuperAdmin)
-- Request: `{ "name": "Kampanya 1", "advertiser_name": "XYZ", "start_date": "...", "end_date": "...", "priority": 50, "is_guaranteed": false }`
+- Request: `{ "name": "Kampanya 1", "advertiser_name": "XYZ", "start_date": "...", "end_date": "...", "priority": 50, "target_scope": "ALL" }`
+- **Faz 7:** is_guaranteed/impression_goal/frequency_cap_per_hour gonderilenince 400 donar (deprecated)
 - Response: `{ "id": "uuid", ... }`
 
-**POST /api/campaigns/upload-media/**
+**POST /api/campaigns/upload-media/** *(Faz 0.5 guncellendi)*
 - Auth: JWT (SuperAdmin)
 - Request: multipart/form-data, field: `file`
-- Response: `{ "media_url": "https://cdn.example.com/creative.mp4", "checksum": "abc123" }`
+- Feature flag: `DOOH_PERSISTENT_MEDIA_URL` (settings)
+- Response (flag=True): `{ "object_key": "ads/uuid.mp4", "media_url": "https://files.eisa.com.tr/eisa-files/ads/uuid.mp4", "checksum": "sha256:...", "url": "(alias=media_url)", "filename": "...", "object_name": "(alias=object_key)" }`
+- Response (flag=False, legacy): `{ "url": "https://...?X-Amz-Signature=...", "filename": "...", "object_name": "ads/uuid.mp4" }`
+- URL format (production, S3_FORCE_PATH_STYLE=True): `https://<S3_ENDPOINT>/<S3_BUCKET>/<object_key>`
 
 **POST /api/campaigns/v2/creatives/**
 - Auth: JWT (SuperAdmin)
@@ -373,6 +390,80 @@ X-Kiosk-Device-ID: <DEVICE_UUID>  # zorunlu (device_id set edildiyse)
 **GET /api/campaigns/v2/playlists/jobs/{job_id}/**
 - Auth: JWT (SuperAdmin)
 - Response: `{ "job_id": "uuid", "status": "COMPLETED", "result": { ... } }`
+
+---
+
+### Faz 3 — Simulation / Activation Endpoints *(2026-07-22)*
+
+**POST /api/campaigns/v2/campaigns/{id}/simulate/**
+- Auth: JWT (SuperAdmin)
+- DOOH_ENGINE_V2: `shadow` veya `active` gerektirir. `off` ise 403.
+- Request: body yok (campaign id URL'de)
+- Response 200:
+  ```json
+  {
+    "campaign_id": "uuid",
+    "fingerprint": "hex16",
+    "target_kiosks": [1, 2],
+    "date_range": ["2026-07-22", "2026-07-25"],
+    "kiosk_days": [
+      {
+        "kiosk_id": 1,
+        "date": "2026-07-22",
+        "requested": 4,
+        "placed": 4,
+        "unplaced": 0,
+        "capacity_used_seconds": 60,
+        "blocking_reasons": [],
+        "fingerprint": "abc123"
+      }
+    ],
+    "total_requested": 8,
+    "total_placed": 8,
+    "total_unplaced": 0,
+    "would_succeed": true,
+    "blocking_reasons": []
+  }
+  ```
+- Response 403: `DOOH_ENGINE_V2=off`
+- Response 404: campaign bulunamadı
+- **Read-only**: hiçbir tabloya yazma yapmaz (Playlist, PlaylistItem, GenerationJob, KioskDayQuota, CampaignTotalAllocation, PlanningRun değişmez)
+- **Deterministic**: aynı input, aynı campaign durumunda aynı fingerprint ve aynı kiosk_days üretir
+- **Serializer**: `SimulationResultSerializer` (apps/campaigns/serializers.py)
+
+**POST /api/campaigns/v2/campaigns/{id}/activate/**
+- Auth: JWT (SuperAdmin)
+- DOOH_ENGINE_V2: `active` gerektirir. `off`/`shadow` ise 403.
+- Request: body yok
+- Response 200:
+  ```json
+  {
+    "campaign_id": "uuid",
+    "planning_run_id": "uuid",
+    "activated_kiosks": 2,
+    "activated_dates": 3,
+    "total_placements": 24,
+    "fingerprint": "hex16",
+    "is_complete": true,
+    "blocking_reasons": []
+  }
+  ```
+- Response 400: `ActivationValidationError`
+  ```json
+  { "error": "...", "validation_errors": { "delivery_rule": "...", "creatives": "..." } }
+  ```
+- Response 403: `DOOH_ENGINE_V2 != active`
+- Response 404: campaign bulunamadı
+- Response 409: `CapacityError` (GUARANTEED kapasite yetersiz)
+  ```json
+  { "error": "...", "blocking_reasons": ["kiosk=1 date=2026-07-22: ..."] }
+  ```
+- **Transaction davranışı:**
+  - GUARANTEED: `transaction.atomic()` wrapper; herhangi bir kiosk/date'te kapasite yetersizse → `CapacityError` fırlatılır → tüm değişiklikler rollback edilir
+  - BEST_EFFORT: kısmi başarı kabul edilir; başarısız kiosk/date'ler `blocking_reasons`'da raporlanır
+  - CAMPAIGN_TOTAL: `GlobalQuotaService.reserve_for_kiosk_day` → `select_for_update(nowait=False)` ile global invariant sağlanır
+- **Idempotency:** `_persist_plan` mevcut Playlist satırlarını siler ve yeniden oluşturur → re-activation aynı içeriği yazar, çift kayıt üretmez
+- **Serializer**: `ActivationResultSerializer` (apps/campaigns/serializers.py)
 
 ---
 

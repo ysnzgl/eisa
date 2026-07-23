@@ -20,6 +20,7 @@ const routes = [
       { path: 'medical-logic',      component: () => import('../views/admin/MedicalLogic.vue') },
       { path: 'danisma',           component: () => import('../views/admin/DanismaYonetimi.vue') },
       { path: 'campaigns',     component: () => import('../views/admin/CampaignWizard.vue') },
+      { path: 'dooh/control-center', component: () => import('../views/admin/DoohControlCenter.vue') },
       { path: 'playlists',     component: () => import('../views/admin/PlaylistEditor.vue') },
       { path: 'pricing',       component: () => import('../views/admin/PricingMatrixConfigurator.vue') },
       { path: 'users',         component: () => import('../views/admin/UserManagement.vue') },

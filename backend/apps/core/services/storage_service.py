@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import io
 import os
 import threading
@@ -68,6 +69,77 @@ class StorageService:
             content_type=uploaded_file.content_type or "application/octet-stream",
         )
         return object_name
+
+    def upload_file_with_checksum(
+        self,
+        uploaded_file,
+        object_name: str | None = None,
+        prefix: str = "",
+    ) -> tuple[str, str]:
+        """Django uploaded file nesnesini yükler; (object_key, sha256_checksum) döndürür.
+
+        SHA-256, 64 KB chunk'larla stream okunarak hesaplanır — büyük dosyalar için
+        tüm içeriği RAM'e almaz. İki geçiş:
+          Pass 1: SHA-256 hash (64KB chunk stream)
+          Pass 2: seek(0) → MinIO put_object (SDK kendi chunk stream'ini yönetir)
+
+        Storage'a yazılan baytlar kaynakla özdeştir (seek test ile doğrulanabilir).
+        Her çağrı benzersiz UUID key üretir; aynı key üzerine yazılmaz.
+        Dönen checksum formatı: ``sha256:<hex>``
+        """
+        ext = os.path.splitext(uploaded_file.name)[1].lower() or ".bin"
+        if not object_name:
+            object_name = f"{uuid.uuid4().hex}{ext}"
+
+        clean_prefix = prefix.strip("/")
+        if clean_prefix:
+            object_name = f"{clean_prefix}/{object_name}"
+
+        # Pass 1: SHA-256 hash — 64KB chunk, RAM'e tam okuma yok
+        uploaded_file.seek(0)
+        hasher = hashlib.sha256()
+        chunk_size = 64 * 1024
+        while True:
+            chunk = uploaded_file.read(chunk_size)
+            if not chunk:
+                break
+            hasher.update(chunk)
+        checksum = f"sha256:{hasher.hexdigest()}"
+
+        # Pass 2: stream to storage
+        uploaded_file.seek(0)
+        content_type = uploaded_file.content_type or "application/octet-stream"
+        self.client.put_object(
+            bucket_name=self.bucket_name,
+            object_name=object_name,
+            data=uploaded_file,
+            length=uploaded_file.size,
+            content_type=content_type,
+        )
+        return object_name, checksum
+
+    def public_url(self, object_key: str) -> str:
+        """Obje için kalıcı (süresiz) public URL döndürür.
+
+        URL formatı: ``S3_PUBLIC_BASE_URL/<object_key>``
+
+        ``S3_PUBLIC_BASE_URL`` bucket adını içermelidir, örn.:
+          ``https://files.eisa.com.tr/eisa-files``
+          → ``https://files.eisa.com.tr/eisa-files/ads/abc123.mp4``
+
+        Boş bırakılırsa ``DOOH_PERSISTENT_MEDIA_URL=True`` ortamında
+        ``ImproperlyConfigured`` üretilir.
+        """
+        from django.core.exceptions import ImproperlyConfigured
+
+        base = getattr(settings, "S3_PUBLIC_BASE_URL", "").rstrip("/")
+        if not base:
+            raise ImproperlyConfigured(
+                "S3_PUBLIC_BASE_URL kalici medya URL uretimi icin zorunludur. "
+                "Bucket adini dahil edin: https://<endpoint>/<bucket> "
+                "(orn. https://files.eisa.com.tr/eisa-files)"
+            )
+        return f"{base}/{object_key}"
 
     def upload_bytes(
         self,

@@ -26,12 +26,18 @@ def _https_url_validator(value: str) -> None:
 
 class Campaign(BaseModel):
     """Reklam kampanyasi (DOOH v2). Bir reklamveren altinda birden cok creative
-    barindirir; yayinlanma kurallari ``ScheduleRule`` ile tanimlanir."""
+    barindirir; yayinlanma kurallari ``ScheduleRule`` / ``DeliveryRule`` ile tanimlanir."""
 
     class Status(models.TextChoices):
+        DRAFT = "DRAFT", "Taslak"              # Faz 1: henuz yayinda degil
         ACTIVE = "ACTIVE", "Active"
         PAUSED = "PAUSED", "Paused"
         COMPLETED = "COMPLETED", "Completed"
+        CANCELLED = "CANCELLED", "Iptal"       # Faz 1: kalici iptal
+
+    class TargetScope(models.TextChoices):
+        ALL = "ALL", "Tum aktif kiosklar"      # Hedef kural gerektirmez
+        RULES = "RULES", "Hedefleme kurallari" # CampaignTarget satirlarina gore
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     advertiser_id = models.UUIDField(
@@ -46,28 +52,36 @@ class Campaign(BaseModel):
     start_date = models.DateTimeField()
     end_date = models.DateTimeField()
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.ACTIVE)
-
-    # Pacing alanları
-    impression_goal = models.PositiveIntegerField(
-        null=True, blank=True,
-        help_text="Toplam gösterim hedefi (opsiyonel). Örn: 5000 kez göster.",
+    target_scope = models.CharField(
+        max_length=8, choices=TargetScope.choices, null=True, blank=True,
+        help_text=(
+            "Hedefleme kapsami. "
+            "NULL = legacy davranis (CampaignTarget yoksa tum kiosklar). "
+            "ALL = tum aktif kiosklar dinamik. "
+            "RULES = CampaignTarget kayitlarina gore (include/exclude). "
+            "Faz 1'de eklendu; Faz 2+'de zorunlu olmasi planlanmaktadir."
+        ),
     )
-    frequency_cap_per_hour = models.PositiveSmallIntegerField(
-        null=True, blank=True,
-        help_text="Saatte maksimum gösterim sayısı (opsiyonel). Örn: saatte en fazla 2 kez çıksın.",
+    follows = models.ForeignKey(
+        "self", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="followed_by",
+        help_text=(
+            "A->B ardisillik: bu kampanya hangi kampanyadan hemen sonra oynansin. "
+            "Yalniz ikili (A->B); zincir/dongü yasak. "
+            "Service-level validation uygulanir."
+        ),
     )
 
-    # Öncelik & güvence
+    # Pacing: Faz 7'de is_guaranteed, impression_goal, frequency_cap_per_hour kaldırıldı.
+    # Canonical: DeliveryRule(CAMPAIGN_TOTAL / GUARANTEED).
+    # Öncelik alanı korunuyor (placement engine ordering için).
     priority = models.PositiveSmallIntegerField(
         default=50,
-        help_text="Slot çakışmasında öncelik (1=en yüksek, 100=en düşük). Düşük değer önce yerleşir.",
-    )
-    is_guaranteed = models.BooleanField(
-        default=False,
-        help_text="True ise kapasite dolsa bile hiç atlanmaz; Pass 4 filler'dan yer açılır.",
+        help_text="Slot cakismasinda oncelik (1=en yuksek, 100=en dusuk). Dusuk deger once yerlesir.",
     )
 
-    # Legacy M2M (geriye dönük uyumluluk; yeni kampanyalar CampaignTarget kullanır)
+    # Legacy M2M (geriye donus uyumluluk; yeni kampanyalar CampaignTarget kullanir)
+    # Fiziksel alan korunuyor (legacy data compat); yeni kampanyalar CampaignTarget kullanir.
     target_pharmacies = models.ManyToManyField(
         "pharmacies.Eczane", blank=True, related_name="dooh_campaigns",
         help_text="[Eski] Bos liste = tum eczanelere yayinla. Yeni kampanyalar CampaignTarget kullanir.",
@@ -81,6 +95,19 @@ class Campaign(BaseModel):
         indexes = [
             models.Index(fields=("status", "start_date", "end_date")),
         ]
+        constraints = [
+            # follows kendi kendine bakamazsiniz (A->B, not A->A)
+            models.CheckConstraint(
+                check=~models.Q(follows=models.F("id")),
+                name="dooh_campaign_no_self_follow",
+            ),
+            # Bir kampanyanin en fazla bir dogrudan ardili olabilir
+            models.UniqueConstraint(
+                fields=["follows"],
+                condition=models.Q(follows__isnull=False),
+                name="dooh_campaign_follows_unique_predecessor",
+            ),
+        ]
 
     def __str__(self) -> str:
         return self.name
@@ -90,6 +117,14 @@ class Campaign(BaseModel):
             self.status == self.Status.ACTIVE
             and self.start_date <= when <= self.end_date
         )
+
+    @property
+    def effective_state(self) -> str:
+        """Turetilmis durum (SCHEDULED = ACTIVE & henuz baslamamis)."""
+        from django.utils import timezone
+        if self.status == self.Status.ACTIVE and self.start_date > timezone.now():
+            return "SCHEDULED"
+        return self.status
 
 
 class CampaignTarget(BaseModel):
@@ -108,6 +143,11 @@ class CampaignTarget(BaseModel):
         IL = "IL", "İl (Tüm ilçe ve eczaneler)"
         ILCE = "ILCE", "İlçe (Tüm eczaneler)"
         ECZANE = "ECZANE", "Spesifik Eczane"
+        KIOSK = "KIOSK", "Tekil Kiosk"   # Faz 1
+
+    class TargetMode(models.TextChoices):
+        INCLUDE = "INCLUDE", "Dahil et"   # Faz 1: varsayilan
+        EXCLUDE = "EXCLUDE", "Haric tut"  # Faz 1: cikart
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     campaign = models.ForeignKey(
@@ -126,6 +166,15 @@ class CampaignTarget(BaseModel):
         "pharmacies.Eczane", on_delete=models.CASCADE, null=True, blank=True,
         related_name="+",
     )
+    kiosk = models.ForeignKey(
+        "pharmacies.Kiosk", on_delete=models.CASCADE, null=True, blank=True,
+        related_name="+",
+        help_text="KIOSK tipi icin zorunlu.",
+    )
+    mode = models.CharField(
+        max_length=8, choices=TargetMode.choices, null=True, blank=True,
+        help_text="INCLUDE (dahil et) veya EXCLUDE (hariç tut). NULL = legacy INCLUDE davranisi.",
+    )
 
     class Meta:
         db_table = "dooh_campaign_targets"
@@ -141,12 +190,16 @@ class CampaignTarget(BaseModel):
             raise ValidationError({"ilce": "ILCE hedefi için ilce alanı zorunludur."})
         if self.target_type == self.TargetType.ECZANE and not self.eczane_id:
             raise ValidationError({"eczane": "ECZANE hedefi için eczane alanı zorunludur."})
+        if self.target_type == self.TargetType.KIOSK and not self.kiosk_id:
+            raise ValidationError({"kiosk": "KIOSK hedefi için kiosk alanı zorunludur."})
 
     def __str__(self) -> str:
         if self.target_type == self.TargetType.IL:
             return f"IL:{self.il}"
         if self.target_type == self.TargetType.ILCE:
             return f"ILCE:{self.ilce}"
+        if self.target_type == self.TargetType.KIOSK:
+            return f"KIOSK:{self.kiosk}"
         return f"ECZANE:{self.eczane}"
 
 
@@ -164,6 +217,25 @@ class Creative(BaseModel):
     name = models.CharField(max_length=255, blank=True, default="")
     checksum = models.CharField(max_length=128, blank=True, default="",
                                 help_text="Edge tarafi cache invalidation icin.")
+    object_key = models.CharField(
+        max_length=512, null=True, blank=True,
+        help_text=(
+            "S3/RustFS obje anahtarı (örn. ads/abc123.mp4). "
+            "Kalıcı media_url üretiminde kullanılır. "
+            "NULL ise backfill_media_object_keys komutuyla doldurulabilir."
+        ),
+    )
+    weight = models.PositiveSmallIntegerField(
+        default=1,
+        help_text="Rotasyon agirligi (1=esit). V2 motor agirlikli round-robin icin kullanir.",
+    )
+
+    _GRID_DURATIONS = frozenset({15, 30, 45, 60})
+
+    @property
+    def is_grid_compliant(self) -> bool:
+        """duration_seconds 15sn planning grid ile uyumlu mu?"""
+        return int(self.duration_seconds) in self._GRID_DURATIONS
 
     class Meta:
         db_table = "dooh_creatives"
@@ -319,6 +391,13 @@ class PlayLog(BaseModel):
     duration_played = models.PositiveSmallIntegerField(
         help_text="Gercekten oynatilan sure (saniye)."
     )
+    play_event_id = models.UUIDField(
+        null=True, blank=True, db_index=True,
+        help_text=(
+            "Kiosk tarafindan uretilen idempotency anahtari (Faz 5'te unique constraint eklenir). "
+            "K5: nullable ekle -> backfill -> dogru la -> unique/not-null."
+        ),
+    )
 
     class Meta:
         db_table = "dooh_play_logs"
@@ -344,6 +423,21 @@ class HouseAd(BaseModel):
         default=100,
         help_text="Dusuk degerli once secilir (filler queue ordering).",
     )
+    object_key = models.CharField(
+        max_length=512, null=True, blank=True,
+        help_text=(
+            "S3/RustFS obje anahtarı (örn. ads/abc123.mp4). "
+            "Kalıcı media_url üretiminde kullanılır. "
+            "NULL ise backfill_media_object_keys komutuyla doldurulabilir."
+        ),
+    )
+
+    _GRID_DURATIONS = frozenset({15, 30, 45, 60})
+
+    @property
+    def is_grid_compliant(self) -> bool:
+        """duration_seconds 15sn planning grid ile uyumlu mu?"""
+        return int(self.duration_seconds) in self._GRID_DURATIONS
 
     class Meta:
         db_table = "dooh_house_ads"
@@ -527,6 +621,7 @@ class GenerationJob(BaseModel):
         RUNNING = "RUNNING", "Çalışıyor"
         DONE = "DONE", "Tamamlandı"
         FAILED = "FAILED", "Başarısız"
+        RETRY = "RETRY", "Yeniden Deneniyor"   # Faz 4: geçici hata sonrası backoff
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     target_date = models.DateField(db_index=True)
@@ -550,6 +645,40 @@ class GenerationJob(BaseModel):
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
 
+    # ── Faz 4: DB-backed queue fields ─────────────────────────────────────────
+    payload = models.JSONField(
+        default=dict, blank=True,
+        help_text=(
+            "İş yükü: {kiosk_id, date, trigger_reason, ...}. "
+            "Model instance, credential veya secret içermez."
+        ),
+    )
+    available_at = models.DateTimeField(
+        null=True, blank=True, db_index=True,
+        help_text="Retry gecikmesi sonrası bu zamandan itibaren çalıştırılabilir.",
+    )
+    attempt_count = models.PositiveSmallIntegerField(
+        default=0, help_text="Toplam çalıştırma denemesi."
+    )
+    max_attempts = models.PositiveSmallIntegerField(
+        default=3, help_text="Maksimum deneme sayısı (aşılırsa FAILED)."
+    )
+    worker_id = models.CharField(
+        max_length=64, null=True, blank=True,
+        help_text="İşi sahiplenen worker kimliği (lease için). RUNNING durumunda dolu.",
+    )
+    lock_expires_at = models.DateTimeField(
+        null=True, blank=True, db_index=True,
+        help_text="Worker lease süresi. Bu aşılırsa RUNNING → RETRY (stale recovery).",
+    )
+    dedupe_key = models.CharField(
+        max_length=256, null=True, blank=True, db_index=True,
+        help_text=(
+            "Coalescing anahtarı. Format: 'kd:{kiosk_id}:{date}'. "
+            "Aynı anahtar için PENDING job varken yeni oluşturulmaz."
+        ),
+    )
+
     class Meta:
         db_table = "dooh_generation_jobs"
         ordering = ("-olusturulma_tarihi",)
@@ -564,3 +693,275 @@ class GenerationJob(BaseModel):
         if not self.total_kiosks:
             return 0
         return int(100 * self.done_kiosks / self.total_kiosks)
+
+
+# =============================================================================
+# Faz 1 — Yeni modeller (additive, tum alanlar null=True/blank=True)
+# =============================================================================
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DeliveryRule — ScheduleRule'un yerine geçecek; dual-read geçis donemi
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class DeliveryRule(BaseModel):
+    """Kampanya yayın frekans ve garanti kuralı (ScheduleRule'un halefi).
+
+    Faz 1'de ScheduleRule ile birlikte (dual-read) yaşar.
+    Faz 7'de ScheduleRule deprecate edilir.
+
+    delivery_type:
+      TIME_WINDOW    — Belirli pencerede N kez
+      PER_HOUR       — Her takvim saatinde N kez (per-kiosk)
+      PER_DAY        — Her günde N kez (per-kiosk)
+      CAMPAIGN_TOTAL — Kampanya boyunca toplam N gösterim (global; PlanningRun/KioskDayQuota ile)
+      LEGACY_PER_LOOP — PER_LOOP'tan dönüştürülen salt-okunur kural
+    """
+
+    class DeliveryType(models.TextChoices):
+        TIME_WINDOW = "TIME_WINDOW", "Belirli Zaman Penceresi"
+        PER_HOUR = "PER_HOUR", "Saatte N kez (per-kiosk)"
+        PER_DAY = "PER_DAY", "Gunde N kez (per-kiosk)"
+        CAMPAIGN_TOTAL = "CAMPAIGN_TOTAL", "Kampanya Toplami (global)"
+        LEGACY_PER_LOOP = "LEGACY_PER_LOOP", "Loop Basi (Legacy, salt-okunur)"
+
+    class GuaranteeMode(models.TextChoices):
+        GUARANTEED = "GUARANTEED", "Garanti (kapasite ayrilir)"
+        BEST_EFFORT = "BEST_EFFORT", "En Iyi Caba (bos slota yerlesir)"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    campaign = models.OneToOneField(
+        Campaign, on_delete=models.CASCADE, related_name="delivery_rule"
+    )
+    delivery_type = models.CharField(max_length=20, choices=DeliveryType.choices)
+    count = models.PositiveIntegerField(
+        help_text="Gosterim sayisi (TIME_WINDOW/PER_HOUR/PER_DAY/CAMPAIGN_TOTAL icin)."
+    )
+    window_start_time = models.TimeField(
+        null=True, blank=True,
+        help_text="TIME_WINDOW baslangici (HH:MM). TIME_WINDOW icin zorunlu.",
+    )
+    window_end_time = models.TimeField(
+        null=True, blank=True,
+        help_text="TIME_WINDOW bitisi (HH:MM). TIME_WINDOW icin zorunlu.",
+    )
+    active_hours = models.JSONField(
+        null=True, blank=True,
+        help_text="Aktif saatler (0-23). Null = tum gun.",
+    )
+    active_weekdays = models.JSONField(
+        null=True, blank=True,
+        help_text="Aktif haftanin gunleri (0=Pzt..6=Paz). Null = her gun.",
+    )
+    guarantee_mode = models.CharField(
+        max_length=12, choices=GuaranteeMode.choices,
+        default=GuaranteeMode.BEST_EFFORT,
+    )
+    max_per_hour = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text="Saatlik azami gosterim (opsiyonel cap, per-kiosk).",
+    )
+
+    class Meta:
+        db_table = "dooh_delivery_rules"
+        ordering = ("campaign_id",)
+        verbose_name = "Delivery Rule"
+        verbose_name_plural = "Delivery Rules"
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(count__gte=1),
+                name="dooh_delivery_rule_count_min_1",
+            ),
+        ]
+
+    def clean(self) -> None:
+        super().clean()
+        if self.delivery_type == self.DeliveryType.TIME_WINDOW:
+            if not self.window_start_time or not self.window_end_time:
+                raise ValidationError(
+                    "TIME_WINDOW icin window_start_time ve window_end_time zorunludur."
+                )
+        if self.active_hours is not None:
+            if not isinstance(self.active_hours, list):
+                raise ValidationError({"active_hours": "Liste olmalidir."})
+            for h in self.active_hours:
+                if not isinstance(h, int) or h < 0 or h > 23:
+                    raise ValidationError({"active_hours": "0-23 arasi tamsayi olmalidir."})
+        if self.active_weekdays is not None:
+            if not isinstance(self.active_weekdays, list):
+                raise ValidationError({"active_weekdays": "Liste olmalidir."})
+            for d in self.active_weekdays:
+                if not isinstance(d, int) or d < 0 or d > 6:
+                    raise ValidationError({"active_weekdays": "0-6 arasi tamsayi olmalidir."})
+
+    def __str__(self) -> str:
+        return f"{self.campaign} {self.delivery_type}={self.count} [{self.guarantee_mode}]"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PlanningRun + KioskDayQuota — CAMPAIGN_TOTAL global kota yonetimi
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class PlanningRun(BaseModel):
+    """Bir horizon uretiminin atomik referansi.
+
+    CAMPAIGN_TOTAL kampanyalar icin kiosk-gun kotalarini onceden hesaplar.
+    Her PlanningRun bir horizon (baslangic..bitis) icin uretimi temsil eder.
+    """
+
+    class RunStatus(models.TextChoices):
+        PENDING = "PENDING", "Bekliyor"
+        ACTIVE = "ACTIVE", "Aktif"
+        DONE = "DONE", "Tamamlandi"
+        FAILED = "FAILED", "Basarisiz"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    horizon_start = models.DateField()
+    horizon_end = models.DateField()
+    status = models.CharField(
+        max_length=8, choices=RunStatus.choices, default=RunStatus.PENDING,
+    )
+
+    class Meta:
+        db_table = "dooh_planning_runs"
+        ordering = ("-olusturulma_tarihi",)
+        verbose_name = "Planning Run"
+        verbose_name_plural = "Planning Runs"
+
+    def __str__(self) -> str:
+        return f"PlanningRun[{self.horizon_start}..{self.horizon_end} {self.status}]"
+
+
+class CampaignTotalAllocation(BaseModel):
+    """CAMPAIGN_TOTAL kampanya icin planning run basina kota ozeti.
+
+    sum(KioskDayQuota.quota for this campaign/run) == total_target garantisi.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    planning_run = models.ForeignKey(
+        PlanningRun, on_delete=models.CASCADE, related_name="allocations"
+    )
+    campaign = models.ForeignKey(
+        Campaign, on_delete=models.CASCADE, related_name="total_allocations"
+    )
+    total_target = models.PositiveIntegerField(
+        help_text="DeliveryRule.count (kampanya toplami)."
+    )
+    allocated_total = models.PositiveIntegerField(
+        default=0, help_text="Kiosk-gun kotalarinin toplami."
+    )
+
+    class Meta:
+        db_table = "dooh_campaign_total_allocations"
+        ordering = ("planning_run_id", "campaign_id")
+        verbose_name = "Campaign Total Allocation"
+        verbose_name_plural = "Campaign Total Allocations"
+        constraints = [
+            models.UniqueConstraint(
+                fields=("planning_run", "campaign"),
+                name="dooh_cta_run_campaign_uniq",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"CTA[{self.campaign} run={self.planning_run_id}]"
+
+
+class KioskDayQuota(BaseModel):
+    """CAMPAIGN_TOTAL icin kiosk+gun bazinda kota ve yerlesme sayaci.
+
+    Bagimsiz kiosk+gun islemleri bu tablo uzerinden global toplami korur:
+      sum(placed for all kiosk-days) <= CampaignTotalAllocation.total_target
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    planning_run = models.ForeignKey(
+        PlanningRun, on_delete=models.CASCADE, related_name="kiosk_quotas"
+    )
+    campaign = models.ForeignKey(
+        Campaign, on_delete=models.CASCADE, related_name="kiosk_quotas"
+    )
+    kiosk = models.ForeignKey(
+        "pharmacies.Kiosk", on_delete=models.CASCADE, related_name="+"
+    )
+    date = models.DateField()
+    quota = models.PositiveIntegerField(
+        default=0, help_text="Bu kiosk-gun icin izin verilen gosterim sayisi."
+    )
+    placed = models.PositiveIntegerField(
+        default=0, help_text="Uretimde gercekten yerlestirilen gosterim sayisi."
+    )
+
+    class Meta:
+        db_table = "dooh_kiosk_day_quotas"
+        ordering = ("planning_run_id", "campaign_id", "date")
+        verbose_name = "Kiosk Day Quota"
+        verbose_name_plural = "Kiosk Day Quotas"
+        constraints = [
+            models.UniqueConstraint(
+                fields=("planning_run", "campaign", "kiosk", "date"),
+                name="dooh_kdq_run_campaign_kiosk_date_uniq",
+            ),
+            models.CheckConstraint(
+                check=models.Q(quota__gte=0),
+                name="dooh_kdq_quota_non_negative",
+            ),
+            models.CheckConstraint(
+                check=models.Q(placed__gte=0),
+                name="dooh_kdq_placed_non_negative",
+            ),
+            models.CheckConstraint(
+                check=models.Q(placed__lte=models.F("quota")),
+                name="dooh_kdq_placed_lte_quota",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"KDQ[{self.campaign} kiosk={self.kiosk_id} {self.date}]"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# KioskDesiredBundle — monoton desired_bundle_version (Faz 5'te aktif kullanilir)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class KioskDesiredBundle(BaseModel):
+    """Kiosk bazinda monoton artan desired_bundle_version.
+
+    Faz 1'de yapi olusturulur; Faz 5'te kiosk API ve ACK mekanizmasiyla aktif olur.
+    Fingerprint: tum horizon gunlerindeki canonical kiosk payload'inin hash'i
+    (asset_id, object_key, media_url, checksum, duration, offset vs. dahil).
+    Fingerprint degismemisse version artmaz.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    kiosk = models.OneToOneField(
+        "pharmacies.Kiosk", on_delete=models.CASCADE, related_name="desired_bundle"
+    )
+    desired_bundle_version = models.PositiveIntegerField(
+        default=0,
+        help_text="Kiosk bazinda monoton artan versiyon (Max(Playlist.version) KULLANILMAZ).",
+    )
+    content_fingerprint = models.CharField(
+        max_length=64, blank=True, default="",
+        help_text="SHA-256 (hex) canonical payload hash. Degismemisse version artmaz.",
+    )
+    valid_from = models.DateField(
+        null=True, blank=True,
+        help_text="Gecerli horizon baslangici.",
+    )
+    horizon_days = models.PositiveSmallIntegerField(
+        default=3,
+        help_text="Kac gun ileri playlist uretiliyor (rolling horizon).",
+    )
+
+    class Meta:
+        db_table = "dooh_kiosk_desired_bundles"
+        ordering = ("kiosk_id",)
+        verbose_name = "Kiosk Desired Bundle"
+        verbose_name_plural = "Kiosk Desired Bundles"
+
+    def __str__(self) -> str:
+        return f"KDB[kiosk={self.kiosk_id} v={self.desired_bundle_version}]"

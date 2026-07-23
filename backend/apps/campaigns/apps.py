@@ -6,5 +6,5 @@ class CampaignsConfig(AppConfig):
     name = "apps.campaigns"
 
     def ready(self) -> None:
-        # Sinyalleri kaydet
+        # Sinyalleri kaydet (Campaign + Creative + DeliveryRule + CampaignTarget + HouseAd + Kiosk)
         import apps.campaigns.signals  # noqa: F401

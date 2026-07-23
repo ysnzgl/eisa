@@ -163,3 +163,16 @@ def mark_kiosks_offline() -> None:
     ).update(is_online=False)
     if updated:
         logger.info("mark_kiosks_offline: %d kiosk offline işaretlendi", updated)
+
+
+def drain_queue(max_jobs: int = 20) -> None:
+    """DB queue'yu boşalt: stale recovery + job claim + process.
+
+    Faz 7: Async queue canonical; APScheduler tarafından periyodik çağrılır.
+    Her çalışmada max_jobs kadar job işlenir.
+    """
+    from apps.campaigns.services.queue_worker import drain_queue as _drain
+
+    processed = _drain(max_jobs=max_jobs)
+    if processed:
+        logger.info("drain_queue: %d job işlendi", processed)

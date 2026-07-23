@@ -6,10 +6,12 @@ context'inden (`request.kiosk`) gelir.
 from django.urls import path
 
 from .views import (
+    KioskAckView,
     KioskBootstrapView,
     KioskCatalogView,
     KioskDiagnosticsView,
     KioskIdentityEnrollView,
+    KioskManifestView,
     KioskPingView,
     KioskPlaylistView,
     KioskProofOfPlayView,
@@ -32,4 +34,7 @@ urlpatterns = [
     path("sessions/", KioskSessionsView.as_view(), name="kiosk-sessions"),
     path("proof-of-play/", KioskProofOfPlayView.as_view(), name="kiosk-proof-of-play"),
     path("diagnostics/", KioskDiagnosticsView.as_view(), name="kiosk-diagnostics"),
+    # Faz 5: Manifest + ACK (DOOH_KIOSK_ACK=True ile aktif)
+    path("manifest/", KioskManifestView.as_view(), name="kiosk-manifest"),
+    path("ack/", KioskAckView.as_view(), name="kiosk-ack"),
 ]

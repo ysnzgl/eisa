@@ -19,6 +19,10 @@ import {
   reschedulePendingDiagnostics,
 } from './diagnosticOutbox.js';
 
+// Outbox'taki bir kaydın en fazla kaç kez scheduler tarafından deneneceği.
+// Bu sayıya ulaşan kayıtlar kalıcı hata olarak kabul edilir ve atlanır.
+const OUTBOX_MAX_RETRY = 10;
+
 let _tasks = [];
 let _undiciAgent = null;
 
@@ -551,6 +555,275 @@ export async function pingAndSyncPlaylist(db, settings, log = console) {
   }
 }
 
+// ── Faz 5: Manifest + ACK sync ────────────────────────────────────────────
+/**
+ * DOOH_KIOSK_ACK=true modunda çalışır.
+ *
+ * Adımlar:
+ *   1. Ping → desired version + horizon bilgisi al.
+ *   2. Sync gerekiyor mu? (version farkı VEYA horizon eksik/güncellenmiş VEYA bugün değişmiş)
+ *   3. /manifest/ endpoint'inden 3 günlük authoritative veriyi çek.
+ *   4. Manifest doğrula (3 ardışık gün, zorunlu alanlar).
+ *   5. SQLite'a atomik uygula (3 gün birlikte ya da hiç).
+ *   6. Pending ACK kaydet (aynı transaction).
+ *   7. ACK endpoint'ine gönder.
+ *   8. Başarıyla gönderilince pending ACK sil.
+ */
+export async function pingAndSyncManifest(db, settings, log = console) {
+  if (!hasCentralAuth(db, settings)) return;
+
+  const { savePendingAck, clearPendingAckIfMatches, setAckNextRetry } =
+    await import('./db.js');
+
+  try {
+    const now = istanbulNow();
+    const today = now.date;
+
+    // 1. Ping
+    const pingRes = await requestWithRetry(
+      db, settings, 'GET', '/api/kiosk/v1/ping/', undefined, log,
+    );
+    if (!pingRes.ok) {
+      if (pingRes.status === 401) handle401Error(db, settings, log);
+      else if (pingRes.status === 403) handle403Error(db, settings, log);
+      else log.warn?.(`PING HTTP ${pingRes.status}`);
+      return;
+    }
+    const ping = await pingRes.json();
+    const serverVersion = ping.desired_playlist_version ?? ping.playlist_version ?? 0;
+    const serverHorizonEnd = ping.horizon_end ?? null;
+
+    if (serverVersion === 0) {
+      log.debug?.('MANIFEST-PING: sunucuda henüz playlist yok');
+      return;
+    }
+
+    // Yerel state
+    const localVersionRow = db.prepare("SELECT value FROM kiosk_meta WHERE key='playlist_version'").get();
+    const localVersion = localVersionRow ? parseInt(localVersionRow.value, 10) : 0;
+    const localHorizonEndRow = db.prepare("SELECT value FROM kiosk_meta WHERE key='applied_horizon_end'").get();
+    const localHorizonEnd = localHorizonEndRow?.value ?? null;
+    const localTodayRow = db.prepare("SELECT value FROM kiosk_meta WHERE key='playlist_date'").get();
+    const localToday = localTodayRow?.value ?? null;
+
+    // 2. Sync gerekiyor mu?
+    const needsSync = (
+      serverVersion !== localVersion ||
+      serverHorizonEnd !== localHorizonEnd ||
+      localToday !== today
+    );
+
+    if (!needsSync) {
+      log.debug?.(`MANIFEST-PING: güncel (v${localVersion}, horizon=${localHorizonEnd})`);
+      return;
+    }
+
+    log.info?.(`MANIFEST-PING: sync gerekli (local=v${localVersion} server=v${serverVersion})`);
+
+    // 3. Manifest çek
+    const mRes = await requestWithRetry(
+      db, settings, 'GET', '/api/kiosk/v1/manifest/', undefined, log,
+    );
+    if (!mRes.ok) {
+      if (mRes.status === 401) handle401Error(db, settings, log);
+      else if (mRes.status === 403) handle403Error(db, settings, log);
+      else log.warn?.(`MANIFEST HTTP ${mRes.status}`);
+      return;
+    }
+    const manifest = await mRes.json();
+
+    // 4. Doğrula
+    const { days, horizon_start, horizon_end, playlist_version: manifestVersion } = manifest;
+    if (!Array.isArray(days) || days.length !== 3) {
+      log.warn?.({ event: 'manifest_invalid', reason: 'days.length != 3' }, 'Manifest reddedildi');
+      return;
+    }
+    // Her gün doğru mu?
+    for (const day of days) {
+      if (!day.target_date || !Array.isArray(day.playlists)) {
+        log.warn?.({ event: 'manifest_invalid', reason: 'eksik gün alanı' }, 'Manifest reddedildi');
+        return;
+      }
+    }
+
+    // 5. Atomik SQLite uygulama
+    const upsertPlaylist = db.prepare(`
+      INSERT INTO playlists (id, target_date, target_hour, loop_duration_seconds, version)
+      VALUES (@id, @target_date, @target_hour, @loop_duration_seconds, @version)
+      ON CONFLICT(target_date, target_hour) DO UPDATE SET
+        id=excluded.id,
+        loop_duration_seconds=excluded.loop_duration_seconds,
+        version=excluded.version,
+        synced_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+    `);
+    const delItems = db.prepare('DELETE FROM playlist_items WHERE playlist_id = ?');
+    const insItem = db.prepare(`
+      INSERT OR REPLACE INTO playlist_items
+        (id, playlist_id, playback_order, asset_id, asset_type,
+         media_url, duration_seconds, estimated_start_offset_seconds)
+      VALUES (@id, @playlist_id, @playback_order, @asset_id, @asset_type,
+              @media_url, @duration_seconds, @estimated_start_offset_seconds)
+    `);
+    const delDatePlaylists = db.prepare('DELETE FROM playlists WHERE target_date = ?');
+    const upsertMeta = db.prepare(
+      `INSERT INTO kiosk_meta (key, value) VALUES (?, ?)
+       ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+    );
+
+    // Tüm 3 gün tek transaction — commit veya tamamen rollback
+    db.transaction(() => {
+      for (const day of days) {
+        const dateStr = day.target_date;
+        const playlists = day.playlists ?? [];
+
+        if (playlists.length === 0) {
+          // Boş authoritative gün: eski playlistleri sil
+          delDatePlaylists.run(dateStr);
+        } else {
+          for (const pl of playlists) {
+            upsertPlaylist.run({
+              id: String(pl.id),
+              target_date: dateStr,
+              target_hour: pl.target_hour,
+              loop_duration_seconds: pl.loop_duration_seconds ?? 60,
+              version: pl.version,
+            });
+            delItems.run(String(pl.id));
+            for (const item of pl.items ?? []) {
+              insItem.run({
+                id: String(item.id),
+                playlist_id: String(pl.id),
+                playback_order: item.playback_order ?? 0,
+                asset_id: String(item.asset_id),
+                asset_type: item.asset_type ?? 'creative',
+                media_url: item.media_url ?? '',
+                duration_seconds: item.duration_seconds ?? 15,
+                estimated_start_offset_seconds: item.estimated_start_offset_seconds ?? 0,
+              });
+            }
+          }
+        }
+      }
+
+      upsertMeta.run('playlist_version', String(manifestVersion ?? serverVersion));
+      upsertMeta.run('playlist_date', today);
+      upsertMeta.run('applied_horizon_start', horizon_start ?? '');
+      upsertMeta.run('applied_horizon_end', horizon_end ?? '');
+
+      // 6. Pending ACK kaydet (aynı transaction içinde)
+      savePendingAck(db, {
+        playlistVersion: manifestVersion ?? serverVersion,
+        horizonStart: horizon_start ?? today,
+        horizonEnd: horizon_end ?? today,
+      });
+    })();
+
+    log.info?.(`MANIFEST sync tamam: 3 gün uygulandı (v${manifestVersion ?? serverVersion})`);
+    await syncMediaCache(db, settings, log);
+
+    // 7. ACK gönder
+    const ackPayload = {
+      playlist_version: manifestVersion ?? serverVersion,
+      horizon_start: horizon_start ?? today,
+      horizon_end: horizon_end ?? today,
+    };
+    try {
+      const ackRes = await requestWithRetry(
+        db, settings, 'POST', '/api/kiosk/v1/ack/', ackPayload, log,
+      );
+      if (ackRes.ok) {
+        // 8. Koşullu sil: yalnızca bu manifest için pending ACK varsa temizle
+        // Yeni manifest uygulanmışsa (daha yeni pending_ack) eski cevap onu silmez
+        clearPendingAckIfMatches(db, {
+          playlistVersion: ackPayload.playlist_version,
+          horizonStart: ackPayload.horizon_start,
+          horizonEnd: ackPayload.horizon_end,
+        });
+        log.info?.('ACK gönderildi ve temizlendi');
+      } else {
+        setAckNextRetry(db, 0);
+        log.warn?.(`ACK HTTP ${ackRes.status}; pending bırakıldı`);
+      }
+    } catch (ackErr) {
+      setAckNextRetry(db, 0);
+      log.warn?.({ err: ackErr.message }, 'ACK gönderilemedi; pending ACK bırakıldı (retry)');
+    }
+
+  } catch (err) {
+    log.warn?.({ err: err.message }, 'MANIFEST sync başarısız (offline mod)');
+  }
+}
+
+/**
+ * Pending ACK'i tekrar gönder (push cycle'da çağrılır).
+ * Process crash + restart durumunda SQLite commit edilmiş ama ACK gönderilmemiş olabilir.
+ */
+export async function retryPendingAck(db, settings, log = console) {
+  if (!hasCentralAuth(db, settings)) return;
+  if (!settings.doohKioskAck) return;
+
+  const { getPendingAck, clearPendingAckIfMatches, setAckNextRetry } = await import('./db.js');
+
+  const pending = getPendingAck(db);
+  if (!pending) return;
+
+  // Capped backoff: skip this cycle if not yet time to retry
+  if (pending.next_retry_at) {
+    const nextRetryMs = new Date(pending.next_retry_at).getTime();
+    if (!Number.isNaN(nextRetryMs) && nextRetryMs > Date.now()) {
+      log.debug?.(`Pending ACK retry bekleniyor: next_retry_at=${pending.next_retry_at}`);
+      return;
+    }
+  }
+
+  try {
+    const res = await requestWithRetry(
+      db, settings, 'POST', '/api/kiosk/v1/ack/', {
+        playlist_version: pending.playlist_version,
+        horizon_start: pending.horizon_start,
+        horizon_end: pending.horizon_end,
+      }, log,
+    );
+
+    if (res.ok) {
+      // Koşullu sil: daha yeni manifest uygulanmışsa (farklı version/horizon) silme
+      clearPendingAckIfMatches(db, {
+        playlistVersion: pending.playlist_version,
+        horizonStart: pending.horizon_start,
+        horizonEnd: pending.horizon_end,
+      });
+      log.info?.(`Pending ACK gönderildi (retry=${pending.retry_count})`);
+    } else if (res.status === 409) {
+      // FUTURE_REJECTED: backend'den daha ileri version ACK gönderildi.
+      // Bu olanaksız ama eğer olursa manifesti zorla yeniden çek.
+      // Pending ACK'i silme — yeni manifest sync onu üzerine yazacak.
+      const { setAckNextRetry: setNextRetry } = await import('./db.js');
+      setNextRetry(db, pending.retry_count);
+      // Sonraki ping cycle'da resync zorla
+      db.prepare(
+        `INSERT INTO kiosk_meta (key, value) VALUES ('needs_manifest_resync', 'true')
+         ON CONFLICT(key) DO UPDATE SET value='true'`,
+      ).run();
+      log.warn?.({ status: 409 }, 'Pending ACK FUTURE_REJECTED (409) — manifesti yeniden çek gerekiyor; ACK korunuyor');
+    } else if (res.status === 401 || res.status === 403) {
+      // Auth hatası: pending ACK'i koru, App Key'i değiştirme
+      const { setAckNextRetry: setNextRetry } = await import('./db.js');
+      setNextRetry(db, pending.retry_count);
+      log.warn?.({ status: res.status }, 'Pending ACK auth hatası; korunuyor (App Key değiştirilmedi)');
+    } else {
+      // Diğer HTTP hataları (5xx, 429, vb.) — capped backoff ile tut
+      const { setAckNextRetry: setNextRetry } = await import('./db.js');
+      const { backoff } = setNextRetry(db, pending.retry_count);
+      log.warn?.({ status: res.status, backoff }, `Pending ACK HTTP ${res.status}; ${backoff}s sonra tekrar denenir`);
+    }
+  } catch (err) {
+    // Network timeout, connection error vb. — capped backoff, silme
+    const { setAckNextRetry: setNextRetry } = await import('./db.js');
+    const { backoff } = setNextRetry(db, pending.retry_count);
+    log.warn?.({ err: err.message, backoff }, `Pending ACK ağ hatası; ${backoff}s sonra tekrar denenir`);
+  }
+}
+
 // ── PUSH ─────────────────────────────────────────────────────────────────
 export async function pushToCentral(db, settings, log = console) {
   if (!hasCentralAuth(db, settings)) {
@@ -558,11 +831,18 @@ export async function pushToCentral(db, settings, log = console) {
     return;
   }
   try {
+    // Faz 5: Pending ACK retry (crash recovery — SQLite commit ama ACK gönderilmemiş olabilir)
+    if (settings.doohKioskAck) {
+      await retryPendingAck(db, settings, log).catch((err) =>
+        log.warn?.({ err: err?.message }, 'Pending ACK retry atlandi'),
+      );
+    }
+
     // 1) oturum_outbox → /api/kiosk/v1/sessions/
     const oturumlar = db
       .prepare(
         `SELECT id, idempotency_anahtari, payload FROM oturum_outbox
-          WHERE gonderilme_tarihi IS NULL LIMIT 50`,
+          WHERE gonderilme_tarihi IS NULL AND retry_count < ${OUTBOX_MAX_RETRY} LIMIT 50`,
       )
       .all();
     if (oturumlar.length) {
@@ -650,42 +930,82 @@ export async function pushToCentral(db, settings, log = console) {
 }
 
 /**
- * Backend 200/207 yanitini isler:
- *  - `accepted_keys` listesindeki idempotency_anahtari'na sahip outbox satirlari silinir.
- *  - `errors` icindeki kayitlar lokalde tutulmaya devam eder.
+ * Backend 200/207 yanıtını işler — gerçek response şeması:
+ *   { results: [{idempotency_key, status, qr_kodu}], errors: [{index, idempotency_anahtari, errors}] }
+ *
+ * Kabul edilenler (results): gonderilme_tarihi güncellenir.
+ * Reddedilenler (errors):    retry_count artırılır, error_reason kaydedilir.
  */
 async function consumeBulkPushResponse(db, table, rows, res, log, label) {
   if (!(res.status === 200 || res.status === 201 || res.status === 207)) {
-    log?.warn?.(`PUSH ${label} HTTP ${res.status}; kayitlar saklaniyor`);
+    log?.warn?.({
+      event: `push_${label}_http_error`,
+      upstream_status: res.status,
+      pending_count: rows.length,
+    }, `PUSH ${label} HTTP ${res.status}; kayitlar saklaniyor`);
     return;
   }
   let body = null;
   try { body = await res.json(); } catch { body = {}; }
+
+  // results[].idempotency_key — kabul edilen kayıtlar (created veya existing)
   const acceptedKeys = new Set(
-    Array.isArray(body?.accepted_keys) ? body.accepted_keys.map(String) : [],
+    Array.isArray(body?.results)
+      ? body.results
+          .filter((r) => r.status === 'created' || r.status === 'existing')
+          .map((r) => String(r.idempotency_key))
+      : [],
   );
-  if (!acceptedKeys.size) {
-    log?.warn?.(`PUSH ${label} accepted_keys bos; kayitlar saklaniyor`);
-    return;
+
+  // errors[].idempotency_anahtari — backend tarafından reddedilen kayıtlar
+  const rejectedKeyErrors = new Map();
+  if (Array.isArray(body?.errors)) {
+    for (const e of body.errors) {
+      if (e.idempotency_anahtari) {
+        const keys = e.errors ? Object.keys(e.errors) : [];
+        rejectedKeyErrors.set(String(e.idempotency_anahtari), keys);
+      }
+    }
   }
 
-  const toDelete = rows.filter((r) => acceptedKeys.has(String(r.idempotency_anahtari)));
-  if (toDelete.length) {
-    const del = db.prepare(`DELETE FROM ${table} WHERE id = ?`);
+  const toAccept = rows.filter((r) => acceptedKeys.has(String(r.idempotency_anahtari)));
+  const toReject = rows.filter((r) => rejectedKeyErrors.has(String(r.idempotency_anahtari)));
+
+  if (toAccept.length) {
+    const upd = db.prepare(`UPDATE ${table} SET gonderilme_tarihi = ? WHERE id = ?`);
     const tx = db.transaction((items) => {
-      for (const it of items) del.run(it.id);
+      for (const it of items) upd.run(new Date().toISOString(), it.id);
     });
-    tx(toDelete);
+    tx(toAccept);
   }
 
-  const rejected = rows.length - toDelete.length;
-  log?.info?.(
-    `PUSH ${label}: ${toDelete.length} kabul ve silindi` +
-      (rejected ? `, ${rejected} reddedildi (lokalde tutuluyor)` : ''),
-  );
-  if (Array.isArray(body?.errors) && body.errors.length) {
-    log?.warn?.({ errors: body.errors }, `PUSH ${label} kismi hata`);
+  if (toReject.length && table === 'oturum_outbox') {
+    const updErr = db.prepare(
+      'UPDATE oturum_outbox SET retry_count = retry_count + 1, error_reason = ? WHERE id = ?',
+    );
+    const tx = db.transaction((items) => {
+      for (const it of items) {
+        const errorKeys = rejectedKeyErrors.get(String(it.idempotency_anahtari)) || [];
+        updErr.run(JSON.stringify({ type: 'backend_validation', keys: errorKeys }), it.id);
+      }
+    });
+    tx(toReject);
   }
+
+  const unmatched = rows.length - toAccept.length - toReject.length;
+  log?.info?.({
+    event: `push_${label}_complete`,
+    upstream_path: '/api/kiosk/v1/sessions/',
+    upstream_status: res.status,
+    kiosk_id: null,  // settings burada yok; scheduler çağıranı loglar
+    batch_size: rows.length,
+    accepted_count: toAccept.length,
+    duplicate_count: Array.isArray(body?.results)
+      ? body.results.filter((r) => r.status === 'existing').length
+      : 0,
+    rejected_count: toReject.length,
+    unmatched_count: unmatched,
+  }, `PUSH ${label}: ${toAccept.length} kabul, ${toReject.length} reddedildi, ${unmatched} eslesmeyen`);
 }
 
 export function startScheduler(db, settings, log = console) {
@@ -704,7 +1024,11 @@ export function startScheduler(db, settings, log = console) {
 
   const pullTimer = setInterval(wrap('pull', () => pullFromCentral(db, settings, log)), pullEvery);
   const pushTimer = setInterval(wrap('push', () => pushToCentral(db, settings, log)), pushEvery);
-  const pingTimer = setInterval(wrap('ping', () => pingAndSyncPlaylist(db, settings, log)), pingEvery);
+  // Faz 5: DOOH_KIOSK_ACK=true → manifest+ACK akışı, false → eski ping+playlist
+  const pingFn = settings.doohKioskAck
+    ? () => pingAndSyncManifest(db, settings, log)
+    : () => pingAndSyncPlaylist(db, settings, log);
+  const pingTimer = setInterval(wrap('ping', pingFn), pingEvery);
   const pressureTimer = setInterval(() => {
     try { checkOutboxPressure(log, settings.outboxMaxRows); }
     catch (err) { log?.warn?.({ event: 'outbox_pressure_check_failed', err: err?.message }, 'Outbox basinc kontrolu basarisiz'); }
@@ -735,8 +1059,13 @@ export function startScheduler(db, settings, log = console) {
     }
   } catch { /* DB henuz hazir degil */ }
 
-  // İlk açılışta hemen bir ping yap
-  pingAndSyncPlaylist(db, settings, log);
+  // İlk açılışta hemen bir ping yap; Faz 5'te pending ACK varsa retry
+  if (settings.doohKioskAck) {
+    pingAndSyncManifest(db, settings, log);
+    retryPendingAck(db, settings, log).catch(() => {});
+  } else {
+    pingAndSyncPlaylist(db, settings, log);
+  }
   syncMediaCache(db, settings, log).catch((err) =>
     log.warn?.({ event: 'media_cache_bootstrap_failed', err: err?.message }, 'Baslangicta medya cache senkronizasyonu basarisiz'),
   );

@@ -236,7 +236,10 @@ class KioskBootstrapView(APIView):
 # â”€â”€ Operasyonel endpoint'ler (AppKey + MAC) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class KioskPingView(KioskAPIView):
-    """``GET /api/kiosk/v1/ping/`` â€” heartbeat + bugunun playlist versiyonu."""
+    """``GET /api/kiosk/v1/ping/`` — heartbeat + bugunun playlist versiyonu.
+
+    Faz 7: DOOH_KIOSK_ACK flag'i kaldırıldı; desired/applied/horizon alanları her zaman döner.
+    """
 
     def get(self, request):
         kiosk = self.kiosk
@@ -248,13 +251,26 @@ class KioskPingView(KioskAPIView):
             .aggregate(max_version=Max("version"), max_updated=Max("guncellenme_tarihi"))
         )
         Kiosk.objects.filter(pk=kiosk.pk).update(son_goruldu=now, is_online=True)
-        return Response({
+
+        import zoneinfo
+        tz = zoneinfo.ZoneInfo(settings.TIME_ZONE)
+        ist_today = now.astimezone(tz).date()
+        horizon = int(getattr(settings, "DOOH_HORIZON_DAYS", 3))
+
+        response = {
             "kiosk_id": int(kiosk.pk),
             "date": str(today),
-            "playlist_version": agg["max_version"] or 0,
+            "playlist_version": kiosk.last_playlist_version or agg["max_version"] or 0,
             "updated_at": agg["max_updated"].isoformat() if agg["max_updated"] else None,
             "server_time": now.isoformat(),
-        })
+            "desired_playlist_version": kiosk.last_playlist_version or 0,
+            "applied_playlist_version": kiosk.applied_playlist_version,
+            "horizon_start": str(ist_today),
+            "horizon_end": str(ist_today + _dt.timedelta(days=horizon - 1)),
+            "timezone": settings.TIME_ZONE,
+        }
+
+        return Response(response)
 
 
 class KioskSyncView(KioskAPIView):
@@ -461,3 +477,155 @@ class KioskIdentityEnrollView(KioskAPIView):
              "code": "already_bound"},
             status=status.HTTP_409_CONFLICT,
         )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Faz 5 — Manifest + ACK (Faz 7: her zaman aktif, flag'siz)
+# ─────────────────────────────────────────────────────────────────────────────
+
+import zoneinfo as _zoneinfo
+
+
+class KioskManifestView(KioskAPIView):
+    """``GET /api/kiosk/v1/manifest/`` — 3 günlük authoritative playlist manifesti.
+
+    Faz 7: DOOH_KIOSK_ACK flag'i kaldırıldı; endpoint her zaman aktif.
+    """
+
+    def get(self, request):
+        tz = _zoneinfo.ZoneInfo(settings.TIME_ZONE)
+        now = timezone.now()
+        ist_now = now.astimezone(tz)
+        today = ist_now.date()
+        horizon = int(getattr(settings, "DOOH_HORIZON_DAYS", 3))
+        horizon_dates = [today + _dt.timedelta(days=i) for i in range(horizon)]
+
+        with transaction.atomic():
+            kiosk = Kiosk.objects.select_for_update().get(pk=self.kiosk.pk)
+            desired_version = kiosk.last_playlist_version or 0
+
+            days_data = []
+            for d in horizon_dates:
+                playlists = list(
+                    Playlist.objects
+                    .filter(kiosk=kiosk, target_date=d)
+                    .order_by("target_hour")
+                    .prefetch_related("items__creative__campaign", "items__house_ad")
+                )
+                from apps.campaigns.serializers import KioskPlaylistSerializer
+                days_data.append({
+                    "target_date": str(d),
+                    "playlists": KioskPlaylistSerializer(playlists, many=True).data,
+                })
+
+        return Response({
+            "kiosk_id": int(kiosk.pk),
+            "playlist_version": desired_version,
+            "desired_playlist_version": desired_version,
+            "applied_playlist_version": kiosk.applied_playlist_version,
+            "timezone": settings.TIME_ZONE,
+            "horizon_start": str(horizon_dates[0]),
+            "horizon_end": str(horizon_dates[-1]),
+            "generated_at": now.isoformat(),
+            "days": days_data,
+        })
+
+
+class KioskAckView(KioskAPIView):
+    """``POST /api/kiosk/v1/ack/`` — kiosk 3-gün manifest uygulandı bildirimi.
+
+    Faz 7: DOOH_KIOSK_ACK flag'i kaldırıldı; endpoint her zaman aktif.
+
+    ACK kuralları:
+      - applied_version > desired_version → 409 (future version kabul edilmez).
+      - applied_version < kiosk.applied_playlist_version → STALE_IGNORED (geriye gidemez).
+      - applied_version == applied_playlist_version ve horizon aynıysa → IDEMPOTENT.
+      - applied_version > applied_playlist_version → APPLIED.
+      - Aynı version + ileri horizon coverage → coverage güncellenir.
+    """
+
+    def post(self, request):
+        playlist_version = request.data.get("playlist_version")
+        horizon_start_raw = request.data.get("horizon_start")
+        horizon_end_raw = request.data.get("horizon_end")
+
+        # Validate payload
+        try:
+            playlist_version = int(playlist_version)
+            if playlist_version < 0:
+                raise ValueError()
+        except (TypeError, ValueError):
+            return Response(
+                {"error": "playlist_version geçerli bir integer olmalıdır."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            h_start = _dt.date.fromisoformat(str(horizon_start_raw))
+            h_end = _dt.date.fromisoformat(str(horizon_end_raw))
+            if h_end < h_start:
+                raise ValueError("horizon_end < horizon_start")
+        except (TypeError, ValueError) as exc:
+            return Response(
+                {"error": f"Geçersiz horizon tarihleri: {exc}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        now = timezone.now()
+
+        with transaction.atomic():
+            kiosk = Kiosk.objects.select_for_update().get(pk=self.kiosk.pk)
+            desired = kiosk.last_playlist_version or 0
+
+            # Future ACK: kiosk backend'den daha ileride olduğunu iddia ediyor
+            if playlist_version > desired:
+                return Response(
+                    {
+                        "ack_status": "FUTURE_REJECTED",
+                        "applied_version": playlist_version,
+                        "desired_version": desired,
+                        "error": "playlist_version desired_version'ı aşıyor.",
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+            current_applied = kiosk.applied_playlist_version or 0
+
+            # Stale ACK: geriye gitme yok
+            if playlist_version < current_applied:
+                return Response({
+                    "ack_status": "STALE_IGNORED",
+                    "applied_version": current_applied,
+                    "desired_version": desired,
+                })
+
+            # Idempotent: aynı version, aynı horizon → no-op
+            if (
+                playlist_version == current_applied
+                and kiosk.applied_horizon_start == h_start
+                and kiosk.applied_horizon_end == h_end
+            ):
+                return Response({
+                    "ack_status": "IDEMPOTENT",
+                    "applied_version": current_applied,
+                    "desired_version": desired,
+                })
+
+            # APPLIED (version ilerledi veya aynı version + genişleyen horizon)
+            kiosk.applied_playlist_version = playlist_version
+            kiosk.playlist_applied_at = now
+            kiosk.applied_horizon_start = h_start
+            kiosk.applied_horizon_end = h_end
+            kiosk.save(update_fields=[
+                "applied_playlist_version",
+                "playlist_applied_at",
+                "applied_horizon_start",
+                "applied_horizon_end",
+                "guncellenme_tarihi",
+            ])
+
+        return Response({
+            "ack_status": "APPLIED",
+            "applied_version": playlist_version,
+            "desired_version": desired,
+        })

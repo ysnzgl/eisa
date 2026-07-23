@@ -27,17 +27,19 @@ vi.mock('axios', async () => {
 import { login } from '../../services/api';
 
 describe('login()', () => {
-  it('doğru endpoint\'e POST atar', async () => {
+  it('doğru endpoint\'e POST atar ve user bilgilerini döner', async () => {
     const { default: axiosMock } = await import('axios');
     const httpMock = axiosMock.create();
+    // Backend: { id, username, rol, eczane } döner (JWT cookie'de)
     httpMock.post.mockResolvedValueOnce({
-      data: { access: 'acc', refresh: 'ref', role: 'superadmin' }
+      data: { id: 1, username: 'admin', rol: 'superadmin', eczane: null }
     });
 
     const result = await login('admin', 'pass');
-    expect(result.access).toBe('acc');
-    expect(result.refresh).toBe('ref');
+    // login() geriye { role, pharmacyId, userId } eşlemesi döner
     expect(result.role).toBe('superadmin');
+    expect(result.userId).toBe(1);
+    expect(result.pharmacyId).toBeNull();
   });
 
   it('role yoksa "pharmacist" varsayılan döner', async () => {

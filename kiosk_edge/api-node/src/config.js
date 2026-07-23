@@ -71,5 +71,7 @@ export const settings = Object.freeze({
   // CORS — localhost/127.0.0.1 her zaman izinli; ek origin'ler bu env ile eklenir.
   // Ornek: "https://demo.eisa.com.tr,https://kiosk.eisa.com.tr"
   corsAllowedOrigins:       readList(process.env.EISA_CORS_ALLOWED_ORIGINS),
+  // Faz 5: Manifest + ACK akışı (DOOH_KIOSK_ACK=true ile backend uyumlu çalıştır).
+  doohKioskAck:             readBool(process.env.DOOH_KIOSK_ACK, false),
 });
 

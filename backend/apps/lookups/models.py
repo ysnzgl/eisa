@@ -14,7 +14,7 @@ from django.db import models
 from apps.core.models import LookupModel
 
 
-class Il(LookupModel):
+class   Il(LookupModel):
     """Sehirler (Iller) — Eczane.il referansi."""
 
     ad = models.CharField(max_length=64, unique=True)

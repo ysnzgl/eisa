@@ -8,6 +8,9 @@ import { http } from './api';
 export const listCampaignsV2 = (params = {}) =>
   http.get('/api/campaigns/v2/campaigns/', { params });
 
+export const getCampaignV2 = (id) =>
+  http.get(`/api/campaigns/v2/campaigns/${id}/`);
+
 export const createCampaignV2 = (data) =>
   http.post('/api/campaigns/v2/campaigns/', data);
 
@@ -40,6 +43,23 @@ export const getCampaignTargets = (campaignId) =>
 export const setCampaignTargets = (campaignId, targets) =>
   http.post(`/api/campaigns/v2/campaigns/${campaignId}/targets/`, targets);
 
+// ── Simulate & Activate (Faz 3) ──
+
+/**
+ * Kampanyayı simüle et (read-only, kalıcı mutation yok).
+ * DOOH_ENGINE_V2=shadow|active gerektirir.
+ * @returns SimulationResultSerializer response
+ */
+export const simulateCampaign = (id) =>
+  http.post(`/api/campaigns/v2/campaigns/${id}/simulate/`);
+
+/**
+ * Kampanyayı aktive et (DOOH_ENGINE_V2=active gerektirir).
+ * @returns ActivationResultSerializer response
+ */
+export const activateCampaign = (id) =>
+  http.post(`/api/campaigns/v2/campaigns/${id}/activate/`);
+
 // ── Kapasite Önizleme (Before / After) ──
 /**
  * Yeni bir kural eklemeden önce kapasite etkisini simüle eder.
@@ -54,6 +74,16 @@ export const listCreatives = (params = {}) =>
 
 export const createCreative = (data) =>
   http.post('/api/campaigns/v2/creatives/', data);
+
+// ── Media upload ──
+export async function uploadMedia(file) {
+  const fd = new FormData();
+  fd.append('file', file);
+  const { data } = await http.post('/api/campaigns/upload-media/', fd, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return data;
+}
 
 // ── House ads ──
 export const listHouseAds = () =>
@@ -83,6 +113,14 @@ export const listGenerationJobs = () =>
 
 export const getGenerationJob = (id) =>
   http.get(`/api/campaigns/v2/playlists/jobs/${id}/`);
+
+// ── Kiosk DOOH health (desired/applied version) ──
+/**
+ * Tüm kiosklara ait desired/applied version ve horizon bilgisini döner.
+ * Backend: GET /api/pharmacies/kiosks/ — KioskSerializer Faz4/5 alanlarını içerir.
+ */
+export const getKioskHealth = () =>
+  http.get('/api/pharmacies/kiosks/');
 
 // ── Playlist Templates ──
 export const listPlaylistTemplates = () =>
@@ -123,13 +161,22 @@ export const updateDayPlan = (id, data) =>
 export const deleteDayPlan = (id) =>
   http.delete(`/api/campaigns/v2/day-plans/${id}/`);
 
+// ── Schedule Rules ──
+export const listScheduleRules = () =>
+  http.get('/api/campaigns/v2/rules/');
+
+export const createScheduleRule = (data) =>
+  http.post('/api/campaigns/v2/rules/', data);
+
+export const updateScheduleRule = (id, data) =>
+  http.patch(`/api/campaigns/v2/rules/${id}/`, data);
+
+export const deleteScheduleRule = (id) =>
+  http.delete(`/api/campaigns/v2/rules/${id}/`);
+
 // ── Kiosk listesi (playlist hedefleme icin) ──
 export const listKiosks = (params = {}) =>
   http.get('/api/pharmacies/kiosks/', { params });
-
-// ── Kiosk Sağlık Durumu ──
-export const getKioskHealth = () =>
-  http.get('/api/pharmacies/kiosks/health/');
 
 export const forceRegenerateKiosk = (kioskId, targetDate = null) =>
   http.post('/api/campaigns/v2/playlists/generate/', {
@@ -137,27 +184,8 @@ export const forceRegenerateKiosk = (kioskId, targetDate = null) =>
     ...(targetDate ? { date: targetDate } : {}),
   });
 
-// ── Medya upload (creative + house ad ortak) ──
-export async function uploadMedia(file) {
-  const fd = new FormData();
-  fd.append('file', file);
-  const { data } = await http.post('/api/campaigns/upload-media/', fd, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  });
-  return data; // { url, filename, object_name }
-}
-
 // ── Lokasyon Lookup'ları (hedefleme ağacı için) ──
-export async function getIller() {
-  const { data } = await http.get('/api/lookups/iller/', { params: { has_pharmacies: true } });
-  return Array.isArray(data) ? data : [];
-}
-
-export async function getIlceler(ilId) {
-  if (!ilId) return [];
-  const { data } = await http.get('/api/lookups/ilceler/', { params: { il: ilId, has_pharmacies: true } });
-  return Array.isArray(data) ? data : [];
-}
+// getIller / getIlceler → lookups.js'den kullanın
 
 export async function getEczanelerByIlce(ilceId) {
   if (!ilceId) return [];

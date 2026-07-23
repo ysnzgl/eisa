@@ -525,3 +525,205 @@ class TestBackfillCommand:
         call_command("backfill_session_normalization", dry_run=True, stdout=StringIO())
 
         assert OturumCevap.objects.filter(oturum=oturum).count() == 0
+
+
+# ── Kiosk Binary Format Contract (SIKAYET vs OZEL_DANISMANLIK) ────────────────
+#
+# Amaç: Kiosk UI ikili ("Y"/"N") cevap formatı ile şikâyet akışını test eder.
+#
+# Kök neden (tespit edilen):
+#   - UI cevaplar payload'ını { str(soru.id): "Y" } formatında gönderir.
+#   - Backend services.py _create_child_records() eskiden "Y"/"N" string değerleri
+#     için SessionValidationError fırlatıyordu (int("Y") → ValueError → strict raise).
+#   - OZEL_DANISMANLIK cevaplar boş gönderdiği için sorun yoktu.
+#   - Düzeltme: "Y"/"N" → cevap_metin_snapshot olarak kaydedilir, cevap FK null kalır.
+
+class TestKioskBinaryFormatContract:
+
+    def test_sikayet_binary_yn_cevaplar_accepted(self, db, kiosk_obj, kategori, soru_cevap):
+        """SIKAYET — kiosk binary { str(soru_id): "Y"/"N" } format kabul edilmeli.
+
+        Bu test kiosk UI'ın gönderdiği gerçek formatı simüle eder.
+        cevap FK null kalır; string snapshot kaydedilir.
+        """
+        soru, _ = soru_cevap
+        item = {
+            "idempotency_anahtari": str(uuid.uuid4()),
+            "yas_araligi_kod": YasAraligi.objects.first().kod,
+            "cinsiyet_kod": Cinsiyet.objects.first().kod,
+            "oturum_tipi": "SIKAYET",
+            "kategori_slug": kategori.slug,
+            "hassas_akis": False,
+            "cevaplar": {str(soru.id): "Y"},  # kiosk binary format
+            "onerilen_etken_maddeler": ["Melatonin", "Valerian"],  # string names
+            "tamamlandi": True,
+        }
+
+        results, errors = ingest_session_items(kiosk_obj, [item])
+
+        # Hata olmamalı
+        assert not errors, f"Beklenmeyen errors: {errors}"
+        assert len(results) == 1
+        assert results[0]["status"] == "created"
+        assert QR_RE.match(results[0]["qr_kodu"])
+
+        oturum = OturumLogu.objects.get(idempotency_anahtari=item["idempotency_anahtari"])
+        # OturumCevap oluşturulmuş olmalı — cevap FK null, snapshot insan-okunur format
+        cevap_row = OturumCevap.objects.get(oturum=oturum, soru=soru)
+        assert cevap_row.cevap is None  # FK null (binary değer, cevap nesnesi değil)
+        assert cevap_row.cevap_metni_snapshot == "Evet"   # insan-okunur; 'Y' değil
+        assert cevap_row.cevap_degeri_snapshot == "Y"     # raw değer korunur
+
+        # String etken madde adları snapshot olarak kaydedilmeli (en az biri)
+        snaps = list(OturumOnerilenEtkenMadde.objects.filter(oturum=oturum)
+                     .values_list("etken_madde_adi_snapshot", flat=True))
+        assert len(snaps) >= 1
+        assert "Melatonin" in snaps
+
+    def test_sikayet_binary_n_cevap_accepted(self, db, kiosk_obj, kategori, soru_cevap):
+        """SIKAYET — "N" (Hayır) binary değeri de tolere edilmeli."""
+        soru, _ = soru_cevap
+        item = {
+            "idempotency_anahtari": str(uuid.uuid4()),
+            "yas_araligi_kod": YasAraligi.objects.first().kod,
+            "cinsiyet_kod": Cinsiyet.objects.first().kod,
+            "oturum_tipi": "SIKAYET",
+            "kategori_slug": kategori.slug,
+            "hassas_akis": False,
+            "cevaplar": {str(soru.id): "N"},
+            "onerilen_etken_maddeler": [],
+            "tamamlandi": True,
+        }
+
+        results, errors = ingest_session_items(kiosk_obj, [item])
+
+        assert not errors
+        oturum = OturumLogu.objects.get(idempotency_anahtari=item["idempotency_anahtari"])
+        cevap_row = OturumCevap.objects.get(oturum=oturum, soru=soru)
+        assert cevap_row.cevap_metni_snapshot == "Hay\u0131r"  # insan-okunur
+        assert cevap_row.cevap_degeri_snapshot == "N"         # raw korunur
+
+    def test_sikayet_multiple_binary_answers_no_merge(self, db, kiosk_obj, kategori):
+        """Birden fazla Y/N cevapı ayrı OturumCevap kayıtı oluşturmalı — birleşmemeli."""
+        s1 = Soru.objects.create(kategori=kategori, metin="Soru A?", sira=10)
+        s2 = Soru.objects.create(kategori=kategori, metin="Soru B?", sira=11)
+        s3 = Soru.objects.create(kategori=kategori, metin="Soru C?", sira=12)
+        item = {
+            "idempotency_anahtari": str(uuid.uuid4()),
+            "yas_araligi_kod": YasAraligi.objects.first().kod,
+            "cinsiyet_kod": Cinsiyet.objects.first().kod,
+            "oturum_tipi": "SIKAYET",
+            "kategori_slug": kategori.slug,
+            "hassas_akis": False,
+            "cevaplar": {str(s1.id): "Y", str(s2.id): "N", str(s3.id): "Y"},
+            "onerilen_etken_maddeler": [],
+            "tamamlandi": True,
+        }
+
+        results, errors = ingest_session_items(kiosk_obj, [item])
+
+        assert not errors
+        oturum = OturumLogu.objects.get(idempotency_anahtari=item["idempotency_anahtari"])
+        # 3 soru → 3 ayrı kayıt (birleşmemeli)
+        assert OturumCevap.objects.filter(oturum=oturum).count() == 3
+        snap_y = OturumCevap.objects.get(oturum=oturum, soru=s1)
+        snap_n = OturumCevap.objects.get(oturum=oturum, soru=s2)
+        assert snap_y.cevap_metni_snapshot == "Evet"
+        assert snap_n.cevap_metni_snapshot == "Hay\u0131r"
+
+    def test_multiple_string_ingredients_all_saved(self, db, kiosk_obj, kategori):
+        """Birden fazla string etken madde adı — hepsi ayrı kayıt olarak saklanmalı.
+
+        Regresyon: eskiden get_or_create(etken_madde=None) ikinci ve sonraki
+        kayıtları birlestiriyordu (veri kaybı). Her string isim kendi satırını almalı.
+        """
+        item = {
+            "idempotency_anahtari": str(uuid.uuid4()),
+            "yas_araligi_kod": YasAraligi.objects.first().kod,
+            "cinsiyet_kod": Cinsiyet.objects.first().kod,
+            "oturum_tipi": "SIKAYET",
+            "kategori_slug": kategori.slug,
+            "hassas_akis": False,
+            "cevaplar": {},
+            "onerilen_etken_maddeler": ["Melatonin", "Valerian", "B12"],
+            "tamamlandi": True,
+        }
+
+        results, errors = ingest_session_items(kiosk_obj, [item])
+
+        assert not errors
+        oturum = OturumLogu.objects.get(idempotency_anahtari=item["idempotency_anahtari"])
+        snaps = list(OturumOnerilenEtkenMadde.objects.filter(oturum=oturum)
+                     .values_list("etken_madde_adi_snapshot", flat=True))
+        # Tümü saklanmalı — merge olmamalı
+        assert len(snaps) == 3, f"Beklenen 3, alınan {len(snaps)}: {snaps}"
+        assert "Melatonin" in snaps
+        assert "Valerian" in snaps
+        assert "B12" in snaps
+
+    def test_sikayet_unknown_soru_id_still_errors(self, db, kiosk_obj, kategori):
+        """Var olmayan soru ID → hata (Y/N toleransı geçersiz soru_id'yi affetmez)."""
+        item = {
+            "idempotency_anahtari": str(uuid.uuid4()),
+            "yas_araligi_kod": YasAraligi.objects.first().kod,
+            "cinsiyet_kod": Cinsiyet.objects.first().kod,
+            "oturum_tipi": "SIKAYET",
+            "kategori_slug": kategori.slug,
+            "hassas_akis": False,
+            "cevaplar": {"99999": "Y"},  # Y tolere edilir ama soru 99999 yok
+            "onerilen_etken_maddeler": [],
+            "tamamlandi": True,
+        }
+
+        results, errors = ingest_session_items(kiosk_obj, [item])
+
+        assert not results
+        assert "cevaplar" in errors[0]["errors"]
+        assert not OturumLogu.objects.filter(idempotency_anahtari=item["idempotency_anahtari"]).exists()
+
+    def test_sikayet_seed_id_key_still_errors(self, db, kiosk_obj, kategori, soru_cevap):
+        """seed_id string ('en_q1') as key → hata (kiosk ID dönüşümü düzeltildi, seed_id kabul edilmez)."""
+        soru, _ = soru_cevap
+        item = {
+            "idempotency_anahtari": str(uuid.uuid4()),
+            "yas_araligi_kod": YasAraligi.objects.first().kod,
+            "cinsiyet_kod": Cinsiyet.objects.first().kod,
+            "oturum_tipi": "SIKAYET",
+            "kategori_slug": kategori.slug,
+            "hassas_akis": False,
+            "cevaplar": {"en_q1": "Y"},  # seed_id olarak gönderilen key — hata vermeli
+            "onerilen_etken_maddeler": [],
+            "tamamlandi": True,
+        }
+
+        results, errors = ingest_session_items(kiosk_obj, [item])
+
+        # seed_id geçersiz integer → hata
+        assert not results
+        assert "cevaplar" in errors[0]["errors"]
+        assert "en_q1" in str(errors[0]["errors"])
+
+    def test_sikayet_via_api_endpoint_with_binary_format(self, db, kiosk_client_norm, kiosk_obj, kategori, soru_cevap):
+        """End-to-end: kiosk API endpoint üzerinden binary format testi."""
+        soru, _ = soru_cevap
+        payload = {
+            "items": [{
+                "idempotency_anahtari": str(uuid.uuid4()),
+                "yas_araligi_kod": YasAraligi.objects.first().kod,
+                "cinsiyet_kod": Cinsiyet.objects.first().kod,
+                "oturum_tipi": "SIKAYET",
+                "kategori_slug": kategori.slug,
+                "hassas_akis": False,
+                "cevaplar": {str(soru.id): "Y"},
+                "onerilen_etken_maddeler": ["Omega-3"],
+                "tamamlandi": True,
+            }]
+        }
+
+        res = kiosk_client_norm.post(SESSIONS_URL, payload, format="json")
+
+        assert res.status_code == 200, f"Unexpected status: {res.status_code} — {res.json()}"
+        data = res.json()
+        assert not data["errors"], f"Unexpected errors: {data['errors']}"
+        assert data["results"][0]["status"] == "created"
+        assert QR_RE.match(data["results"][0]["qr_kodu"])

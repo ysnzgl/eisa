@@ -8,6 +8,8 @@ const YAS_ARALIGI_RE = /^(?:\d{1,2}-\d{1,2}|65\+)$/;
 const CINSIYET_SET = ['M', 'F', 'O'];
 
 export const oturumGonderSchema = z.object({
+  // UI'dan gelen kararlı idempotency anahtarı (sessionId). Yoksa server üretir.
+  idempotency_anahtari: z.string().uuid('Gecersiz idempotency_anahtari formati').optional(),
   yas_araligi_kod: z.string().trim().regex(YAS_ARALIGI_RE, 'Gecersiz yas araligi'),
   cinsiyet_kod: z.enum(CINSIYET_SET, {
     errorMap: () => ({ message: 'Gecersiz cinsiyet kodu' }),

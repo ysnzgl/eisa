@@ -97,13 +97,8 @@ Sebep: Registry'yi kurmadan image push/pull akışı hemen çalışır. Daha son
 
 Örnek GHCR akışı:
 
-$GH_USER = "ysnzgl"
-$GHCR_PAT = "" 
-
-$GHCR_PAT | docker login ghcr.io -u $GH_USER --password-stdin
-
 ```powershell
-$REGISTRY = "ghcr.io/ysnzgl"
+$REGISTRY = "10.200.202.20:30500"
 $TAG      = "1.0.2"
 
 docker build --no-cache -t "$REGISTRY/eisa-api:$TAG" ./backend
@@ -117,7 +112,7 @@ docker push "$REGISTRY/eisa-kiosk:$TAG"
 Write-Host "Yeni tag: $TAG"
 ```
 
-REGISTRY="ghcr.io/ysnzgl"
+REGISTRY="10.200.202.20:30500"
 TAG="1.0.2"
 
 kubectl -n eisa-app set image deploy/eisa-api api=${REGISTRY}/eisa-api:${TAG}
@@ -137,8 +132,8 @@ kubectl -n eisa-app rollout status deployment/eisa-api
 Manifest içindeki image alanları buna göre güncellenir:
 
 ```yaml
-image: ghcr.io/ysnzgl/eisa-api:1.0.0
-image: ghcr.io/ysnzgl/eisa-portal:1.0.0
+image: registry.eisa.local:80/eisa-api:1.0.0
+image: registry.eisa.local:80/eisa-portal:1.0.0
 ```
 
 `latest` kullanılmaz. Her deploy versiyonlu veya commit SHA tabanlı tag ile yapılır.
@@ -153,28 +148,6 @@ git-<short-sha>
 
 ---
 
-## 5. Registry pull secret
-
-Private registry kullanılıyorsa `eisa-app` namespace'i içinde image pull secret oluşturulur.
-
-kubectl -n eisa-app create secret docker-registry eisa-regcred \
-  --docker-server=ghcr.io \
-  --docker-username=ysnzgl \
-  --docker-password=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 \
-  --docker-email=yasin06ozgul@gmail.com \
-  --dry-run=client -o yaml | kubectl apply -f -
-
-
-Manifestte deployment ve migration job pod spec'lerinde şu alan bulunur:
-
-```yaml
-imagePullSecrets:
-  - name: eisa-regcred
-```
-
-> Token komuta yazıldığında shell history'ye düşebilir. Daha güvenli ortamda çalıştırın veya secret'ı geçici dosyadan oluşturun.
-
----
 
 ## 6. Uygulama secret'ları
 
@@ -391,7 +364,7 @@ Continuous Delivery image build yapmadığı için CI pipeline gerekir.
 ```text
 1. backend image build
 2. portal image build
-3. ghcr.io üzerine push
+3. registry.eisa.local:80 üzerine push
 4. k8s/eisa-app/eisa-app-production.yaml içindeki image tag değerini güncelle
 5. değişikliği main branch'e commit et
 6. Fleet değişikliği algılar ve deploy eder
@@ -415,19 +388,19 @@ jobs:
       - uses: actions/checkout@v4
       - uses: docker/login-action@v3
         with:
-          registry: ghcr.io
+          registry: registry.eisa.local:80
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push API
         run: |
           TAG=git-${GITHUB_SHA::7}
-          docker build -t ghcr.io/ysnzgl/eisa-api:$TAG ./backend
-          docker push ghcr.io/ysnzgl/eisa-api:$TAG
+          docker build -t registry.eisa.local:80/ysnzgl/eisa-api:$TAG ./backend
+          docker push registry.eisa.local:80/ysnzgl/eisa-api:$TAG
       - name: Build and push Portal
         run: |
           TAG=git-${GITHUB_SHA::7}
-          docker build -t ghcr.io/ysnzgl/eisa-portal:$TAG ./web_panels
-          docker push ghcr.io/ysnzgl/eisa-portal:$TAG
+          docker build -t registry.eisa.local:80/ysnzgl/eisa-portal:$TAG ./web_panels
+          docker push registry.eisa.local:80/ysnzgl/eisa-portal:$TAG
 ```
 
 Bu örnek image basar; manifest tag update kısmı ayrıca eklenmelidir. İlk fazda tag güncellemesini elle yapmak daha kontrollüdür.
@@ -439,8 +412,8 @@ Bu örnek image basar; manifest tag update kısmı ayrıca eklenmelidir. İlk fa
 Manuel yaklaşım:
 
 ```bash
-kubectl -n eisa-app set image deploy/eisa-api api=ghcr.io/ysnzgl/eisa-api:1.1.0
-kubectl -n eisa-app set image deploy/eisa-portal portal=ghcr.io/ysnzgl/eisa-portal:1.1.0
+kubectl -n eisa-app set image deploy/eisa-api api=registry.eisa.local:80/ysnzgl/eisa-api:1.1.0
+kubectl -n eisa-app set image deploy/eisa-portal portal=registry.eisa.local:80/ysnzgl/eisa-portal:1.1.0
 
 kubectl -n eisa-app rollout status deploy/eisa-api
 kubectl -n eisa-app rollout status deploy/eisa-portal

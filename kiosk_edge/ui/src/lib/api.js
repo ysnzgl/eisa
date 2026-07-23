@@ -90,7 +90,7 @@ export async function fetchQuestions(categorySlug) {
  * @param {boolean} [payload.completed]  — false ise 10sn etkilesimsizlik ile terk edilmis oturum
  * @returns {Promise<{qrCode: string, qrPayload: string}>}
  */
-export async function submitSession({ ageRange, gender, oturumTipi, categorySlug, danismaKategorisiSlug, isSensitiveFlow, answersPayload, ingredientList, completed = true }) {
+export async function submitSession({ ageRange, gender, oturumTipi, categorySlug, danismaKategorisiSlug, isSensitiveFlow, answersPayload, ingredientList, completed = true, sessionId = null }) {
   // Backend'e gönderirken tamamlanma durumunu bildir
   const data = await _request(`${API_BASE}/api/oturum/gonder`, {
     method: 'POST',
@@ -104,9 +104,13 @@ export async function submitSession({ ageRange, gender, oturumTipi, categorySlug
       cevaplar:                answersPayload,
       onerilen_etken_maddeler: ingredientList,
       tamamlandi:              completed,
+      // UI'dan gelen kararlı sessionId — sunucunun her istekte yeni UUID üretmesini önler
+      ...(sessionId ? { idempotency_anahtari: sessionId } : {}),
     },
     timeoutMs: 5000,
-    retry: 1,
+    // retry: 0 — idempotency outbox tarafından garanti edilir;
+    // retry, Node'un her seferinde farklı UUID üretmesine yol açar → çift kayıt
+    retry: 0,
   });
   return { qrCode: data.qr_kodu, qrPayload: data.qr_payload || data.qr_kodu };
 }

@@ -1,21 +1,26 @@
 <script setup>
 /**
- * Kampanya Yönetim Sihirbazı (DOOH v2 — İl/İlçe/Eczane ağaç hedefleme)
+ * Kampanya Yönetim Sihirbazı (DOOH v2 — Faz 6)
  * Adımlar:
  *   1) Kampanya bilgileri  (ad, reklamveren, tarih, durum)
  *   2) Medyalar             (creative yükle, süre seç)
- *   3) Frekans & Pacing     (PER_LOOP / PER_HOUR / PER_DAY + impression hedefi)
- *   4) Hedefleme            (İl → İlçe → Eczane ağaç seçimi)
- *   5) Önizle & Kaydet      (özet + fiyat)
+ *   3) Hedefleme            (ALL / IL / ILCE / ECZANE)
+ *   4) Frekans & Pacing     (PER_LOOP / PER_HOUR / PER_DAY + impression hedefi)
+ *   5) Simülasyon           (kapasite + fiyat — read-only)
+ *   6) Özet & Aktive Et     (onay + activation)
  */
-import { ref, reactive, computed, onMounted } from 'vue';
+import { ref, reactive, computed, onMounted, watch } from 'vue';
 import {
   listCampaignsV2, createCampaignV2, updateCampaignV2, deleteCampaignV2,
   bulkActionCampaignsV2,
   getCampaignRules, setCampaignRules, createCreative, uploadMedia,
   getPricingMatrix,
+  getCampaignTargets, setCampaignTargets,
+  simulateCampaign, activateCampaign,
 } from '../../services/dooh.js';
+import { getIller, getIlceler } from '../../services/lookups.js';
 import EisaLookup from '../../components/shared/EisaLookup.vue';
+import EisaDeleteConfirm from '../../components/shared/EisaDeleteConfirm.vue';
 import DateRangePicker from '../../components/shared/DateRangePicker.vue';
 import { toast } from 'vue-sonner';
 
@@ -27,8 +32,8 @@ const editingId  = ref(null);
 const step       = ref(1);
 const stepError  = ref('');   // per-step inline error shown below footer
 
-const TOTAL_STEPS = 4;
-const STEP_LABELS = ['Bilgiler', 'Medya', 'Frekans', 'Özet & Kaydet'];
+const TOTAL_STEPS = 6;
+const STEP_LABELS = ['Bilgiler', 'Medya', 'Hedefleme', 'Frekans', 'Simülasyon', 'Aktive Et'];
 
 const empty = () => ({
   name: '',
@@ -36,11 +41,154 @@ const empty = () => ({
   start_date: '',
   end_date: '',
   status: 'ACTIVE',
+  target_scope: 'ALL',
   impression_goal: null,
   creatives: [],
-  rule: { frequency_type: 'PER_LOOP', frequency_value: 1, target_hours: null, target_days: null },
+  rule: { frequency_type: 'PER_LOOP', frequency_value: 1, target_hours: null },
 });
 const form = reactive(empty());
+
+// ── Hedefleme state ──────────────────────────────────────────────────────────
+const targets        = ref([]);
+const iller          = ref([]);
+const ilceler        = ref([]);
+const ilcelerLoading = ref(false);
+const selectedIlId   = ref(null);
+const selectedIlceId = ref(null);
+
+async function loadIller() {
+  if (iller.value.length) return;
+  try { iller.value = await getIller(); } catch { /* offline */ }
+}
+async function loadIlceler(ilId) {
+  if (!ilId) { ilceler.value = []; return; }
+  ilcelerLoading.value = true;
+  try   { ilceler.value = await getIlceler(ilId); }
+  finally { ilcelerLoading.value = false; }
+}
+watch(selectedIlId, (ilId) => { selectedIlceId.value = null; loadIlceler(ilId); });
+
+// Form değişince formDirty=true (kaydedilmemiş değişiklik uyarısı için)
+watch(
+  () => JSON.stringify({ n: form.name, s: form.start_date, e: form.end_date, cr: form.creatives.length }),
+  () => { if (wizardOpen.value) formDirty.value = true; }
+);
+
+function addIlTarget() {
+  if (!selectedIlId.value) return;
+  const il = iller.value.find((x) => x.id === selectedIlId.value);
+  if (!il) return;
+  if (targets.value.some((t) => t.target_type === 'IL' && t.il === il.id)) {
+    toast.warning('Bu il zaten hedeflendi.'); return;
+  }
+  targets.value = [...targets.value, { target_type: 'IL', il: il.id, il_adi: il.ad }];
+  selectedIlId.value = null;
+}
+function addIlceTarget() {
+  if (!selectedIlceId.value) return;
+  const ilce = ilceler.value.find((x) => x.id === selectedIlceId.value);
+  if (!ilce) return;
+  if (targets.value.some((t) => t.target_type === 'ILCE' && t.ilce === ilce.id)) {
+    toast.warning('Bu ilçe zaten hedeflendi.'); return;
+  }
+  targets.value = [...targets.value, { target_type: 'ILCE', ilce: ilce.id, ilce_adi: ilce.ad }];
+  selectedIlceId.value = null;
+}
+function addEczaneTarget(eczane) {
+  if (!eczane?.id) return;
+  if (targets.value.some((t) => t.target_type === 'ECZANE' && t.eczane === eczane.id)) {
+    toast.warning('Bu eczane zaten hedeflendi.'); return;
+  }
+  targets.value = [...targets.value, {
+    target_type: 'ECZANE', eczane: eczane.id,
+    eczane_adi: eczane.ad ?? eczane.name ?? String(eczane.id),
+  }];
+}
+function removeTarget(idx) { targets.value = targets.value.filter((_, i) => i !== idx); }
+function targetLabel(t) {
+  if (t.target_type === 'IL')     return `İl: ${t.il_adi || t.il}`;
+  if (t.target_type === 'ILCE')   return `İlçe: ${t.ilce_adi || t.ilce}`;
+  if (t.target_type === 'ECZANE') return `Eczane: ${t.eczane_adi || t.eczane}`;
+  return JSON.stringify(t);
+}
+
+// ── Simülasyon state ─────────────────────────────────────────────────────────
+const simResult  = ref(null);
+const simLoading = ref(false);
+const simError   = ref('');
+const simStale   = ref(false);
+
+const _formFingerprint = computed(() => JSON.stringify({
+  name: form.name, sd: form.start_date, ed: form.end_date,
+  scope: form.target_scope, rule: form.rule, goal: form.impression_goal,
+  creatives: form.creatives.map((c) => c.duration_seconds),
+}));
+watch([_formFingerprint, () => targets.value.length], () => {
+  if (simResult.value) simStale.value = true;
+});
+
+async function runSimulation() {
+  if (!editingId.value) {
+    simError.value = 'Simülasyon için önce kampanya kaydedilmelidir. Lütfen önceki adımları tamamlayın.';
+    return;
+  }
+  simLoading.value = true; simError.value = '';
+  try {
+    const { data } = await simulateCampaign(editingId.value);
+    simResult.value = data;
+    simStale.value  = false;
+  } catch (e) {
+    simError.value = e?.response?.data?.error || e?.response?.data?.detail || 'Simülasyon başarısız.';
+  } finally { simLoading.value = false; }
+}
+
+// ── Aktivasyon state ─────────────────────────────────────────────────────────
+const activateLoading      = ref(false);
+const activateError        = ref('');
+const activateResult       = ref(null);
+const showActivateConfirm  = ref(false);
+
+async function doActivate() {
+  if (!editingId.value) return;
+  if (simStale.value || !simResult.value) {
+    activateError.value = 'Aktive etmeden önce simülasyonu çalıştırın.';
+    return;
+  }
+  activateLoading.value = true; activateError.value = '';
+  showActivateConfirm.value = false;
+  try {
+    const { data } = await activateCampaign(editingId.value);
+    activateResult.value = data;
+    toast.success('Kampanya başarıyla aktive edildi!');
+    await refresh();
+  } catch (e) {
+    const err = e?.response?.data;
+    if (e?.response?.status === 409) {
+      activateError.value = `Kapasite/kota hatası: ${err?.blocking_reasons?.join('; ') || err?.error || 'Kapasite yetersiz.'}`;
+    } else if (e?.response?.status === 400) {
+      activateError.value = `Doğrulama hatası: ${JSON.stringify(err?.validation_errors || err?.error || err)}`;
+    } else {
+      activateError.value = err?.error || err?.detail || 'Aktivasyon başarısız.';
+    }
+  } finally { activateLoading.value = false; }
+}
+
+// ── Silme onay modal ──────────────────────────────────────────────────────────
+const deleteConfirmOpen  = ref(false);
+const deleteTarget       = ref(null);
+const deleteLoading      = ref(false);
+
+function askDelete(c) { deleteTarget.value = c; deleteConfirmOpen.value = true; }
+async function confirmDelete() {
+  if (!deleteTarget.value) return;
+  deleteLoading.value = true;
+  try {
+    await deleteCampaignV2(deleteTarget.value.id);
+    deleteConfirmOpen.value = false; deleteTarget.value = null;
+    await refresh(); toast.success('Kampanya silindi.');
+  } catch (e) { toast.error(e?.response?.data?.detail || 'Silme başarısız.'); }
+  finally { deleteLoading.value = false; }
+}
 
 // Pacing mode — purely UI, not sent to backend
 const pacingMode = ref('FREQUENCY'); // 'FREQUENCY' | 'GOAL'
@@ -118,6 +266,9 @@ const stats = computed(() => ({
 // ── Pricing matrix ─────────────────────────────────────────────────────────────
 const pricingMatrix = ref(null);
 
+// ── Kaydedilmemiş değişiklik takibi ──────────────────────────────────────────
+const formDirty = ref(false);
+
 onMounted(async () => {
   await refresh();
   try { const { data } = await getPricingMatrix(); pricingMatrix.value = data; } catch {}
@@ -136,7 +287,13 @@ async function refresh() {
 function openCreate() {
   editingId.value = null;
   Object.assign(form, empty());
+  targets.value = [];
+  simResult.value = null; simStale.value = false; simError.value = '';
+  activateResult.value = null; activateError.value = '';
   step.value = 1; wizardOpen.value = true; stepError.value = '';
+  pacingMode.value = 'FREQUENCY';
+  formDirty.value = false;
+  loadIller();
 }
 
 async function openEdit(c) {
@@ -147,33 +304,109 @@ async function openEdit(c) {
     start_date: c.start_date?.slice(0, 16) ?? '',
     end_date:   c.end_date?.slice(0, 16) ?? '',
     status: c.status,
+    target_scope: c.target_scope || 'ALL',
     impression_goal: c.impression_goal ?? null,
     creatives: (c.creatives ?? []).map((cr) => ({
       id: cr.id, name: cr.name || 'Mevcut creative',
       duration_seconds: cr.duration_seconds, uploaded_url: cr.media_url,
+      media_url: cr.media_url,
     })),
   });
+  simResult.value = null; simStale.value = false; simError.value = '';
+  activateResult.value = null; activateError.value = '';
+  targets.value = [];
+  // Load rule
   try {
     const { data } = await getCampaignRules(c.id);
     if (data?.frequency_type) {
       form.rule = { id: data.id, frequency_type: data.frequency_type,
                     frequency_value: data.frequency_value, target_hours: data.target_hours };
-      // If there's an impression goal, switch to GOAL mode
       if (form.impression_goal) pacingMode.value = 'GOAL';
     }
   } catch { /* keep default */ }
+  // Load targets
+  try {
+    const { data: tData } = await getCampaignTargets(c.id);
+    targets.value = (Array.isArray(tData) ? tData : []).map((t) => ({
+      target_type: t.target_type,
+      il: t.il, il_adi: t.il_ad,
+      ilce: t.ilce, ilce_adi: t.ilce_ad,
+      eczane: t.eczane, eczane_adi: t.eczane_ad,
+    }));
+  } catch { /* targets remain empty */ }
+  loadIller();
   step.value = 1; wizardOpen.value = true; stepError.value = '';
+  formDirty.value = false;
 }
 
-function close() { wizardOpen.value = false; }
+function close() {
+  if (formDirty.value) {
+    if (!confirm('Kaydedilmemiş değişiklikler var. Yine de çıkmak istiyor musunuz?')) return;
+  }
+  formDirty.value = false;
+  wizardOpen.value = false;
+}
 
 function nextStep() {
   const err = validateStep(step.value);
   if (err) { stepError.value = err; return; }
   stepError.value = '';
+  // Save draft when moving past step 4 (Frekans) so simulation can work
+  if (step.value === 4 && !editingId.value) {
+    saveDraft().then(() => { if (!stepError.value) step.value += 1; });
+    return;
+  }
   if (step.value < TOTAL_STEPS) step.value += 1;
 }
 function prev() { stepError.value = ''; if (step.value > 1) step.value -= 1; }
+
+/**
+ * Save campaign + targets + rule as draft (called before simulation step).
+ * Does NOT activate. Returns the saved campaign id or sets stepError.
+ */
+async function saveDraft() {
+  saving.value = true; stepError.value = '';
+  try {
+    const payload = buildCampaignPayload();
+    let cId;
+    if (editingId.value) {
+      await updateCampaignV2(editingId.value, payload);
+      cId = editingId.value;
+    } else {
+      const { data } = await createCampaignV2(payload);
+      cId = data.id;
+      editingId.value = cId;
+    }
+    // Save creatives (new ones only)
+    for (const cr of form.creatives) {
+      if (cr.id) continue;
+      await createCreative({
+        campaign: cId,
+        media_url: cr.media_url || cr.uploaded_url || '',
+        object_key: cr.object_key || undefined,
+        checksum: cr.checksum || undefined,
+        duration_seconds: Number(cr.duration_seconds),
+        name: cr.name?.slice(0, 120) || '',
+      });
+    }
+    // Save targets (only for RULES scope)
+    if (form.target_scope === 'RULES') {
+      await setCampaignTargets(cId, targets.value.map((t) => {
+        const entry = { target_type: t.target_type };
+        if (t.il)     entry.il     = t.il;
+        if (t.ilce)   entry.ilce   = t.ilce;
+        if (t.eczane) entry.eczane = t.eczane;
+        return entry;
+      }));
+    }
+    // Save rule
+    await setCampaignRules(cId, buildRulePayload());
+    await refresh();
+    formDirty.value = false;
+  } catch (e) {
+    stepError.value = e?.response?.data?.detail || JSON.stringify(e?.response?.data || {}) || 'Taslak kayıt başarısız.';
+  } finally { saving.value = false; }
+}
 
 // ── Media helpers ─────────────────────────────────────────────────────────────
 async function onPickFile(ev) {
@@ -182,7 +415,18 @@ async function onPickFile(ev) {
   try {
     saving.value = true;
     const data = await uploadMedia(file);
-    form.creatives.push({ file, name: file.name, duration_seconds: 15, uploaded_url: data.url });
+    // Faz 0.5+: canonical alanlar media_url, object_key, checksum
+    // Flag=False (legacy): data.url alias, object_key/checksum boş olabilir
+    form.creatives.push({
+      file,
+      name: file.name,
+      duration_seconds: 15,
+      media_url:   data.media_url  ?? data.url ?? '',   // canonical
+      object_key:  data.object_key ?? '',
+      checksum:    data.checksum   ?? '',
+      // Legacy alias korunur — yalnız backward compat kontrolü için
+      uploaded_url: data.media_url ?? data.url ?? '',
+    });
   } catch (e) {
     toast.error(e?.response?.data?.error || 'Medya yüklenemedi.');
   } finally { saving.value = false; ev.target.value = ''; }
@@ -198,35 +442,31 @@ function toggleHour(rule, h) {
   rule.target_hours = arr.length ? arr : null;
 }
 
-function toggleDay(rule, d) {
-  const arr = Array.isArray(rule.target_days) ? [...rule.target_days] : [];
-  const i = arr.indexOf(d);
-  if (i >= 0) arr.splice(i, 1); else arr.push(d);
-  arr.sort((a, b) => a - b);
-  rule.target_days = arr.length ? arr : null;
-}
-
 // ── Per-step validation ───────────────────────────────────────────────────────
 function validateStep(n) {
   if (n === 1) {
     if (!form.name.trim()) return 'Kampanya adı zorunludur.';
     if (!form.start_date || !form.end_date) return 'Başlangıç ve bitiş tarihi zorunludur.';
-    const now = new Date();
-    const sd  = new Date(form.start_date);
-    const ed  = new Date(form.end_date);
-    if (sd < now) return 'Başlangıç tarihi geçmişte olamaz.';
+    const sd = new Date(form.start_date);
+    const ed = new Date(form.end_date);
     if (ed <= sd) return 'Bitiş tarihi başlangıçtan sonra olmalıdır.';
   }
   if (n === 2) {
     if (!form.creatives.length) return 'En az bir medya (creative) yüklemelisiniz.';
   }
   if (n === 3) {
+    // Hedefleme: RULES seçiliyse en az bir hedef zorunlu
+    if (form.target_scope === 'RULES' && targets.value.length === 0) {
+      return 'RULES hedefleme için en az bir İl, İlçe veya Eczane hedefi ekleyin.';
+    }
+  }
+  if (n === 4) {
     if (pacingMode.value === 'GOAL') {
       const goal = Number(form.impression_goal);
       if (!goal || goal < 1) return 'Gösterim hedefi en az 1 olmalıdır.';
       if (form.start_date && form.end_date) {
         const days = Math.max(1, Math.ceil((new Date(form.end_date) - new Date(form.start_date)) / 86400000));
-        if (goal < days) return `Gösterim hedefi (${goal}) tarih aralığı gün sayısından (${days}) az olamaz — en az günde 1 gösterim gereklidir.`;
+        if (goal < days) return `Gösterim hedefi (${goal}) gün sayısından (${days}) az olamaz.`;
       }
     } else {
       if (!form.rule?.frequency_type) return 'Frekans tipi seçiniz.';
@@ -238,15 +478,48 @@ function validateStep(n) {
         const targetH = form.rule.target_hours ?? Array.from({ length: 24 }, (_, i) => i);
         const hours = targetH.length;
         if (form.rule.frequency_type === 'PER_LOOP')
-          return `Loop kapasitesi aşıldı: ${fv} × ${dur} sn = ${fv * dur} sn > 60 sn. Maksimum ${max} kez.`;
+          return `Loop kapasitesi aşıldı: ${fv} × ${dur} sn > 60 sn. Maksimum ${max} kez.`;
         if (form.rule.frequency_type === 'PER_HOUR')
-          return `Saatlik kapasite aşıldı: ${fv} × ${dur} sn > 3600 sn. Maksimum ${max} kez.`;
+          return `Saatlik kapasite aşıldı. Maksimum ${max} kez.`;
         if (form.rule.frequency_type === 'PER_DAY')
           return `Günlük kapasite aşıldı (${hours} hedef saat). Maksimum ${max} kez.`;
       }
     }
   }
   return null;
+}
+
+// ── Payload builders ──────────────────────────────────────────────────────────
+
+function buildCampaignPayload() {
+  return {
+    name: form.name,
+    advertiser_name: form.advertiser_name || '',
+    advertiser_id: null,
+    start_date: new Date(form.start_date).toISOString(),
+    end_date:   new Date(form.end_date).toISOString(),
+    status: form.status,
+    target_scope: form.target_scope || 'ALL',
+    impression_goal: form.impression_goal || null,
+  };
+}
+
+function buildRulePayload() {
+  if (pacingMode.value === 'GOAL' && form.impression_goal && form.start_date && form.end_date) {
+    const days = Math.max(1, Math.ceil(
+      (new Date(form.end_date) - new Date(form.start_date)) / 86400000
+    ));
+    return {
+      frequency_type: 'PER_DAY',
+      frequency_value: Math.ceil(Number(form.impression_goal) / days),
+      target_hours: form.rule.target_hours,
+    };
+  }
+  return {
+    frequency_type: form.rule.frequency_type,
+    frequency_value: Number(form.rule.frequency_value),
+    target_hours: form.rule.target_hours,
+  };
 }
 
 // ── Pacing helpers ─────────────────────────────────────────────────────────────
@@ -335,79 +608,19 @@ const pricingEstimate = computed(() => {
 
 // ── Save ──────────────────────────────────────────────────────────────────────
 async function save() {
-  for (let i = 1; i <= TOTAL_STEPS - 1; i++) {
+  // Step 6 (Özet & Aktive): final save = saveDraft (idempotent) then close
+  for (let i = 1; i <= 4; i++) {
     const err = validateStep(i);
     if (err) { stepError.value = err; step.value = i; return; }
   }
-  saving.value = true; stepError.value = '';
-  try {
-    const payload = {
-      name: form.name,
-      advertiser_name: form.advertiser_name || '',
-      advertiser_id: null,
-      start_date: new Date(form.start_date).toISOString(),
-      end_date:   new Date(form.end_date).toISOString(),
-      status: form.status,
-      impression_goal: form.impression_goal || null,
-    };
-    let campaignId;
-    if (editingId.value) {
-      const { data } = await updateCampaignV2(editingId.value, payload);
-      campaignId = data.id;
-    } else {
-      const { data } = await createCampaignV2(payload);
-      campaignId = data.id;
-    }
-
-    for (const cr of form.creatives) {
-      if (cr.id) continue;
-      await createCreative({
-        campaign: campaignId,
-        media_url: cr.uploaded_url,
-        duration_seconds: Number(cr.duration_seconds),
-        name: cr.name?.slice(0, 120) || '',
-      });
-    }
-
-    // In GOAL mode, auto-compute PER_DAY frequency from the goal
-    const freqPayload = pacingMode.value === 'GOAL' && form.impression_goal && form.start_date && form.end_date
-      ? (() => {
-          const days = Math.max(1, Math.ceil(
-            (new Date(form.end_date) - new Date(form.start_date)) / 86400000
-          ));
-          return {
-            frequency_type:  'PER_DAY',
-            frequency_value: Math.ceil(Number(form.impression_goal) / days),
-            target_hours:    form.rule.target_hours,
-          };
-        })()
-      : {
-          frequency_type:  form.rule.frequency_type,
-          frequency_value: Number(form.rule.frequency_value),
-          target_hours:    form.rule.target_hours,
-        };
-
-    await setCampaignRules(campaignId, freqPayload);
-
+  await saveDraft();
+  if (!stepError.value) {
     wizardOpen.value = false;
-    await refresh();
     toast.success(`Kampanya ${editingId.value ? 'güncellendi' : 'oluşturuldu'}.`);
-  } catch (e) {
-    const msg = e?.response?.data?.detail || JSON.stringify(e?.response?.data || {}) || 'Kayıt başarısız.';
-    toast.error(msg);
-  } finally { saving.value = false; }
-}
-
-async function remove(c) {
-  if (!confirm(`"${c.name}" kampanyası silinsin mi?`)) return;
-  try {
-    await deleteCampaignV2(c.id);
-    await refresh();
-    toast.success('Kampanya silindi.');
-  } catch (e) {
-    toast.error(e?.response?.data?.detail || 'Silme başarısız.');
   }
 }
+
+function remove(c) { askDelete(c); }
 
 async function bulkRun(action) {
   const ids = Array.from(selectedIds.value);
@@ -427,15 +640,7 @@ async function bulkRun(action) {
 }
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
-const DAYS_OF_WEEK = [
-  { value: 0, label: 'Pzt' },
-  { value: 1, label: 'Sal' },
-  { value: 2, label: 'Çar' },
-  { value: 3, label: 'Per' },
-  { value: 4, label: 'Cum' },
-  { value: 5, label: 'Cmt' },
-  { value: 6, label: 'Paz' },
-];
+// DAYS_OF_WEEK kaldırıldı — backend ScheduleRuleSerializer target_days desteklemiyor (Faz 7)
 const FREQ_TYPES = [
   { value: 'PER_LOOP', label: "Her loop'ta (60 sn)", help: "Değer=2 → her 60 saniyelik loop'ta 2 kez oynar." },
   { value: 'PER_HOUR', label: 'Saatte N kez',        help: 'Değer=4 → hedef saatlerde her saatte 4 kez oynar.' },
@@ -681,8 +886,81 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
             <p v-if="saving" class="muted small">Yükleniyor…</p>
           </section>
 
-          <!-- Step 3: Frekans & Pacing -->
+          <!-- Step 3: Hedefleme -->
           <section v-if="step === 3" class="step-pane">
+            <h3 class="step-title">Hedefleme</h3>
+            <p class="step-help">Kampanyanın hangi kiosklar için yayınlanacağını belirleyin.</p>
+
+            <div class="eisa-form-row" style="margin-bottom:1rem">
+              <label class="eisa-field-label">Hedef kapsamı</label>
+              <div style="display:flex;gap:.75rem;flex-wrap:wrap;margin-top:.35rem">
+                <label class="target-scope-opt" :class="{active: form.target_scope === 'ALL'}" style="display:flex;align-items:center;gap:.5rem;padding:.5rem .9rem;border-radius:8px;border:1px solid #e2e8f0;cursor:pointer;font-size:.875rem" :style="form.target_scope === 'ALL' ? 'border-color:#B1121B;background:#FFF5F5' : ''">
+                  <input type="radio" v-model="form.target_scope" value="ALL" style="accent-color:#B1121B" />
+                  <span><strong>Tüm aktif kiosklar</strong></span>
+                </label>
+                <label class="target-scope-opt" :class="{active: form.target_scope === 'RULES'}" style="display:flex;align-items:center;gap:.5rem;padding:.5rem .9rem;border-radius:8px;border:1px solid #e2e8f0;cursor:pointer;font-size:.875rem" :style="form.target_scope === 'RULES' ? 'border-color:#B1121B;background:#FFF5F5' : ''">
+                  <input type="radio" v-model="form.target_scope" value="RULES" style="accent-color:#B1121B" />
+                  <span><strong>Özel hedefleme</strong> (İl / İlçe / Eczane)</span>
+                </label>
+              </div>
+            </div>
+
+            <template v-if="form.target_scope === 'RULES'">
+              <!-- Seçili hedefler -->
+              <div v-if="targets.length" class="target-chips" style="display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:.75rem">
+                <span v-for="(t, i) in targets" :key="i"
+                      style="display:flex;align-items:center;gap:.35rem;background:#eef2ff;border:1px solid #c7d2fe;border-radius:999px;padding:.25rem .75rem;font-size:.8rem;font-weight:500">
+                  <i class="fa-solid" :class="t.target_type === 'IL' ? 'fa-map' : t.target_type === 'ILCE' ? 'fa-map-pin' : 'fa-house-medical'"></i>
+                  {{ targetLabel(t) }}
+                  <button type="button" style="background:none;border:none;cursor:pointer;padding:0;color:#6b7280;font-size:.9rem;line-height:1" @click="removeTarget(i)" :aria-label="`Kaldır: ${targetLabel(t)}`">×</button>
+                </span>
+              </div>
+              <p v-else class="muted small" style="margin-bottom:.75rem">Henüz hedef seçilmedi — aşağıdan İl, İlçe veya Eczane ekleyin.</p>
+
+              <!-- İl ekle -->
+              <div style="display:grid;grid-template-columns:1fr auto;gap:.5rem;margin-bottom:.6rem;align-items:flex-end">
+                <div>
+                  <label class="eisa-field-label" for="target-il-sel">İl ekle</label>
+                  <select id="target-il-sel" v-model="selectedIlId" class="eisa-field">
+                    <option :value="null">— İl seçin —</option>
+                    <option v-for="il in iller" :key="il.id" :value="il.id">{{ il.ad }}</option>
+                  </select>
+                </div>
+                <button type="button" class="eisa-btn" :disabled="!selectedIlId" @click="addIlTarget">
+                  <i class="fa-solid fa-plus"></i> Ekle
+                </button>
+              </div>
+
+              <!-- İlçe ekle -->
+              <div style="display:grid;grid-template-columns:1fr auto;gap:.5rem;margin-bottom:.6rem;align-items:flex-end">
+                <div>
+                  <label class="eisa-field-label" for="target-ilce-sel">İlçe ekle</label>
+                  <select id="target-ilce-sel" v-model="selectedIlceId" class="eisa-field" :disabled="!selectedIlId">
+                    <option :value="null">{{ selectedIlId ? (ilcelerLoading ? 'Yükleniyor…' : '— İlçe seçin —') : '— Önce il seçin —' }}</option>
+                    <option v-for="ilce in ilceler" :key="ilce.id" :value="ilce.id">{{ ilce.ad }}</option>
+                  </select>
+                </div>
+                <button type="button" class="eisa-btn" :disabled="!selectedIlceId" @click="addIlceTarget">
+                  <i class="fa-solid fa-plus"></i> Ekle
+                </button>
+              </div>
+
+              <!-- Eczane ekle -->
+              <div style="margin-bottom:.6rem">
+                <label class="eisa-field-label">Eczane ekle</label>
+                <EisaLookup
+                  endpoint="/api/pharmacies/"
+                  label-field="ad"
+                  placeholder="Eczane adı ara…"
+                  :params="{ page_size: 20 }"
+                  @select="addEczaneTarget"
+                />
+              </div>
+            </template>
+          </section>
+
+          <!-- Step 4: Frekans & Pacing -->
+          <section v-if="step === 4" class="step-pane">
             <h3 class="step-title">Planlama yöntemi</h3>
 
             <!-- Mode toggle -->
@@ -742,19 +1020,6 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
                   </div>
                 </div>
 
-                <div class="days" style="margin-top:1.5rem">
-                  <span class="muted small">
-                    Hedef günler ({{ form.rule.target_days?.length ? DAYS_OF_WEEK.filter(d => form.rule.target_days?.includes(d.value)).map(d => d.label).join(', ') : 'her gün' }}):
-                  </span>
-                  <div class="day-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:.4rem;margin-top:.5rem">
-                    <button v-for="d in DAYS_OF_WEEK" :key="d.value" type="button" class="day-btn"
-                            :class="{ active: form.rule.target_days?.includes(d.value) }"
-                            @click="toggleDay(form.rule, d.value)"
-                            style="padding:.5rem .4rem;border-radius:6px;border:1px solid #e2e8f0;background:#fff;cursor:pointer;font-size:.85rem;font-weight:500;transition:all .15s">
-                      {{ d.label }}
-                    </button>
-                  </div>
-                </div>
               </div>
             </template>
 
@@ -798,66 +1063,158 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
                             @click="toggleHour(form.rule, h)">{{ String(h).padStart(2,'0') }}</button>
                   </div>
                 </div>
-
-                <div class="days" style="margin-top:1.5rem">
-                  <span class="muted small">
-                    Hedef günler ({{ form.rule.target_days?.length ? DAYS_OF_WEEK.filter(d => form.rule.target_days?.includes(d.value)).map(d => d.label).join(', ') : 'her gün' }}):
-                  </span>
-                  <div class="day-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:.4rem;margin-top:.5rem">
-                    <button v-for="d in DAYS_OF_WEEK" :key="d.value" type="button" class="day-btn"
-                            :class="{ active: form.rule.target_days?.includes(d.value) }"
-                            @click="toggleDay(form.rule, d.value)"
-                            style="padding:.5rem .4rem;border-radius:6px;border:1px solid #e2e8f0;background:#fff;cursor:pointer;font-size:.85rem;font-weight:500;transition:all .15s">
-                      {{ d.label }}
-                    </button>
-                  </div>
-                </div>
               </div>
             </template>
           </section>
 
-          <!-- Step 4: Özet & Kaydet -->
-          <section v-if="step === 4" class="step-pane">
-            <h3 class="step-title">Özet & Kaydet</h3>
-            <p class="step-help">Tüm bilgiler doğruysa kaydedin. Playlist yönetimi için Playlist Editörü ekranını kullanın.</p>
+          <!-- Step 5: Simülasyon -->
+          <section v-if="step === 5" class="step-pane">
+            <h3 class="step-title">Kapasite Simülasyonu</h3>
+            <p class="step-help">
+              Simülasyon <strong>kalıcı değişiklik yapmaz</strong>.
+              Kapasite, kiosk sayısı ve tahmini dağılımı görürsünüz.
+              Form değişince simülasyon geçersiz olur — aktivasyondan önce yeniden çalıştırın.
+            </p>
+
+            <div v-if="!editingId" class="pacing-callout pacing-warn">
+              <i class="fa-solid fa-triangle-exclamation"></i>
+              Simülasyon için kampanya önce kaydedilmelidir. Lütfen önceki adımları tamamlayın.
+            </div>
+
+            <div v-else>
+              <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.75rem">
+                <button type="button" class="eisa-btn eisa-btn-cta"
+                        :disabled="simLoading" @click="runSimulation">
+                  <i class="fa-solid" :class="simLoading ? 'fa-circle-notch fa-spin' : 'fa-play'"></i>
+                  {{ simLoading ? 'Simüle ediliyor…' : (simResult ? 'Yeniden Simüle Et' : 'Simüle Et') }}
+                </button>
+                <span v-if="simStale && simResult" style="font-size:.8rem;color:#dc2626;display:flex;align-items:center;gap:.4rem">
+                  <i class="fa-solid fa-triangle-exclamation"></i>
+                  Form değişti — aktivasyon için yeniden simüle edin
+                </span>
+              </div>
+
+              <div v-if="simError" class="pacing-callout" style="background:#FFF5F5;border-color:#FECACA">
+                <i class="fa-solid fa-circle-xmark" style="color:#dc2626"></i>
+                <span>{{ simError }}</span>
+              </div>
+
+              <div v-if="simResult && !simStale" class="sim-result-box">
+                <div class="sim-verdict" :style="simResult.would_succeed ? 'background:#f0fdf4;border-color:#86efac' : 'background:#fef2f2;border-color:#fca5a5'"
+                     style="padding:.75rem 1rem;border-radius:8px;border:1px solid;margin-bottom:.75rem;display:flex;align-items:center;gap:.6rem">
+                  <i class="fa-solid" :class="simResult.would_succeed ? 'fa-circle-check' : 'fa-circle-xmark'"
+                     :style="simResult.would_succeed ? 'color:#16a34a' : 'color:#dc2626'"></i>
+                  <strong>{{ simResult.would_succeed ? 'Kampanya aktive edilebilir.' : 'Kapasite yetersiz — aktivasyon başarısız olabilir.' }}</strong>
+                </div>
+
+                <div class="sim-stats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:.5rem;margin-bottom:.75rem">
+                  <div class="sim-stat" style="background:#f8fafc;border-radius:8px;padding:.6rem .75rem;border:1px solid #e2e8f0">
+                    <p style="font-size:.75rem;color:#64748b;margin:0">Hedef Kiosk</p>
+                    <p style="font-size:1.1rem;font-weight:700;margin:0">{{ simResult.target_kiosks?.length ?? '—' }}</p>
+                  </div>
+                  <div class="sim-stat" style="background:#f8fafc;border-radius:8px;padding:.6rem .75rem;border:1px solid #e2e8f0">
+                    <p style="font-size:.75rem;color:#64748b;margin:0">Planlanan</p>
+                    <p style="font-size:1.1rem;font-weight:700;margin:0">{{ simResult.total_placed ?? '—' }}</p>
+                  </div>
+                  <div class="sim-stat" style="background:#f8fafc;border-radius:8px;padding:.6rem .75rem;border:1px solid #e2e8f0">
+                    <p style="font-size:.75rem;color:#64748b;margin:0">Yerleşemeyen</p>
+                    <p style="font-size:1.1rem;font-weight:700;margin:0;color:#dc2626">{{ simResult.total_unplaced ?? '—' }}</p>
+                  </div>
+                  <div class="sim-stat" style="background:#f8fafc;border-radius:8px;padding:.6rem .75rem;border:1px solid #e2e8f0">
+                    <p style="font-size:.75rem;color:#64748b;margin:0">Tarih Aralığı</p>
+                    <p style="font-size:.875rem;font-weight:600;margin:0">{{ simResult.date_range?.length ?? 0 }} gün</p>
+                  </div>
+                </div>
+
+                <div v-if="simResult.blocking_reasons?.length" style="margin-bottom:.5rem">
+                  <p style="font-size:.8rem;font-weight:600;color:#dc2626;margin-bottom:.35rem">Uyarılar:</p>
+                  <ul style="font-size:.8rem;color:#dc2626;padding-left:1.2rem;margin:0">
+                    <li v-for="r in simResult.blocking_reasons" :key="r">{{ r }}</li>
+                  </ul>
+                </div>
+              </div>
+
+              <div v-if="pricingEstimate" class="pricing-estimate" style="margin-top:.75rem">
+                <h4>💰 Tahmini Maliyet</h4>
+                <div class="pricing-grid">
+                  <div class="pricing-item"><span class="pricing-label">Kampanya süresi</span><span class="pricing-value">{{ pricingEstimate.days }} gün</span></div>
+                  <div class="pricing-item"><span class="pricing-label">Günlük gösterim</span><span class="pricing-value">{{ pricingEstimate.showsPerDay.toLocaleString('tr-TR') }} kez</span></div>
+                  <div class="pricing-item pricing-total"><span class="pricing-label">Toplam maliyet</span><span class="pricing-value">{{ Number(pricingEstimate.total).toLocaleString('tr-TR', { style: 'currency', currency: pricingEstimate.currency }) }}</span></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Step 6: Özet & Aktive Et -->
+          <section v-if="step === 6" class="step-pane">
+            <h3 class="step-title">Özet & Aktive Et</h3>
+            <p class="step-help">Bilgileri doğrulayın ve kampanyayı aktive edin.</p>
 
             <div class="summary-box">
               <h4>Özet</h4>
               <ul>
                 <li><strong>Kampanya:</strong> {{ form.name || '—' }}</li>
+                <li><strong>Reklamveren:</strong> {{ form.advertiser_name || '—' }}</li>
                 <li><strong>Tarih:</strong> {{ form.start_date?.slice(0,10) ?? '—' }} → {{ form.end_date?.slice(0,10) ?? '—' }}</li>
+                <li><strong>Hedefleme:</strong> {{ form.target_scope === 'ALL' ? 'Tüm aktif kiosklar' : `${targets.length} hedef (RULES)` }}</li>
                 <li><strong>Medya:</strong> {{ form.creatives.length }} adet ({{ form.creatives[0]?.duration_seconds ?? '?' }} sn)</li>
                 <li v-if="pacingMode === 'GOAL'">
                   <strong>Gösterim hedefi:</strong> {{ form.impression_goal?.toLocaleString('tr-TR') }} kez
-                  <span v-if="goalDistribution" class="muted"> (~{{ goalDistribution.showsPerDay }} kez/gün)</span>
                 </li>
                 <li v-else>
                   <strong>Frekans:</strong>
                   {{ FREQ_TYPES.find(t => t.value === form.rule.frequency_type)?.label ?? form.rule.frequency_type }}
                   = {{ form.rule.frequency_value }} kez
-                  {{ form.rule.target_hours?.length ? `(saatler: ${form.rule.target_hours.join(', ')})` : '' }}
-                </li>
-                <li v-if="estimatedImpressions && pacingMode === 'FREQUENCY'">
-                  <strong>Tahmini toplam gösterim:</strong>
-                  {{ estimatedImpressions.total.toLocaleString('tr-TR') }} kez
-                  <span class="muted">({{ estimatedImpressions.showsPerDay.toLocaleString('tr-TR') }}/gün × {{ estimatedImpressions.days }} gün)</span>
                 </li>
               </ul>
             </div>
 
-            <div v-if="pricingEstimate" class="pricing-estimate">
-              <h4>💰 Maliyet</h4>
-              <div class="pricing-grid">
-                <div class="pricing-item"><span class="pricing-label">Kampanya süresi</span><span class="pricing-value">{{ pricingEstimate.days }} gün</span></div>
-                <div class="pricing-item"><span class="pricing-label">Günlük gösterim</span><span class="pricing-value">{{ pricingEstimate.showsPerDay.toLocaleString('tr-TR') }} kez</span></div>
-                <div class="pricing-item"><span class="pricing-label">Toplam gösterim</span><span class="pricing-value">{{ pricingEstimate.totalShows.toLocaleString('tr-TR') }} kez</span></div>
-                <div class="pricing-item pricing-total"><span class="pricing-label">Toplam maliyet</span><span class="pricing-value">{{ Number(pricingEstimate.total).toLocaleString('tr-TR', { style: 'currency', currency: pricingEstimate.currency }) }}</span></div>
+            <div v-if="simStale || !simResult" class="pacing-callout pacing-warn" style="margin:.75rem 0">
+              <i class="fa-solid fa-triangle-exclamation"></i>
+              <span>
+                Aktivasyon için önce <strong>Adım 5'te simülasyonu çalıştırın</strong>.
+                <button type="button" class="link-btn" style="margin-left:.4rem" @click="step=5">Simülasyona git →</button>
+              </span>
+            </div>
+
+            <div v-if="activateResult" class="pacing-callout" style="background:#f0fdf4;border-color:#86efac">
+              <i class="fa-solid fa-circle-check" style="color:#16a34a"></i>
+              <div>
+                <strong>Kampanya başarıyla aktive edildi!</strong>
+                <span v-if="activateResult.total_placements" class="muted"> — {{ activateResult.total_placements }} slot yerleştirildi</span>
               </div>
             </div>
-            <div v-else class="pacing-callout muted small">
-              <i class="fa-solid fa-circle-info"></i>
-              Maliyet hesabı için fiyatlandırma matrisi gereklidir (Ayarlar ekranından tanımlayın).
+
+            <div v-if="activateError" class="pacing-callout" style="background:#fef2f2;border-color:#fca5a5">
+              <i class="fa-solid fa-circle-xmark" style="color:#dc2626"></i>
+              <span>{{ activateError }}</span>
             </div>
+
+            <div style="display:flex;gap:.75rem;margin-top:1rem;flex-wrap:wrap">
+              <button type="button" class="eisa-btn eisa-btn-cta"
+                      :disabled="saving" @click="save">
+                <i class="fa-solid fa-floppy-disk"></i>
+                {{ saving ? 'Kaydediliyor…' : 'Kaydet (taslak)' }}
+              </button>
+              <button type="button" class="eisa-btn eisa-btn-primary"
+                      :disabled="activateLoading || simStale || !simResult || !editingId"
+                      @click="showActivateConfirm = true"
+                      title="DOOH_ENGINE_V2=active gerektirir">
+                <i class="fa-solid" :class="activateLoading ? 'fa-circle-notch fa-spin' : 'fa-bolt'"></i>
+                {{ activateLoading ? 'Aktive ediliyor…' : 'Aktive Et' }}
+              </button>
+            </div>
+
+            <!-- Aktivasyon onay modal -->
+            <EisaDeleteConfirm
+              :open="showActivateConfirm"
+              title="Kampanyayı Aktive Et"
+              :message="`'${form.name}' kampanyası aktive edilecek. Bu işlem playlist oluşturur. Devam edilsin mi?`"
+              confirm-label="Evet, Aktive Et"
+              :loading="activateLoading"
+              @confirm="doActivate"
+              @cancel="showActivateConfirm = false"
+            />
           </section>
 
         </div><!-- /modal-body -->
@@ -871,17 +1228,30 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
             <i class="fa-solid fa-chevron-left"></i> Geri
           </button>
           <span style="flex:1"></span>
-          <button v-if="step < TOTAL_STEPS" class="eisa-btn eisa-btn-cta" @click="nextStep">
+          <!-- Step 5 simülasyon: ayrı simüle butonu footer'da da göster -->
+          <button v-if="step === 5 && editingId && !simLoading" class="eisa-btn"
+                  style="margin-right:.5rem" @click="runSimulation">
+            <i class="fa-solid fa-play"></i> Simüle Et
+          </button>
+          <button v-if="step < TOTAL_STEPS" class="eisa-btn eisa-btn-cta" @click="nextStep" :disabled="saving">
             Devam <i class="fa-solid fa-chevron-right"></i>
           </button>
-          <button v-else class="eisa-btn eisa-btn-cta" :disabled="saving" @click="save">
-            <i class="fa-solid fa-floppy-disk" :class="{ 'fa-spin': saving }"></i>
-            {{ saving ? 'Kaydediliyor…' : 'Kaydet' }}
-          </button>
+          <!-- Step 6: Kaydet butonu zaten adım içinde, footer'da sadece göster -->
         </div>
       </div>
     </div>
   </div>
+
+  <!-- Silme onay modal (wizard dışında) -->
+  <EisaDeleteConfirm
+    :open="deleteConfirmOpen"
+    :title="`Kampanyayı Sil`"
+    :message="deleteTarget ? `'${deleteTarget.name}' kampanyası kalıcı olarak silinecek. Bu işlem geri alınamaz.` : ''"
+    confirm-label="Evet, Sil"
+    :loading="deleteLoading"
+    @confirm="confirmDelete"
+    @cancel="deleteConfirmOpen = false; deleteTarget = null"
+  />
 </template>
 
 <style scoped>

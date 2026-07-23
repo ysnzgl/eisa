@@ -122,11 +122,26 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 - `CevapEtkenMadde`: Cevap ile etken madde ilişkisi (cevap FK, etken_madde FK, aktif)
 - `EtkenMadde`: Etken madde (ad, slug, aktif)
 
-### Campaigns (`apps.campaigns`)
-- `Campaign`: Reklam kampanyası (advertiser_id, advertiser_name, name, start_date, end_date, status, impression_goal, frequency_cap_per_hour, priority, is_guaranteed)
-- `CampaignTarget`: Kampanya lokasyon hedefi (campaign FK, target_type [IL/ILCE/ECZANE], il/ilce/eczane FK)
-- `Creative`: Kampanyaya ait medya (campaign FK, media_url, duration_seconds, name, checksum)
-- `ScheduleRule`: Kampanya frekans matrisi (campaign 1to1, frequency_type [PER_LOOP/PER_HOUR/PER_DAY], frequency_value, target_hours JSON)
+### Campaigns (`apps.campaigns`) *(Faz 0.5–Faz 1 güncellemeleri dahil)*
+- `Campaign`: Reklam kampanyasi (status: DRAFT/ACTIVE/PAUSED/COMPLETED/CANCELLED, target_scope [ALL|RULES|null-legacy], follows [FK self, null], priority). **Faz 7 kaldirildi:** is_guaranteed, impression_goal, frequency_cap_per_hour (migration 0020)
+- `CampaignTarget`: Kampanya lokasyon hedefi (campaign FK, target_type [IL/ILCE/ECZANE/KIOSK], mode [INCLUDE/EXCLUDE|null], il/ilce/eczane/kiosk FK)
+- `Creative`: Kampanyaya ait medya (campaign FK, media_url [kalıcı Faz 0.5+], duration_seconds [grid:{15,30,45,60} yeni kayıtlar], name, checksum [sha256:hex], object_key [S3 key], weight [rotasyon ağırlığı])
+- `ScheduleRule`: [Legacy] Kampanya frekans matrisi (campaign 1to1, frequency_type [PER_LOOP/PER_HOUR/PER_DAY], frequency_value, target_hours JSON)
+- `DeliveryRule`: [Faz 1] Kampanya yayın kuralı (campaign 1to1, delivery_type [TIME_WINDOW/PER_HOUR/PER_DAY/CAMPAIGN_TOTAL/LEGACY_PER_LOOP], count, window_start/end_time, active_hours, guarantee_mode [GUARANTEED/BEST_EFFORT], max_per_hour)
+- `PlanningRun`: [Faz 1] CAMPAIGN_TOTAL horizon referansı (horizon_start/end, status)
+- `CampaignTotalAllocation`: [Faz 1] Global kota özeti (planning_run/campaign, total_target, allocated_total)
+- `KioskDayQuota`: [Faz 1] Kiosk+gün bazında kota (planning_run/campaign/kiosk/date, quota>=0, placed>=0, placed<=quota DB constraint)
+- `KioskDesiredBundle`: [Faz 1] Monoton desired_bundle_version (Faz 5'te aktif)
+- `Playlist`: Kiosk için üretilmiş playlist (kiosk FK, target_date, target_hour [Istanbul yereli], loop_duration_seconds, version; unique kiosk+date+hour)
+- `PlaylistItem`: Playlist öğeleri (playlist FK, creative/house_ad FK nullable, playback_order, estimated_start_offset_seconds [saat-mutlak 0..3599])
+- `HouseAd`: Filler reklam (name, media_url [kalıcı Faz 0.5+], duration_seconds [grid:{15,30,45,60} yeni kayıtlar], object_key, aktif, priority)
+- `PlayLog`: Reklam gösterim logu (kiosk FK, creative/house_ad FK nullable, played_at, duration_played, play_event_id [nullable UUID K5])
+
+**Sözleşme değişiklikleri (Faz 0.5–Faz 1):**
+- `POST /api/campaigns/v2/campaigns/`: `target_scope` zorunlu (ALL|RULES). Deprecated alan (is_guaranteed/impression_goal/frequency_cap_per_hour) gonderilenince 400. `follows` read-only (yalniz `set_campaign_follows()` servisi).
+- `POST /api/campaigns/upload-media/` (DOOH_PERSISTENT_MEDIA_URL=True): `{object_key, media_url, checksum, url[alias]}` döner; presigned URL üretilmez.
+- `Creative`/`HouseAd` API: `duration_seconds` yeni kayıtta {15,30,45,60} zorunlu; legacy ayni değerle güncelleme izin.
+- `apps/campaigns/services/follows_service.py`: A→B ilişkisi tek nokta; self-link, zincir, döngü, tarih/saat kesişimi, CANCELLED kontrolü.
 - `Playlist`: Kiosk için üretilmiş playlist (kiosk FK, target_date, target_hour [Istanbul yereli], loop_duration_seconds, version; unique kiosk+date+hour)
 - `PlaylistItem`: Playlist öğeleri (playlist FK, creative FK nullable, house_ad FK nullable, playback_order, estimated_start_offset_seconds [saat-mutlak 0..3599])
 - `PlaylistTemplate`: Playlist şablonları (name, loop_duration_seconds, slots JSON, target_hours JSON, description)
@@ -271,11 +286,57 @@ Notlar (QR contract, 2026-07-20):
 ## Belirsiz / Riskli Noktalar
 
 1. **Playlist generation job'ları:** `GenerationJob` modeli ve `django_apscheduler` kullanımı mevcut ama job tracking ve error handling net değil.
-2. **Campaign.target_pharmacies (legacy M2M):** Yeni kampanyalar `CampaignTarget` kullanıyor. İki mekanizma birlikte destekleniyor mu, priority? (Belirsiz)
-3. **Kiosk authentication order:** App Key + MAC tek operasyonel kontrattir. (Belirsiz)
-4. **OturumLogu idempotency:** `idempotency_anahtari` var ama backend'de `get_or_create` mi kullanılıyor, unique constraint yeterli mi? (Doğrulanmalı)
-5. **PlayLog duplikasyon:** Kiosk aynı impression'ı iki kez gönderirse ne olur? Duplikasyon koruması yok gibi görünüyor. (Riskli)
+2. **Campaign.target_pharmacies (legacy M2M):** Yeni kampanyalar `CampaignTarget` kullanıyor; legacy M2M korunuyor.
+3. **PlayLog play_event_id:** Nullable (Faz 1). NOT NULL constraint backfill sonrası Faz 5'te eklenir.
+4. **target_scope NULL legacy:** NULL = tüm eczaneler (V1 scheduler davranışı). Yeni CREATE'te zorunlu (Faz 1).
+5. **Medya URL kalıcılığı:** DOOH_PERSISTENT_MEDIA_URL=True iken geçerli. Rollout operasyonel: migration+backfill+S3 policy.
+6. **A→B concurrency:** SQLite'da select_for_update gerçek kilitlemez. Gerçek test PostgreSQL integration gerektirir (Faz 2 önkoşul).
+
+**Faz 0.5 operasyonel rollout (devam ediyor — production için gerekli):**
+- staging/prod migration apply (0015–0018)
+- backfill_media_object_keys --apply (dry-run sonrası)
+- GET/HEAD bucket policy + lifecycle muafiyeti
+- DOOH_PERSISTENT_MEDIA_URL=true + S3_PUBLIC_BASE_URL=https://files.eisa.com.tr/eisa-files
+
+**Faz 2 önkoşullar (DOOH_ENGINE_V2=shadow açılmadan):**
+- PostgreSQL integration testi: select_for_update/MVCC concurrency (A→B race)
+- A→B target intersection validation (kiosk hedef kesişimi)
+- staging migration smoke test
+- files.eisa.com.tr GET/HEAD gerçek bucket policy testi
 
 ---
 
-**Satır sayısı: ~250**
+## Faz 2 PlacementEngine V2 Shadow Mode (PLANLAMA)
+
+**Kapsam:**
+- V1 scheduler korunur, değiştirilmez (üretim V1 ile devam)
+- PlacementEngine V2 paralel çalışır (shadow mode, üretim playlist'e yazmaz)
+- V1 ↔ V2 diff metrikleri toplanır
+- Feature flag: `DOOH_ENGINE_V2=shadow` (default: `off`)
+- Production cutover YOK, V1 kapatma YOK
+
+**Planlanan kod:**
+- `apps/campaigns/services/placement_engine_v2.py`:
+  - `plan_kiosk_hour(kiosk, date, hour) -> ShadowPlan`
+  - DeliveryRule dispatch: TIME_WINDOW / PER_HOUR / PER_DAY / CAMPAIGN_TOTAL
+  - target_scope resolver (ALL / RULES → kiosk seti)
+  - follows chain resolver (A→B sıralama)
+  - Slot allocation (guarantee_mode priority)
+  - HouseAd filler (15s grid aware)
+- `apps/campaigns/services/scheduler.py`:
+  - Shadow mode wrapper: V1 üretir, V2 loglar
+- `apps/campaigns/models.py`:
+  - `ShadowRunMetric`: V1 ↔ V2 diff kayıtları
+- `apps/campaigns/management/commands/report_shadow_diff.py`:
+  - Günlük diff raporu
+
+**Kabul kriterleri:**
+- V1 korunmuş, değişmemiş
+- `DOOH_ENGINE_V2=shadow` → V2 çalışıyor, V1 üretimi değişmiyor
+- PostgreSQL concurrency testleri ✓
+- Shadow diff metrikleri 7 gün → %95+ item match
+- Dokümantasyon: `docs/ai/09-placement-engine-v2.md`
+
+---
+
+**Satır sayısı: ~320**

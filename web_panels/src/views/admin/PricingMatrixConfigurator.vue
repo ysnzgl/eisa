@@ -95,7 +95,7 @@ onMounted(load);
     <header class="page-head">
       <h1>Pricing Matrix Konfigurasyonu</h1>
       <p class="muted">
-        DOOH reklam ucretlendirme carpanlarini yonetin.
+        DOOH ilan ucretlendirme carpanlarini yonetin.
         <code>total = base &times; duration &times; frequency &times; prime_time</code>
       </p>
     </header>
@@ -155,7 +155,7 @@ onMounted(load);
 
       <div class="card preview">
         <h2>Onizleme</h2>
-        <p class="muted">Ornek reklam icin tahmini maliyet.</p>
+        <p class="muted">Ornek ilan icin tahmini maliyet.</p>
         <label class="field">
           Sure (s) <input type="number" min="1" max="60" v-model.number="preview.duration" />
         </label>

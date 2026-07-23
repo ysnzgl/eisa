@@ -116,7 +116,13 @@ Backend erişilemezse:
 
 **Meta:**
 - `kiosk_meta`: key, value (kiosk_app_key, kiosk_id, pharmacy_id, playlist_version, last_sync_at, provisioning_state, registration_id)
-- `media_cache`: url, local_path, cached_at, checksum
+- `media_cache`: asset_id, asset_type, source_url, source_checksum (backend'den: sha256:<hex>), file_checksum (raw hex, downloadToFile), local_path, status, error_message, synced_at
+
+**Checksum sözleşmesi (Faz 0.5+):**
+- `source_checksum`: backend'den gelen `sha256:<hex>` formatı, freshness karşılaştırması için
+- `file_checksum`: kiosk indirdiğinde hesapladığı raw hex (prefix yok)
+- Cache hit: `source_url === asset.media_url && source_checksum === asset.source_checksum && dosya var`
+- Stabil media_url sonrası gereksiz yeniden-indirme ortadan kalkar
 
 **Outbox pressure check (`checkOutboxPressure`):**
 - Eğer `oturum_outbox` veya `reklam_gosterim_outbox` tablolarında `gonderilme_tarihi IS NULL` kayıt sayısı `outboxMaxRows` (default 10000) değerini aşarsa warning log

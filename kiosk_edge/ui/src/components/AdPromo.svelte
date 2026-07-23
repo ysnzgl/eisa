@@ -1,5 +1,5 @@
 <script>
-  // Reklam olmadigi her yerde gosterilen sik, donen "Bu Alana Reklam
+  // İlan olmadigi her yerde gosterilen sik, donen "Bu Alana İlan
   // Verebilirsiniz" tasarimi. Hem reklam bandinda (AdStrip) hem de ekran
   // koruyucuda (IdleScreen) kullanilir.
   import Logo from './Logo.svelte';

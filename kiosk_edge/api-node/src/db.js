@@ -9,8 +9,8 @@ let _db = null;
 const DEFAULT_OUTBOX_MAX_ROWS = 10000;
 const DEFAULT_DIAGNOSTIC_MAX_ROWS = 5000;
 
-// Sema versiyonu — v10: diagnostic_outbox eklendi (bounded teknik log kuyrugu).
-const SCHEMA_VERSION = 10;
+// Sema versiyonu — v11: pending_ack + applied_version kiosk_meta alanları (Faz 5).
+const SCHEMA_VERSION = 11;
 
 export function openDb(sqlitePath, options = {}) {
   if (_db) return _db;
@@ -224,7 +224,9 @@ function initSchema(db, options = {}) {
       idempotency_anahtari TEXT    UNIQUE,
       payload              TEXT    NOT NULL,
       olusturulma_tarihi   TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-      gonderilme_tarihi    TEXT
+      gonderilme_tarihi    TEXT,
+      retry_count          INTEGER NOT NULL DEFAULT 0,
+      error_reason         TEXT
     );
     CREATE TABLE IF NOT EXISTS reklam_gosterim_outbox (
       id                   INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -308,6 +310,18 @@ function initSchema(db, options = {}) {
       ON diagnostic_outbox(sent_at, next_retry_at);
     CREATE INDEX IF NOT EXISTS diagnostic_outbox_event_idx
       ON diagnostic_outbox(event, created_at);
+
+    -- FAZ 5: Pending ACK (singleton — Kiosk SQLite commit sonrası backend'e bildirim)
+    -- id=1 singleton: her manifest uygulaması en fazla bir pending ACK bırakır.
+    -- ACK başarılı olunca silinir. Process crash → restart'ta yeniden gönderilir.
+    CREATE TABLE IF NOT EXISTS pending_ack (
+      id               INTEGER PRIMARY KEY CHECK(id = 1),
+      playlist_version INTEGER NOT NULL,
+      horizon_start    TEXT    NOT NULL,
+      horizon_end      TEXT    NOT NULL,
+      created_at       TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      retry_count      INTEGER NOT NULL DEFAULT 0
+    );
   `);
 
   const meta = db.prepare('SELECT version FROM schema_meta LIMIT 1').get();
@@ -315,6 +329,21 @@ function initSchema(db, options = {}) {
     db.prepare('INSERT INTO schema_meta (version) VALUES (?)').run(SCHEMA_VERSION);
   } else if (meta.version !== SCHEMA_VERSION) {
     db.prepare('UPDATE schema_meta SET version = ?').run(SCHEMA_VERSION);
+  }
+
+  // Non-destructive column additions (idempotent — mevcut DB'lerde ALTER TABLE ile eklenir).
+  const outboxCols = db.prepare("PRAGMA table_info(oturum_outbox)").all().map((c) => c.name);
+  if (!outboxCols.includes('retry_count')) {
+    db.exec('ALTER TABLE oturum_outbox ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0');
+  }
+  if (!outboxCols.includes('error_reason')) {
+    db.exec('ALTER TABLE oturum_outbox ADD COLUMN error_reason TEXT');
+  }
+
+  // Faz 5: pending_ack tablosuna next_retry_at kolonu ekle (idempotent)
+  const ackCols = db.prepare("PRAGMA table_info(pending_ack)").all().map((c) => c.name);
+  if (!ackCols.includes('next_retry_at')) {
+    db.exec('ALTER TABLE pending_ack ADD COLUMN next_retry_at TEXT');
   }
 
   installOutboxFifoTriggers(db, outboxMaxRows);
@@ -441,4 +470,59 @@ export function safeJson(raw, fallback) {
   } catch {
     return fallback;
   }
+}
+
+// ── Faz 5: Pending ACK helpers ───────────────────────────────────────────────
+
+/**
+ * Manifest başarıyla uygulandıktan sonra pending ACK kaydet (singleton).
+ * İkinci kayıt eski kaydın üzerine yazar (UPDATE OR REPLACE).
+ */
+export function savePendingAck(db, { playlistVersion, horizonStart, horizonEnd }) {
+  db.prepare(
+    `INSERT OR REPLACE INTO pending_ack (id, playlist_version, horizon_start, horizon_end, retry_count)
+     VALUES (1, ?, ?, ?, 0)`,
+  ).run(playlistVersion, horizonStart, horizonEnd);
+}
+
+/**
+ * Pending ACK'i oku. Yoksa null döner.
+ */
+export function getPendingAck(db) {
+  return db.prepare('SELECT * FROM pending_ack WHERE id = 1').get() ?? null;
+}
+
+/**
+ * Pending ACK başarıyla gönderildikten sonra sil.
+ */
+export function clearPendingAck(db) {
+  db.prepare('DELETE FROM pending_ack WHERE id = 1').run();
+}
+
+/**
+ * Pending ACK'i koşullu temizle (compare-and-swap).
+ * Yalnızca version+horizon tam eşleşiyorsa siler.
+ * Daha yeni manifest uygulanmışsa (yeni pending_ack) eski ACK cevabı onu silemez.
+ */
+export function clearPendingAckIfMatches(db, { playlistVersion, horizonStart, horizonEnd }) {
+  db.prepare(
+    `DELETE FROM pending_ack WHERE id = 1
+     AND playlist_version = ? AND horizon_start = ? AND horizon_end = ?`,
+  ).run(playlistVersion, horizonStart, horizonEnd);
+}
+
+/**
+ * ACK retry için sonraki deneme zamanını ayarla (capped exponential backoff).
+ * Max retry sınırı yok — sonsuz tight loop olmadan kalıcı olarak tutulur.
+ * Daha yeni manifest uygulanınca pending_ack üzerine yazılır (INSERT OR REPLACE).
+ */
+export function setAckNextRetry(db, retryCount) {
+  // Backoff: 30s, 60s, 120s, 300s, 600s, 1800s (max 30 dk)
+  const backoffSeconds = [30, 60, 120, 300, 600, 1800];
+  const backoff = backoffSeconds[Math.min(retryCount, backoffSeconds.length - 1)];
+  const nextRetryAt = new Date(Date.now() + backoff * 1000).toISOString();
+  db.prepare(
+    'UPDATE pending_ack SET next_retry_at = ?, retry_count = retry_count + 1 WHERE id = 1',
+  ).run(nextRetryAt);
+  return { backoff, nextRetryAt };
 }

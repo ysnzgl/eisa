@@ -22,7 +22,9 @@ const adminNavItems = [
   { to: '/admin/medical-logic',              icon: 'fa-dna',           label: 'Algoritma Editörü' },
   { to: '/admin/danisma',                    icon: 'fa-comments',      label: 'Danışma Kategorileri' },
   { to: '/admin/campaigns',                  icon: 'fa-bullhorn',      label: 'Kampanyalar' },
-  { to: '/admin/playlists',                  icon: 'fa-list-ol',       label: 'Playlist Editörü' },
+  { to: '/admin/dooh/control-center',        icon: 'fa-gauge-high',    label: 'Kontrol Merkezi' },
+  // Gelişmiş Manuel Yayın — salt okunur; ana kampanya yolu CampaignWizard
+  { to: '/admin/playlists',                  icon: 'fa-list-ol',       label: 'Gelişmiş Manuel Yayın' },
   { to: '/admin/pricing',                    icon: 'fa-coins',         label: 'Fiyat Matrisi' },
   { to: '/admin/users',                      icon: 'fa-user-gear',     label: 'Kullanıcı Yönetimi' },
 ];

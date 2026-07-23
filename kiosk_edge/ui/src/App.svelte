@@ -29,8 +29,9 @@
   // 20sn islem yapilmadiginda sonlanir. Idle/wifi disindaki HER ekranda 20sn
   // islem yoksa oturum (varsa terk edilmis olarak kapatilip) idle'a doner.
   const INACTIVITY_MS = 20_000;
-  let sessionId = null;        // kategori seciminde atanan oturum id'si
-  let sessionFinalized = true; // cift gonderimi engelleyen koruma
+  let sessionId = null;           // kategori seciminde atanan oturum id'si
+  let sessionFinalized = true;    // cift gonderimi engelleyen koruma
+  let sessionSubmitting = false;  // aktif HTTP gönderimi sırasında çift tetiklemeyi engeller
   let inactivityTimer = null;
 
   function clearInactivity() {
@@ -108,6 +109,7 @@
     clearInactivity();
     sessionId = null;
     sessionFinalized = true;
+    sessionSubmitting = false;
     selectedAge.set(null);
     selectedSex.set(null);
     currentCategory.set(null);
@@ -169,7 +171,8 @@
     currentQuestions.update(v => { qs = v; return v; });
     currentQIndex.update(v => { idx = v; return v; });
     currentAnswers.update(v => {
-      answers = [...v, { id: qs[idx].seed_id, answer }];
+      // id = seed_id (getRecommendations için), questionId = numeric ID (backend payload için)
+      answers = [...v, { id: qs[idx].seed_id, questionId: qs[idx].id, answer }];
       return answers;
     });
     const newIdx = idx + 1;
@@ -227,8 +230,17 @@
 
   async function selectConsult(cat) {
     // Danışma kategorisi seçimi = oturum başlangıcı. Yeni id ata.
-    sessionId = (crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`);    sessionFinalized = false;
-    const { qrCode, qrPayload } = await doSubmitConsult(cat?.slug ?? cat?.ad ?? '');
+    // sessionSubmitting guard: hızlı çift dokunmadan (rapid double-tap) korur.
+    if (sessionSubmitting) return;
+    sessionId = (crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    sessionFinalized = false;
+    sessionSubmitting = true;
+    let qrCode, qrPayload;
+    try {
+      ({ qrCode, qrPayload } = await doSubmitConsult(cat?.slug ?? cat?.ad ?? ''));
+    } finally {
+      sessionSubmitting = false;
+    }
     sessionFinalized = true; // Danışma hemen tamamlanır
     result.set({
       label:       'Danışma talebi gönderildi',
@@ -258,6 +270,7 @@
       answersPayload:  {},
       ingredientList:  [],
       completed:       true,
+      sessionId,
     });
   }
 
@@ -278,9 +291,10 @@
           categorySlug,
           danismaKategorisiSlug: null,
           isSensitiveFlow,
-          answersPayload: Object.fromEntries(answers.map(a => [a.id, a.answer])),
+          answersPayload: Object.fromEntries(answers.map(a => [String(a.questionId ?? a.id), a.answer])),
           ingredientList,
           completed,
+          sessionId,
         });
       } catch {
         return { qrCode: null }; // Abandoned sessions silently fail
@@ -293,9 +307,10 @@
       categorySlug,
       danismaKategorisiSlug: null,
       isSensitiveFlow,
-      answersPayload: Object.fromEntries(answers.map(a => [a.id, a.answer])),
+      answersPayload: Object.fromEntries(answers.map(a => [String(a.questionId ?? a.id), a.answer])),
       ingredientList,
       completed,
+      sessionId,
     });
   }
 </script>

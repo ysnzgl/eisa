@@ -62,6 +62,32 @@ class Kiosk(BaseModel):
     is_online = models.BooleanField(default=False)
     last_playlist_version = models.PositiveIntegerField(null=True, blank=True)
 
+    # ── Faz 4: V2 fingerprint kaydı ──────────────────────────────────────────
+    # {"YYYY-MM-DD": "hex16"} — kiosk+tarih için son başarılı V2 yayın fingerprint'i.
+    # Job geçmişi yerine Kiosk satırından okunur; autoritative playlistle tutarlı.
+    last_v2_fingerprints = models.JSONField(
+        default=dict, blank=True,
+        help_text="Tarih→fingerprint map. Son başarılı V2 publish'in canonical içerik özeti.",
+    )
+
+    # ── Faz 5: ACK / Desired+Applied version ayrımı ───────────────────────────
+    applied_playlist_version = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Kiosk ACK ile raporlanan son başarıyla uygulanan playlist versiyonu.",
+    )
+    playlist_applied_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Son ACK'in server'a geldiği zaman (server clock).",
+    )
+    applied_horizon_start = models.DateField(
+        null=True, blank=True,
+        help_text="Kiosk'un SQLite'a uyguladığı horizon aralığı başlangıcı.",
+    )
+    applied_horizon_end = models.DateField(
+        null=True, blank=True,
+        help_text="Kiosk'un SQLite'a uyguladığı horizon aralığı bitişi.",
+    )
+
     class Meta:
         db_table = "kiosklar"
         ordering = ("id",)

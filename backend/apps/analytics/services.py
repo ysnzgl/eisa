@@ -327,11 +327,11 @@ def _create_child_records(instance: OturumLogu, d: dict) -> None:
                 try:
                     cevap_id = int(cevap_value)
                 except (ValueError, TypeError):
-                    if is_sikayet:
-                        raise SessionValidationError(
-                            "cevaplar", f"Gecersiz cevap degeri: {cevap_value!r}"
-                        )
-                    cevap_metin = str(cevap_value)
+                    # Kiosk binary "Y"/"N" degerleri gonderir; cevap_id yerine
+                    # snapshot kaydedilir, FK null kalir. Hem SIKAYET hem
+                    # diger tipler icin tolere edilir — normalizasyon, hard validation degil.
+                    _YN_LABELS = {"Y": "Evet", "N": "Hay\u0131r"}
+                    cevap_metin = _YN_LABELS.get(str(cevap_value).upper(), str(cevap_value))
                 else:
                     cevap_obj = Cevap.objects.filter(id=cevap_id).first()
                     if cevap_obj is None:
@@ -395,8 +395,19 @@ def _create_child_records(instance: OturumLogu, d: dict) -> None:
                     etken_madde_adi = value.get("ad", str(value))
 
             if etken_madde or etken_madde_adi:
-                OturumOnerilenEtkenMadde.objects.get_or_create(
-                    oturum=instance,
-                    etken_madde=etken_madde,
-                    defaults={"etken_madde_adi_snapshot": etken_madde_adi},
-                )
+                if etken_madde is not None:
+                    # FK mevcut — FK uzerinden unique
+                    OturumOnerilenEtkenMadde.objects.get_or_create(
+                        oturum=instance,
+                        etken_madde=etken_madde,
+                        defaults={"etken_madde_adi_snapshot": etken_madde_adi},
+                    )
+                else:
+                    # FK null (string isim) — snapshot adi uzerinden unique;
+                    # get_or_create(etken_madde=None) birden fazla null kaydi
+                    # birlestirirdi (veri kaybi), bu yuzden snapshot da anahtar.
+                    OturumOnerilenEtkenMadde.objects.get_or_create(
+                        oturum=instance,
+                        etken_madde=None,
+                        etken_madde_adi_snapshot=etken_madde_adi,
+                    )
