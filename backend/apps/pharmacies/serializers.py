@@ -66,6 +66,7 @@ class KioskSerializer(serializers.ModelSerializer):
             "aktif",
             "son_goruldu",
             "is_online",
+            "last_ip",
             # Faz 4/5: DOOH playlist version bilgisi (read-only)
             "last_playlist_version",
             "applied_playlist_version",
@@ -80,6 +81,7 @@ class KioskSerializer(serializers.ModelSerializer):
             "id",
             "uygulama_anahtari",
             "son_goruldu",
+            "last_ip",
             "olusturulma_tarihi",
             "guncellenme_tarihi",
             "surum",

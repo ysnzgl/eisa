@@ -8,6 +8,7 @@
  * gerekmez. Çoğu termal yazıcı (Epson, Star, Bixolon, vs.) raw port destekler.
  */
 import net from 'node:net';
+import fs from 'node:fs';
 
 const ESC = 0x1b;
 const GS = 0x1d;
@@ -74,10 +75,6 @@ export function printReceipt({ qrCode, qrPayload, categoryName, ingredients, isS
     text(''),
     text('Onerilen Etken Maddeler:'),
   ];
-  for (const ing of (ingredients ?? []).slice(0, 8)) {
-    lines.push(text(`  - ${ing}`));
-  }
-  if (!ingredients?.length) lines.push(text('  (yok)'));
   lines.push(text(''));
   lines.push(ALIGN_CENTER);
   lines.push(qrCommands(qrPayload));
@@ -87,6 +84,15 @@ export function printReceipt({ qrCode, qrPayload, categoryName, ingredients, isS
   lines.push(CUT);
 
   const buffer = Buffer.concat(lines);
+
+  // /dev/eisa-printer gibi aygit dosyasi mi, yoksa TCP mi?
+  if (host.startsWith('/')) {
+    fs.writeFile(host, buffer, (err) => {
+      if (err) log.warn?.({ err: err.message, host }, 'Termal yazici aygit dosyasi yazma hatasi');
+    });
+    return;
+  }
+
   const socket = new net.Socket();
   socket.setTimeout(4000);
   socket.once('error', (err) => log.warn?.({ err: err.message }, 'Termal yazıcı hatası'));

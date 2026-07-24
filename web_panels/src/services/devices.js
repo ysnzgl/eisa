@@ -61,6 +61,7 @@ export function mapKioskFromApi(k) {
     appKey: k.uygulama_anahtari,
     isActive: k.aktif !== false,
     lastPing: k.son_goruldu,
+    lastIp: k.last_ip ?? null,
     health: k.durum ?? null,
   };
 }
@@ -129,6 +130,14 @@ export async function updateKiosk(id, data) {
 
 export async function deleteKiosk(id) {
   await http.delete(`/api/pharmacies/kiosks/${id}/`);
+}
+
+/**
+ * Kiosk device_id'sini sifirlar (admin). Kiosk bir sonraki enrollment'ta yeniden baglanir.
+ */
+export async function resetKioskDeviceId(id) {
+  const { data } = await http.post(`/api/pharmacies/kiosks/${id}/reset-device-id/`);
+  return data;
 }
 
 // ── Provisioning (Onay Bekleyen Cihazlar) ───────────────────────────────────

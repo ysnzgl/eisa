@@ -59,11 +59,21 @@ describe('kiosk provisioning + App Key auth', () => {
     expect(hasAppKeyCredentials(db)).toBe(true);
   });
 
-  it('401 ve 403: App Key SILINMEZ (fallback yok)', () => {
-    setMeta(db, 'kiosk_app_key', 'KEEP');
+  it('401: App Key hemen silinir; 403: App Key korunur', () => {
+    setMeta(db, 'kiosk_app_key', 'CLEAR_ME');
     handle401Error(db, baseSettings, silent);
+    expect(getMeta(db, 'kiosk_app_key')).toBe('');          // 401 → silinmeli
+    expect(getMeta(db, 'device_id_enrolled')).toBe('0');
+
+    setMeta(db, 'kiosk_app_key', 'KEEP');
     handle403Error(db, baseSettings, silent);
-    expect(getMeta(db, 'kiosk_app_key')).toBe('KEEP');
+    expect(getMeta(db, 'kiosk_app_key')).toBe('KEEP');      // 403 → korunmali
+  });
+
+  it('401: key zaten yoksa ikinci cagri idempotent', () => {
+    setMeta(db, 'kiosk_app_key', '');
+    handle401Error(db, baseSettings, silent);               // key yok → warn, temizleme yok
+    expect(getMeta(db, 'kiosk_app_key')).toBe('');
   });
 
   it('cleanupLegacyIotToken: eski iot_token bir defalik silinir', () => {
@@ -134,7 +144,7 @@ describe('kiosk provisioning + App Key auth', () => {
     expect(getMeta(db, 'device_id_enrolled')).toBe('1');
   });
 
-  it('enrollDeviceId: 409 already_bound (ayni deger) → enrolled kaydeder', async () => {
+  it('enrollDeviceId: 409 already_bound → conflict (farkli device_id bagli, idempotent degil)', async () => {
     setMeta(db, 'device_id', 'aaaa-bbbb-cccc');
     setMeta(db, 'kiosk_app_key', 'APPKEY');
     setMeta(db, 'kiosk_mac', 'AA:BB:CC:DD:EE:FF');
@@ -145,7 +155,37 @@ describe('kiosk provisioning + App Key auth', () => {
     });
 
     const result = await enrollDeviceId(db, baseSettings, silent, mockFetch);
+    expect(result).toBe('conflict');
+    expect(getMeta(db, 'device_id_conflict')).toBe('1');   // conflict flag set
+    expect(getMeta(db, 'device_id_enrolled')).not.toBe('1'); // enrolled olmamali
+  });
+
+  it('enrollDeviceId: 401 device_id_mismatch → conflict flag set', async () => {
+    setMeta(db, 'device_id', 'aaaa-bbbb-cccc');
+    setMeta(db, 'kiosk_app_key', 'APPKEY');
+    setMeta(db, 'kiosk_mac', 'AA:BB:CC:DD:EE:FF');
+
+    const mockFetch = async () => ({
+      status: 401,
+      json: async () => ({ code: 'device_id_mismatch' }),
+    });
+
+    const result = await enrollDeviceId(db, baseSettings, silent, mockFetch);
+    expect(result).toBe('conflict');
+    expect(getMeta(db, 'device_id_conflict')).toBe('1');
+  });
+
+  it('enrollDeviceId: 200 basari → conflict flag temizlenir', async () => {
+    setMeta(db, 'device_id', 'aaaa-bbbb-cccc');
+    setMeta(db, 'kiosk_app_key', 'APPKEY');
+    setMeta(db, 'kiosk_mac', 'AA:BB:CC:DD:EE:FF');
+    setMeta(db, 'device_id_conflict', '1');
+
+    const mockFetch = async () => ({ status: 200 });
+
+    const result = await enrollDeviceId(db, baseSettings, silent, mockFetch);
     expect(result).toBe('enrolled');
+    expect(getMeta(db, 'device_id_conflict')).toBe('0');   // conflict temizlendi
     expect(getMeta(db, 'device_id_enrolled')).toBe('1');
   });
 

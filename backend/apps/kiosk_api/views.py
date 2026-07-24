@@ -170,11 +170,14 @@ class KioskBootstrapView(APIView):
                 linked = provision_req.kiosk
                 if linked and linked.aktif:
                     return Response(_approved_response(linked), status=status.HTTP_200_OK)
-                # Kiosk silinmis/pasif â€” PENDING'e geri don
+                # Kiosk silinmis/pasif — PENDING'e geri don; yeni device_id/metadata ile guncelle.
                 KioskProvisioningRequest.objects.filter(pk=provision_req.pk).update(
                     status=KioskProvisioningRequest.Status.PENDING,
                     last_seen_at=now,
                     request_count=F("request_count") + 1,
+                    device_id=device_id or provision_req.device_id,
+                    hostname=hostname or provision_req.hostname,
+                    device_metadata=device_metadata or provision_req.device_metadata,
                 )
                 provision_req.refresh_from_db()
                 return Response(_pending_response(provision_req), status=status.HTTP_202_ACCEPTED)
@@ -250,7 +253,14 @@ class KioskPingView(KioskAPIView):
             .filter(kiosk=kiosk, target_date=today)
             .aggregate(max_version=Max("version"), max_updated=Max("guncellenme_tarihi"))
         )
-        Kiosk.objects.filter(pk=kiosk.pk).update(son_goruldu=now, is_online=True)
+        client_ip = (
+            request.META.get('HTTP_X_FORWARDED_FOR', '').split(',')[0].strip()
+            or request.META.get('REMOTE_ADDR', '') or None
+        )
+        update_fields = {'son_goruldu': now, 'is_online': True}
+        if client_ip:
+            update_fields['last_ip'] = client_ip
+        Kiosk.objects.filter(pk=kiosk.pk).update(**update_fields)
 
         import zoneinfo
         tz = zoneinfo.ZoneInfo(settings.TIME_ZONE)
@@ -415,12 +425,16 @@ _UUID_RE = re.compile(
 
 
 class KioskIdentityEnrollView(KioskAPIView):
-    """``POST /api/kiosk/v1/identity/enroll/`` â€” device ID tek-seferlik baglama.
+    """``POST /api/kiosk/v1/identity/enroll/`` — device ID tek-seferlik baglama.
+
+    Auth: AppKey + MAC (device_id kontrolu bu endpoint icin atlanir;
+    device_id'si eslesmeyecek kiosklarin da enrollment endpoint'ine ulasmasi gerekir).
 
     Amac: Onceden kaydedilmis (App Key'i olan) bir kiosk'a kalici device_id baglamak.
     Guvenlik ozeti:
       - Mevcut AppKey + MAC ile dogrulama gereklidir.
       - Sadece ``Kiosk.device_id IS NULL`` iken gerceklesebilir (tek seferlik).
+
       - Bir kez baglanan device_id DEGISTIRILEMEZ (concurrent race condition icin
         SELECT...UPDATE filter kullanilir; yalnizca NULL â†’ deger atomik gecisi yapilir).
 
@@ -432,7 +446,7 @@ class KioskIdentityEnrollView(KioskAPIView):
       200 enrolled  â€” {\"status\": \"enrolled\", \"device_id\": \"...\"}
       200 noop      â€” device_id zaten bu degerle bagli (idempotent)
       409 conflict  â€” device_id zaten FARKLI bir degerle bagli
-      400           â€” gecersiz format
+      400           — gecersiz format
     """
 
     def post(self, request):

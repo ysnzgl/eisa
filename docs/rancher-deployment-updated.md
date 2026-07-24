@@ -99,7 +99,7 @@ Sebep: Registry'yi kurmadan image push/pull akışı hemen çalışır. Daha son
 
 ```powershell
 $REGISTRY = "10.200.202.20:30500"
-$TAG      = "1.0.2"
+$TAG      = "1.0.3"
 
 docker build --no-cache -t "$REGISTRY/eisa-api:$TAG" ./backend
 docker build --no-cache -t "$REGISTRY/eisa-portal:$TAG" ./web_panels
@@ -113,23 +113,23 @@ Write-Host "Yeni tag: $TAG"
 ```
 
 REGISTRY="10.200.202.20:30500"
-TAG="1.0.2"
+TAG="1.0.3"
 
 kubectl -n eisa-app set image deploy/eisa-api api=${REGISTRY}/eisa-api:${TAG}
 kubectl -n eisa-app set image deploy/eisa-portal portal=${REGISTRY}/eisa-portal:${TAG}
-kubectl -n eisa-app set image deploy/eisa-kiosk kiosk=${REGISTRY}/eisa-kiosk:${TAG}
+kubectl -n eisa-app set image deploy/eisa-kiosk-demo kiosk=${REGISTRY}/eisa-kiosk:${TAG}
 
 kubectl -n eisa-app rollout status deploy/eisa-api --timeout=180s
 kubectl -n eisa-app rollout status deploy/eisa-portal --timeout=180s
-kubectl -n eisa-app rollout status deploy/eisa-kiosk --timeout=180s
+kubectl -n eisa-app rollout status deploy/eisa-kiosk-demo --timeout=180s
 
-migration için:
+#migration için:
 
 kubectl -n eisa-app exec deployment/eisa-api -- python manage.py migrate
 kubectl -n eisa-app rollout restart deployment/eisa-api
 kubectl -n eisa-app rollout status deployment/eisa-api
 
-Manifest içindeki image alanları buna göre güncellenir:
+#Manifest içindeki image alanları buna göre güncellenir:
 
 ```yaml
 image: registry.eisa.local:80/eisa-api:1.0.0

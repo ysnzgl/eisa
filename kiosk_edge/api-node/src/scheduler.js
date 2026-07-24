@@ -2,7 +2,7 @@ import cron from 'node-cron';
 import { Agent, fetch } from 'undici';
 import { checkOutboxPressure } from './db.js';
 import { syncMediaCache } from './mediaCache.js';
-import { getAuthHeaders, getProvisioningState, handle401Error, handle403Error, hasAppKeyCredentials, enrollDeviceId } from './provisioning.js';
+import { getAuthHeaders, getProvisioningState, handle401Error, handle403Error, hasAppKeyCredentials, enrollDeviceId, resolveRuntimeSettings } from './provisioning.js';
 import { istanbulNow } from './timezone.js';
 import {
   CORRELATION_HEADER_PRETTY,
@@ -1041,13 +1041,37 @@ export function startScheduler(db, settings, log = console) {
     } catch (err) { log?.warn?.({ event: 'diagnostic_cleanup_failed', err: err?.message }, 'Diagnostic temizlik basarisiz'); }
   }, Math.max(3600, (settings.diagnosticPushIntervalSec ?? 120) * 10) * 1000);
 
+  // Provisioning retry: UNREGISTERED/PENDING veya app_key temizlendiyse yeniden bootstrap dener.
+  const provisionEvery = Math.max(30, (settings.provisionRetryIntervalSec ?? 60)) * 1000;
+  const provisionTimer = setInterval(wrap('provision', async () => {
+    const state = getProvisioningState(db);
+    if (state !== 'APPROVED' || !hasAppKeyCredentials(db)) {
+      log?.info?.({ event: 'provision_retry', state }, 'Provisioning retry tetiklendi');
+      await resolveRuntimeSettings(db, settings, log);
+      // Bootstrap yeni tamamlandiysa pull + ping tetikle (15 dk bekleme olmadan).
+      if (hasAppKeyCredentials(db)) {
+        log?.info?.({ event: 'post_provision_pull' }, 'Provision sonrasi ilk veri + ping cekiliyor');
+        await pullFromCentral(db, settings, log).catch((err) =>
+          log?.warn?.({ err: err?.message }, 'Provision sonrasi pull basarisiz'),
+        );
+        const pingFn = settings.doohKioskAck
+          ? () => pingAndSyncManifest(db, settings, log)
+          : () => pingAndSyncPlaylist(db, settings, log);
+        await pingFn().catch((err) =>
+          log?.warn?.({ err: err?.message }, 'Provision sonrasi ping basarisiz'),
+        );
+      }
+    }
+  }), provisionEvery);
+
   pullTimer.unref?.();
   pushTimer.unref?.();
   pingTimer.unref?.();
   pressureTimer.unref?.();
   diagTimer.unref?.();
   cleanupTimer.unref?.();
-  _tasks.push(pullTimer, pushTimer, pingTimer, pressureTimer, diagTimer, cleanupTimer);
+  provisionTimer.unref?.();
+  _tasks.push(pullTimer, pushTimer, pingTimer, pressureTimer, diagTimer, cleanupTimer, provisionTimer);
 
   // Provisioning durumunu logla
   try {

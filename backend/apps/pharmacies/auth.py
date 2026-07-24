@@ -109,8 +109,10 @@ class KioskAppKeyAuthentication(authentication.BaseAuthentication):
     dogrulamada ``request.kiosk`` atanir ve ``(kiosk, app_key)`` doner.
 
     Durum kodlari:
-      401 â€” App Key/MAC eksik veya App Key gecersiz (kimlik saglanamadi).
-      403 â€” Kiosk pasif/onaysiz veya eczaneye bagli degil (yetki yok).
+      401 - App Key/MAC eksik veya gecersiz.
+      403 - Kiosk pasif/onaysiz veya eczaneye bagli degil.
+
+    Not: device_id auth katmaninda dogrulanmaz; App Key + MAC yeterlidir.
     """
 
     keyword = "AppKey"
@@ -136,8 +138,6 @@ class KioskAppKeyAuthentication(authentication.BaseAuthentication):
                 {"detail": "X-Kiosk-MAC basligi eksik.", "code": "mac_missing"}
             )
 
-        device_id = request.headers.get("X-Kiosk-Device-ID", "").strip()
-
         # MAC ile kiosk bul (aktif filtresi YOK; once App Key dogrula, sonra durum).
         kiosk = Kiosk.objects.select_related("eczane").filter(mac_adresi=mac).first()
         if kiosk is None or not secrets.compare_digest(str(kiosk.uygulama_anahtari), key):
@@ -145,17 +145,6 @@ class KioskAppKeyAuthentication(authentication.BaseAuthentication):
             raise exceptions.AuthenticationFailed(
                 {"detail": "Kimlik dogrulanamadi.", "code": "app_key_invalid"}
             )
-
-        # Device ID validation: eger kiosk'ta device_id set edilmisse match olmali
-        if kiosk.device_id:
-            if not device_id:
-                raise exceptions.AuthenticationFailed(
-                    {"detail": "X-Kiosk-Device-ID basligi eksik.", "code": "device_id_missing"}
-                )
-            if not secrets.compare_digest(kiosk.device_id, device_id):
-                raise exceptions.AuthenticationFailed(
-                    {"detail": "Device ID eslesmedi.", "code": "device_id_mismatch"}
-                )
 
         # App Key gecerli; yetki/durum kontrolleri => 403.
         if not kiosk.aktif:
@@ -170,3 +159,7 @@ class KioskAppKeyAuthentication(authentication.BaseAuthentication):
         _update_last_seen(kiosk, request)
         request.kiosk = kiosk
         return (kiosk, key)
+
+
+# Alias: artik ana sinifla ayni (device_id auth kontrolu kaldirildi).
+KioskAppKeyNoDeviceIdAuthentication = KioskAppKeyAuthentication

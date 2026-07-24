@@ -386,6 +386,34 @@ class KioskViewSet(viewsets.ModelViewSet):
     @action(
         detail=True,
         methods=["post"],
+        url_path="reset-device-id",
+        authentication_classes=[JWTAuthentication],
+        permission_classes=[IsSuperAdmin],
+    )
+    def reset_device_id(self, request, pk=None):
+        """POST /api/pharmacies/kiosks/{id}/reset-device-id/ — device_id'yi NULL'a sifirlar.
+
+        Kioskin SQLite DB'si sifirlandi veya farkli bir cihaza tasindiysa device_id
+        uyusmazligi olusur. Bu endpoint eski device_id'yi siler; kiosk bir sonraki
+        enrollDeviceId'de yeniden baglar.
+        """
+        kiosk: Kiosk = self.get_object()
+        kiosk.device_id = None
+        with UnitOfWork(user=request.user) as uow:
+            uow.update(kiosk, update_fields=["device_id"])
+        kayit_birak(
+            eylem=DenetimLogu.Eylem.GUNCELLE,
+            aktor=request.user,
+            hedef=kiosk,
+            ozet=f"Kiosk device_id sifirlandi: {kiosk.mac_adresi}",
+            kiosk_mac=kiosk.mac_adresi,
+            ip_adresi=_client_ip(request),
+        )
+        return Response({"status": "device_id_reset", "kiosk_id": kiosk.pk})
+
+    @action(
+        detail=True,
+        methods=["post"],
         url_path="regenerate-key",
         authentication_classes=[JWTAuthentication],
         permission_classes=[IsSuperAdmin],

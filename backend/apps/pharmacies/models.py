@@ -65,6 +65,11 @@ class Kiosk(BaseModel):
     # ── Faz 4: V2 fingerprint kaydı ──────────────────────────────────────────
     # {"YYYY-MM-DD": "hex16"} — kiosk+tarih için son başarılı V2 yayın fingerprint'i.
     # Job geçmişi yerine Kiosk satırından okunur; autoritative playlistle tutarlı.
+    last_ip = models.GenericIPAddressField(
+        null=True, blank=True,
+        help_text="Son ping'de tespit edilen kiosk IP adresi.",
+    )
+
     last_v2_fingerprints = models.JSONField(
         default=dict, blank=True,
         help_text="Tarih→fingerprint map. Son başarılı V2 publish'in canonical içerik özeti.",

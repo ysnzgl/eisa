@@ -13,6 +13,7 @@ import {
   createKiosk,
   updateKiosk,
   deleteKiosk,
+  resetKioskDeviceId,
 } from '../../services/devices';
 import { getIller, getIlceler } from '../../services/lookups';
 import EisaDeleteConfirm from '../../components/shared/EisaDeleteConfirm.vue';
@@ -256,6 +257,17 @@ async function saveKiosk() {
 function openDeleteKiosk(kiosk) {
   kioskDeleteTarget.value = kiosk;
   kioskDeleteOpen.value   = true;
+}
+
+async function resetDeviceId(kiosk) {
+  if (!confirm(`"${kiosk.ad}" kiosk'unun Device ID'si sıfırlanacak. Kiosk bir sonraki bağlantıda yeniden bağlanır. Devam?`)) return;
+  try {
+    await resetKioskDeviceId(kiosk.id);
+    showToast('Device ID sıfırlandı. Kiosk kendi kendine yeniden bağlanacak.');
+    await loadKiosks();
+  } catch {
+    showToast('Device ID sıfırlanamadı.');
+  }
 }
 
 function closeDeleteKiosk() {
@@ -512,9 +524,15 @@ async function copyAppKey() {
                 <i class="fa-solid fa-hospital" style="margin-right:0.35rem;color:#9CA3AF;font-size:0.7rem;"></i>
                 {{ kiosk.pharmacyName }}
               </p>
-              <div style="margin-top:0.5rem;padding-top:0.5rem;border-top:1px solid #E5E7EB;">
-                <p style="font-size:0.65rem;color:#9CA3AF;margin-bottom:0.15rem;">MAC Adresi</p>
-                <p style="font-size:0.75rem;font-family:'DM Mono',monospace;color:#374151;font-weight:500;">{{ kiosk.mac || '—' }}</p>
+              <div style="margin-top:0.5rem;padding-top:0.5rem;border-top:1px solid #E5E7EB;display:flex;gap:1rem;">
+                <div style="flex:1;min-width:0;">
+                  <p style="font-size:0.65rem;color:#9CA3AF;margin-bottom:0.15rem;">MAC Adresi</p>
+                  <p style="font-size:0.75rem;font-family:'DM Mono',monospace;color:#374151;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ kiosk.mac || '—' }}</p>
+                </div>
+                <div style="flex:1;min-width:0;">
+                  <p style="font-size:0.65rem;color:#9CA3AF;margin-bottom:0.15rem;">IP Adresi</p>
+                  <p style="font-size:0.75rem;font-family:'DM Mono',monospace;color:#374151;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ kiosk.lastIp || '—' }}</p>
+                </div>
               </div>
             </div>
             <div class="eisa-kiosk-card-footer">
@@ -532,6 +550,13 @@ async function copyAppKey() {
                   @click="openEditKiosk(kiosk)"
                 >
                   <i class="fa-solid fa-pen-to-square" style="color:#7C3AED;"></i>
+                </button>
+                <button
+                  class="eisa-icon-btn"
+                  title="Device ID Sıfırla (bağlantı sorunu için)"
+                  @click="resetDeviceId(kiosk)"
+                >
+                  <i class="fa-solid fa-fingerprint" style="color:#D97706;"></i>
                 </button>
                 <button
                   class="eisa-icon-btn"

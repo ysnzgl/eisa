@@ -2,8 +2,8 @@
 import { settings } from './config.js';
 import { openDb, closeDb } from './db.js';
 import { buildServer } from './server.js';
-import { startScheduler, stopScheduler, pullFromCentral } from './scheduler.js';
-import { resolveRuntimeSettings } from './provisioning.js';
+import { startScheduler, stopScheduler, pullFromCentral, pingAndSyncPlaylist, pingAndSyncManifest } from './scheduler.js';
+import { resolveRuntimeSettings, hasAppKeyCredentials } from './provisioning.js';
 import { recordDiagnostic } from './diagnosticOutbox.js';
 
 const db = openDb(settings.sqlitePath, {
@@ -15,12 +15,18 @@ const runtimeSettings = await resolveRuntimeSettings(db, settings, console);
 const app = await buildServer({ db, settings: runtimeSettings });
 startScheduler(db, runtimeSettings, app.log);
 
-// İlk açılışta veri yoksa (boş DB) backend'den hemen çek.
-const isEmpty = !db.prepare('SELECT 1 FROM kategoriler LIMIT 1').get();
-if (isEmpty) {
-  app.log.info({ event: 'first_pull_triggered' }, 'DB bos — backend\'den ilk veri cekiliyor');
+// Provision tamamlandiysa (app_key mevcut) her restart'ta hemen pull + ping yap.
+// Provision henuz yok/beklemede ise scheduler'daki provision retry tetikleyecek.
+if (hasAppKeyCredentials(db)) {
+  app.log.info({ event: 'startup_pull_triggered' }, 'Provision tamam — baslangicta veri cekiliyor');
   pullFromCentral(db, runtimeSettings, app.log).catch((err) =>
-    app.log.warn({ event: 'first_pull_failed', err: err?.message }, 'Ilk pull basarisiz, scheduler tekrar deneyecek'),
+    app.log.warn({ event: 'startup_pull_failed', err: err?.message }, 'Baslangic pull basarisiz, scheduler tekrar deneyecek'),
+  );
+  const pingFn = runtimeSettings.doohKioskAck
+    ? () => pingAndSyncManifest(db, runtimeSettings, app.log)
+    : () => pingAndSyncPlaylist(db, runtimeSettings, app.log);
+  pingFn().catch((err) =>
+    app.log.warn({ event: 'startup_ping_failed', err: err?.message }, 'Baslangic ping basarisiz'),
   );
 }
 

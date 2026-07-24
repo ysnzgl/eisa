@@ -45,6 +45,7 @@ from .models import (
     CampaignTarget,
     Creative,
     DayPlan,
+    DeliveryRule,
     GenerationJob,
     HouseAd,
     HourPlan,
@@ -76,6 +77,47 @@ from .serializers import (
 from .services.scheduler import available_seconds, generate_for_kiosk, simulate_campaign_capacity
 
 logger = logging.getLogger(__name__)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Bridge: ScheduleRule → DeliveryRule otomatik senkronizasyon
+# ─────────────────────────────────────────────────────────────────────────────
+
+_SCHEDULE_TO_DELIVERY_TYPE = {
+    "PER_LOOP": DeliveryRule.DeliveryType.LEGACY_PER_LOOP,
+    "PER_HOUR": DeliveryRule.DeliveryType.PER_HOUR,
+    "PER_DAY":  DeliveryRule.DeliveryType.PER_DAY,
+}
+
+
+def _sync_delivery_rule_from_schedule_rule(campaign: Campaign, rule: ScheduleRule) -> None:
+    """ScheduleRule kaydedilince ilgili DeliveryRule'u upsert et.
+
+    simulate() ve validate_for_activation() DeliveryRule'a ihtiyaç duyar.
+    Bu bridge, wizard'ın ScheduleRule-tabanlı akışını DeliveryRule motoruyla
+    uyumlu hale getirir.
+    """
+    delivery_type = _SCHEDULE_TO_DELIVERY_TYPE.get(
+        rule.frequency_type, DeliveryRule.DeliveryType.LEGACY_PER_LOOP
+    )
+    count = max(1, int(rule.frequency_value or 1))
+    active_hours = list(rule.target_hours) if rule.target_hours else None
+
+    try:
+        dr = campaign.delivery_rule
+        dr.delivery_type = delivery_type
+        dr.count = count
+        dr.active_hours = active_hours
+        dr.save(update_fields=["delivery_type", "count", "active_hours",
+                               "guncellenme_tarihi"])
+    except DeliveryRule.DoesNotExist:
+        DeliveryRule.objects.create(
+            campaign=campaign,
+            delivery_type=delivery_type,
+            count=count,
+            active_hours=active_hours,
+            guarantee_mode=DeliveryRule.GuaranteeMode.BEST_EFFORT,
+        )
 
 
 def _parse_date(raw: str | None) -> _dt.date:
@@ -325,6 +367,10 @@ class CampaignViewSet(viewsets.ModelViewSet):
                     setattr(existing, k, v)
                 uow.update(existing)
                 rule = existing
+
+        # Bridge: ScheduleRule → DeliveryRule upsert (simulate/activate için gerekli)
+        _sync_delivery_rule_from_schedule_rule(campaign, rule)
+
         return Response(
             ScheduleRuleSerializer(rule).data,
             status=status.HTTP_201_CREATED if existing is None else status.HTTP_200_OK,

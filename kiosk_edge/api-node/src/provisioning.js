@@ -283,6 +283,7 @@ export async function resolveRuntimeSettings(db, baseSettings, log = console) {
       setMeta(db, 'kiosk_app_key', result.data.app_key);
       setMeta(db, 'kiosk_id',      result.data.kiosk_id ?? 0);
       setMeta(db, 'pharmacy_id',   result.data.pharmacy_id ?? 0);
+      setMeta(db, 'app_key_401_count', '0');   // Yeni App Key alindi; hata sayacini sifirla.
       setProvisioningState(db, PROVISIONING_STATE.APPROVED);
       log?.info?.({ kioskId: result.data.kiosk_id, pharmacyId: result.data.pharmacy_id, has_app_key: true },
         'Kiosk provision tamamlandi (App Key alindi)');
@@ -387,18 +388,27 @@ export async function enrollDeviceId(db, settings, log, _fetchFn = null) {
 
     if (res.status === 200) {
       setMeta(db, 'device_id_enrolled', '1');
+      setMeta(db, 'device_id_conflict', '0');  // Basarili; onceki conflict temizle.
       log?.info?.({ deviceId }, 'Device ID backend\'e basariyla baglandi');
       return 'enrolled';
     } else if (res.status === 409) {
+      // 409: backend'de FARKLI bir device_id kayitli. Admin sifirlamali.
       const body = await res.json().catch(() => ({}));
-      if (body?.code === 'already_bound') {
-        // Ayni degerle zaten bagli → idempotent basari
-        setMeta(db, 'device_id_enrolled', '1');
-        log?.info?.({ deviceId }, 'Device ID zaten bagli (idempotent)');
-        return 'enrolled';
-      }
-      log?.warn?.({ code: body?.code, deviceId }, 'Device ID conflict: farkli bir device_id bagli');
+      setMeta(db, 'device_id_conflict', '1');
+      log?.warn?.({ code: body?.code, deviceId },
+        'Device ID conflict (409) — admin cihaz yonetiminden device_id sifirlamali');
       return 'conflict';
+    } else if (res.status === 401) {
+      // 401: auth katmani reddetti. device_id_mismatch ise conflict flag set et.
+      const body = await res.json().catch(() => ({}));
+      if (body?.code === 'device_id_mismatch' || body?.code === 'device_id_missing') {
+        setMeta(db, 'device_id_conflict', '1');
+        log?.warn?.({ code: body?.code, deviceId },
+          'Device ID conflict (401) — admin cihaz yonetiminden device_id sifirlamali');
+        return 'conflict';
+      }
+      log?.warn?.({ status: res.status, deviceId }, 'enrollDeviceId: auth hatasi (app_key?)');
+      return 'error';
     } else {
       log?.warn?.({ status: res.status, deviceId }, 'enrollDeviceId: beklenmeyen HTTP status');
       return 'error';
@@ -422,13 +432,20 @@ export function cleanupLegacyIotToken(db, log = console) {
 
 /**
  * Backend 401 â†’ App Key eksik/gecersiz.
- * Bearer/Fleet/IoT fallback YAPILMAZ. App Key hemen silinmez; kontrollu backoff
- * icin isaretlenir (scheduler dogal araliginda tekrar dener).
+ * Bearer/Fleet/IoT fallback YAPILMAZ. 5 ardisik 401'den sonra gecersiz App Key
+ * SQLite'tan silinir; provisioning retry dongusu yeniden bootstrap yapar.
  */
 export function handle401Error(db, settings, log = console) {
   try { setMeta(db, 'app_key_last_401_at', new Date().toISOString()); } catch {}
-  log?.warn?.({ event: 'central_auth_401', has_app_key: Boolean(getMeta(db, 'kiosk_app_key')) },
-    'Backend 401: App Key gecersiz/eksik olabilir (fallback yok, backoff)');
+  const currentKey = getMeta(db, 'kiosk_app_key');
+  log?.warn?.({ event: 'central_auth_401', has_app_key: Boolean(currentKey) },
+    'Backend 401: App Key gecersiz; silindi, re-provisioning dongusu devralacak');
+  if (currentKey) {
+    try {
+      setMeta(db, 'kiosk_app_key', '');
+      setMeta(db, 'device_id_enrolled', '0');
+    } catch { /* yoksa sorun degil */ }
+  }
 }
 
 /**

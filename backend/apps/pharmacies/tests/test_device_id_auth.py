@@ -228,8 +228,8 @@ class TestDeviceIDAuthentication:
         res = client.get("/api/kiosk/v1/ping/")
         assert res.status_code == 200
 
-    def test_kiosk_with_device_id_requires_header(self, db, kiosk_with_device_id):
-        """Kiosk with device_id bound rejects requests without the header."""
+    def test_kiosk_with_device_id_header_not_required(self, db, kiosk_with_device_id):
+        """device_id auth katmaninda zorunlu tutulmaz; eksik header kabul edilir."""
         client = APIClient()
         client.credentials(
             HTTP_AUTHORIZATION=f"AppKey {kiosk_with_device_id.uygulama_anahtari}",
@@ -237,20 +237,18 @@ class TestDeviceIDAuthentication:
             # No X-Kiosk-Device-ID header
         )
         res = client.get("/api/kiosk/v1/ping/")
-        assert res.status_code == 401
-        assert res.json().get("code") == "device_id_missing"
+        assert res.status_code == 200  # device_id auth'da zorunlu degil
 
-    def test_kiosk_with_device_id_rejects_wrong_value(self, db, kiosk_with_device_id):
-        """Kiosk with device_id bound rejects wrong device_id."""
+    def test_kiosk_with_device_id_wrong_value_still_accepted(self, db, kiosk_with_device_id):
+        """device_id auth katmaninda dogrulanmaz; yanlis deger auth'u gecersiz kilmaz."""
         client = APIClient()
         client.credentials(
             HTTP_AUTHORIZATION=f"AppKey {kiosk_with_device_id.uygulama_anahtari}",
             HTTP_X_KIOSK_MAC=kiosk_with_device_id.mac_adresi,
-            HTTP_X_KIOSK_DEVICE_ID=DEVICE_UUID_B,  # wrong
+            HTTP_X_KIOSK_DEVICE_ID=DEVICE_UUID_B,  # farkli deger, ama artik reddedilmez
         )
         res = client.get("/api/kiosk/v1/ping/")
-        assert res.status_code == 401
-        assert res.json().get("code") == "device_id_mismatch"
+        assert res.status_code == 200  # App Key + MAC yeterli
 
     def test_kiosk_with_correct_device_id_accepted(self, db, kiosk_with_device_id):
         client = APIClient()

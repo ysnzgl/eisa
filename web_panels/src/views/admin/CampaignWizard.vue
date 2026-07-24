@@ -500,7 +500,8 @@ function buildCampaignPayload() {
     end_date:   new Date(form.end_date).toISOString(),
     status: form.status,
     target_scope: form.target_scope || 'ALL',
-    impression_goal: form.impression_goal || null,
+    // impression_goal Faz 7'de Campaign modelinden kaldırıldı (migration 0020).
+    // GOAL modu için buildRulePayload() PER_DAY'e çevirir; buraya gönderilmez.
   };
 }
 
