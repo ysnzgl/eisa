@@ -19,6 +19,7 @@ from .models import (
     HourPlan,
     KioskDayQuota,
     KioskDesiredBundle,
+    PharmacyCampaign,
     PlanningRun,
     PlayLog,
     Playlist,
@@ -75,7 +76,7 @@ class CreativeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Creative
-        fields = ["id", "campaign", "media_url", "duration_seconds", "name",
+        fields = ["id", "campaign", "media_url", "active_media_url", "duration_seconds", "name",
                   "checksum", "object_key", "weight", "is_grid_compliant"]
         read_only_fields = ("id", "is_grid_compliant")
 
@@ -315,7 +316,7 @@ class KioskCreativeSyncSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Creative
-        fields = ["id", "media_url", "duration_seconds", "checksum", "type"]
+        fields = ["id", "media_url", "active_media_url", "duration_seconds", "checksum", "type"]
 
     def get_type(self, obj):  # noqa: D401
         return "creative"
@@ -334,6 +335,7 @@ class KioskHouseAdSyncSerializer(serializers.ModelSerializer):
 
 class KioskPlaylistItemSerializer(serializers.ModelSerializer):
     media_url = serializers.SerializerMethodField()
+    active_media_url = serializers.SerializerMethodField()
     duration_seconds = serializers.SerializerMethodField()
     asset_id = serializers.SerializerMethodField()
     asset_type = serializers.SerializerMethodField()
@@ -343,7 +345,7 @@ class KioskPlaylistItemSerializer(serializers.ModelSerializer):
         model = PlaylistItem
         fields = [
             "id", "asset_id", "asset_type", "campaign_name", "media_url",
-            "duration_seconds", "playback_order",
+            "active_media_url", "duration_seconds", "playback_order",
             "estimated_start_offset_seconds",
         ]
 
@@ -353,6 +355,11 @@ class KioskPlaylistItemSerializer(serializers.ModelSerializer):
         if obj.house_ad_id:
             return obj.house_ad.media_url
         return None
+
+    def get_active_media_url(self, obj):
+        if obj.creative_id:
+            return obj.creative.active_media_url or ""
+        return ""
 
     def get_duration_seconds(self, obj):
         if obj.creative_id:
@@ -390,12 +397,32 @@ class KioskPlaylistSerializer(serializers.ModelSerializer):
 
 
 class ProofOfPlayItemSerializer(serializers.Serializer):
-    """Tek bir PlayLog girdisi (POST body item)."""
+    """Tek bir PlayLog girdisi (POST body item).
+
+    Yeni alanlar (Faz 3) opsiyonel — eski kiosk sürümleri göndermese de çalışır.
+    """
 
     creative_id = serializers.UUIDField(required=False, allow_null=True)
     house_ad_id = serializers.UUIDField(required=False, allow_null=True)
     played_at = serializers.DateTimeField()
     duration_played = serializers.IntegerField(min_value=0, max_value=600)
+    # Faz 3: idempotency + durum + zaman ayrımı
+    play_event_id = serializers.UUIDField(required=False, allow_null=True, default=None)
+    status = serializers.ChoiceField(
+        choices=["STARTED", "COMPLETED", "FAILED", "INTERRUPTED"],
+        default="COMPLETED",
+        required=False,
+    )
+    expected_duration = serializers.IntegerField(
+        min_value=0, max_value=600, required=False, allow_null=True, default=None
+    )
+    error_code = serializers.CharField(
+        max_length=64, required=False, allow_blank=True, default=""
+    )
+    error_summary = serializers.CharField(
+        max_length=255, required=False, allow_blank=True, default=""
+    )
+    occurred_at = serializers.DateTimeField(required=False, allow_null=True, default=None)
 
     def validate(self, attrs):
         if not attrs.get("creative_id") and not attrs.get("house_ad_id"):
@@ -591,3 +618,87 @@ class ActivationResultSerializer(serializers.Serializer):
     fingerprint = serializers.CharField()
     is_complete = serializers.BooleanField()
     blocking_reasons = serializers.ListField(child=serializers.CharField(), default=list)
+
+
+# =============================================================================
+# PharmacyCampaign serializers
+# =============================================================================
+
+class PharmacyCampaignSerializer(serializers.ModelSerializer):
+    """Eczacı paneli kampanyası — admin CRUD."""
+
+    _ALLOWED_DURATIONS = frozenset({15, 30, 60})
+
+    class Meta:
+        model = PharmacyCampaign
+        fields = [
+            "id", "name", "media_url", "object_key",
+            "start_at", "end_at", "duration_seconds",
+            "is_active",
+            "target_pharmacies", "target_iller", "target_ilceler",
+            "olusturulma_tarihi", "guncellenme_tarihi",
+        ]
+        read_only_fields = ("id", "olusturulma_tarihi", "guncellenme_tarihi")
+
+    def validate_duration_seconds(self, value: int) -> int:
+        """Yalnızca 15, 30, 60 saniye kabul edilir.
+
+        Mevcut kayıtta farklı değer varsa ve düzenleme sırasında aynı değer
+        gönderiliyorsa izin verilir (geriye uyumluluk).
+        """
+        instance = getattr(self, "instance", None)
+        if instance and int(instance.duration_seconds) == int(value):
+            return value  # Eski kayıt aynı değerle kaydediliyor → izin ver
+        if value not in self._ALLOWED_DURATIONS:
+            raise serializers.ValidationError(
+                f"duration_seconds {value} geçersiz. İzin verilen: 15, 30, 60 saniye."
+            )
+        return value
+
+    def validate(self, attrs):
+        # object_key türetme
+        if not attrs.get("object_key") and attrs.get("media_url"):
+            derived = _derive_object_key_from_url(attrs["media_url"])
+            attrs["object_key"] = derived or None
+
+        # En az bir hedef zorunlu
+        pharmacies = attrs.get("target_pharmacies", getattr(
+            getattr(self, "instance", None), "target_pharmacies", None
+        ))
+        iller = attrs.get("target_iller", getattr(
+            getattr(self, "instance", None), "target_iller", None
+        ))
+        ilceler = attrs.get("target_ilceler", getattr(
+            getattr(self, "instance", None), "target_ilceler", None
+        ))
+
+        def _has(field):
+            if field is None:
+                return False
+            if hasattr(field, "all"):  # ManyRelatedManager (instance case)
+                # Partial update durumunda attrs'ta yoksa mevcut değeri kullan
+                return field.exists()
+            return bool(field)  # attrs'tan gelen liste
+
+        # Sadece partial update değilse (create veya full update) zorunlu kontrol
+        is_create = self.instance is None
+        is_partial = getattr(self, "partial", False)
+
+        if is_create or not is_partial:
+            ph_val = attrs.get("target_pharmacies", [])
+            il_val = attrs.get("target_iller", [])
+            ilce_val = attrs.get("target_ilceler", [])
+            if not ph_val and not il_val and not ilce_val:
+                raise serializers.ValidationError(
+                    "En az bir hedef seçilmelidir: eczane, il veya ilçe."
+                )
+
+        return attrs
+
+
+class PharmacyCampaignFeedSerializer(serializers.ModelSerializer):
+    """Eczacı feed — yalnızca gösterim için gereken alanlar."""
+
+    class Meta:
+        model = PharmacyCampaign
+        fields = ["id", "name", "media_url", "duration_seconds"]

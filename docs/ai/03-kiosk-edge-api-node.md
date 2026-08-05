@@ -106,7 +106,7 @@ Backend erişilemezse:
 - `danisma_kategorileri`: id, slug, ad, ikon, ust_kategori_id (INTEGER, FK YOK), aktif
 
 **Playlist/Creative:**
-- `creatives`: id, campaign_id, media_url, duration_seconds, name, type (creative/house_ad), checksum
+- `creatives`: id, campaign_id, media_url, **active_media_url** (v12 eklendi, DEFAULT ''), duration_seconds, name, type (creative/house_ad), checksum
 - `playlists`: id, target_date, target_hour, version, items JSON
 - `playlist_items`: playlist_id, asset_type, asset_id, duration_seconds, playback_order
 
@@ -123,6 +123,7 @@ Backend erişilemezse:
 - `file_checksum`: kiosk indirdiğinde hesapladığı raw hex (prefix yok)
 - Cache hit: `source_url === asset.media_url && source_checksum === asset.source_checksum && dosya var`
 - Stabil media_url sonrası gereksiz yeniden-indirme ortadan kalkar
+- `active_media_url` için `asset_id = '${id}_active'`, `asset_type = 'creative'` ile ayrı cache kaydı (v12)
 
 **Outbox pressure check (`checkOutboxPressure`):**
 - Eğer `oturum_outbox` veya `reklam_gosterim_outbox` tablolarında `gonderilme_tarihi IS NULL` kayıt sayısı `outboxMaxRows` (default 10000) değerini aşarsa warning log

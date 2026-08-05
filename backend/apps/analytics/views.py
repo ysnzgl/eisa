@@ -14,7 +14,7 @@ from django.db.models import Count
 from django.db.models.functions import TruncDate
 from django.utils import timezone
 from rest_framework import status
-from rest_framework.pagination import CursorPagination
+from rest_framework.pagination import CursorPagination, PageNumberPagination
 from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -27,9 +27,15 @@ from apps.products.models import Kategori
 
 from .models import OturumLogu
 from .serializers import (
+    CampaignImpressionSerializer,
+    KioskActivityListSerializer,
+    KioskEventSerializer,
     OturumLoguItemSerializer,
     OturumLoguSerializer,
 )
+
+# Bir COMPLETED oturumun danışılmadan geçmesi gereken süre (EXPIRED türetimi)
+EXPIRY_MINUTES = 30
 
 
 def _OrPerm(*perms):
@@ -37,6 +43,104 @@ def _OrPerm(*perms):
         def has_permission(self, request, view):
             return any(p().has_permission(request, view) for p in perms)
     return _C
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Ortak queryset builder — liste + dashboard aggregation aynı filtre mantığını
+# kullanır, sayı tutarsızlığı olmaz.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _build_oturum_queryset(request):
+    """Oturum queryset'i: eczane scope + filtreler.
+
+    Pharmacist: yalnız kendi eczanesine ait kiosklar.
+    Superadmin: tüm kayıtlar; il/ilçe/eczane filtreleri uygulanabilir.
+    """
+    qs = (
+        OturumLogu.objects
+        .select_related(
+            "kiosk__eczane__il",
+            "kiosk__eczane__ilce",
+            "kategori",
+            "danisma_kategorisi",
+            "yas_araligi",
+            "cinsiyet",
+        )
+        .order_by("-olusturulma_tarihi")
+    )
+
+    user = request.user
+    rol = getattr(user, "rol", None)
+
+    # Eczane scope (pharmacist)
+    if rol == "pharmacist":
+        if not getattr(user, "eczane_id", None):
+            return qs.none()
+        qs = qs.filter(kiosk__eczane_id=user.eczane_id)
+
+    params = request.query_params
+
+    # Admin-only coğrafi filtreler
+    if rol != "pharmacist":
+        eczane_id = params.get("eczane_id")
+        if eczane_id:
+            qs = qs.filter(kiosk__eczane_id=eczane_id)
+        il_id = params.get("il_id")
+        if il_id:
+            qs = qs.filter(kiosk__eczane__il_id=il_id)
+        ilce_id = params.get("ilce_id")
+        if ilce_id:
+            qs = qs.filter(kiosk__eczane__ilce_id=ilce_id)
+
+    # Kiosk filtresi (her iki rol)
+    kiosk_id = params.get("kiosk_id")
+    if kiosk_id:
+        qs = qs.filter(kiosk_id=kiosk_id)
+
+    # Kategori filtresi (drill-down: dashboard donut tıklaması)
+    kategori_slug = params.get("kategori_slug")
+    if kategori_slug:
+        qs = qs.filter(kategori__slug=kategori_slug)
+
+    # Oturum tipi
+    oturum_tipi = params.get("oturum_tipi")
+    if oturum_tipi:
+        qs = qs.filter(oturum_tipi=str(oturum_tipi).upper())
+
+    # Hassas akış
+    hassas = params.get("hassas_akis") or params.get("is_sensitive_flow")
+    if hassas is not None:
+        qs = qs.filter(hassas_akis=str(hassas).lower() in ("true", "1"))
+
+    # Danışma tamamlama durumu
+    danisma = params.get("danisma_tamamlandi")
+    if danisma is not None:
+        qs = qs.filter(danisma_tamamlandi=str(danisma).lower() in ("true", "1"))
+
+    # Durum — EXPIRED read-time türetimi
+    durum = params.get("durum")
+    if durum:
+        durum_upper = str(durum).upper()
+        if durum_upper == OturumLogu.Durum.EXPIRED:
+            expiry_threshold = timezone.now() - timedelta(minutes=EXPIRY_MINUTES)
+            qs = qs.filter(
+                durum=OturumLogu.Durum.COMPLETED,
+                danisma_tamamlandi=False,
+                olusturulma_tarihi__lt=expiry_threshold,
+            )
+        else:
+            qs = qs.filter(durum=durum_upper)
+
+    # Tarih aralığı
+    start_date = params.get("start_date")
+    if start_date:
+        qs = qs.filter(olusturulma_tarihi__date__gte=start_date)
+    end_date = params.get("end_date")
+    if end_date:
+        qs = qs.filter(olusturulma_tarihi__date__lte=end_date)
+
+    return qs
+
 
 
 class OturumLoguPagination(CursorPagination):
@@ -310,4 +414,203 @@ class AdminDashboardView(APIView):
                 "son_reklamlar": son_reklamlar,
             }
         )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Kiosk Hareketleri — oturum listesi (admin + eczacı)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class KioskActivityPagination(PageNumberPagination):
+    page_size = 50
+    page_size_query_param = "page_size"
+    max_page_size = 200
+
+
+class KioskActivityView(APIView):
+    """GET /api/analytics/kiosk-activities/
+
+    Kiosk QR/oturum hareketleri listesi.
+
+    Admin: tüm kayıtlar; il_id/ilce_id/eczane_id/kiosk_id ile filtreleme.
+    Eczacı: yalnız kendi eczanesine ait kiosklar. Coğrafi filtreler uygulanmaz.
+
+    Query parametreleri:
+      kiosk_id, eczane_id (admin), il_id (admin), ilce_id (admin),
+      oturum_tipi (SIKAYET|OZEL_DANISMANLIK),
+      durum (COMPLETED|ABANDONED|EXPIRED),
+      hassas_akis (true|false),
+      danisma_tamamlandi (true|false),
+      start_date (YYYY-MM-DD), end_date (YYYY-MM-DD),
+      page, page_size
+    """
+
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [_OrPerm(IsSuperAdmin, IsEczaci)]
+
+    def get(self, request):
+        qs = _build_oturum_queryset(request)
+        paginator = KioskActivityPagination()
+        page = paginator.paginate_queryset(qs, request)
+        serializer = KioskActivityListSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Kampanya Gösterimleri — PlayLog listesi (admin + eczacı)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class CampaignImpressionView(APIView):
+    """GET /api/analytics/campaign-impressions/
+
+    Kiosk'tan gelen reklam gösterim kayıtları (PlayLog).
+
+    Admin: tüm kayıtlar; il_id/ilce_id/eczane_id/kiosk_id/campaign_id filtresi.
+    Eczacı: yalnız kendi eczanesine ait kiosk kayıtları.
+
+    Query parametreleri:
+      campaign_id, kiosk_id, eczane_id (admin), il_id (admin),
+      start_date (YYYY-MM-DD), end_date (YYYY-MM-DD),
+      page, page_size
+    """
+
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [_OrPerm(IsSuperAdmin, IsEczaci)]
+
+    def get(self, request):
+        from apps.campaigns.models import PlayLog
+
+        qs = (
+            PlayLog.objects
+            .select_related(
+                "kiosk__eczane",
+                "creative__campaign",
+                "house_ad",
+            )
+            .order_by("-played_at")
+        )
+
+        user = request.user
+        rol = getattr(user, "rol", None)
+
+        # Eczane scope
+        if rol == "pharmacist":
+            if not getattr(user, "eczane_id", None):
+                qs = qs.none()
+            else:
+                qs = qs.filter(kiosk__eczane_id=user.eczane_id)
+
+        params = request.query_params
+
+        # Admin-only coğrafi filtreler
+        if rol != "pharmacist":
+            eczane_id = params.get("eczane_id")
+            if eczane_id:
+                qs = qs.filter(kiosk__eczane_id=eczane_id)
+            il_id = params.get("il_id")
+            if il_id:
+                qs = qs.filter(kiosk__eczane__il_id=il_id)
+            ilce_id = params.get("ilce_id")
+            if ilce_id:
+                qs = qs.filter(kiosk__eczane__ilce_id=ilce_id)
+
+        # Kiosk filtresi
+        kiosk_id = params.get("kiosk_id")
+        if kiosk_id:
+            qs = qs.filter(kiosk_id=kiosk_id)
+
+        # Kampanya filtresi (creative üzerinden)
+        campaign_id = params.get("campaign_id")
+        if campaign_id:
+            qs = qs.filter(creative__campaign_id=campaign_id)
+
+        # Tarih aralığı
+        start_date = params.get("start_date")
+        if start_date:
+            qs = qs.filter(played_at__date__gte=start_date)
+        end_date = params.get("end_date")
+        if end_date:
+            qs = qs.filter(played_at__date__lte=end_date)
+
+        paginator = KioskActivityPagination()
+        page = paginator.paginate_queryset(qs, request)
+        serializer = CampaignImpressionSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Faz 4 — Kiosk Olayları listesi (admin + eczacı)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class KioskEventListView(APIView):
+    """GET /api/analytics/kiosk-events/
+
+    Kiosk teknik olayları (hata, bağlantı, restart vb.) listesi.
+
+    Admin: tüm kayıtlar; il_id/eczane_id/kiosk_id filtresi.
+    Eczacı: yalnız kendi eczanesine ait kiosk kayıtları.
+
+    Query parametreleri:
+      kiosk_id, eczane_id (admin), il_id (admin),
+      event_type, severity,
+      start_date (YYYY-MM-DD), end_date (YYYY-MM-DD),
+      page, page_size
+    """
+
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [_OrPerm(IsSuperAdmin, IsEczaci)]
+
+    def get(self, request):
+        from .models import KioskEvent
+
+        qs = (
+            KioskEvent.objects
+            .select_related("kiosk__eczane")
+            .order_by("-olusturulma_tarihi")
+        )
+
+        user = request.user
+        rol = getattr(user, "rol", None)
+
+        # Eczane scope
+        if rol == "pharmacist":
+            if not getattr(user, "eczane_id", None):
+                qs = qs.none()
+            else:
+                qs = qs.filter(kiosk__eczane_id=user.eczane_id)
+
+        params = request.query_params
+
+        # Admin-only coğrafi filtreler
+        if rol != "pharmacist":
+            eczane_id = params.get("eczane_id")
+            if eczane_id:
+                qs = qs.filter(kiosk__eczane_id=eczane_id)
+            il_id = params.get("il_id")
+            if il_id:
+                qs = qs.filter(kiosk__eczane__il_id=il_id)
+
+        kiosk_id = params.get("kiosk_id")
+        if kiosk_id:
+            qs = qs.filter(kiosk_id=kiosk_id)
+
+        event_type = params.get("event_type")
+        if event_type:
+            qs = qs.filter(event_type=str(event_type).upper())
+
+        severity = params.get("severity")
+        if severity:
+            qs = qs.filter(severity=str(severity).upper())
+
+        start_date = params.get("start_date")
+        if start_date:
+            qs = qs.filter(olusturulma_tarihi__date__gte=start_date)
+        end_date = params.get("end_date")
+        if end_date:
+            qs = qs.filter(olusturulma_tarihi__date__lte=end_date)
+
+        paginator = KioskActivityPagination()
+        page = paginator.paginate_queryset(qs, request)
+        serializer = KioskEventSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
+
 

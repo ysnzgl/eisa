@@ -45,15 +45,29 @@ function mimeFromExt(ext) {
 
 function normalizeAssets(db) {
   const creatives = db
-    .prepare('SELECT id, media_url, checksum FROM creatives WHERE aktif = 1')
+    .prepare('SELECT id, media_url, active_media_url, checksum FROM creatives WHERE aktif = 1')
     .all()
     .filter((x) => !!x.media_url)
-    .map((x) => ({
-      asset_id: String(x.id),
-      asset_type: 'creative',
-      media_url: x.media_url,
-      source_checksum: x.checksum || '',
-    }));
+    .flatMap((x) => {
+      const entries = [
+        {
+          asset_id: String(x.id),
+          asset_type: 'creative',
+          media_url: x.media_url,
+          source_checksum: x.checksum || '',
+        },
+      ];
+      // active_media_url varsa ayrı cache girişi ekle (asset_id + '_active', asset_type 'creative')
+      if (x.active_media_url) {
+        entries.push({
+          asset_id: String(x.id) + '_active',
+          asset_type: 'creative',
+          media_url: x.active_media_url,
+          source_checksum: '',
+        });
+      }
+      return entries;
+    });
 
   const houseAds = db
     .prepare('SELECT id, media_url FROM house_ads WHERE aktif = 1')

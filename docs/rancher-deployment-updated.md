@@ -100,9 +100,11 @@ Sebep: Registry'yi kurmadan image push/pull akışı hemen çalışır. Daha son
 ```powershell
 $REGISTRY = "10.200.202.20:30500"
 $TAG      = "1.0.3"
-
+docker rmi -f "$REGISTRY/eisa-api:$TAG" 2>/dev/null
 docker build --no-cache -t "$REGISTRY/eisa-api:$TAG" ./backend
+docker rmi -f "$REGISTRY/eisa-portal:$TAG" 2>/dev/null
 docker build --no-cache -t "$REGISTRY/eisa-portal:$TAG" ./web_panels
+docker rmi -f "$REGISTRY/eisa-kiosk:$TAG" 2>/dev/null
 docker build --no-cache -t "$REGISTRY/eisa-kiosk:$TAG" ./kiosk_edge
 
 docker push "$REGISTRY/eisa-api:$TAG"

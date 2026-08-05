@@ -327,3 +327,115 @@ class OturumLoguSerializer(serializers.ModelSerializer):
         if value == "not_sold":
             return "Satış yapılmadı"
         return None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Kiosk Hareketleri — liste görünümü (ham cevap yok, PII maskelendi)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class KioskActivityListSerializer(serializers.ModelSerializer):
+    """Oturum listesi için hafif serializer. Ham cevaplar gösterilmez."""
+
+    kiosk_ad = serializers.CharField(source="kiosk.ad", read_only=True)
+    kiosk_mac = serializers.CharField(source="kiosk.mac_adresi", read_only=True)
+    eczane_adi = serializers.CharField(source="kiosk.eczane.ad", read_only=True)
+    eczane_id = serializers.IntegerField(source="kiosk.eczane_id", read_only=True)
+    yas_araligi_ad = serializers.CharField(source="yas_araligi.ad", read_only=True)
+    cinsiyet_ad = serializers.CharField(source="cinsiyet.ad", read_only=True)
+    kategori_adi = serializers.CharField(source="kategori.ad", read_only=True)
+    danisma_kategorisi_adi = serializers.CharField(
+        source="danisma_kategorisi.ad", read_only=True
+    )
+
+    class Meta:
+        model = OturumLogu
+        fields = [
+            "id",
+            "qr_kodu",
+            "durum",
+            "oturum_tipi",
+            "kiosk",
+            "kiosk_ad",
+            "kiosk_mac",
+            "eczane_id",
+            "eczane_adi",
+            "yas_araligi_ad",
+            "cinsiyet_ad",
+            "kategori_adi",
+            "danisma_kategorisi_adi",
+            "hassas_akis",
+            "tamamlandi",
+            "danisma_tamamlandi",
+            "danisma_tamamlanma_tarihi",
+            "olusturulma_tarihi",
+            "cihaz_zamani",
+            "sunucu_zamani",
+        ]
+        # cevaplar ve onerilen_etken_maddeler listede açıklanmaz — detay view'dan alınır.
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Kampanya Gösterimleri — PlayLog listesi
+# ─────────────────────────────────────────────────────────────────────────────
+
+class CampaignImpressionSerializer(serializers.Serializer):
+    """PlayLog kayıtları için serializer (Faz 3'te status/error alanları eklenir)."""
+
+    id = serializers.UUIDField(read_only=True)
+    kiosk_id = serializers.IntegerField(read_only=True)
+    kiosk_ad = serializers.CharField(source="kiosk.ad", read_only=True)
+    kiosk_mac = serializers.CharField(source="kiosk.mac_adresi", read_only=True)
+    eczane_id = serializers.IntegerField(source="kiosk.eczane_id", read_only=True)
+    eczane_adi = serializers.CharField(source="kiosk.eczane.ad", read_only=True)
+    creative_id = serializers.UUIDField(read_only=True)
+    creative_adi = serializers.SerializerMethodField()
+    campaign_id = serializers.SerializerMethodField()
+    campaign_adi = serializers.SerializerMethodField()
+    house_ad_id = serializers.UUIDField(read_only=True)
+    house_ad_adi = serializers.CharField(source="house_ad.name", read_only=True)
+    played_at = serializers.DateTimeField(read_only=True)
+    duration_played = serializers.IntegerField(read_only=True)
+
+    def get_creative_adi(self, obj):
+        return getattr(obj.creative, "name", None) if obj.creative_id else None
+
+    def get_campaign_id(self, obj):
+        if obj.creative_id and obj.creative:
+            return str(obj.creative.campaign_id)
+        return None
+
+    def get_campaign_adi(self, obj):
+        if obj.creative_id and obj.creative and obj.creative.campaign_id:
+            return getattr(obj.creative.campaign, "name", None)
+        return None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Faz 4 — KioskEvent serializer
+# ─────────────────────────────────────────────────────────────────────────────
+
+class KioskEventSerializer(serializers.ModelSerializer):
+    """KioskEvent listesi için serializer (context JSON açılmaz — sanitize edilmiş message yeterli)."""
+
+    kiosk_ad = serializers.CharField(source="kiosk.ad", read_only=True)
+    kiosk_mac = serializers.CharField(source="kiosk.mac_adresi", read_only=True)
+    eczane_id = serializers.IntegerField(source="kiosk.eczane_id", read_only=True)
+    eczane_adi = serializers.CharField(source="kiosk.eczane.ad", read_only=True)
+
+    class Meta:
+        from apps.analytics.models import KioskEvent as _KE
+        model = _KE
+        fields = [
+            "id",
+            "kiosk",
+            "kiosk_ad",
+            "kiosk_mac",
+            "eczane_id",
+            "eczane_adi",
+            "event_type",
+            "severity",
+            "message",
+            "occurred_at",
+            "received_at",
+            "olusturulma_tarihi",
+        ]

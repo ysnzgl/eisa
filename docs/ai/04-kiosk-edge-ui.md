@@ -38,8 +38,9 @@
 - `kiosk_edge/ui/src/components/MediaView.svelte` — URL uzantisina gore `<video>`/`<img>` render eden ortak bilesen; AdStrip + IdleScreen kullanir
 - `kiosk_edge/ui/src/components/AdPromo.svelte` — Reklam YOKKEN gosterilen donen "Bu Alana Reklam Verebilirsiniz" tasarimi (her yerde ortak); `large` prop tam-ekran (attractor) varyanti
 - `kiosk_edge/ui/src/components/IdleScreen.svelte` — Cekici (attractor) ekrani; acilista DOGRUDAN gosterilir (normal idle YOK). Reklam varsa MediaView ile doner, yoksa AdPromo
-- `kiosk_edge/ui/src/components/AdStrip.svelte` — Reklam oynatim:
-  - `logCurrentImpression()` — `asset_type` + `asset_id` ile impression payload olusturur
+- `kiosk_edge/ui/src/components/AdStrip.svelte` — Reklam oynatim *(2026-07-31 güncellendi)*:
+  - `active_media_url` varsa → `cover`; yoksa `media_url` + `object-fit: contain` (letterbox fallback)
+  - `logCurrentImpression()` — aynı `asset_type` + `asset_id` ile impression; iki URL'e iki impression YOK
   - Medya yoksa `<AdPromo />`, medya varsa `<MediaView />` gosterir
 - `kiosk_edge/ui/src/components/ResultScreen.svelte` — QR gösterimi
 - `kiosk_edge/ui/src/components/CategoryScreen.svelte` — Kategori seçimi

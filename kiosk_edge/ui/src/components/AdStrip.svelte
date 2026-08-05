@@ -36,6 +36,7 @@
   let hourTick     = null;
   let useSlots     = false;  // gerçek slot playlist mi, yoksa basit sıralı mı
   let currentIndex = 0;      // sıralı (fallback) modda indeks
+  let currentPlayEventId = null;  // Faz 3: mevcut slot için idempotency UUID
 
   // Güncel oynatma listesi (playlist varsa oradan, yoksa eski campaigns store)
   $: items = $playlistItems.length > 0 ? $playlistItems : $campaigns;
@@ -45,27 +46,43 @@
     it ? `${it.asset_type ?? it.type ?? 'creative'}:${it.asset_id ?? it.id}` : null;
 
   // O an gösterilen reklam slotunun gerçek izlenme süresini backend'e logla.
-  function logCurrentImpression() {
-    if (!asset || !shownKey) return;
+  // Faz 3: play_event_id ile idempotent; beklenen süre ile karşılaştırarak
+  // COMPLETED (tam oynatıldı) veya INTERRUPTED (erken kesildi) durumunu belirle.
+  function logCurrentImpression(statusOverride) {
+    if (!asset || !shownKey || !currentPlayEventId) return;
     const durationMs = Date.now() - new Date(shownAt).getTime();
+    const expectedDuration = asset.duration_seconds ?? null;
+    const durationSec = Math.round(durationMs / 1000);
+    let finalStatus = statusOverride || 'COMPLETED';
+    if (!statusOverride && expectedDuration && durationSec < expectedDuration * 0.5) {
+      finalStatus = 'INTERRUPTED';  // Beklenen sürenin yarısından az oynatıldı
+    }
     logAdImpression({
-      assetId:   asset.asset_id ?? asset.id,
-      assetType: asset.asset_type ?? asset.type ?? 'creative',
+      assetId:         asset.asset_id ?? asset.id,
+      assetType:       asset.asset_type ?? asset.type ?? 'creative',
       shownAt,
       durationMs,
+      playEventId:     currentPlayEventId,
+      status:          finalStatus,
+      expectedDuration,
     });
+    currentPlayEventId = null;  // Bir kez gönder
   }
 
   // Yeni öğeye geçir (öğe değiştiyse önceki slotu logla + yumuşak geçiş yap).
   function show(item, msUntilNext) {
     const newKey = keyOf(item);
     if (newKey !== shownKey) {
-      logCurrentImpression();
+      logCurrentImpression();   // önceki slot kaydı (COMPLETED/INTERRUPTED)
       visible = false;
       setTimeout(() => {
         asset = item;
         shownKey = newKey;
         shownAt = new Date().toISOString();
+        // Faz 3: her slot için benzersiz idempotency UUID üret
+        currentPlayEventId = typeof crypto !== 'undefined' && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
         visible = true;
       }, 400);
     }
@@ -152,16 +169,39 @@
   });
 
   onDestroy(() => {
-    logCurrentImpression(); // ekran kapanırken son slotu kaybetme
+    logCurrentImpression('INTERRUPTED'); // ekran kapanırken son slotu INTERRUPTED kaydet
     clearTimeout(cycleTick);
     clearInterval(hourTick);
   });
+
+  // Faz 3: medya yükleme hatası → FAILED kaydı
+  function handleMediaError() {
+    if (!asset || !currentPlayEventId) return;
+    const pid = currentPlayEventId;
+    currentPlayEventId = null; // INTERRUPTED'ın da tetiklenmesini önle
+    logAdImpression({
+      assetId:         asset.asset_id ?? asset.id,
+      assetType:       asset.asset_type ?? asset.type ?? 'creative',
+      shownAt,
+      durationMs:      Date.now() - new Date(shownAt).getTime(),
+      playEventId:     pid,
+      status:          'FAILED',
+      expectedDuration: asset.duration_seconds ?? null,
+      errorCode:       'MEDIA_LOAD_ERROR',
+    });
+  }
 </script>
 
 <div class="ad-strip">
-  {#if asset?.media_url}
+  {#if asset?.active_media_url}
+    <!-- İşlem ekranı için doğru oranda yüklü medya (yaklaşık 7:5) -->
     <div class="ad-strip-media" style="opacity:{visible ? 1 : 0}">
-      <MediaView src={asset.media_url} alt={asset.name ?? 'Reklam'} class="ad-strip-fill" />
+      <MediaView src={asset.active_media_url} alt={asset.name ?? 'İçerik'} class="ad-strip-fill" on:error={handleMediaError} />
+    </div>
+  {:else if asset?.media_url}
+    <!-- Fallback: bekleme ekranı görseli — object-fit:contain ile letterbox -->
+    <div class="ad-strip-media" style="opacity:{visible ? 1 : 0}">
+      <MediaView src={asset.media_url} alt={asset.name ?? 'İçerik'} class="ad-strip-fill ad-strip-fill--contain" on:error={handleMediaError} />
     </div>
   {:else}
     <AdPromo />

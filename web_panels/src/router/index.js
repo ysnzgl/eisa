@@ -17,9 +17,11 @@ const routes = [
       { path: '', component: () => import('../views/admin/Dashboard.vue') },
       { path: 'devices',        component: () => import('../views/admin/DeviceManagement.vue') },
       { path: 'devices/pending', component: () => import('../views/admin/PendingDevices.vue') },
+      { path: 'kiosk-activities', component: () => import('../views/admin/KioskActivities.vue') },
       { path: 'medical-logic',      component: () => import('../views/admin/MedicalLogic.vue') },
       { path: 'danisma',           component: () => import('../views/admin/DanismaYonetimi.vue') },
       { path: 'campaigns',     component: () => import('../views/admin/CampaignWizard.vue') },
+      { path: 'pharmacy-campaigns', component: () => import('../views/admin/PharmacyCampaigns.vue') },
       { path: 'dooh/control-center', component: () => import('../views/admin/DoohControlCenter.vue') },
       { path: 'playlists',     component: () => import('../views/admin/PlaylistEditor.vue') },
       { path: 'pricing',       component: () => import('../views/admin/PricingMatrixConfigurator.vue') },
@@ -32,7 +34,7 @@ const routes = [
     meta: { roles: ['pharmacist'] },
     children: [
       { path: '', component: () => import('../views/pharmacist/Dashboard.vue') },
-      { path: 'inbox', component: () => import('../views/pharmacist/Inbox.vue') },
+      { path: 'kiosk-activities', component: () => import('../views/pharmacist/KioskActivities.vue') },
       { path: 'qr', component: () => import('../views/pharmacist/QrScan.vue') }
     ]
   }

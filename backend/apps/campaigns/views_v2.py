@@ -35,7 +35,7 @@ from rest_framework.views import APIView
 
 from apps.core.uow import UnitOfWork
 from apps.pharmacies.models import Kiosk
-from apps.pharmacies.permissions import IsSuperAdmin
+from apps.pharmacies.permissions import IsSuperAdmin, IsEczaci
 from core_api.cookie_jwt import JWTCookieAuthentication as JWTAuthentication
 
 import threading
@@ -49,6 +49,7 @@ from .models import (
     GenerationJob,
     HouseAd,
     HourPlan,
+    PharmacyCampaign,
     PlayLog,
     Playlist,
     PlaylistTemplate,
@@ -67,6 +68,8 @@ from .serializers import (
     KioskCreativeSyncSerializer,
     KioskHouseAdSyncSerializer,
     KioskPlaylistSerializer,
+    PharmacyCampaignFeedSerializer,
+    PharmacyCampaignSerializer,
     PlaylistAdminSerializer,
     PlaylistTemplateSerializer,
     PricingMatrixSerializer,
@@ -1011,6 +1014,76 @@ class DayPlanViewSet(viewsets.ModelViewSet):
     permission_classes = [IsSuperAdmin]
     serializer_class = DayPlanSerializer
     queryset = DayPlan.objects.all().order_by("-olusturulma_tarihi")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PharmacyCampaign — Eczacı paneli kampanyaları
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class PharmacyCampaignViewSet(viewsets.ModelViewSet):
+    """``/api/campaigns/v2/pharmacy-campaigns/``
+
+    Admin CRUD + eczacı feed action.
+    """
+
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsSuperAdmin]
+    serializer_class = PharmacyCampaignSerializer
+    queryset = PharmacyCampaign.objects.prefetch_related("target_pharmacies").order_by("-olusturulma_tarihi")
+
+    @action(
+        detail=False,
+        methods=["get"],
+        permission_classes=[IsEczaci],
+        url_path="feed",
+    )
+    def feed(self, request):
+        """``GET /api/campaigns/v2/pharmacy-campaigns/feed/``
+
+        Giriş yapan eczacının eczanesine hedeflenmiş, tarih aralığı geçerli
+        ve aktif kampanyaları döndürür. Hedefleme OR mantığıyla çalışır:
+          - target_pharmacies'te doğrudan seçilmiş eczane
+          - target_iller'de eczanenin ili
+          - target_ilceler'de eczanenin ilçesi
+
+        Eczaneyi frontend'den ALMAZ; request.user.eczane_id kullanır.
+        Hiç hedefi olmayan kampanyalar feed'e girmez.
+        """
+        from apps.pharmacies.models import Eczane as EczaneModel
+        eczane_id = getattr(request.user, "eczane_id", None)
+        if not eczane_id:
+            return Response([], status=status.HTTP_200_OK)
+
+        # Eczanenin il_id ve ilce_id değerlerini al
+        try:
+            eczane = EczaneModel.objects.values("il_id", "ilce_id").get(pk=eczane_id)
+        except EczaneModel.DoesNotExist:
+            return Response([], status=status.HTTP_200_OK)
+
+        il_id = eczane["il_id"]
+        ilce_id = eczane["ilce_id"]
+
+        now = timezone.now()
+
+        # Temel filtreler
+        base_qs = PharmacyCampaign.objects.filter(
+            is_active=True,
+            start_at__lte=now,
+            end_at__gte=now,
+        )
+
+        # En az bir hedefi olan ve eczaneye uyan kampanyalar (OR)
+        from django.db.models import Q
+        match_q = (
+            Q(target_pharmacies__id=eczane_id) |
+            Q(target_iller__id=il_id) |
+            Q(target_ilceler__id=ilce_id)
+        )
+        qs = base_qs.filter(match_q).distinct()
+
+        serializer = PharmacyCampaignFeedSerializer(qs, many=True)
+        return Response(serializer.data)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

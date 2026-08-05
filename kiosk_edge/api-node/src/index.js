@@ -5,6 +5,7 @@ import { buildServer } from './server.js';
 import { startScheduler, stopScheduler, pullFromCentral, pingAndSyncPlaylist, pingAndSyncManifest } from './scheduler.js';
 import { resolveRuntimeSettings, hasAppKeyCredentials } from './provisioning.js';
 import { recordDiagnostic } from './diagnosticOutbox.js';
+import { recordKioskEvent } from './kioskEventOutbox.js';
 
 const db = openDb(settings.sqlitePath, {
   outboxMaxRows: settings.outboxMaxRows,
@@ -14,6 +15,13 @@ const runtimeSettings = await resolveRuntimeSettings(db, settings, console);
 
 const app = await buildServer({ db, settings: runtimeSettings });
 startScheduler(db, runtimeSettings, app.log);
+
+// Faz 4: uygulama başlangıcını panel-görünür olay olarak kaydet
+recordKioskEvent(db, {
+  event_type: 'APP_RESTART',
+  severity: 'INFO',
+  message: 'Kiosk uygulamasi basladi',
+});
 
 // Provision tamamlandiysa (app_key mevcut) her restart'ta hemen pull + ping yap.
 // Provision henuz yok/beklemede ise scheduler'daki provision retry tetikleyecek.

@@ -1,6 +1,6 @@
 # DOOH Advertising System
 
-**Amaç:** Digital Out-Of-Home reklam sistemi mimarisini, playlist üretimini, offline senkronizasyonu dokümante etmek.
+**Amaç:** Digital Out-Of-Home reklam sistemi mimarisini, playlist üretimini, offline senkronizasyonu dokümante etmek. Eczacı paneli kampanya sistemi de bu dokümana dahildir.
 
 ---
 
@@ -117,12 +117,21 @@ ECZANE: target_type=ECZANE, eczane=xyz → tek spesifik eczane
 ```python
 class Creative(BaseModel):
     campaign = FK(Campaign)
-    media_url = URLField(https only)   # kalici URL (Faz 0.5+)
+    media_url = URLField(https only)   # bekleme ekrani (IdleScreen) gorseli — kalici URL (Faz 0.5+)
+    active_media_url = URLField(blank=True, default='')  # islem ekrani alt alani gorseli (~1080x768, ~7:5)
     duration_seconds = PositiveSmallIntegerField(1-60)
     name = CharField
     checksum = CharField(max_length=128)  # 'sha256:<hex>' formati
     object_key = CharField(null=True)     # Faz 0.5: S3 object key
 ```
+
+### Dual-Media Kullanim
+
+- `media_url` → IdleScreen (bekleme): tam ekran portrait 9:16 (1080×1920)
+- `active_media_url` → AdStrip (islem sirasinda alt alan): yaklasik 7:5 (1080×768)
+- `active_media_url` bos ise AdStrip `media_url` fallback kullanir + `object-fit: contain` (letterbox)
+- Eski creative kayitlarinda `active_media_url = ''` → fallback devrede
+- Proof-of-play `asset_id` degismez; tek impression akisi korunur
 
 ### Media Upload Flow (Faz 0.5+)
 
@@ -339,7 +348,11 @@ class HouseAd(BaseModel):
 ---
 
 ## Ad Playback (kiosk_edge/ui)
+### IdleScreen vs AdStrip Medya Secimi
 
+- **IdleScreen**: `item.media_url` (portrait, tam ekran, cover)
+- **AdStrip** (islem sirasinda): `item.active_media_url` varsa cover; yoksa `item.media_url` + `object-fit: contain` (letterbox fallback)
+- Tek impression kaydedilir; iki ayri impression sistemi yoktur
 ### AdStrip Component
 
 Kiosk UI, merkezi backend'e DEGIL, yerel api-node'a (`http://127.0.0.1:8765`)
@@ -643,5 +656,51 @@ slotu oynatir ve proof-of-play hizalanir.
   sorguluyordu (db.js v9). Kullanılmadığı için tamamen kaldırıldı.
 
 ---
+
+## PharmacyCampaign — Eczacı Paneli Kampanyaları *(2026-07-31, 2026-08-01)*
+
+Kiosk playlist/scheduler/PlayLog sisteminden **tamamen bağımsız** sade kampanya sistemi.
+
+### Model
+
+```python
+class PharmacyCampaign(BaseModel):
+    id = UUIDField(pk)
+    name = CharField
+    media_url = URLField           # yatay görsel (eczacı paneli şerit + overlay)
+    object_key = CharField(null)   # S3 key (upload servisinden türetilir)
+    start_at = DateTimeField
+    end_at = DateTimeField
+    duration_seconds = PositiveSmallIntegerField(default=15)  # İzin verilenler: 15, 30, 60
+    is_active = BooleanField(default=True)
+    target_pharmacies = M2M(Eczane)   # tekil eczane hedefi
+    target_iller = M2M(Il)            # il hedefi (migration 0024)
+    target_ilceler = M2M(Ilce)        # ilçe hedefi (migration 0024)
+```
+
+### Feed Endpoint
+
+`GET /api/campaigns/v2/pharmacy-campaigns/feed/` (IsEczaci izni)
+
+- Eczaneyi frontend'den ALMAZ; `request.user.eczane_id` kullanır.
+- Eşleşme kuralı (OR): `target_pharmacies__id=eczane_id` VEYA `target_iller__id=il_id` VEYA `target_ilceler__id=ilce_id`
+- `.distinct()` — birden fazla koşula uyan kampanya bir kez döner.
+- Hiç hedefi olmayan kampanya (üç M2M de boş) feed'e girmez.
+- Aktif + tarih aralığı geçerli olması zorunlu.
+- Response: `[{id, name, media_url, duration_seconds}]`
+
+### Admin CRUD
+
+`/api/campaigns/v2/pharmacy-campaigns/` (IsSuperAdmin)
+
+- Upload: mevcut `POST /api/campaigns/upload-media/` (shared)
+- duration_seconds serializer validation: yalnız 15, 30, 60 kabul edilir. Eski kayıt aynı değerle güncelleniyorsa izin verilir.
+- Hedef zorunluluğu: en az bir `target_pharmacies`, `target_iller` veya `target_ilceler`.
+
+### Frontend Entegrasyon
+
+- `PharmacyCampaigns.vue` — admin CRUD; il/ilçe/eczane chip tabanlı çoklu seçim.
+- `EisaLookup` bileşeni `options: [{id, label, sub?}]` alır; eczaneler `/api/pharmacies/` (list aksiyon), iller `/api/lookups/iller/`, ilçeler `/api/lookups/ilceler/?il={id}` üzerinden yüklenir.
+- `PharmacistCampaignDisplay.vue` — AdminLayout'ta `v-if="isPharmacist"` ile mount edilir; alt şerit + 90s idle overlay; shuffle-bag rotasyon; visibility API ile sekme gizliyken ilerleme durur.
 
 **Satır sayısı: ~250**

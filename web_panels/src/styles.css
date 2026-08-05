@@ -969,6 +969,17 @@ body {
 }
 .admin-sidebar .logout:hover { background: #FEF2F2; color: #991B1B; border-color: #FECACA; }
 .admin-main { flex: 1; overflow: auto; min-width: 0; }
+/* Eczacı modunda RouterView + kampanya şeridini dikey flex ile düzenle */
+.admin-main--pharmacist {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.admin-main--pharmacist > :first-child {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+}
 
 /* ── Pharmacist role overrides (teal accent) ──────────────────── */
 [data-role="pharmacist"] .admin-sidebar .brand-accent { color: #B1121B; }

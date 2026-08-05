@@ -310,6 +310,7 @@ async function openEdit(c) {
       id: cr.id, name: cr.name || 'Mevcut creative',
       duration_seconds: cr.duration_seconds, uploaded_url: cr.media_url,
       media_url: cr.media_url,
+      active_media_url: cr.active_media_url || '',
     })),
   });
   simResult.value = null; simStale.value = false; simError.value = '';
@@ -383,6 +384,7 @@ async function saveDraft() {
       await createCreative({
         campaign: cId,
         media_url: cr.media_url || cr.uploaded_url || '',
+        active_media_url: cr.active_media_url || '',
         object_key: cr.object_key || undefined,
         checksum: cr.checksum || undefined,
         duration_seconds: Number(cr.duration_seconds),
@@ -424,6 +426,7 @@ async function onPickFile(ev) {
       media_url:   data.media_url  ?? data.url ?? '',   // canonical
       object_key:  data.object_key ?? '',
       checksum:    data.checksum   ?? '',
+      active_media_url: '',
       // Legacy alias korunur — yalnız backward compat kontrolü için
       uploaded_url: data.media_url ?? data.url ?? '',
     });
@@ -431,6 +434,24 @@ async function onPickFile(ev) {
     toast.error(e?.response?.data?.error || 'Medya yüklenemedi.');
   } finally { saving.value = false; ev.target.value = ''; }
 }
+
+async function onPickActiveFile(ev) {
+  const file = ev.target.files?.[0];
+  if (!file) return;
+  if (!form.creatives.length) { toast.warning('Önce bekleme ekranı görselini yükleyin.'); ev.target.value = ''; return; }
+  try {
+    saving.value = true;
+    const data = await uploadMedia(file);
+    form.creatives[0].active_media_url = data.media_url ?? data.url ?? '';
+  } catch (e) {
+    toast.error(e?.response?.data?.error || 'Medya yüklenemedi.');
+  } finally { saving.value = false; ev.target.value = ''; }
+}
+
+function removeActiveMedia() {
+  if (form.creatives.length) form.creatives[0].active_media_url = '';
+}
+
 function removeCreative(idx) { form.creatives.splice(idx, 1); }
 
 // ── Frequency helpers ─────────────────────────────────────────────────────────
@@ -852,25 +873,27 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
           <!-- Step 2: Medya -->
           <section v-if="step === 2" class="step-pane">
             <h3 class="step-title">Medya (Creative)</h3>
-            <p class="step-help">
-              Ekranda gösterilecek <strong>tek</strong> görsel veya video yükleyin.
-              Süre: 5 / 10 / 15 / 30 / 60 saniye seçeneklerinden birini belirleyin.
-            </p>
-            <label v-if="!form.creatives.length" class="upload">
-              <input type="file" accept="image/*,video/mp4,video/webm" @change="onPickFile" :disabled="saving" />
-              <span><i class="fa-solid fa-cloud-arrow-up"></i> Dosya seç (max 100 MB)</span>
-            </label>
-            <div v-if="form.creatives.length" class="creatives">
-              <div v-for="(c, idx) in form.creatives" :key="idx" class="creative">
+
+            <!-- Bekleme Ekranı İçeriği -->
+            <div class="media-slot">
+              <div class="media-slot-header">
+                <span class="media-slot-label">Bekleme Ekranı İçeriği</span>
+                <span class="media-slot-hint">Önerilen: 1080×1920 — 9:16 dikey</span>
+              </div>
+              <label v-if="!form.creatives.length" class="upload">
+                <input type="file" accept="image/*,video/mp4,video/webm" @change="onPickFile" :disabled="saving" />
+                <span><i class="fa-solid fa-cloud-arrow-up"></i> Dosya seç (max 100 MB)</span>
+              </label>
+              <div v-if="form.creatives.length" class="creative">
                 <div class="thumb">
-                  <video v-if="/\.(mp4|webm)$/i.test(c.uploaded_url)" :src="c.uploaded_url" muted />
-                  <img   v-else :src="c.uploaded_url" alt="" />
+                  <video v-if="/\.(mp4|webm)$/i.test(form.creatives[0].uploaded_url)" :src="form.creatives[0].uploaded_url" muted />
+                  <img   v-else :src="form.creatives[0].uploaded_url" alt="" />
                 </div>
                 <div class="cmeta">
-                  <strong>{{ c.name }}</strong>
+                  <strong>{{ form.creatives[0].name }}</strong>
                   <div class="eisa-form-row">
                     <label class="eisa-field-label">Ekran süresi</label>
-                    <select v-model.number="c.duration_seconds" class="eisa-field" :disabled="!!c.id">
+                    <select v-model.number="form.creatives[0].duration_seconds" class="eisa-field" :disabled="!!form.creatives[0].id">
                       <option :value="5">5 sn</option>
                       <option :value="10">10 sn</option>
                       <option :value="15">15 sn</option>
@@ -879,11 +902,42 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
                     </select>
                   </div>
                 </div>
-                <button v-if="!c.id" class="eisa-icon-btn danger" title="Kaldır" @click="removeCreative(idx)">
+                <button v-if="!form.creatives[0].id" class="eisa-icon-btn danger" title="Kaldır" @click="removeCreative(0)">
                   <i class="fa-solid fa-trash"></i>
                 </button>
               </div>
             </div>
+
+            <!-- İşlem Ekranı Alt Alan İçeriği -->
+            <div class="media-slot" style="margin-top:1.25rem">
+              <div class="media-slot-header">
+                <span class="media-slot-label">İşlem Ekranı Alt Alan İçeriği</span>
+                <span class="media-slot-hint">Önerilen: 1080×768 — yaklaşık 7:5 yatay</span>
+              </div>
+              <p class="muted small" style="margin-bottom:.5rem">
+                Kiosk kullanılırken alt şeritte gösterilecek içerik.
+                Yüklenmezse bekleme görseli letterbox ile kullanılır.
+              </p>
+              <div v-if="form.creatives[0]?.active_media_url" class="creative">
+                <div class="thumb">
+                  <img :src="form.creatives[0].active_media_url" alt="İşlem ekranı içeriği" />
+                </div>
+                <div class="cmeta"><strong>İşlem ekranı içeriği</strong></div>
+                <button class="eisa-icon-btn danger" title="Kaldır" @click="removeActiveMedia">
+                  <i class="fa-solid fa-trash"></i>
+                </button>
+              </div>
+              <label v-else class="upload" :class="{ 'upload--disabled': !form.creatives.length }">
+                <input
+                  type="file"
+                  accept="image/*"
+                  @change="onPickActiveFile"
+                  :disabled="saving || !form.creatives.length"
+                />
+                <span><i class="fa-solid fa-cloud-arrow-up"></i> Dosya seç (yatay görsel)</span>
+              </label>
+            </div>
+
             <p v-if="saving" class="muted small">Yükleniyor…</p>
           </section>
 
@@ -1381,5 +1435,36 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
   display:flex; align-items:center; gap:.5rem;
   padding:.6rem 1rem; background:#fef2f2; border-top:1px solid #fecaca;
   color:#dc2626; font-size:.875rem;
+}
+
+/* Media upload slots (Step 2 — iki alan) */
+.media-slot {
+  border: 1px solid var(--c-border, #e2e8f0);
+  border-radius: 10px;
+  padding: .85rem 1rem;
+  background: var(--c-bg-subtle, #f8fafc);
+}
+.media-slot-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: .35rem;
+  margin-bottom: .65rem;
+}
+.media-slot-label {
+  font-size: .875rem;
+  font-weight: 700;
+  color: var(--c-text, #0f172a);
+}
+.media-slot-hint {
+  font-size: .72rem;
+  color: var(--c-text-muted, #64748b);
+  font-family: 'DM Mono', monospace;
+}
+.upload--disabled {
+  opacity: .5;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 </style>

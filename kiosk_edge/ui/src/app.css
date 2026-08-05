@@ -14,24 +14,18 @@
 }
 
 body {
-  background: #E5E7EB;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 100vh;
   margin: 0;
-  padding: 24px;
+  padding: 0;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   user-select: none;
 }
 
 /* ─── Kiosk konteyner ─── */
+/* 1080×1920 ve 1440×2560 her ikisi de 9:16 dikey — viewport'u tam doldurur. */
 .kiosk {
-  width: 794px;
-  height: 1123px;
+  width: 100vw;
+  height: 100vh;
   background: #F9FAFB;
-  border-radius: 20px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
   overflow: hidden;
   position: relative;
   display: flex;
@@ -362,6 +356,10 @@ body {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+/* Fallback: active_media_url yoksa portrait görsel letterbox ile gösterilir */
+.ad-strip-fill--contain {
+  object-fit: contain;
 }
 
 .offline-badge {

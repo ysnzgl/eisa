@@ -373,28 +373,54 @@ class KioskSessionsView(KioskAPIView):
 
 
 class KioskProofOfPlayView(KioskAPIView):
-    """``POST /api/kiosk/v1/proof-of-play/`` â€” reklam gosterim (PlayLog) toplu-yazma."""
+    """POST /api/kiosk/v1/proof-of-play/ - reklam gosterim (PlayLog) toplu-yazma.
+
+    Faz 3: play_event_id ile idempotent ingest. Ayni olay tekrar gonderildiginde
+    mukerrer PlayLog olusturmaz. Eski kiosk surumleri (play_event_id=null) onceki
+    gibi her zaman insert edilir.
+    """
 
     def post(self, request):
         kiosk = self.kiosk
         serializer = ProofOfPlayBulkSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         logs_data = serializer.validated_data["logs"]
+        now = timezone.now()
 
-        bulk = [
-            PlayLog(
+        new_event_ids = [
+            e["play_event_id"] for e in logs_data if e.get("play_event_id")
+        ]
+        existing_event_ids = set(
+            PlayLog.objects.filter(play_event_id__in=new_event_ids)
+            .values_list("play_event_id", flat=True)
+        ) if new_event_ids else set()
+
+        bulk = []
+        for entry in logs_data:
+            event_id = entry.get("play_event_id")
+            if event_id and event_id in existing_event_ids:
+                continue
+            bulk.append(PlayLog(
                 kiosk=kiosk,
                 creative_id=entry.get("creative_id"),
                 house_ad_id=entry.get("house_ad_id"),
                 played_at=entry["played_at"],
                 duration_played=entry["duration_played"],
-            )
-            for entry in logs_data
-        ]
+                play_event_id=event_id,
+                status=entry.get("status", PlayLog.PlayStatus.COMPLETED),
+                expected_duration=entry.get("expected_duration"),
+                error_code=entry.get("error_code", ""),
+                error_summary=entry.get("error_summary", ""),
+                occurred_at=entry.get("occurred_at"),
+                received_at=now,
+            ))
         if bulk:
-            PlayLog.objects.bulk_create(bulk, batch_size=500)
-        Kiosk.objects.filter(pk=kiosk.pk).update(son_goruldu=timezone.now())
-        return Response({"ingested": len(bulk)}, status=status.HTTP_201_CREATED)
+            PlayLog.objects.bulk_create(bulk, batch_size=500, ignore_conflicts=True)
+        Kiosk.objects.filter(pk=kiosk.pk).update(son_goruldu=now)
+        return Response(
+            {"ingested": len(bulk), "skipped": len(existing_event_ids)},
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class KioskDiagnosticsView(KioskAPIView):
@@ -643,3 +669,95 @@ class KioskAckView(KioskAPIView):
             "applied_version": playlist_version,
             "desired_version": desired,
         })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Faz 4 — KioskEvent ingest (teknik olaylar: hata, restart, bağlantı vb.)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class KioskEventIngestView(KioskAPIView):
+    """``POST /api/kiosk/v1/kiosk-events/`` - kiosk teknik olay ingesti.
+
+    Idempotent: event_id UUID ile; ayni event tekrar gonderilse mukerrer kayit olmaz.
+    Eski kiosk surumleri bu endpoint'i kullanmaz — backward compat sorunu yok.
+    """
+
+    def post(self, request):
+        import uuid as _uuid
+        from apps.analytics.models import KioskEvent
+
+        payload = request.data if isinstance(request.data, dict) else {}
+        items = payload.get("items")
+        if not isinstance(items, list) or not items:
+            return Response(
+                {"detail": "`items` bos olmayan bir liste olmalidir."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if len(items) > 200:
+            return Response(
+                {"detail": "Batch en fazla 200 kayit icerebilir."},
+                status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            )
+
+        kiosk = self.kiosk
+        now = timezone.now()
+        valid_event_types = set(dict(KioskEvent.EventType.choices))
+        valid_severities = set(dict(KioskEvent.Severity.choices))
+
+        # Idempotency: mevcut event_id'leri bul
+        candidate_ids = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            raw_id = item.get("event_id")
+            if raw_id:
+                try:
+                    candidate_ids.append(_uuid.UUID(str(raw_id)))
+                except (ValueError, AttributeError):
+                    pass
+
+        existing_ids = set(
+            KioskEvent.objects.filter(event_id__in=candidate_ids)
+            .values_list("event_id", flat=True)
+        ) if candidate_ids else set()
+
+        new_events = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            raw_id = item.get("event_id")
+            if not raw_id:
+                continue
+            try:
+                event_id = _uuid.UUID(str(raw_id))
+            except (ValueError, AttributeError):
+                continue
+            if event_id in existing_ids:
+                continue
+
+            event_type = str(item.get("event_type", "GENERAL_ERROR")).upper()
+            if event_type not in valid_event_types:
+                event_type = "GENERAL_ERROR"
+
+            severity = str(item.get("severity", "WARNING")).upper()
+            if severity not in valid_severities:
+                severity = "WARNING"
+
+            new_events.append(KioskEvent(
+                kiosk=kiosk,
+                event_id=event_id,
+                event_type=event_type,
+                severity=severity,
+                message=str(item.get("message", ""))[:512],
+                occurred_at=item.get("occurred_at"),
+                received_at=now,
+            ))
+
+        if new_events:
+            KioskEvent.objects.bulk_create(new_events, ignore_conflicts=True)
+
+        return Response(
+            {"accepted": len(new_events), "skipped": len(existing_ids)},
+            status=status.HTTP_201_CREATED,
+        )
+

@@ -75,16 +75,20 @@
 - `/admin/devices/pending` â†’ `PendingDevices.vue` (Onay Bekleyen Cihazlar â€” 2026-07-14)
 - `/admin/medical-logic` â†’ `MedicalLogic.vue` (Kategori/Soru/EtkenMadde CRUD)
 - `/admin/danisma` â†’ `DanismaYonetimi.vue` (DanÄ±ÅŸma kategorileri CRUD)
-- `/admin/campaigns` â†’ `CampaignWizard.vue` (DOOH v2 Kampanya â€” 6 adÄ±mlÄ± wizard)
-- `/admin/dooh/control-center` â†’ `DoohControlCenter.vue` (DOOH izleme â€” kampanya/job/kiosk) â€” **Faz 6**
+- `/admin/campaigns` → `CampaignWizard.vue` (Kiosk Kampanyaları — 6 adımlı wizard; Step 2: iki medya alanı: Bekleme/İşlem ekranı)
+- `/admin/pharmacy-campaigns` → `PharmacyCampaigns.vue` *(2026-07-31)* (Eczacı Paneli Kampanyaları — bağımsız CRUD)
+- `/admin/dooh/control-center` → `DoohControlCenter.vue` (DOOH izleme — kampanya/job/kiosk) — **Faz 6**
 - `/admin/playlists` â†’ `PlaylistEditor.vue` (Playlist ÅŸablon/manuel dÃ¼zenleme)
 - `/admin/pricing` â†’ `PricingMatrixConfigurator.vue` (FiyatlandÄ±rma matrisi)
 - `/admin/users` â†’ `UserManagement.vue` (KullanÄ±cÄ± CRUD)
 
 **Pharmacist routes (`/pharmacist/*`):**
-- `/pharmacist` â†’ `Dashboard.vue`
-- `/pharmacist/inbox` â†’ `Inbox.vue` (Eczane session'larÄ± listesi)
-- `/pharmacist/qr` â†’ `QrScan.vue` (QR tarama)
+- `/pharmacist` → `Dashboard.vue`
+- `/pharmacist/inbox` → `Inbox.vue` (Eczane session'ları listesi)
+- `/pharmacist/qr` → `QrScan.vue` (QR tarama)
+- *(Layout seviyesinde)* `PharmacistCampaignDisplay.vue` *(2026-07-31, 2026-08-01 doğrulandı)* — alt şerit + 90s idle overlay; AdminLayout'ta `v-if="isPharmacist"` ile mount edilir; route geçişinde yeniden başlamaz. Eczane eczacı kullanıcının `request.user.eczane_id`'si üzerinden il/ilçe/eczane OR eşleşmesiyle belirlenir.
+
+**EisaLookup Entegrasyon Notu:** `EisaLookup.vue` `options: [{id, label, sub?}]` ve `v-model` ile çalışır; `endpoint` veya `@select` prop'ları YOKTUR. Eczaneler `GET /api/pharmacies/` (list), iller `GET /api/lookups/iller/`, ilçeler `GET /api/lookups/ilceler/?il={id}` ile yüklenir ve `options` formatına dönüştürülür.
 
 **RBAC guard:** `router.beforeEach` â€” `useAuthStore().role` kontrolÃ¼
 

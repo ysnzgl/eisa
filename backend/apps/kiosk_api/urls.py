@@ -10,6 +10,7 @@ from .views import (
     KioskBootstrapView,
     KioskCatalogView,
     KioskDiagnosticsView,
+    KioskEventIngestView,
     KioskIdentityEnrollView,
     KioskManifestView,
     KioskPingView,
@@ -34,7 +35,9 @@ urlpatterns = [
     path("sessions/", KioskSessionsView.as_view(), name="kiosk-sessions"),
     path("proof-of-play/", KioskProofOfPlayView.as_view(), name="kiosk-proof-of-play"),
     path("diagnostics/", KioskDiagnosticsView.as_view(), name="kiosk-diagnostics"),
-    # Faz 5: Manifest + ACK (DOOH_KIOSK_ACK=True ile aktif)
+    # Faz 4: kiosk teknik olay ingesti (hata, restart, baglanti)
+    path("kiosk-events/", KioskEventIngestView.as_view(), name="kiosk-events"),
+    # Faz 5: Manifest + ACK
     path("manifest/", KioskManifestView.as_view(), name="kiosk-manifest"),
     path("ack/", KioskAckView.as_view(), name="kiosk-ack"),
 ]

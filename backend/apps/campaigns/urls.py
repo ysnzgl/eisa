@@ -12,6 +12,7 @@ from .views_v2 import (
     HouseAdViewSet,
     HourPlanViewSet,
     InventoryAvailabilityView,
+    PharmacyCampaignViewSet,
     PlaylistGenerateView,
     PlaylistTemplateViewSet,
     PricingMatrixView,
@@ -27,6 +28,7 @@ v2_router.register(r"house-ads", HouseAdViewSet, basename="dooh-house-ad")
 v2_router.register(r"playlist-templates", PlaylistTemplateViewSet, basename="dooh-playlist-template")
 v2_router.register(r"hour-plans", HourPlanViewSet, basename="dooh-hour-plan")
 v2_router.register(r"day-plans", DayPlanViewSet, basename="dooh-day-plan")
+v2_router.register(r"pharmacy-campaigns", PharmacyCampaignViewSet, basename="pharmacy-campaign")
 
 urlpatterns = [
     # Medya upload (creative + house ad icin ortak)

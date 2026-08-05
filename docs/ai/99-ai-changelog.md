@@ -5,6 +5,60 @@
 
 ---
 
+## 2026-08-01
+
+### [Backend+Frontend] Eczacı kampanyası: il/ilçe hedefleme + duration validation + UI düzeltmeleri
+
+**Değişiklik:**
+- `PharmacyCampaign.target_iller` + `target_ilceler` M2M eklendi (migration 0024).
+- `duration_seconds` default 15; serializer'da yalnız 15/30/60 kabul edilir (eski kayıt aynı değerle güncellenebilir).
+- Feed OR mantığı: eczane, il veya ilçe eşleşmesi; hiç hedefi olmayan kampanya feed'e girmez.
+- EisaLookup entegrasyonu düzeltildi: eczaneler `/api/pharmacies/` endpoint'inden yüklenir; il/ilçe/eczane seçimi v-model + watch ile çalışır.
+- Grid thumbnail: 120×68px, `object-fit: contain`, sabit yükseklik.
+- Duration: serbest input → 15/30/60 seçenekli select.
+- Backend test sayısı: 19 geçti.
+
+**Dosyalar:** backend/apps/campaigns/{models,serializers,views_v2}.py; migrations/0024; tests/test_pharmacy_campaign.py; web_panels/src/views/admin/PharmacyCampaigns.vue
+**Build:** web_panels ✅ (2.45s)
+
+---
+
+## 2026-07-31
+
+### [Backend+Kiosk+Frontend] Kiosk çift medya varyantı + Eczacı paneli kampanyaları
+
+**Değişiklik:**
+- `Creative.active_media_url` nullable alan eklendi (migration 0021); bekleme (portrait) ve alt alan (~7:5) ayrı görseller.
+- `PharmacyCampaign` modeli eklendi (migration 0022); kiosk sisteminden bağımsız eczacı paneli kampanyaları.
+- `KioskCreativeSyncSerializer`, `KioskPlaylistItemSerializer` — `active_media_url` additive eklendi.
+- api-node: `db.js` SCHEMA_VERSION 12; creatives kolonu; `scheduler.js` upsert; `mediaCache.js` `_active` suffix cache; `server.js` playlist/current LEFT JOIN ile `active_media_url`.
+- `AdStrip.svelte`: `active_media_url` varsa cover, yoksa `media_url` + `object-fit: contain` (letterbox).
+- Admin: CampaignWizard step 2 → iki upload alanı (Bekleme/İşlem ekranı); AdminLayout yeni menü.
+- Yeni: `PharmacyCampaigns.vue` (admin), `PharmacistCampaignDisplay.vue` (eczacı şerit + 90s idle overlay).
+- Feed endpoint: `GET /api/campaigns/v2/pharmacy-campaigns/feed/` — `request.user.eczane_id` ile güvenli filtreleme.
+
+**Dosyalar:** backend/apps/campaigns/{models,serializers,views_v2,urls,migrations/0021-0022}.py; kiosk_edge/api-node/src/{db,scheduler,mediaCache,server}.js; kiosk_edge/ui/src/{components/AdStrip.svelte,app.css}; web_panels/src/{views/admin/{CampaignWizard,PharmacyCampaigns}.vue,components/pharmacist/PharmacistCampaignDisplay.vue,views/admin/AdminLayout.vue,router/index.js,styles.css}
+**Testler:** 246 passed, 7 skipped (5 yeni PC-01..05 testi dahil)
+
+---
+
+## 2026-07-24
+
+### [kiosk_edge] Tam ekran portré CSS — 100vw × 100vh
+
+**Değişiklik:** `app.css` — `body` padding/centering kaldırıldı; `.kiosk` `width: 100vw; height: 100vh` yapıldı (`border-radius`, `box-shadow`, sabit 794×1123 px kaldırıldı). 1080×1920 ve 1440×2560 her ikisi de 9:16 oran olduğundan aynı kural ikisini de tam doldurur. Önceki media query (min-width: 1100px) supersede edildiği için kaldırıldı.
+**Dosyalar:** `kiosk_edge/ui/src/app.css`
+**Etki:** UI build ✅ (765ms). Scrollbar yok, taşma yok.
+
+**Değişiklik:**
+- `printer.js`: Fiş içeriği yenilendi — "e-ISA" (bold) + "Saglikli gunler diler." + QR + QR metin değeri. Kategori/kod/açıklama satırları kaldırıldı. ESC/POS QR modül boyutu 6 → 16 (~42 mm @ 203 DPI, ESC/POS maks.).
+- `app.css`: `@media (min-width: 1100px) and (orientation: portrait)` kuralı eklendi. 1440 × 2560 ekranda `.kiosk` viewport genişliğini doldurur (794/1123 en-boy oranını koruyarak); 1080 × 1920 görünümü değişmez.
+
+**Dosyalar:** `kiosk_edge/api-node/src/printer.js`, `kiosk_edge/ui/src/app.css`
+**Etki:** Kiosk UI build ✅ (1.25s), printer.js syntax ✅. QR formatı/session akışı dokunulmadı.
+
+---
+
 ## 2026-07-23
 
 ### [Frontend+Backend] Faz 6+7 Nihai Kapanış Denetimi (Tamamlandı)

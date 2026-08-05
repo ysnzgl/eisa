@@ -172,15 +172,21 @@ export async function fetchCurrentPlaylist(hour) {
   };
 }
 
-export async function logAdImpression({ assetId, assetType, shownAt, durationMs }) {
+export async function logAdImpression({ assetId, assetType, shownAt, durationMs, playEventId, status, expectedDuration, errorCode }) {
   try {
     await _request(`${API_BASE}/api/reklam-gosterim`, {
       method: 'POST',
       body: {
-        asset_id:       assetId,
-        asset_type:     assetType,
-        played_at:      shownAt,
-        duration_played: Math.round((durationMs || 0) / 1000),
+        asset_id:         assetId,
+        asset_type:       assetType,
+        played_at:        shownAt,
+        duration_played:  Math.round((durationMs || 0) / 1000),
+        // Faz 3: yeni alanlar (opsiyonel — backend geriye uyumlu)
+        ...(playEventId   ? { play_event_id: playEventId }         : {}),
+        status:           status || 'COMPLETED',
+        ...(expectedDuration != null ? { expected_duration: expectedDuration } : {}),
+        ...(errorCode     ? { error_code: errorCode }              : {}),
+        occurred_at:      shownAt,
       },
       timeoutMs: 3000,
     });

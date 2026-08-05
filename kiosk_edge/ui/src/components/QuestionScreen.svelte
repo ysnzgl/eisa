@@ -12,7 +12,7 @@
 
 <div class="screen">
   <ScreenHeader />
-  <span class="screen-badge">Adım 3 / 3 — Anket</span>
+  <span class="screen-badge">Adım 3 / 3</span>
 
   <div class="q-cat-name">{$currentCategory?.ad ?? ''}</div>
 

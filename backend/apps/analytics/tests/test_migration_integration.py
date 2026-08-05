@@ -167,11 +167,11 @@ class QrDataMigrationIntegrationTest(TransactionTestCase):
             )
 
         # ─── 3. İLERİ MİGRASYON ─────────────────────────────────────────────────
+        # Tüm leaf node'lara geç: karma (forwards+backwards) plan hatasından kaçınmak
+        # için kısmi hedef yerine bütün güncel geçişleri uygula. QR veri geçişleri
+        # (0008) bu aşamada çalışır; yeni alanlar (0009-0010) da dahil edilir.
         executor2 = self._executor()
-        executor2.migrate([
-            ("analytics", "0008_qr_unique_constraint"),
-            ("pharmacies", "0007_kiosk_device_id"),
-        ])
+        executor2.migrate(executor2.loader.graph.leaf_nodes())
 
         # ─── 4. QR BÜTÜNLÜĞÜ ────────────────────────────────────────────────────
         with connection.cursor() as cur:

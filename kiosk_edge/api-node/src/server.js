@@ -637,7 +637,7 @@ export async function buildServer({ db, settings, logger }) {
     if (!playlist) {
       // Fallback: yapÄ±landÄ±rÄ±lmamÄ±ÅŸ tÃ¼m asset'ler
       const creatives = db
-        .prepare('SELECT id, media_url, duration_seconds, type FROM creatives WHERE aktif = 1')
+        .prepare('SELECT id, media_url, active_media_url, duration_seconds, type FROM creatives WHERE aktif = 1')
         .all();
       const houseAds  = db
         .prepare('SELECT id, name, media_url, duration_seconds, type FROM house_ads WHERE aktif = 1')
@@ -650,6 +650,9 @@ export async function buildServer({ db, settings, logger }) {
           asset_type: 'creative',
           media_url: buildMediaUrl(db, 'creative', c.id, c.media_url),
           remote_media_url: c.media_url,
+          active_media_url: c.active_media_url
+            ? buildMediaUrl(db, 'creative', c.id + '_active', c.active_media_url)
+            : '',
           duration_seconds: c.duration_seconds,
           estimated_start_offset_seconds: 0,
         })),
@@ -660,6 +663,7 @@ export async function buildServer({ db, settings, logger }) {
           asset_type: 'house_ad',
           media_url: buildMediaUrl(db, 'house_ad', h.id, h.media_url),
           remote_media_url: h.media_url,
+          active_media_url: '',
           duration_seconds: h.duration_seconds,
           estimated_start_offset_seconds: 0,
         })),
@@ -676,17 +680,22 @@ export async function buildServer({ db, settings, logger }) {
 
     const items = db
       .prepare(
-        `SELECT id, playback_order, asset_id, asset_type,
-                media_url, duration_seconds, estimated_start_offset_seconds
-           FROM playlist_items
-          WHERE playlist_id = ?
-          ORDER BY playback_order`,
+        `SELECT pi.id, pi.playback_order, pi.asset_id, pi.asset_type,
+                pi.media_url, pi.duration_seconds, pi.estimated_start_offset_seconds,
+                CASE WHEN pi.asset_type = 'creative' THEN COALESCE(c.active_media_url, '') ELSE '' END AS active_media_url
+           FROM playlist_items pi
+           LEFT JOIN creatives c ON pi.asset_type = 'creative' AND c.id = pi.asset_id
+          WHERE pi.playlist_id = ?
+          ORDER BY pi.playback_order`,
       )
       .all(playlist.id)
       .map((item) => ({
         ...item,
         media_url: buildMediaUrl(db, item.asset_type, item.asset_id, item.media_url),
         remote_media_url: item.media_url,
+        active_media_url: item.active_media_url
+          ? buildMediaUrl(db, 'creative', item.asset_id + '_active', item.active_media_url)
+          : '',
       }));
 
     return {
@@ -702,18 +711,69 @@ export async function buildServer({ db, settings, logger }) {
   app.post('/api/reklam-gosterim', async (req, reply) => {
     const body = parseBody(reklamGosterimSchema, req.body, reply);
     if (!body) return;
+
+    // play_event_id idempotency: aynı olay iki kez kaydedilmesin
+    const playEventId = body.play_event_id || null;
+    if (playEventId) {
+      const exists = db.prepare(
+        'SELECT 1 FROM reklam_gosterim_outbox WHERE play_event_id = ? LIMIT 1',
+      ).get(playEventId);
+      if (exists) {
+        reply.code(200);
+        return { durum: 'zaten_kayitli' };
+      }
+    }
+
+    // idempotency_anahtari = play_event_id (varsa) yoksa NULL (INSERT OR IGNORE çalışır)
     db.prepare(
-      'INSERT INTO reklam_gosterim_outbox (payload) VALUES (?)',
+      `INSERT OR IGNORE INTO reklam_gosterim_outbox
+         (idempotency_anahtari, payload, play_event_id, status, error_code, occurred_at, expected_duration)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
     ).run(
+      playEventId,
       JSON.stringify({
         asset_id: body.asset_id,
         asset_type: body.asset_type,
         played_at: body.played_at,
         duration_played: body.duration_played,
+        play_event_id: playEventId,
+        status: body.status || 'COMPLETED',
+        error_code: body.error_code || '',
+        occurred_at: body.occurred_at || null,
+        expected_duration: body.expected_duration ?? null,
       }),
+      playEventId,
+      body.status || 'COMPLETED',
+      body.error_code || '',
+      body.occurred_at || null,
+      body.expected_duration ?? null,
     );
     reply.code(201);
     return { durum: 'kaydedildi' };
+  });
+
+  // Faz 4: kiosk teknik olayları (hata, restart, bağlantı vb.)
+  app.post('/api/kiosk-event', async (req, reply) => {
+    const { kioskEventBatchSchema } = await import('./validators.js');
+    const parsed = kioskEventBatchSchema.safeParse(req.body);
+    if (!parsed.success) {
+      reply.code(400);
+      return { error: 'Gecersiz payload', details: parsed.error.issues.slice(0, 5) };
+    }
+    const { items } = parsed.data;
+    const insertStmt = db.prepare(
+      `INSERT OR IGNORE INTO kiosk_event_outbox
+         (event_id, event_type, severity, message, occurred_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    );
+    const tx = db.transaction((evts) => {
+      for (const evt of evts) {
+        insertStmt.run(evt.event_id, evt.event_type, evt.severity, evt.message, evt.occurred_at || null);
+      }
+    });
+    tx(items);
+    reply.code(201);
+    return { queued: items.length };
   });
 
 const wifiMockEnabled =

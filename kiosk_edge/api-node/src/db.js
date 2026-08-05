@@ -9,8 +9,8 @@ let _db = null;
 const DEFAULT_OUTBOX_MAX_ROWS = 10000;
 const DEFAULT_DIAGNOSTIC_MAX_ROWS = 5000;
 
-// Sema versiyonu — v11: pending_ack + applied_version kiosk_meta alanları (Faz 5).
-const SCHEMA_VERSION = 11;
+// Sema versiyonu — v13: kiosk_event_outbox + reklam_gosterim_outbox Faz 3 alanları.
+const SCHEMA_VERSION = 13;
 
 export function openDb(sqlitePath, options = {}) {
   if (_db) return _db;
@@ -202,6 +202,7 @@ function initSchema(db, options = {}) {
     CREATE TABLE IF NOT EXISTS creatives (
       id               TEXT    PRIMARY KEY,
       media_url        TEXT    NOT NULL DEFAULT '',
+      active_media_url TEXT    NOT NULL DEFAULT '',
       duration_seconds INTEGER NOT NULL DEFAULT 15,
       checksum         TEXT    NOT NULL DEFAULT '',
       type             TEXT    NOT NULL DEFAULT 'creative',
@@ -246,6 +247,20 @@ function initSchema(db, options = {}) {
     CREATE INDEX IF NOT EXISTS soru_etken_madde_idx           ON soru_etken_maddeler(etken_madde_id);
     CREATE INDEX IF NOT EXISTS oturum_outbox_pending ON oturum_outbox(gonderilme_tarihi);
     CREATE INDEX IF NOT EXISTS reklam_outbox_pending ON reklam_gosterim_outbox(gonderilme_tarihi);
+
+    -- FAZ 4: Kiosk teknik olayları outbox
+    CREATE TABLE IF NOT EXISTS kiosk_event_outbox (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_id     TEXT    NOT NULL UNIQUE,
+      event_type   TEXT    NOT NULL DEFAULT 'GENERAL_ERROR',
+      severity     TEXT    NOT NULL DEFAULT 'WARNING',
+      message      TEXT    NOT NULL DEFAULT '',
+      occurred_at  TEXT,
+      created_at   TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      sent_at      TEXT,
+      retry_count  INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS kiosk_event_outbox_pending ON kiosk_event_outbox(sent_at);
 
     -- LOCAL MEDIA CACHE (offline reklam oynatimi)
     CREATE TABLE IF NOT EXISTS media_cache (
@@ -344,6 +359,30 @@ function initSchema(db, options = {}) {
   const ackCols = db.prepare("PRAGMA table_info(pending_ack)").all().map((c) => c.name);
   if (!ackCols.includes('next_retry_at')) {
     db.exec('ALTER TABLE pending_ack ADD COLUMN next_retry_at TEXT');
+  }
+
+  // v12: creatives.active_media_url (idempotent)
+  const creativeCols = db.prepare("PRAGMA table_info(creatives)").all().map((c) => c.name);
+  if (!creativeCols.includes('active_media_url')) {
+    db.exec("ALTER TABLE creatives ADD COLUMN active_media_url TEXT NOT NULL DEFAULT ''");
+  }
+
+  // v13: reklam_gosterim_outbox Faz 3 alanları (idempotent)
+  const reklamCols = db.prepare("PRAGMA table_info(reklam_gosterim_outbox)").all().map((c) => c.name);
+  if (!reklamCols.includes('play_event_id')) {
+    db.exec("ALTER TABLE reklam_gosterim_outbox ADD COLUMN play_event_id TEXT");
+  }
+  if (!reklamCols.includes('status')) {
+    db.exec("ALTER TABLE reklam_gosterim_outbox ADD COLUMN status TEXT NOT NULL DEFAULT 'COMPLETED'");
+  }
+  if (!reklamCols.includes('error_code')) {
+    db.exec("ALTER TABLE reklam_gosterim_outbox ADD COLUMN error_code TEXT NOT NULL DEFAULT ''");
+  }
+  if (!reklamCols.includes('occurred_at')) {
+    db.exec("ALTER TABLE reklam_gosterim_outbox ADD COLUMN occurred_at TEXT");
+  }
+  if (!reklamCols.includes('expected_duration')) {
+    db.exec("ALTER TABLE reklam_gosterim_outbox ADD COLUMN expected_duration INTEGER");
   }
 
   installOutboxFifoTriggers(db, outboxMaxRows);

@@ -6,11 +6,13 @@
  * Endpoint: GET /api/pharmacies/me/dashboard/
  */
 import { ref, onMounted, onUnmounted, computed } from 'vue';
+import { useRouter } from 'vue-router';
 import { http } from '../../services/api';
 
 const data    = ref(null);
 const loading = ref(true);
 const error   = ref('');
+const router  = useRouter();
 let refreshTimer = null;
 
 // KPI count-up animated values
@@ -64,6 +66,7 @@ const kpiCards = computed(() => [
     icon: 'fa-display',
     sub: () => data.value ? `${onlineCount.value} Çevrimiçi — ${offlineCount.value} Çevrimdışı` : '',
     subClass: offlineCount.value > 0 ? 'dash-kpi-sub--danger' : '',
+    drillTo: '/pharmacist/kiosk-activities',
   },
   {
     id: 'categories',
@@ -79,6 +82,7 @@ const kpiCards = computed(() => [
     color: '#2563EB',
     icon: 'fa-arrow-right-arrow-left',
     sub: () => data.value ? `Bugün: ${data.value.oturum_sayisi_bugun}` : '',
+    drillTo: '/pharmacist/kiosk-activities',
   },
   {
     id: 'todaySessions',
@@ -158,7 +162,9 @@ const HEALTH_LABEL = {
           v-for="(kpi, i) in kpiCards"
           :key="kpi.id"
           class="dash-kpi-card"
-          :style="{ '--kpi-c': kpi.color, animationDelay: (i * 90) + 'ms' }"
+          :class="{ 'dash-kpi-card--clickable': !!kpi.drillTo }"
+          :style="{ '--kpi-c': kpi.color, animationDelay: (i * 90) + 'ms', cursor: kpi.drillTo ? 'pointer' : 'default' }"
+          @click="kpi.drillTo && router.push({ path: kpi.drillTo, query: kpi.drillQuery })"
         >
           <div class="dash-kpi-accent"></div>
           <div class="dash-kpi-body">

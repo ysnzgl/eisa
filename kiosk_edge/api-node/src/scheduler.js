@@ -18,6 +18,7 @@ import {
   recordDiagnostic,
   reschedulePendingDiagnostics,
 } from './diagnosticOutbox.js';
+import { recordKioskEvent } from './kioskEventOutbox.js';
 
 // Outbox'taki bir kaydın en fazla kaç kez scheduler tarafından deneneceği.
 // Bu sayıya ulaşan kayıtlar kalıcı hata olarak kabul edilir ve atlanır.
@@ -291,16 +292,18 @@ function replaceSoruEtkenMaddeler(db, soruId, hedefEtkenMaddeler) {
 
 function upsertCreative(db, c) {
   db.prepare(
-    `INSERT INTO creatives (id, media_url, duration_seconds, checksum, type, aktif)
-     VALUES (@id, @media_url, @duration_seconds, @checksum, 'creative', 1)
+    `INSERT INTO creatives (id, media_url, active_media_url, duration_seconds, checksum, type, aktif)
+     VALUES (@id, @media_url, @active_media_url, @duration_seconds, @checksum, 'creative', 1)
      ON CONFLICT(id) DO UPDATE SET
        media_url=excluded.media_url,
+       active_media_url=excluded.active_media_url,
        duration_seconds=excluded.duration_seconds,
        checksum=excluded.checksum,
        guncellenme_tarihi=strftime('%Y-%m-%dT%H:%M:%fZ','now')`,
   ).run({
     id: String(c.id),
     media_url: c.media_url || '',
+    active_media_url: c.active_media_url || '',
     duration_seconds: c.duration_seconds ?? 15,
     checksum: c.checksum || '',
   });
@@ -425,6 +428,12 @@ export async function pullFromCentral(db, settings, log = console) {
       level: 'ERROR',
       event: 'pull_scheduler_error',
       message: err?.message || 'pull scheduler error',
+    });
+    // Faz 4: panel-görünür sync hatası (throttle: 2dk)
+    recordKioskEvent(db, {
+      event_type: 'SYNC_FAILED',
+      severity: 'ERROR',
+      message: (err?.message || 'pull sync failed').slice(0, 512),
     });
   }
 }
@@ -880,7 +889,16 @@ export async function pushToCentral(db, settings, log = console) {
       try {
         const logs = gosterimler.map((i) => {
           const p = JSON.parse(i.payload);
-          const entry = { played_at: p.played_at, duration_played: p.duration_played ?? 0 };
+          const entry = {
+            played_at: p.played_at,
+            duration_played: p.duration_played ?? 0,
+            // Faz 3: yeni alanlar (eski kiosk sürümleri göndermemiş olabilir — undefined güvenli)
+            ...(p.play_event_id ? { play_event_id: p.play_event_id } : {}),
+            status: p.status || 'COMPLETED',
+            ...(p.expected_duration != null ? { expected_duration: p.expected_duration } : {}),
+            ...(p.error_code ? { error_code: p.error_code } : {}),
+            ...(p.occurred_at ? { occurred_at: p.occurred_at } : {}),
+          };
           if (p.asset_type === 'house_ad') entry.house_ad_id = p.asset_id;
           else entry.creative_id = p.asset_id;
           return entry;
@@ -919,6 +937,46 @@ export async function pushToCentral(db, settings, log = console) {
         });
       }
     }
+
+    // 3) kiosk_event_outbox → /api/kiosk/v1/kiosk-events/ (Faz 4)
+    const kioskEvents = db
+      .prepare(
+        `SELECT id, event_id, event_type, severity, message, occurred_at
+           FROM kiosk_event_outbox
+          WHERE sent_at IS NULL AND retry_count < 10 LIMIT 50`,
+      )
+      .all();
+    if (kioskEvents.length) {
+      try {
+        const items = kioskEvents.map((e) => ({
+          event_id: e.event_id,
+          event_type: e.event_type,
+          severity: e.severity,
+          message: e.message || '',
+          occurred_at: e.occurred_at || null,
+        }));
+        const r = await requestWithRetry(
+          db, settings, 'POST', '/api/kiosk/v1/kiosk-events/',
+          { items }, log,
+        );
+        if (r.status === 201) {
+          const now = new Date().toISOString();
+          const del = db.prepare('UPDATE kiosk_event_outbox SET sent_at = ? WHERE id = ?');
+          const tx = db.transaction((rows) => { for (const row of rows) del.run(now, row.id); });
+          tx(kioskEvents);
+          log.info?.({ event: 'kiosk_events_pushed', count: kioskEvents.length }, 'PUSH kiosk-events basarili');
+        } else if (r.status === 401) {
+          handle401Error(db, settings, log);
+        } else if (r.status === 403) {
+          handle403Error(db, settings, log);
+        } else {
+          db.prepare('UPDATE kiosk_event_outbox SET retry_count = retry_count + 1 WHERE id IN (' +
+            kioskEvents.map(() => '?').join(',') + ')').run(...kioskEvents.map((e) => e.id));
+        }
+      } catch (err) {
+        log.warn?.({ event: 'kiosk_events_push_error', err: err.message }, 'PUSH kiosk-events kalici hata');
+      }
+    }
   } catch (err) {
     log.error?.({ event: 'push_scheduler_error', err: err?.message }, 'PUSH basarisiz (offline mod)');
     recordDiagnostic(db, {
@@ -926,6 +984,13 @@ export async function pushToCentral(db, settings, log = console) {
       event: 'push_scheduler_error',
       message: err?.message || 'push scheduler error',
     });
+    // Faz 4: panel-görünür bağlantı hatası (throttle: 2dk)
+    recordKioskEvent(db, {
+      event_type: 'CONNECTION_LOST',
+      severity: 'ERROR',
+      message: (err?.message || 'push scheduler offline').slice(0, 512),
+    });
+  }
   }
 }
 

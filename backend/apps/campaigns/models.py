@@ -229,6 +229,14 @@ class Creative(BaseModel):
         default=1,
         help_text="Rotasyon agirligi (1=esit). V2 motor agirlikli round-robin icin kullanir.",
     )
+    active_media_url = models.URLField(
+        max_length=2048, blank=True, default="",
+        validators=[_https_url_validator],
+        help_text=(
+            "Islem ekrani alt alani icin medya URL'i (~1080x768, yaklasik 7:5). "
+            "Bos birakılırsa AdStrip'te bekleme ekrani gorseli fallback olarak kullanilir."
+        ),
+    )
 
     _GRID_DURATIONS = frozenset({15, 30, 45, 60})
 
@@ -375,6 +383,12 @@ class PlaylistItem(BaseModel):
 class PlayLog(BaseModel):
     """Proof of Play — kioskun rapor ettigi gercek yayin olayi."""
 
+    class PlayStatus(models.TextChoices):
+        STARTED = "STARTED", "Basladi"
+        COMPLETED = "COMPLETED", "Tamamlandi"
+        FAILED = "FAILED", "Basarisiz"
+        INTERRUPTED = "INTERRUPTED", "Kesildi"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     kiosk = models.ForeignKey(
         "pharmacies.Kiosk", on_delete=models.CASCADE, related_name="play_logs"
@@ -393,10 +407,32 @@ class PlayLog(BaseModel):
     )
     play_event_id = models.UUIDField(
         null=True, blank=True, db_index=True,
-        help_text=(
-            "Kiosk tarafindan uretilen idempotency anahtari (Faz 5'te unique constraint eklenir). "
-            "K5: nullable ekle -> backfill -> dogru la -> unique/not-null."
-        ),
+        help_text="Kiosk tarafindan uretilen idempotency anahtari. NULL = eski kiosk surumu.",
+    )
+    # Faz 3: oynatma durumu + zengin alan seti
+    status = models.CharField(
+        max_length=16,
+        choices=PlayStatus.choices,
+        default=PlayStatus.COMPLETED,
+        db_index=True,
+        help_text="Oynatma durumu. Eski kayitlar COMPLETED varsayilir.",
+    )
+    expected_duration = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text="Beklenen oynatma suresi (saniye). PlaylistItem.duration_seconds'tan gelir.",
+    )
+    error_code = models.CharField(max_length=64, blank=True, default="")
+    error_summary = models.CharField(
+        max_length=255, blank=True, default="",
+        help_text="FAILED durumunda sanitize edilmis kisa hata ozeti.",
+    )
+    occurred_at = models.DateTimeField(
+        null=True, blank=True, db_index=True,
+        help_text="Kiosk cihaz zamani.",
+    )
+    received_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Sunucu zamani (ingest aninda set edilir).",
     )
 
     class Meta:
@@ -407,6 +443,15 @@ class PlayLog(BaseModel):
         indexes = [
             models.Index(fields=("kiosk", "played_at")),
             models.Index(fields=("creative", "played_at")),
+            models.Index(fields=("status", "played_at")),
+        ]
+        constraints = [
+            # Nullable unique: ayni play_event_id iki kez gonderilmez; NULL = eski format
+            models.UniqueConstraint(
+                fields=["play_event_id"],
+                condition=models.Q(play_event_id__isnull=False),
+                name="dooh_play_log_play_event_id_unique_non_null",
+            ),
         ]
 
 
@@ -965,3 +1010,67 @@ class KioskDesiredBundle(BaseModel):
 
     def __str__(self) -> str:
         return f"KDB[kiosk={self.kiosk_id} v={self.desired_bundle_version}]"
+
+
+# =============================================================================
+# PharmacyCampaign — Eczacı paneli kampanyaları (kiosk sisteminden bağımsız)
+# =============================================================================
+
+class PharmacyCampaign(BaseModel):
+    """Eczacı panelinde gösterilen basit kampanya.
+
+    Kiosk playlist, scheduler, offline sync ve PlayLog sisteminden tamamen
+    bağımsızdır. Yalnızca eczacı paneli gösterimi için tasarlanmıştır.
+
+    Hedefleme: target_pharmacies (tekil eczane), target_iller (il), target_ilceler (ilçe).
+    Feed eşleşmesi: bu üçünden herhangi biriyle eşleşen eczacıya kampanya gösterilir (OR).
+    """
+
+    # İzin verilen gösterim süreleri (saniye)
+    ALLOWED_DURATIONS = frozenset({15, 30, 60})
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=255)
+    media_url = models.URLField(
+        max_length=2048, validators=[_https_url_validator],
+        help_text="Yatay kampanya görseli (eczacı panelinde şerit ve overlay'de gösterilir).",
+    )
+    object_key = models.CharField(
+        max_length=512, null=True, blank=True,
+        help_text="S3/RustFS obje anahtarı (upload servisinden türetilir).",
+    )
+    start_at = models.DateTimeField(help_text="Kampanyanın yayın başlangıç tarihi ve saati.")
+    end_at = models.DateTimeField(help_text="Kampanyanın yayın bitiş tarihi ve saati.")
+    duration_seconds = models.PositiveSmallIntegerField(
+        default=15,
+        help_text="Her döngüde gösterim süresi (saniye). İzin verilenler: 15, 30, 60.",
+    )
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Pasif kampanyalar feed'de görünmez.",
+    )
+    # Hedefleme — üçü OR mantığıyla çalışır
+    target_pharmacies = models.ManyToManyField(
+        "pharmacies.Eczane", blank=True, related_name="pharmacy_campaigns",
+        help_text="Tekil hedef eczaneler.",
+    )
+    target_iller = models.ManyToManyField(
+        "lookups.Il", blank=True, related_name="pharmacy_campaigns",
+        help_text="Hedef iller (bu ile bağlı tüm eczaneleri kapsar).",
+    )
+    target_ilceler = models.ManyToManyField(
+        "lookups.Ilce", blank=True, related_name="pharmacy_campaigns",
+        help_text="Hedef ilçeler (bu ilçeye bağlı tüm eczaneleri kapsar).",
+    )
+
+    class Meta:
+        db_table = "pharmacy_campaigns"
+        ordering = ("-olusturulma_tarihi",)
+        verbose_name = "Pharmacy Campaign"
+        verbose_name_plural = "Pharmacy Campaigns"
+        indexes = [
+            models.Index(fields=("is_active", "start_at", "end_at")),
+        ]
+
+    def __str__(self) -> str:
+        return self.name

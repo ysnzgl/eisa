@@ -30,6 +30,7 @@ import string
 from typing import Any
 
 from django.db import IntegrityError, transaction
+from django.utils import timezone
 
 from apps.core.uow import UnitOfWork
 from apps.lookups.models import Cinsiyet, YasAraligi
@@ -84,6 +85,7 @@ def ingest_session_items(kiosk, items: list[Any]) -> tuple[list[dict], list[dict
     """
     results: list[dict] = []
     errors: list[dict] = []
+    now = timezone.now()
 
     for i, raw in enumerate(items):
         ser = OturumLoguItemSerializer(data=raw)
@@ -199,6 +201,7 @@ def ingest_session_items(kiosk, items: list[Any]) -> tuple[list[dict], list[dict
             qr_candidate = generate_qr_candidate()
             try:
                 with transaction.atomic():
+                    tamamlandi = d.get("tamamlandi", True)
                     instance = OturumLogu(
                         idempotency_anahtari=idem,
                         kiosk=kiosk,
@@ -211,14 +214,17 @@ def ingest_session_items(kiosk, items: list[Any]) -> tuple[list[dict], list[dict
                         qr_kodu=qr_candidate,
                         cevaplar=d.get("cevaplar", {}),
                         onerilen_etken_maddeler=d.get("onerilen_etken_maddeler", []),
-                        tamamlandi=d.get("tamamlandi", True),
+                        tamamlandi=tamamlandi,
+                        durum=(
+                            OturumLogu.Durum.COMPLETED
+                            if tamamlandi
+                            else OturumLogu.Durum.ABANDONED
+                        ),
+                        cihaz_zamani=d.get("olusturulma_tarihi"),
+                        sunucu_zamani=now,
                     )
                     with UnitOfWork(user=None) as uow:
                         uow.add(instance)
-
-                    kiosk_ts = d.get("olusturulma_tarihi")
-                    if kiosk_ts:
-                        OturumLogu.objects.filter(pk=instance.pk).update(olusturulma_tarihi=kiosk_ts)
 
                     # Soru-cevap ve etken madde normalizasyonu
                     # SessionValidationError raise ederse rollback (parent + children)

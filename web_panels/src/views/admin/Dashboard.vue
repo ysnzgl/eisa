@@ -4,9 +4,12 @@
  * Gerçek veriler: GET /api/analytics/admin-dashboard/
  */
 import { ref, computed, onMounted, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import { http } from '../../services/api';
 import { getPharmacies, getKioskStatus, listProvisioningRequests } from '../../services/devices';
 import EisaLookup from '../../components/shared/EisaLookup.vue';
+
+const router = useRouter();
 
 //  Constants 
 const CIRC        = 2 * Math.PI * 70
@@ -51,7 +54,7 @@ const weeklyData = computed(() => {
     d.setDate(d.getDate() - i);
     const key = d.toISOString().slice(0, 10);
     const dayLabel = DAY_LABELS[d.getDay()];
-    result.push({ day: dayLabel, value: map[key] ?? 0, isToday: i === 0 });
+    result.push({ day: dayLabel, value: map[key] ?? 0, isToday: i === 0, date: key });
   }
   return result;
 });
@@ -85,7 +88,7 @@ const donutSegments = computed(() => {
     const dash = (pct / 100) * CIRC;
     const rotate = (cum / total) * 360;
     cum += cat.sayi;
-    return { label: cat.ad, pct, dash, rotate, color: DONUT_COLORS[i] };
+    return { label: cat.ad, slug: cat.slug ?? null, pct, dash, rotate, color: DONUT_COLORS[i] };
   });
 });
 
@@ -138,6 +141,7 @@ const kpiCards = [
     icon: 'fa-display',
     subFn: () => dashData.value ? `${dashData.value.cevrimdisi_kiosk} Cihaz Çevrimdışı` : '',
     subClass: 'dash-kpi-sub--danger',
+    drillTo: '/admin/kiosk-activities',
   },
   {
     id: 'ads',
@@ -145,6 +149,8 @@ const kpiCards = [
     valueKey: 'activeAds',
     color: '#7C3AED',
     icon: 'fa-bullhorn',
+    drillTo: '/admin/kiosk-activities',
+    drillQuery: { tab: 'impressions' },
   },
   {
     id: 'qr',
@@ -152,6 +158,8 @@ const kpiCards = [
     valueKey: 'todayQR',
     color: '#D97706',
     icon: 'fa-qrcode',
+    drillTo: '/admin/kiosk-activities',
+    drillQuery: { tab: 'sessions', durum: 'COMPLETED', start_date: new Date().toISOString().slice(0,10) },
   },
 ];
 
@@ -242,7 +250,9 @@ onMounted(async () => {
         v-for="(kpi, i) in kpiCards"
         :key="kpi.id"
         class="dash-kpi-card"
+        :class="{ 'dash-kpi-card--clickable': !!kpi.drillTo }"
         :style="{ '--kpi-c': kpi.color, animationDelay: (i * 90) + 'ms' }"
+        @click="kpi.drillTo && router.push({ path: kpi.drillTo, query: kpi.drillQuery })"
       >
         <div class="dash-kpi-accent"></div>
         <div class="dash-kpi-body">
@@ -282,7 +292,9 @@ onMounted(async () => {
             <!-- X axis -->
             <line x1="52" :y1="CHART_BOTTOM" x2="558" :y2="CHART_BOTTOM" class="dash-svg-axis" />
             <!-- Bars -->
-            <g v-for="(d, i) in weeklyData" :key="d.day">
+            <g v-for="(d, i) in weeklyData" :key="d.day"
+               :style="{ cursor: d.value > 0 ? 'pointer' : 'default' }"
+               @click="d.value > 0 && router.push({ path: '/admin/kiosk-activities', query: { tab: 'sessions', start_date: d.date, end_date: d.date } })">
               <rect
                 :x="barX(i)"
                 :y="barY(d.value)"
@@ -327,7 +339,8 @@ onMounted(async () => {
                   stroke-dashoffset="0"
                   :transform="`rotate(${seg.rotate}, 100, 100)`"
                   class="dash-donut-arc"
-                  :style="{ animationDelay: (i * 100) + 'ms' }"
+                  :style="{ animationDelay: (i * 100) + 'ms', cursor: 'pointer' }"
+                  @click="router.push({ path: '/admin/kiosk-activities', query: { tab: 'sessions', ...(seg.slug ? { kategori_slug: seg.slug } : {}) } })"
                 />
               </g>
               <text x="100" y="95" text-anchor="middle" class="dash-donut-big">
@@ -337,7 +350,9 @@ onMounted(async () => {
             </svg>
           </div>
           <div class="dash-donut-legend">
-            <div v-for="seg in donutSegments" :key="seg.label" class="dash-dl-row">
+            <div v-for="seg in donutSegments" :key="seg.label" class="dash-dl-row"
+                 style="cursor:pointer"
+                 @click="router.push({ path: '/admin/kiosk-activities', query: { tab: 'sessions', ...(seg.slug ? { kategori_slug: seg.slug } : {}) } })">
               <span class="dash-dl-dot" :style="{ background: seg.color }"></span>
               <span class="dash-dl-name">{{ seg.label }}</span>
               <span class="dash-dl-pct">{{ seg.pct }}%</span>
@@ -481,6 +496,14 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+.dash-kpi-card--clickable {
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.dash-kpi-card--clickable:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 24px rgba(0,0,0,0.18);
+}
 .dash-pending-alert {
   display: flex;
   align-items: center;

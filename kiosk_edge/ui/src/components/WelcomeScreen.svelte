@@ -13,7 +13,7 @@
     <div class="d-flex flex-column gap-3">
       <button class="btn-touch btn-primary-touch" on:click={() => dispatch('flowA')}>
         <i class="fa-solid fa-hand-pointer"></i>
-        Şikayetimi Seç &amp; Anket Çöz
+        Şikayetimi Seç &amp; Soruları Cevapla
         <span class="btn-sub">Takviye önerisi al, QR fiş al</span>
       </button>
 
@@ -21,8 +21,8 @@
 
       <button class="btn-touch btn-consult-touch" on:click={() => dispatch('flowConsult')}>
         <i class="fa-solid fa-comments"></i>
-        Eczacınıza Danışın
-        <span class="btn-sub">Danışma konusu seçin — eczacı sizi karşılasın</span>
+        Eczacınıza Özel Danışın
+        <span class="btn-sub">Danışma konusu seçin — Eczacı sizi karşılasın</span>
       </button>
     </div>
   </div>

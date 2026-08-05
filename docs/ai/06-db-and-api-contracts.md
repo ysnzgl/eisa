@@ -98,8 +98,17 @@
 **dooh_planning_runs** / **dooh_campaign_total_allocations** / **dooh_kiosk_day_quotas** *(Faz 1 yeni)*
 - KioskDayQuota: placed>=0, quota>=0, placed<=quota DB constraint; unique(run,campaign,kiosk,date)
 
-**dooh_creatives** *(Faz 0.5: object_key, Faz 1: weight)*
-- id (UUID), campaign_id FK, media_url (kalici URL Faz 0.5+), duration_seconds (grid:{15,30,45,60} yeni kayıt), name, checksum ('sha256:<hex>'), object_key (nullable, 0015), weight (default 1)
+**dooh_creatives** *(Faz 0.5: object_key, Faz 1: weight, 2026-07-31: active_media_url)*
+- id (UUID), campaign_id FK, media_url (kalici URL Faz 0.5+), active_media_url (blank=True, islem ekrani alt alan gorseli ~1080x768), duration_seconds (grid:{15,30,45,60} yeni kayit), name, checksum ('sha256:<hex>'), object_key (nullable, 0015), weight (default 1)
+- Migration 0021: active_media_url eklendi (additive, nullable)
+
+**pharmacy_campaigns** *(2026-07-31, 2026-08-01)*
+- id (UUID), name, media_url, object_key (nullable), start_at, end_at, duration_seconds (default 15; izin verilen: 15, 30, 60), is_active (bool)
+- M2M: pharmacy_campaigns_target_pharmacies (campaign_id, eczane_id)
+- M2M: pharmacy_campaigns_target_iller (campaign_id, il_id)
+- M2M: pharmacy_campaigns_target_ilceler (campaign_id, ilce_id)
+- Migration 0022: tablo ve M2M olusturuldu; Migration 0024: target_iller + target_ilceler eklendi
+- Feed eşleşme: target_pharmacies OR target_iller OR target_ilceler (OR mantığı); hiç hedefi olmayan → feed'e girmez
 
 **dooh_schedule_rules** *(Legacy, ScheduleRule → DeliveryRule geçiş)*
 - id (UUID), campaign_id FK (1to1), frequency_type (PER_LOOP/PER_HOUR/PER_DAY), frequency_value, target_hours (JSON)
@@ -110,7 +119,8 @@
 
 **dooh_playlist_items**
 - id (UUID), playlist_id FK, creative_id FK (nullable), house_ad_id FK (nullable), playback_order, estimated_start_offset_seconds (SAAT-mutlak 0..3599)
-- API contract'ta creative/house_ad -> asset_id + asset_type + media_url + duration_seconds olarak duzlestirilir
+- API contract'ta creative/house_ad -> asset_id + asset_type + media_url + **active_media_url** + duration_seconds olarak duzlestirilir
+- **active_media_url**: creative ise creative.active_media_url (bos olabilir); house_ad ise bos string
 
 **dooh_house_ads** *(Faz 0.5: object_key eklendi)*
 - id (UUID), name, media_url (kalici URL Faz 0.5+), duration_seconds (1-60), aktif (bool), priority, object_key (nullable, Faz 0.5 migration 0015)

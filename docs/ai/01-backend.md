@@ -122,10 +122,10 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 - `CevapEtkenMadde`: Cevap ile etken madde ilişkisi (cevap FK, etken_madde FK, aktif)
 - `EtkenMadde`: Etken madde (ad, slug, aktif)
 
-### Campaigns (`apps.campaigns`) *(Faz 0.5–Faz 1 güncellemeleri dahil)*
+### Campaigns (`apps.campaigns`) *(Faz 0.5–Faz 1 güncellemeleri + 2026-07-31 dahil)*
 - `Campaign`: Reklam kampanyasi (status: DRAFT/ACTIVE/PAUSED/COMPLETED/CANCELLED, target_scope [ALL|RULES|null-legacy], follows [FK self, null], priority). **Faz 7 kaldirildi:** is_guaranteed, impression_goal, frequency_cap_per_hour (migration 0020)
 - `CampaignTarget`: Kampanya lokasyon hedefi (campaign FK, target_type [IL/ILCE/ECZANE/KIOSK], mode [INCLUDE/EXCLUDE|null], il/ilce/eczane/kiosk FK)
-- `Creative`: Kampanyaya ait medya (campaign FK, media_url [kalıcı Faz 0.5+], duration_seconds [grid:{15,30,45,60} yeni kayıtlar], name, checksum [sha256:hex], object_key [S3 key], weight [rotasyon ağırlığı])
+- `Creative`: Kampanyaya ait medya (campaign FK, media_url [IdleScreen portrait, kaliıcı Faz 0.5+], **active_media_url** [AdStrip alt alan ~1080x768, blank=True, migration 0021], duration_seconds [grid:{15,30,45,60} yeni kayitlar], name, checksum [sha256:hex], object_key [S3 key], weight [rotasyon agirlıgı])
 - `ScheduleRule`: [Legacy] Kampanya frekans matrisi (campaign 1to1, frequency_type [PER_LOOP/PER_HOUR/PER_DAY], frequency_value, target_hours JSON)
 - `DeliveryRule`: [Faz 1] Kampanya yayın kuralı (campaign 1to1, delivery_type [TIME_WINDOW/PER_HOUR/PER_DAY/CAMPAIGN_TOTAL/LEGACY_PER_LOOP], count, window_start/end_time, active_hours, guarantee_mode [GUARANTEED/BEST_EFFORT], max_per_hour)
 - `PlanningRun`: [Faz 1] CAMPAIGN_TOTAL horizon referansı (horizon_start/end, status)
@@ -136,6 +136,7 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 - `PlaylistItem`: Playlist öğeleri (playlist FK, creative/house_ad FK nullable, playback_order, estimated_start_offset_seconds [saat-mutlak 0..3599])
 - `HouseAd`: Filler reklam (name, media_url [kalıcı Faz 0.5+], duration_seconds [grid:{15,30,45,60} yeni kayıtlar], object_key, aktif, priority)
 - `PlayLog`: Reklam gösterim logu (kiosk FK, creative/house_ad FK nullable, played_at, duration_played, play_event_id [nullable UUID K5])
+- `PharmacyCampaign` *(2026-07-31, 2026-08-01)*: Eczacı paneli kampanyası (id UUID, name, media_url, object_key, start_at, end_at, duration_seconds [izin: 15/30/60], is_active, target_pharmacies M2M Eczane, target_iller M2M Il, target_ilceler M2M Ilce). Feed: OR mantığıyla; hiç hedefi olmayan feed'e girmez. Migration 0022+0024.
 
 **Sözleşme değişiklikleri (Faz 0.5–Faz 1):**
 - `POST /api/campaigns/v2/campaigns/`: `target_scope` zorunlu (ALL|RULES). Deprecated alan (is_guaranteed/impression_goal/frequency_cap_per_hour) gonderilenince 400. `follows` read-only (yalniz `set_campaign_follows()` servisi).
