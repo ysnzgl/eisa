@@ -20,6 +20,7 @@ const routes = [
       { path: 'kiosk-activities', component: () => import('../views/admin/KioskActivities.vue') },
       { path: 'medical-logic',      component: () => import('../views/admin/MedicalLogic.vue') },
       { path: 'danisma',           component: () => import('../views/admin/DanismaYonetimi.vue') },
+      { path: 'content-management', component: () => import('../views/admin/ContentManagement.vue') },
       { path: 'campaigns',     component: () => import('../views/admin/CampaignWizard.vue') },
       { path: 'pharmacy-campaigns', component: () => import('../views/admin/PharmacyCampaigns.vue') },
       { path: 'dooh/control-center', component: () => import('../views/admin/DoohControlCenter.vue') },

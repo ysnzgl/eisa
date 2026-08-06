@@ -136,11 +136,11 @@ function upsertKategori(db, c) {
 
 function upsertDanismaKategori(db, d) {
   db.prepare(
-    `INSERT INTO danisma_kategorileri (id, slug, ad, ikon, ust_kategori_id, aktif)
-     VALUES (@id, @slug, @ad, @ikon, @ust_kategori_id, @aktif)
+    `INSERT INTO danisma_kategorileri (id, slug, ad, ikon, ust_kategori_id, aktif, sira)
+     VALUES (@id, @slug, @ad, @ikon, @ust_kategori_id, @aktif, @sira)
      ON CONFLICT(id) DO UPDATE SET
        slug=excluded.slug, ad=excluded.ad, ikon=excluded.ikon,
-       ust_kategori_id=excluded.ust_kategori_id, aktif=excluded.aktif,
+       ust_kategori_id=excluded.ust_kategori_id, aktif=excluded.aktif, sira=excluded.sira,
        guncellenme_tarihi=strftime('%Y-%m-%dT%H:%M:%fZ','now')`,
   ).run({
     id: d.id,
@@ -149,6 +149,7 @@ function upsertDanismaKategori(db, d) {
     ikon: d.ikon || 'fa-comments',
     ust_kategori_id: d.ust_kategori ?? null,
     aktif: d.aktif === false ? 0 : 1,
+    sira: d.sira ?? 100,
   });
 }
 

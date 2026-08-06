@@ -7,6 +7,43 @@
 
 ## 2026-08-06
 
+### [Backend+Kiosk+WebPanel] İçerik Yönetimi paneli, Danışma sıralama, Overflow göstergeleri
+
+**Değişiklik:**
+- `ContentManagement.vue` (yeni): İçerik Yönetimi admin sayfası; HouseAd CRUD, kiosk overlay önizleme, image-only upload (`media_kind=image`). Menü/başlık/form/bildirimde "HouseAd" terimi yok.
+- `dooh.js`: `updateHouseAd`, `deleteHouseAd` eklendi; `uploadMedia(file, mediaKind)` imzası genişletildi.
+- `router/index.js` + `AdminLayout.vue`: `/admin/content-management` route + menü kaydı "İçerik Yönetimi".
+- `Danisma.sira`: `PositiveSmallIntegerField(default=100)` eklendi; `ordering = ("sira","ad")`; migration `0012_add_danisma_sira`.
+- `DanismaSerializer` + `DanismaSyncSerializer`: `sira` alanı eklendi.
+- `db.js`: idempotent `ALTER TABLE danisma_kategorileri ADD COLUMN sira` (SCHEMA_VERSION=14 sabit — DB reset yok).
+- `scheduler.js` `upsertDanismaKategori()`: `sira ?? 100` eklendi.
+- `ConsultScreen.svelte`: `_bySira` sıralaması; alt kategoriler de sıralı; overflow göstergeleri (gradient, rozet, pozisyon çubuğu, ResizeObserver, onDestroy cleanup).
+- `DanismaYonetimi.vue`: `sira` form alanı eklendi.
+- `CategoryScreen.svelte`: overflow göstergeleri (aynı mantık); `onMount`/`onDestroy` cleanup; alt-kategori gezinmesinde scroll sıfırlama.
+
+**Dosyalar:** `web_panels/src/views/admin/ContentManagement.vue` (yeni), `dooh.js`, `router/index.js`, `AdminLayout.vue`, `DanismaYonetimi.vue`; `backend/apps/products/models.py`, `serializers.py`, `migrations/0012`; `kiosk_edge/api-node/src/{db,scheduler}.js`; `kiosk_edge/ui/src/components/{ConsultScreen,CategoryScreen}.svelte`
+**Testler:** Backend 513 passed; kiosk UI build ✓ (854ms); web_panels build ✓ (5.78s)
+
+---
+
+### [Backend+Kiosk UI] HouseAd image-only, IdleScreen paid/HouseAd ayrımı, Soru geri dönüşü, Başka Şikayet Seç
+
+**Değişiklik:**
+- `MediaUploadView`: `media_kind=image` parametresiyle image-only mod; `IMAGE_ONLY_TYPES={jpeg,png,webp}`; magic-byte sniff (JPEG/PNG/WebP imza doğrulaması); creative upload'u bozulmadı.
+- `HouseAdSerializer.validate_media_url`: video uzantılarını reddeden ikinci savunma katmanı.
+- `AdStrip.svelte`: `asset_type === 'creative'` filtresi — house_ad öğeleri işlem ekranında artık gösterilmiyor.
+- `IdleScreen.svelte`: `$playlistItems.asset_type` metadata korunarak paid/house_ad/fallback üç mod. Recursive `setTimeout` + genToken video yarış kilidi. `ROTATE_MS` sabit kaldırıldı; per-item `duration_seconds` kullanılıyor. AdPromo hiçbir modda tam ekran arka plan değil.
+- `AdPromo.svelte`: `floatCard` prop — `position:relative; background:transparent` ile container konumlandırması.
+- `QuestionScreen.svelte`: geri butonu (`currentQIndex > 0`), seçili cevap vurgusu (`btn-answer-selected`), `currentAnswers` store import.
+- `App.svelte`: `goBackQuestion()` — cevaplar korunur, sadece farklı cevap verilince sonrakiler temizlenir. `startNewComplaint()` — yaş/cinsiyet korur, kategori+QR temizler, yeni sessionId.
+- `ResultScreen.svelte`: "Başka Bir Şikayet Seç" butonu → `dispatch('newComplaint')`.
+- Yeni test: `apps/campaigns/tests/test_house_ad_validation.py` (13 test, hepsi geçti).
+
+**Dosyalar:** `backend/apps/campaigns/views.py`, `serializers.py`, `tests/test_house_ad_validation.py`; `kiosk_edge/ui/src/components/{AdStrip,IdleScreen,AdPromo,QuestionScreen,ResultScreen}.svelte`; `kiosk_edge/ui/src/App.svelte`
+**Testler:** Backend 513 passed; kiosk UI build ✓ (843ms)
+
+---
+
 ### [Backend+Edge+WebPanel] QR/Session akışı offline-first hale getirildi
 
 **Değişiklik:**

@@ -76,9 +76,10 @@ export const createCreative = (data) =>
   http.post('/api/campaigns/v2/creatives/', data);
 
 // ── Media upload ──
-export async function uploadMedia(file) {
+export async function uploadMedia(file, mediaKind) {
   const fd = new FormData();
   fd.append('file', file);
+  if (mediaKind) fd.append('media_kind', mediaKind);
   const { data } = await http.post('/api/campaigns/upload-media/', fd, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
@@ -91,6 +92,12 @@ export const listHouseAds = () =>
 
 export const createHouseAd = (data) =>
   http.post('/api/campaigns/v2/house-ads/', data);
+
+export const updateHouseAd = (id, data) =>
+  http.patch(`/api/campaigns/v2/house-ads/${id}/`, data);
+
+export const deleteHouseAd = (id) =>
+  http.delete(`/api/campaigns/v2/house-ads/${id}/`);
 
 // ── Inventory ──
 export const getInventoryAvailability = (params) =>

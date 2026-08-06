@@ -66,6 +66,9 @@
   </div>
 
   <div class="d-flex flex-column gap-2 mt-3">
+    <button class="btn-touch btn-secondary-touch" on:click={() => dispatch('newComplaint')}>
+      <i class="fa-solid fa-rotate-left"></i> Başka Bir Şikayet Seç
+    </button>
     <button class="btn-touch btn-primary-touch" on:click={() => dispatch('done')}>
       <i class="fa-solid fa-house"></i> Bitir &amp; Başa Dön
     </button>

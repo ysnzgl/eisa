@@ -249,6 +249,20 @@ class HouseAdSerializer(serializers.ModelSerializer):
             )
         return value
 
+    _VIDEO_EXTENSIONS = frozenset(
+        {".mp4", ".webm", ".ogg", ".mov", ".avi", ".mkv", ".flv", ".wmv"}
+    )
+
+    def validate_media_url(self, value: str) -> str:
+        # URL uzantısı üzerinden video reddi (upload akışı dışı doğrudan set için guard).
+        import os
+        ext = os.path.splitext(value.lower().split("?")[0])[1]
+        if ext in self._VIDEO_EXTENSIONS:
+            raise serializers.ValidationError(
+                "HouseAd yalnizca gorsel (PNG/JPEG/WebP) olabilir; video URL kabul edilmez."
+            )
+        return value
+
     def validate(self, attrs):
         if not attrs.get("object_key"):
             attrs["object_key"] = _derive_object_key_from_url(attrs.get("media_url", ""))

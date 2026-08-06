@@ -171,8 +171,17 @@
     currentQuestions.update(v => { qs = v; return v; });
     currentQIndex.update(v => { idx = v; return v; });
     currentAnswers.update(v => {
-      // id = seed_id (getRecommendations için), questionId = numeric ID (backend payload için)
-      answers = [...v, { id: qs[idx].seed_id, questionId: qs[idx].id, answer }];
+      const prev = v[idx]?.answer;
+      if (prev === answer) {
+        // Ayni cevap — cevaplar korunur, sadece ileri git.
+        answers = v;
+      } else {
+        // Farkli cevap — bu indeksten sonrasini temizle.
+        answers = [
+          ...v.slice(0, idx),
+          { id: qs[idx].seed_id, questionId: qs[idx].id, answer },
+        ];
+      }
       return answers;
     });
     const newIdx = idx + 1;
@@ -182,6 +191,13 @@
       currentCategory.update(v => { cat = v; return v; });
       await showFlowAResult(cat);
     }
+  }
+
+  function goBackQuestion() {
+    armInactivity();
+    currentQIndex.update(v => Math.max(0, v - 1));
+    // Cevaplar korunur — geri donuste silme yok.
+    sessionFinalized = false;
   }
 
   async function showFlowAResult(cat, completed = true) {
@@ -212,6 +228,21 @@
     goTo('result');
     await tick();
     resultScreenRef?.drawQR(qrPayload);
+  }
+
+  function startNewComplaint() {
+    // Yas/cinsiyet korunur; kategori + cevap + oneri + QR temizlenir.
+    currentCategory.set(null);
+    currentQIndex.set(0);
+    currentQuestions.set([]);
+    currentAnswers.set([]);
+    result.set(null);
+    danismaCategories.set([]);
+    sessionId = (crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    sessionFinalized = false;
+    sessionSubmitting = false;
+    armInactivity();
+    goTo('category');
   }
 
   async function loadDanismaCategories() {
@@ -346,9 +377,12 @@
           on:back={() => goTo('welcome')}
         />
       {:else if $screen === 'question'}
-        <QuestionScreen on:answer={(e) => handleAnswer(e.detail)} />
+        <QuestionScreen
+          on:answer={(e) => handleAnswer(e.detail)}
+          on:back={goBackQuestion}
+        />
       {:else if $screen === 'result'}
-        <ResultScreen bind:this={resultScreenRef} on:done={resetToIdle} />
+        <ResultScreen bind:this={resultScreenRef} on:done={resetToIdle} on:newComplaint={startNewComplaint} />
       {/if}
     </div>
   {/if}

@@ -412,6 +412,12 @@ function initSchema(db, options = {}) {
     db.exec("INSERT OR IGNORE INTO qr_counter (id, last_value) VALUES (1, 0)");
   }
 
+  // danisma_kategorileri.sira — idempotent, SCHEMA_VERSION degismez
+  const danismaCols = db.prepare("PRAGMA table_info(danisma_kategorileri)").all().map((c) => c.name);
+  if (!danismaCols.includes('sira')) {
+    db.exec("ALTER TABLE danisma_kategorileri ADD COLUMN sira INTEGER NOT NULL DEFAULT 100");
+  }
+
   installOutboxFifoTriggers(db, outboxMaxRows);
   installDiagnosticFifoTrigger(db, diagnosticMaxRows);
 }

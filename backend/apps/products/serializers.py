@@ -70,7 +70,7 @@ class DanismaSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Danisma
-        fields = ["id", "ad", "slug", "ikon", "aktif", "ust_kategori", "ust_kategori_ad"]
+        fields = ["id", "ad", "slug", "ikon", "aktif", "ust_kategori", "ust_kategori_ad", "sira"]
 
 
 class SoruDetayliSerializer(serializers.ModelSerializer):
@@ -143,4 +143,4 @@ class DanismaSyncSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Danisma
-        fields = ["id", "ad", "slug", "ikon", "ust_kategori", "alt_kategoriler"]
+        fields = ["id", "ad", "slug", "ikon", "ust_kategori", "sira", "alt_kategoriler"]

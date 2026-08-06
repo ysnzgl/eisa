@@ -39,7 +39,9 @@
   let currentPlayEventId = null;  // Faz 3: mevcut slot için idempotency UUID
 
   // Güncel oynatma listesi (playlist varsa oradan, yoksa eski campaigns store)
-  $: items = $playlistItems.length > 0 ? $playlistItems : $campaigns;
+  // house_ad öğeleri işlem ekranında gösterilmez; yalnız paid creative'lar oynatılır.
+  $: items = ($playlistItems.length > 0 ? $playlistItems : $campaigns)
+    .filter(i => (i.asset_type ?? i.type) === 'creative');
 
   const off   = (it) => it?.estimated_start_offset_seconds ?? 0;
   const keyOf = (it) =>

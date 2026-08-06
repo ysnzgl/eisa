@@ -40,14 +40,55 @@ class MediaUploadView(APIView):
         "image/jpeg", "image/png", "image/gif", "image/webp",
         "video/mp4", "video/webm",
     }
+    # media_kind=image isteklerinde yalnız bu MIME'ler kabul edilir.
+    IMAGE_ONLY_TYPES = {"image/jpeg", "image/png", "image/webp"}
     MAX_SIZE = 100 * 1024 * 1024  # 100 MB
+
+    # Magic-byte imzaları: (offset, bytes)
+    _MAGIC = [
+        (0, b"\xff\xd8\xff"),                              # JPEG
+        (0, b"\x89PNG\r\n\x1a\n"),                        # PNG
+        (0, b"RIFF"),                                      # WebP (RIFF header)
+    ]
+
+    @staticmethod
+    def _is_webp(header: bytes) -> bool:
+        return header[:4] == b"RIFF" and header[8:12] == b"WEBP"
+
+    @classmethod
+    def _check_image_magic(cls, header: bytes, content_type: str) -> bool:
+        """content_type ile magic-byte imzasının uyuşup uyuşmadığını doğrula."""
+        if content_type == "image/jpeg":
+            return header[:3] == b"\xff\xd8\xff"
+        if content_type == "image/png":
+            return header[:8] == b"\x89PNG\r\n\x1a\n"
+        if content_type == "image/webp":
+            return cls._is_webp(header)
+        return False
 
     def post(self, request):
         uploaded = request.FILES.get("file")
         if not uploaded:
             return Response({"error": "Dosya bulunamadı."}, status=status.HTTP_400_BAD_REQUEST)
-        if uploaded.content_type not in self.ALLOWED_TYPES:
-            return Response({"error": "Desteklenmeyen dosya türü."}, status=status.HTTP_400_BAD_REQUEST)
+
+        media_kind = request.data.get("media_kind", "").strip().lower()
+        allowed = self.IMAGE_ONLY_TYPES if media_kind == "image" else self.ALLOWED_TYPES
+
+        if uploaded.content_type not in allowed:
+            return Response(
+                {"error": "Desteklenmeyen dosya türü. HouseAd yalnizca PNG/JPEG/WebP kabul eder."
+                 if media_kind == "image" else "Desteklenmeyen dosya türü."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if media_kind == "image":
+            header = uploaded.read(12)
+            uploaded.seek(0)
+            if not self._check_image_magic(header, uploaded.content_type):
+                return Response(
+                    {"error": "Dosya içeriği beyan edilen MIME türüyle uyuşmuyor."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
         if uploaded.size > self.MAX_SIZE:
             return Response({"error": "Dosya 100 MB'dan büyük olamaz."}, status=status.HTTP_400_BAD_REQUEST)
 

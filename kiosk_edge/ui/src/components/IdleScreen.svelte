@@ -1,9 +1,9 @@
-<script>
-  // Cekici (attractor) / bekleme ekrani. Uygulama acilir acilmaz dogrudan bu
-  // ekran gosterilir (ayri bir "normal idle" ekrani YOKTUR).
-  //   - Gercek reklam (playlist/kampanya) varsa gorseller arasinda gecis yapar.
-  //   - Reklam yoksa donen "Bu Alana Reklam Verebilirsiniz" promosu gosterir.
-  // Ekrana dokunulunca akis baslar.
+﻿<script>
+  // Cekici (attractor) / bekleme ekrani.
+  //   paid mod  : ucretli creative tam ekran, AdPromo gorunmez.
+  //   house_ad  : HouseAd gorseli tam ekran, AdPromo alt overlay.
+  //   fallback  : icerik yok, yerel guvenli arka plan + alt AdPromo overlay.
+  // AdPromo hicbir modda tam ekran arka plan olarak kullanilmaz.
   import { createEventDispatcher, onDestroy } from 'svelte';
   import { campaigns, playlistItems } from '../stores/kiosk.js';
   import Logo from './Logo.svelte';
@@ -11,42 +11,70 @@
   import MediaView from './MediaView.svelte';
 
   const dispatch = createEventDispatcher();
-  const ROTATE_MS = 5000;
+  const DEFAULT_DURATION_MS = 5000;
 
-  let index = 0;
+  let index   = 0;
   let visible = true;
-  let rotateTick;
+  let rotateTick  = null;
+  // Her geciste artan token — video onended + timeout ayni slot icin iki kez
+  // ilerlemesini engeller (yaris kilidi).
+  let genToken = 0;
 
-  $: images = $playlistItems.length > 0
-    ? $playlistItems.map(i => i.media_url).filter(Boolean)
-    : $campaigns.length > 0
-    ? $campaigns.map(c => c.media_url).filter(Boolean)
-    : [];
+  // asset_type metadata korunarak ayri listeler olustur.
+  $: allItems  = $playlistItems.length > 0 ? $playlistItems : $campaigns;
+  $: paidItems = allItems.filter(i => (i.asset_type ?? i.type) === 'creative');
+  $: houseAds  = allItems.filter(i => (i.asset_type ?? i.type) === 'house_ad');
+  $: mode      = paidItems.length ? 'paid' : houseAds.length ? 'house_ad' : 'fallback';
+  $: activeItems = mode === 'paid' ? paidItems : houseAds;
 
-  $: hasAds = images.length > 0;
-  $: image = hasAds ? images[index % images.length] : null;
+  $: current = activeItems.length
+    ? activeItems[index % activeItems.length]
+    : null;
 
-  // Reklam listesi degistikce gorsel donmesini (yeniden) baslat.
-  $: images, restartRotation();
+  // Liste degisince rotation'i yeniden baslat; index gecerli aralika al.
+  $: activeItems, restartRotation();
+
+  function _durationMs(item) {
+    return ((item?.duration_seconds ?? 0) * 1000) || DEFAULT_DURATION_MS;
+  }
+
+  function scheduleNext(ms, token) {
+    clearTimeout(rotateTick);
+    rotateTick = setTimeout(() => advance(token), ms);
+  }
+
+  function advance(token) {
+    if (token !== genToken) return;
+    if (!activeItems.length) return;
+    visible = false;
+    setTimeout(() => {
+      index = (index + 1) % activeItems.length;
+      visible = true;
+      genToken += 1;
+      scheduleNext(_durationMs(activeItems[index % activeItems.length]), genToken);
+    }, 400);
+  }
 
   function restartRotation() {
-    clearInterval(rotateTick);
-    if (images.length <= 1) return; // tek/sifir gorselde gecise gerek yok
-    rotateTick = setInterval(() => {
-      visible = false;
-      setTimeout(() => {
-        index = (index + 1) % images.length;
-        visible = true;
-      }, 600);
-    }, ROTATE_MS);
+    clearTimeout(rotateTick);
+    if (!activeItems.length) return;
+    index = Math.min(index, activeItems.length - 1);
+    genToken += 1;
+    scheduleNext(_durationMs(activeItems[index]), genToken);
+  }
+
+  function handleVideoEnded() {
+    const tok = genToken;
+    clearTimeout(rotateTick);
+    advance(tok);
   }
 
   function handleTap() {
-    clearInterval(rotateTick);
+    clearTimeout(rotateTick);
     dispatch('start');
   }
 
-  onDestroy(() => clearInterval(rotateTick));
+  onDestroy(() => clearTimeout(rotateTick));
 </script>
 
 <div
@@ -56,21 +84,49 @@
   tabindex="0"
   on:keydown={(e) => e.key === 'Enter' && handleTap()}
 >
+  <!-- Arka plan katmani -->
   <div class="ss-bg-layer" style="opacity:{visible ? 1 : 0}">
-    {#if hasAds}
-      <MediaView src={image} alt="ilan" class="ss-media" />
+    {#if mode === 'paid' && current}
+      <MediaView src={current.media_url} alt="ilan" class="ss-media"
+        on:ended={handleVideoEnded} />
+    {:else if mode === 'house_ad' && current}
+      <img src={current.media_url} alt="icerik" class="ss-media" />
     {:else}
-      <!-- Reklam yok: donen "Bu Alana Reklam Verebilirsiniz" promosu -->
-      <AdPromo large />
+      <div class="ss-safe-bg"></div>
     {/if}
   </div>
 
+  <!-- AdPromo: paid modda hic render edilmez; digerleri icin alt overlay -->
+  {#if mode !== 'paid'}
+    <div class="ss-adpromo-overlay">
+      <AdPromo large floatCard />
+    </div>
+  {/if}
+
+  <!-- Logo + CTA: her zaman en ustte -->
   <div class="ss-overlay-text">
     <Logo height="96px" light class="ss-logo-img" />
     <div class="ss-tap">
       <i class="fa-solid fa-hand-pointer ss-pulse-icon"></i>
-      Başlamak için dokunun
+      Baslamak icin dokunun
     </div>
   </div>
 </div>
 
+<style>
+  .ss-safe-bg {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(120% 140% at 50% 0%, #1b2436 0%, #0f1622 55%, #0b1019 100%);
+  }
+
+  .ss-adpromo-overlay {
+    position: absolute;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
+    max-width: min(90%, 640px);
+    pointer-events: none;
+  }
+</style>

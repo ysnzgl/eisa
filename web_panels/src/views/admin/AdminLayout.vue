@@ -24,6 +24,7 @@ const adminNavItems = [
   { to: '/admin/kiosk-activities',           icon: 'fa-wave-square',   label: 'Kiosk Hareketleri' },
   { to: '/admin/medical-logic',              icon: 'fa-dna',           label: 'Algoritma Editörü' },
   { to: '/admin/danisma',                    icon: 'fa-comments',      label: 'Danışma Kategorileri' },
+  { to: '/admin/content-management',         icon: 'fa-images',        label: 'İçerik Yönetimi' },
   { to: '/admin/campaigns',                  icon: 'fa-display',       label: 'Kiosk Kampanyaları' },
   { to: '/admin/pharmacy-campaigns',         icon: 'fa-prescription-bottle-medical', label: 'Eczacı Paneli Kampanyaları' },
   { to: '/admin/dooh/control-center',        icon: 'fa-gauge-high',    label: 'Kontrol Merkezi' },

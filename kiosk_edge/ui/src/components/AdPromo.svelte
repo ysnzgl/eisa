@@ -4,11 +4,13 @@
   // koruyucuda (IdleScreen) kullanilir.
   import Logo from './Logo.svelte';
 
-  /** Buyuk (tam ekran / ekran koruyucu) varyant icin true. */
+  /** Buyuk kart boyutu icin true (idle/attractor kullanimi). */
   export let large = false;
+  /** Container konumlandirmayi yonetirken background/inset kaldirmak icin true. */
+  export let floatCard = false;
 </script>
 
-<div class="ad-promo" class:ad-promo--large={large}>
+<div class="ad-promo" class:ad-promo--large={large} class:ad-promo--float={floatCard}>
   <span class="ad-promo-glow" aria-hidden="true"></span>
   <div class="ad-promo-card">
     <div class="ad-promo-badge">
@@ -151,6 +153,14 @@
     0%   { box-shadow: 0 0 0 0 rgba(177, 18, 27, 0.5); }
     70%  { box-shadow: 0 0 0 16px rgba(177, 18, 27, 0); }
     100% { box-shadow: 0 0 0 0 rgba(177, 18, 27, 0); }
+  }
+
+  /* floatCard: container konumlandirir; background ve inset kaldirilir */
+  .ad-promo--float {
+    position: relative;
+    inset: unset;
+    background: transparent;
+    overflow: visible;
   }
 
   /* Hareket azaltilmasi tercih edilirse animasyonlari sakinlestir */
