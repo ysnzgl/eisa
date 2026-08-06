@@ -99,30 +99,33 @@ Sebep: Registry'yi kurmadan image push/pull akışı hemen çalışır. Daha son
 
 ```powershell
 $REGISTRY = "10.200.202.20:30500"
-$TAG      = "1.0.3"
-docker rmi -f "$REGISTRY/eisa-api:$TAG" 2>/dev/null
-docker build --no-cache -t "$REGISTRY/eisa-api:$TAG" ./backend
-docker rmi -f "$REGISTRY/eisa-portal:$TAG" 2>/dev/null
-docker build --no-cache -t "$REGISTRY/eisa-portal:$TAG" ./web_panels
-docker rmi -f "$REGISTRY/eisa-kiosk:$TAG" 2>/dev/null
-docker build --no-cache -t "$REGISTRY/eisa-kiosk:$TAG" ./kiosk_edge
+$TAG      = "1.0.4"
 
+docker rmi -f "$REGISTRY/eisa-api:$TAG"
+docker build --no-cache -t "$REGISTRY/eisa-api:$TAG" ./backend
 docker push "$REGISTRY/eisa-api:$TAG"
+
+docker rmi -f "$REGISTRY/eisa-portal:$TAG"
+docker build --no-cache -t "$REGISTRY/eisa-portal:$TAG" ./web_panels
 docker push "$REGISTRY/eisa-portal:$TAG"
+
+docker rmi -f "$REGISTRY/eisa-kiosk:$TAG"
+docker build --no-cache -t "$REGISTRY/eisa-kiosk:$TAG" ./kiosk_edge
 docker push "$REGISTRY/eisa-kiosk:$TAG"
 
 Write-Host "Yeni tag: $TAG"
 ```
 
 REGISTRY="10.200.202.20:30500"
-TAG="1.0.3"
+TAG="1.0.4"
 
 kubectl -n eisa-app set image deploy/eisa-api api=${REGISTRY}/eisa-api:${TAG}
-kubectl -n eisa-app set image deploy/eisa-portal portal=${REGISTRY}/eisa-portal:${TAG}
-kubectl -n eisa-app set image deploy/eisa-kiosk-demo kiosk=${REGISTRY}/eisa-kiosk:${TAG}
-
 kubectl -n eisa-app rollout status deploy/eisa-api --timeout=180s
+
+kubectl -n eisa-app set image deploy/eisa-portal portal=${REGISTRY}/eisa-portal:${TAG}
 kubectl -n eisa-app rollout status deploy/eisa-portal --timeout=180s
+
+kubectl -n eisa-app set image deploy/eisa-kiosk-demo kiosk=${REGISTRY}/eisa-kiosk:${TAG}
 kubectl -n eisa-app rollout status deploy/eisa-kiosk-demo --timeout=180s
 
 #migration için:
