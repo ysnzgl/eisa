@@ -9,8 +9,8 @@ let _db = null;
 const DEFAULT_OUTBOX_MAX_ROWS = 10000;
 const DEFAULT_DIAGNOSTIC_MAX_ROWS = 5000;
 
-// Sema versiyonu — v13: kiosk_event_outbox + reklam_gosterim_outbox Faz 3 alanları.
-const SCHEMA_VERSION = 13;
+// Sema versiyonu — v14: qr_counter (offline-first QR üretimi).
+const SCHEMA_VERSION = 14;
 
 export function openDb(sqlitePath, options = {}) {
   if (_db) return _db;
@@ -337,6 +337,16 @@ function initSchema(db, options = {}) {
       created_at       TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
       retry_count      INTEGER NOT NULL DEFAULT 0
     );
+
+    -- OFFLINE-FIRST QR SAYACI (singleton)
+    -- Crockford QR için mantıksal zaman/sayaç. Monoton artar; saat geriye gitse de tekrar üretilmez.
+    -- last_value: max(currentUnixSeconds, lastValue + 1) ile güncellenir.
+    CREATE TABLE IF NOT EXISTS qr_counter (
+      id         INTEGER PRIMARY KEY CHECK(id = 1),
+      last_value INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
+    INSERT OR IGNORE INTO qr_counter (id, last_value) VALUES (1, 0);
   `);
 
   const meta = db.prepare('SELECT version FROM schema_meta LIMIT 1').get();
@@ -383,6 +393,23 @@ function initSchema(db, options = {}) {
   }
   if (!reklamCols.includes('expected_duration')) {
     db.exec("ALTER TABLE reklam_gosterim_outbox ADD COLUMN expected_duration INTEGER");
+  }
+
+  // v14: qr_counter singleton (idempotent)
+  const qrCounterExists = db.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='qr_counter'"
+  ).get();
+  if (!qrCounterExists) {
+    db.exec(`
+      CREATE TABLE qr_counter (
+        id         INTEGER PRIMARY KEY CHECK(id = 1),
+        last_value INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+      );
+      INSERT OR IGNORE INTO qr_counter (id, last_value) VALUES (1, 0);
+    `);
+  } else {
+    db.exec("INSERT OR IGNORE INTO qr_counter (id, last_value) VALUES (1, 0)");
   }
 
   installOutboxFifoTriggers(db, outboxMaxRows);

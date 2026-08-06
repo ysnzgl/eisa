@@ -69,6 +69,7 @@ def _approved_response(kiosk: Kiosk) -> dict:
         "kiosk_id": kiosk.pk,
         "pharmacy_id": kiosk.eczane_id,
         "app_key": kiosk.uygulama_anahtari,
+        "eczane_kiosk_no": kiosk.eczane_kiosk_no,
     }
 
 
@@ -323,10 +324,13 @@ class KioskSyncView(KioskAPIView):
 
 
 class KioskCatalogView(KioskAPIView):
-    """``GET /api/kiosk/v1/catalog/`` â€” kategori/soru/cevap/etken madde/danisma."""
+    """``GET /api/kiosk/v1/catalog/`` — kategori/soru/cevap/etken madde/danisma."""
 
     def get(self, request):
-        return Response(build_catalog_payload())
+        data = build_catalog_payload()
+        # eczane_kiosk_no: kiosk slot bilgisi, scheduler kiosk_meta'ya kaydeder.
+        kiosk_meta = {"eczane_kiosk_no": request.kiosk.eczane_kiosk_no}
+        return Response({**data, "kiosk_meta": kiosk_meta})
 
 
 class KioskPlaylistView(KioskAPIView):

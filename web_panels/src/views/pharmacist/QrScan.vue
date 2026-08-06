@@ -3,7 +3,38 @@ import { nextTick, ref, onMounted } from 'vue';
 import { http } from '../../services/api';
 import { completeSession } from '../../services/analytics';
 
-const QR_PATTERN = /^[0-9A-Z]{8}$/;
+// Legacy 8-char [0-9A-Z] veya yeni 9-char Crockford Base32
+const QR_LEGACY_RE = /^[0-9A-Z]{8}$/;
+const CROCKFORD_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+const CROCKFORD_QR_RE = /^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{9}$/;
+
+function crockfordChecksumValid(code) {
+  if (code.length !== 9) return false;
+  try {
+    let total = 0;
+    for (let i = 0; i < 8; i++) {
+      const idx = CROCKFORD_ALPHABET.indexOf(code[i]);
+      if (idx < 0) return false;
+      total += idx * (i + 1);
+    }
+    return code[8] === CROCKFORD_ALPHABET[total % 32];
+  } catch {
+    return false;
+  }
+}
+
+function normalizeQr(raw) {
+  return raw.trim().toUpperCase();
+}
+
+function validateQr(code) {
+  if (QR_LEGACY_RE.test(code)) return { valid: true };
+  if (CROCKFORD_QR_RE.test(code)) {
+    if (!crockfordChecksumValid(code)) return { valid: false, reason: 'checksum' };
+    return { valid: true };
+  }
+  return { valid: false, reason: 'format' };
+}
 
 const qrInput = ref('');
 const qrInputRef = ref(null);
@@ -28,7 +59,7 @@ function focusQrInput() {
 async function lookup() {
   if (loading.value) return;
 
-  const raw = qrInput.value.trim();
+  const raw = normalizeQr(qrInput.value);
   session.value = null;
   lookupError.value = '';
   completionError.value = '';
@@ -39,8 +70,11 @@ async function lookup() {
     return;
   }
 
-  if (!QR_PATTERN.test(raw)) {
-    lookupError.value = 'Geçersiz QR kodu.';
+  const qrCheck = validateQr(raw);
+  if (!qrCheck.valid) {
+    lookupError.value = qrCheck.reason === 'checksum'
+      ? 'Geçersiz QR kodu (hatalı checksum).'
+      : 'Geçersiz QR kodu.';
     focusQrInput();
     return;
   }
@@ -63,10 +97,8 @@ async function lookup() {
     qrInput.value = '';
   } catch (err) {
     const status = err?.response?.status;
-    if (status === 404) {
+    if (status === 404 || status === 403) {
       lookupError.value = 'QR koduna ait oturum bulunamadı.';
-    } else if (status === 403) {
-      lookupError.value = 'Bu QR kodu eczanenize ait değildir.';
     } else if (status === 400) {
       lookupError.value = err?.response?.data?.detail || 'Geçersiz QR kodu.';
     } else {
@@ -146,7 +178,7 @@ function formatDT(iso) {
               name="qr_code"
               v-model="qrInput"
               @keydown.enter.prevent="onEnter"
-              placeholder="8 karakterlik QR kod (ör. A1B2C3D4)"
+              placeholder="QR kodu (8 veya 9 karakter, ör. A1B2C3D4 veya 1K7M9QX5C)"
               class="eisa-field"
               style="flex:1;font-family:'DM Mono',monospace;letter-spacing:0.05em;"
               :disabled="loading"

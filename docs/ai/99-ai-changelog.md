@@ -5,6 +5,27 @@
 
 ---
 
+## 2026-08-06
+
+### [Backend+Edge+WebPanel] QR/Session akışı offline-first hale getirildi
+
+**Değişiklik:**
+- `Kiosk.eczane_kiosk_no` (1-31, eczane-unique) eklendi; bootstrap response'a dahil edildi; mevcut kiosklar backfill edildi (pharmacies migration 0010).
+- `OturumLogu.eczane` FK (nullable, SET_NULL) eklendi; `qr_kodu` nullable + max_length=9 yapıldı; global unique kaldırılıp eczane-scoped conditional unique eklendi (analytics migration 0012).
+- `ingest_session_items()`: kiosk'tan gelen 9-char Crockford QR doğrulanıp kabul edilir; eski kiosklarda 8-char backend üretimi fallback olarak korunur; tamamlandi=False → qr_kodu=null.
+- Eczacı QR sorgusu: önce `eczane_id` scope'lanır, başka eczane kodu 403 yerine 404 döner.
+- Edge `qrGen.js`: Crockford Base32 QR üretimi, mantıksal sayaç (monoton), checksum.
+- Edge `db.js` v14: `qr_counter` singleton tablosu eklendi.
+- Edge `server.js`: tamamlanan oturum QR'ı yerelde üretilir (atomik txn), hemen döner; backend push `setImmediate` ile arka planda çalışır.
+- Edge `provisioning.js`: `eczane_kiosk_no` bootstrap response'tan SQLite'a kaydedilir; `settings.eczaneKioskNo` olarak yayılır.
+- `QrScan.vue`: 8 ve 9 karakter formatları kabul edilir; Crockford checksum doğrulama; başka eczane mesajı kaldırıldı.
+- Hedefli testler: backend 155 passed, edge qrGen 43 passed; server.test.js pre-existing failure (scheduler.js encoding issue, bizim değil).
+
+**Dosyalar:** backend/apps/pharmacies/models.py, migrations/0010; backend/apps/analytics/models.py, services.py, views.py, migrations/0012; backend/apps/kiosk_api/views.py; backend/apps/analytics/tests/test_qr_flow.py, test_session_normalization.py; kiosk_edge/api-node/src/{qrGen.js,db.js,server.js,provisioning.js}; kiosk_edge/api-node/tests/qrGen.test.js; web_panels/src/views/pharmacist/QrScan.vue
+**Migration:** pharmacies/0010 (eczane_kiosk_no + backfill), analytics/0012 (eczane FK + qr nullable + constraint)
+
+---
+
 ## 2026-08-01
 
 ### [Backend+Frontend] Eczacı kampanyası: il/ilçe hedefleme + duration validation + UI düzeltmeleri

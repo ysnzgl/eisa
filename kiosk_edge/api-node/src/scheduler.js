@@ -415,6 +415,18 @@ export async function pullFromCentral(db, settings, log = console) {
       db.exec('PRAGMA foreign_keys = ON');
       tx(data);
       log.info?.(`PULL: ${(data.kategoriler || []).length} kategori, ${(data.etken_maddeler || []).length} etken madde, ${(data.danisma_kategorileri || []).length} danisma guncellendi`);
+
+      // kiosk_meta alanlarını kaydet (provisioning dışı slot bilgisi burada dağıtılır)
+      const kioskMetaPayload = data.kiosk_meta;
+      if (kioskMetaPayload && typeof kioskMetaPayload === 'object') {
+        const kNo = Number.parseInt(kioskMetaPayload.eczane_kiosk_no, 10);
+        if (Number.isInteger(kNo) && kNo >= 1 && kNo <= 31) {
+          db.prepare(
+            "INSERT INTO kiosk_meta (key, value) VALUES ('eczane_kiosk_no', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value"
+          ).run(String(kNo));
+          log.info?.({ eczane_kiosk_no: kNo }, 'PULL: eczane_kiosk_no kiosk_meta\'ya kaydedildi');
+        }
+      }
     } else if (r1.status === 401) {
       handle401Error(db, settings, log);
     } else if (r1.status === 403) {

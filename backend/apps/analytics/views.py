@@ -163,7 +163,7 @@ class OturumLoguView(APIView):
 
     # â”€â”€ GET: Admin/Eczaci listesi â”€â”€
     def get(self, request):
-        qr_pattern = re.compile(r"^[0-9A-Z]{8}$")
+
         qs = (
             OturumLogu.objects.select_related(
                 "kiosk__eczane", "kategori", "yas_araligi", "cinsiyet"
@@ -184,30 +184,55 @@ class OturumLoguView(APIView):
             or request.query_params.get("qr")
         )
         if qr_kodu is not None:
-            qr_kodu = str(qr_kodu).strip()
+            from apps.analytics.services import _CROCKFORD_RE
+            qr_kodu = str(qr_kodu).strip().upper()
             if not qr_kodu:
                 return Response(
                     {"detail": "QR kodu giriniz."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            if not qr_pattern.match(qr_kodu):
+            legacy_pattern = re.compile(r"^[0-9A-Z]{8}$")
+            if not legacy_pattern.match(qr_kodu) and not _CROCKFORD_RE.match(qr_kodu):
                 return Response(
                     {"detail": "Geçersiz QR kodu."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            oturum = qs.filter(qr_kodu=qr_kodu).first()
-            if not oturum:
-                return Response(
-                    {"detail": "QR koduna ait oturum bulunamadı."},
-                    status=status.HTTP_404_NOT_FOUND,
-                )
+            # 9-char Crockford: checksum doğrulama
+            if _CROCKFORD_RE.match(qr_kodu):
+                from apps.analytics.services import _crockford_checksum_valid
+                if not _crockford_checksum_valid(qr_kodu):
+                    return Response(
+                        {"detail": "Geçersiz QR kodu (hatalı checksum)."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
 
-            if getattr(user, "rol", None) == "pharmacist" and oturum.kiosk.eczane_id != user.eczane_id:
-                return Response(
-                    {"detail": "Bu QR kodu eczanenize ait değildir."},
-                    status=status.HTTP_403_FORBIDDEN,
+            # Eczane scope: pharmacist önce kendi eczanesiyle filtreler
+            if getattr(user, "rol", None) == "pharmacist":
+                oturum = (
+                    OturumLogu.objects
+                    .select_related("kiosk__eczane", "kategori", "yas_araligi", "cinsiyet")
+                    .filter(eczane_id=user.eczane_id, qr_kodu=qr_kodu)
+                    .first()
                 )
+                if not oturum:
+                    # Başka eczanede varlığını sızdırma — her zaman 404
+                    return Response(
+                        {"detail": "QR koduna ait oturum bulunamadı."},
+                        status=status.HTTP_404_NOT_FOUND,
+                    )
+            else:
+                oturum = (
+                    OturumLogu.objects
+                    .select_related("kiosk__eczane", "kategori", "yas_araligi", "cinsiyet")
+                    .filter(qr_kodu=qr_kodu)
+                    .first()
+                )
+                if not oturum:
+                    return Response(
+                        {"detail": "QR koduna ait oturum bulunamadı."},
+                        status=status.HTTP_404_NOT_FOUND,
+                    )
 
             serializer = OturumLoguSerializer(oturum, context={"include_detail_fields": True})
             return Response(serializer.data, status=status.HTTP_200_OK)

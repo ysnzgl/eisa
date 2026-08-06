@@ -166,7 +166,7 @@ class TestSessionQRGeneration:
         cins = Cinsiyet.objects.first()
         OturumLogu.objects.create(
             kiosk=kiosk_obj, yas_araligi=age, cinsiyet=cins,
-            kategori=kategori, qr_kodu="AAAAAAAA", tamamlandi=True,
+            kategori=kategori, eczane=kiosk_obj.eczane, qr_kodu="AAAAAAAA", tamamlandi=True,
         )
 
         attempts = [0]
@@ -193,7 +193,7 @@ class TestSessionQRGeneration:
         cins = Cinsiyet.objects.first()
         OturumLogu.objects.create(
             kiosk=kiosk_obj, yas_araligi=age, cinsiyet=cins,
-            kategori=kategori, qr_kodu="ZZZZZZZZ", tamamlandi=True,
+            kategori=kategori, eczane=kiosk_obj.eczane, qr_kodu="ZZZZZZZZ", tamamlandi=True,
         )
 
         with patch("apps.analytics.services.generate_qr_candidate", return_value="ZZZZZZZZ"):
@@ -446,7 +446,8 @@ class TestSessionsEndpoint:
         client.credentials(HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}")
 
         res = client.get("/api/analytics/sessions/", {"qr_kodu": "Z9X8W7V6"})
-        assert res.status_code == 403
+        # Diger eczaneye ait QR 404 doner (varligini sizdirmaz)
+        assert res.status_code == 404
 
 
 # ── JSON Backfill ──────────────────────────────────────────────────────────────

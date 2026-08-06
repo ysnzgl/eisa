@@ -33,6 +33,7 @@ def _create_session(*, kiosk, qr_kodu="A1B2C3D4", cevaplar=None, onerilen=None):
     category = Kategori.objects.create(ad="Uyku", slug="uyku")
     return OturumLogu.objects.create(
         kiosk=kiosk,
+        eczane=kiosk.eczane,
         yas_araligi=age,
         cinsiyet=gender,
         kategori=category,
@@ -81,8 +82,9 @@ def test_qr_lookup_other_pharmacy_returns_403(eczaci_client, db):
 
     res = eczaci_client.get(SESSIONS_URL, {"qr_kodu": "Q1W2E3R4"})
 
-    assert res.status_code == 403
-    assert "eczanenize ait değildir" in res.data["detail"]
+    # Diger eczaneye ait kod 404 doner (varligini sizdirmaz)
+    assert res.status_code == 404
+    assert "bulunamad\u0131" in res.data["detail"]
 
 
 def test_qr_lookup_pharmacist_without_pharmacy_returns_403(db):
@@ -111,6 +113,7 @@ def test_qr_lookup_resolves_answers_and_ingredients(eczaci_client, kiosk):
     gender = Cinsiyet.objects.first()
     OturumLogu.objects.create(
         kiosk=kiosk,
+        eczane=kiosk.eczane,
         yas_araligi=age,
         cinsiyet=gender,
         kategori=category,

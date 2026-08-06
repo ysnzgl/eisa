@@ -58,7 +58,7 @@
 >
   <div class="ss-bg-layer" style="opacity:{visible ? 1 : 0}">
     {#if hasAds}
-      <MediaView src={image} alt="reklam" class="ss-media" />
+      <MediaView src={image} alt="ilan" class="ss-media" />
     {:else}
       <!-- Reklam yok: donen "Bu Alana Reklam Verebilirsiniz" promosu -->
       <AdPromo large />

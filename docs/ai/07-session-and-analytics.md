@@ -29,19 +29,32 @@
 
 ---
 
-## QR Tasarımı (2026-07-20 güncellemesi)
+## QR Tasarımı (2026-08-06 güncellemesi — offline-first)
 
-**Authoritative QR:** Backend üretir, istemci almaz.
-- Format: 8 karakter `[A-Z0-9]`, kriptografik rastgele (secrets.choice)
-- DB: `OturumLogu.qr_kodu` → `CharField(max_length=8, unique=True)` — DB seviyesinde constraint
-- Retry: `IntegrityError` yakalanır, yeni aday üretilir (max 5 deneme, her biri savepoint)
-- **"QR collision imkansız" değil; DB onu saklar, retry çözüm sağlar**
+**Authoritative QR:** Kiosk yerel olarak üretir (9 karakter Crockford Base32).
+- Format: `[PREFIX][COUNTER x7][CHECK]`
+  - PREFIX: `CROCKFORD_ALPHABET[eczane_kiosk_no]` (1 char, '1'-'Z')
+  - COUNTER: mantıksal unix timestamp / sayaç (7 char)
+  - CHECK: `sum(idx(c)*(i+1) for i,c in enumerate(first8)) % 32` → 1 char
+- DB: `OturumLogu.qr_kodu` → `CharField(max_length=9, null=True)` — global unique kaldırıldı, `UNIQUE(eczane_id, qr_kodu) WHERE qr_kodu IS NOT NULL`
+- Sayaç: `qr_counter` SQLite singleton — `nextValue = max(currentUnixSeconds, lastValue+1)`
+- Sayaç güncelleme + outbox insert tek transaction'da; restart'ta kayıt korunur.
+- Backend: kiosk QR'ını doğrular (format, checksum, prefix). Eski kiosk qr_kodu göndermezse backend 8-char üretir (fallback).
 
-**Edge:** Tamamlanan oturumlar için backend'i sync olarak çağırır. Response'taki `qr_kodu`'nu kullanır.
-- Backend erişilemezse → 503 döner (sahte QR gösterilmez)
-- Terk edilen oturumlar (tamamlandi=false) QR gerektirmez
+**Geriye uyumluluk:** Eski 8-char `[A-Z0-9]{8}` kayıtlar sorgulanabilir.
 
-**Geriye dönük:** `qrBitpack` encodeQrCode() hala çalışır ama sadece termal yazıcı metadata'sı için kullanılır.
+**Edge akışı (tamamlandi=true):**
+1. `eczane_kiosk_no` kiosk_meta'da mevcut değilse → 503 `kiosk_no_missing` (rastgele QR üretilmez)
+2. Atomik SQLite transaction: QR üret + sayaç güncelle + outbox insert
+3. UI'a hemen `{ qr_kodu, sync_durum: 'bekliyor' }` dön
+4. `setImmediate` ile arka planda backend push — HTTP cevabını bloklamaz
+5. Push başarılı → `gonderilme_tarihi` set edilir (`sync_durum: 'gonderildi'`)
+6. Scheduler aynı payload'ı PENDING bırakır, retry eder
+
+**Backend QR doğrulama (ingest):**
+- 9-char Crockford → checksum kontrol, prefix=kiosk.eczane_kiosk_no kontrolü, eczane unique kontrolü
+- Conflict → `errors[]` → edge PENDING bırakır
+- Idempotency: aynı idempotency_key → mevcut kayıt döner
 
 ---
 

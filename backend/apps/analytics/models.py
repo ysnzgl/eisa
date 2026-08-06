@@ -17,6 +17,16 @@ class OturumLogu(BaseModel):
     kiosk = models.ForeignKey(
         "pharmacies.Kiosk", on_delete=models.CASCADE, related_name="oturumlar"
     )
+    # Doğrudan eczane snapshot ilişkisi — ingest sırasında kiosk.eczane üzerinden atanır.
+    # Kiosk payload'ından alınmaz. Eski kayıtlar migration backfill ile doldurulur.
+    eczane = models.ForeignKey(
+        "pharmacies.Eczane",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="oturumlar",
+        help_text="Oturumun kaydedildiği eczane. Kiosk payload'ından alınmaz; auth context'ten atanır.",
+    )
     yas_araligi = models.ForeignKey(
         "lookups.YasAraligi", on_delete=models.PROTECT, related_name="oturumlar"
     )
@@ -64,7 +74,9 @@ class OturumLogu(BaseModel):
     )
 
     hassas_akis = models.BooleanField(default=False)
-    qr_kodu = models.CharField(max_length=8, unique=True, db_index=True)
+    # 9 karakter Crockford (yeni kiosk) veya 8 karakter legacy [A-Z0-9].
+    # Null: terk edilmiş oturum (tamamlandi=False).
+    qr_kodu = models.CharField(max_length=9, null=True, blank=True, db_index=True)
     cevaplar = models.JSONField(default=dict, blank=True)
     onerilen_etken_maddeler = models.JSONField(default=list, blank=True)
     tamamlandi = models.BooleanField(
@@ -105,6 +117,15 @@ class OturumLogu(BaseModel):
             models.Index(fields=["durum", "olusturulma_tarihi"]),
             models.Index(fields=["kiosk", "durum"]),
             models.Index(fields=["cihaz_zamani"]),
+        ]
+        constraints = [
+            # Aynı eczanede aynı QR iki farklı oturuma ait olamaz.
+            # NULL qr_kodu (terk edilmiş) constraint dışında tutulur.
+            models.UniqueConstraint(
+                fields=["eczane", "qr_kodu"],
+                condition=models.Q(qr_kodu__isnull=False),
+                name="uniq_oturum_eczane_qr",
+            ),
         ]
         verbose_name = "Oturum Logu"
         verbose_name_plural = "Oturum Loglari"
