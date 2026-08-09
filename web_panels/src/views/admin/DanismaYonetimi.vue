@@ -126,7 +126,7 @@ const iconPickerOpen = ref(false);
 
     <!-- ─── SOL RAIL ──────────────────────────────────────────────────────── -->
     <aside
-      class="category-rail w-64 flex-shrink-0 flex flex-col border-r border-gray-200 sticky top-0 self-start"
+      class="category-rail w-100 flex-shrink-0 flex flex-col border-r border-gray-200 sticky top-0 self-start"
       style="max-height: 100vh; overflow-y: auto;"
     >
       <div class="px-5 pt-6 pb-4 border-b border-gray-200">

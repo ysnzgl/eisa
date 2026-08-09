@@ -256,6 +256,13 @@ function thumbOf(c) {
   const cr = (c.creatives || []).find((x) => x.media_url);
   return cr?.media_url || '';
 }
+
+/** URL'den video olup olmadığını tespit et (uzantı + query string dayanıklı) */
+function isVideoUrl(url) {
+  if (!url) return false;
+  const clean = url.split('?')[0].toLowerCase();
+  return /\.(mp4|webm|ogg|mov)$/.test(clean);
+}
 const stats = computed(() => ({
   total:     campaigns.value.length,
   active:    campaigns.value.filter((c) => c.status === 'ACTIVE').length,
@@ -791,7 +798,13 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
                 </td>
                 <td>
                   <div class="thumb">
-                    <img v-if="thumbOf(c)" :src="thumbOf(c)" :alt="c.name" loading="lazy" />
+                    <template v-if="thumbOf(c)">
+                      <div v-if="isVideoUrl(thumbOf(c))" class="video-thumb-placeholder" :title="c.name">
+                        <i class="fa-solid fa-circle-play"></i>
+                        <span>Video</span>
+                      </div>
+                      <img v-else :src="thumbOf(c)" :alt="c.name" loading="lazy" />
+                    </template>
                     <i v-else class="fa-regular fa-image muted"></i>
                   </div>
                 </td>
@@ -920,7 +933,11 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
               </p>
               <div v-if="form.creatives[0]?.active_media_url" class="creative">
                 <div class="thumb">
-                  <img :src="form.creatives[0].active_media_url" alt="İşlem ekranı içeriği" />
+                  <div v-if="isVideoUrl(form.creatives[0].active_media_url)" class="video-thumb-placeholder">
+                    <i class="fa-solid fa-circle-play"></i>
+                    <span>Video</span>
+                  </div>
+                  <img v-else :src="form.creatives[0].active_media_url" alt="İşlem ekranı içeriği" />
                 </div>
                 <div class="cmeta"><strong>İşlem ekranı içeriği</strong></div>
                 <button class="eisa-icon-btn danger" title="Kaldır" @click="removeActiveMedia">
@@ -930,11 +947,11 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
               <label v-else class="upload" :class="{ 'upload--disabled': !form.creatives.length }">
                 <input
                   type="file"
-                  accept="image/*"
+                  accept="image/*,video/mp4,video/webm"
                   @change="onPickActiveFile"
                   :disabled="saving || !form.creatives.length"
                 />
-                <span><i class="fa-solid fa-cloud-arrow-up"></i> Dosya seç (yatay görsel)</span>
+                <span><i class="fa-solid fa-cloud-arrow-up"></i> Dosya seç (yatay görsel veya video)</span>
               </label>
             </div>
 
@@ -1351,6 +1368,12 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
 }
 .thumb img { width:100%; height:100%; object-fit:cover; }
 .thumb .muted { font-size:1rem; color:#94a3b8; }
+.video-thumb-placeholder {
+  width:100%; height:100%; display:flex; flex-direction:column; align-items:center;
+  justify-content:center; gap:2px; background:#1e293b; color:#94a3b8; font-size:.6rem;
+  font-weight:600; letter-spacing:.04em; text-transform:uppercase;
+}
+.video-thumb-placeholder i { font-size:1.1rem; color:#60a5fa; }
 .row-selected { background:#eef2ff !important; }
 .eisa-table th.sortable:hover { color:var(--c-accent,#6366f1); }
 

@@ -278,6 +278,7 @@ function mapDanismaFromApi(d) {
     aktif: d.aktif,
     ust_kategori: d.ust_kategori ?? null,
     ust_kategori_ad: d.ust_kategori_ad ?? null,
+    sira: d.sira ?? 100,
   };
 }
 
@@ -307,6 +308,7 @@ export async function createDanisma(data) {
     ikon: data.ikon ?? 'fa-comments',
     aktif: data.aktif ?? true,
     ust_kategori: data.ust_kategori ?? null,
+    sira: data.sira ?? 100,
   };
   const { data: created } = await http.post('/api/products/danisma/', payload);
   return mapDanismaFromApi(created);
@@ -320,6 +322,7 @@ export async function updateDanisma(id, data) {
   if (data.ikon        !== undefined) payload.ikon         = data.ikon;
   if (data.aktif       !== undefined) payload.aktif        = data.aktif;
   if (data.ust_kategori !== undefined) payload.ust_kategori = data.ust_kategori;
+  if (data.sira        !== undefined) payload.sira         = data.sira;
   const { data: updated } = await http.patch(`/api/products/danisma/${id}/`, payload);
   return mapDanismaFromApi(updated);
 }

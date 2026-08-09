@@ -203,8 +203,8 @@ export async function buildServer({ db, settings, logger }) {
   app.get('/api/danisma-kategorileri', async () => {
     const rows = db
       .prepare(
-        `SELECT id, slug, ad, ikon, ust_kategori_id, aktif
-           FROM danisma_kategorileri WHERE aktif = 1 ORDER BY id`,
+        `SELECT id, slug, ad, ikon, ust_kategori_id, aktif, sira
+           FROM danisma_kategorileri WHERE aktif = 1 ORDER BY COALESCE(sira, 100), id`,
       )
       .all();
     const toplevel = rows.filter((r) => r.ust_kategori_id === null);
@@ -213,9 +213,10 @@ export async function buildServer({ db, settings, logger }) {
       slug: parent.slug,
       ad: parent.ad,
       ikon: parent.ikon,
+      sira: parent.sira ?? 100,
       alt_kategoriler: rows
         .filter((r) => r.ust_kategori_id === parent.id)
-        .map((c) => ({ id: c.id, slug: c.slug, ad: c.ad, ikon: c.ikon })),
+        .map((c) => ({ id: c.id, slug: c.slug, ad: c.ad, ikon: c.ikon, sira: c.sira ?? 100 })),
     }));
   });
 

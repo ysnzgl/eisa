@@ -5,6 +5,44 @@
 
 ---
 
+## 2026-08-09
+
+### [Web Panels + Backend] 4 Issue Fix — video aktif medya, job worker, video thumbnail, yayın akışı
+
+**Değişiklik:**
+1. **CampaignWizard — active_media_url video desteği**: İşlem ekranı alt alan upload `accept="image/*"` → `accept="image/*,video/mp4,video/webm"`; preview `<img>` → `isVideoUrl()` yardımcısı ile koşullu video/image gösterimi. Backend `Creative.active_media_url` kısıtsız URLField olduğundan değişiklik gerekmedi.
+2. **run_scheduler.py — drain_queue job eklendi**: `drain_queue` APScheduler'a `IntervalTrigger(seconds=30)` ile eklendi. Bu eksiklik nedeniyle `invalidation_service` tarafından üretilen PENDING GenerationJob'lar hiç işlenmiyordu; kampanyalar kioskına ulaşmıyordu. Tek gerçek kod kaynağı: scheduler servisi `drain_queue`'yu kaydetmiyordu.
+3. **CampaignWizard — video thumbnail**: Kampanya listesinde `<img :src="thumbOf(c)">` → `isVideoUrl()` kontrolüyle video kartı (ikon+etiket) gösterimi; video için `<img>` render edilmez.
+4. **KioskActivities — Yayın Akışı sekmesi**: Yeni "Yayın Akışı" tab; kiosk+tarih seçimi; saat-mutlak offset ile "şu an yayında" hesabı; kiosk online/geride/offline uyarısı; MediaView-uyumlu video/image preview; tüm günün saatlik playlist kartları. Backend: `GET /api/campaigns/v2/playlists/day-stream/` (read-only, N+1 yok, `select_related/prefetch_related`).
+
+**Dosyalar:**
+- `web_panels/src/views/admin/CampaignWizard.vue` — video accept, isVideoUrl helper, video-thumb-placeholder CSS
+- `web_panels/src/views/admin/KioskActivities.vue` — Yayın Akışı tab + state + template + scoped CSS
+- `web_panels/src/services/dooh.js` — `getKioskDayStream()` eklendi
+- `backend/apps/campaigns/management/commands/run_scheduler.py` — drain_queue job kaydı
+- `backend/apps/campaigns/views_v2.py` — `KioskDayStreamView` eklendi (read-only)
+- `backend/apps/campaigns/urls.py` — day-stream URL kaydı
+- `backend/apps/campaigns/tests/test_issue_fixes_2026_08.py` — 12 yeni test (T01–T10)
+
+**DB migration/schema:** YOK — tüm değişiklikler mevcut şema üzerinde.
+**Testler:** 285 passed, 7 skipped (backend); web_panels build ✓ (7.30s).
+**Deployment notu:** `scheduler` servisi yeniden başlatılmalıdır: `python manage.py run_scheduler`. Yeni `drain_queue` job kayıtlandıktan sonra PENDING job'lar 30 saniye içinde işlenir.
+
+### [Backend + Web Panels] Yayın Akışı desired/applied düzeltmesi (E2E doğrulama sonrası)
+
+**Değişiklik:** Gerçek E2E + browser doğrulaması sırasında day-stream endpoint'in `desired_version`'ı `KioskDesiredBundle`'dan okuduğu (her zaman boş — Faz 5 stub) tespit edildi. Sistemin canonical alanlarına çevrildi: `desired_version = Kiosk.last_playlist_version`, `applied_version = Kiosk.applied_playlist_version` (+ `applied_horizon_end`, `playlist_applied_at`). Frontend `kioskSyncStatus` custom mantık yerine ortak `calcKioskRolloutStatus` composable'ını kullanır (offline/behind/ack_pending/no_publish/synced). Böylece Control Center ile Yayın Akışı aynı rollout sözleşmesini paylaşır.
+
+**Dosyalar:**
+- `backend/apps/campaigns/views_v2.py` — `KioskDayStreamView` canonical desired/applied (KioskDesiredBundle kaldırıldı)
+- `web_panels/src/views/admin/KioskActivities.vue` — `calcKioskRolloutStatus` reuse + desired/applied gösterim
+- `backend/apps/campaigns/tests/test_issue_fixes_2026_08.py` — 16 test (T01–T10 + T06b param-required, T06c canonical desired/applied, T06d N+1 max-query, T06e offset 0..3599)
+
+**Gerçek E2E doğrulaması (local SQLite + run_scheduler):** Campaign create → 6 PENDING job → drain_queue (30sn interval) → RUNNING → DONE → 144 Playlist / 1440 PlaylistItem → `last_playlist_version` (desired) 6→9. attempt_count=1 (çift işleme yok), 0 FAILED. Browser: 13 senaryo screenshot (`docs/qa/screenshots-2026-08-09/`), console'da kırık image/taşma yok, video hiçbir yerde `<img src="*.mp4">` değil, liste kartlarında autoplay yok.
+
+**DB migration/schema:** YOK.
+
+---
+
 ## 2026-08-06
 
 ### [Backend+Kiosk+WebPanel] İçerik Yönetimi paneli, Danışma sıralama, Overflow göstergeleri

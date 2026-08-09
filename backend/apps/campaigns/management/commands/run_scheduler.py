@@ -6,6 +6,7 @@ APScheduler'ı PostgreSQL jobstore ile başlatır. docker-compose'daki
 Zamanlanmış işler:
   - nightly_generate  : Her gece 01:00 UTC → yarın için tüm kiosklara playlist
   - mark_kiosks_offline: Her 5 dakikada → ping gelmeyen kiosk'ları offline işaretle
+  - drain_queue        : Her 30 saniyede → PENDING GenerationJob'ları işle (PlacementEngineV2)
 """
 from __future__ import annotations
 
@@ -29,7 +30,7 @@ class Command(BaseCommand):
         from apscheduler.triggers.interval import IntervalTrigger
         from django_apscheduler.jobstores import DjangoJobStore
 
-        from apps.campaigns.jobs import mark_kiosks_offline, nightly_generate
+        from apps.campaigns.jobs import drain_queue, mark_kiosks_offline, nightly_generate
 
         scheduler = BlockingScheduler(timezone="UTC")
         scheduler.add_jobstore(DjangoJobStore(), "default")
@@ -51,6 +52,19 @@ class Command(BaseCommand):
             trigger=IntervalTrigger(minutes=5),
             id="mark_kiosks_offline",
             name="Kiosk Offline İşaretleyici",
+            jobstore="default",
+            replace_existing=True,
+            misfire_grace_time=60,
+        )
+
+        # ─── Job 3: PENDING job queue worker (30 saniye) ──────────────────
+        # Invalidation service'in oluşturduğu PENDING job'ları işler.
+        # drain_queue: stale recovery + claim + process (PlacementEngineV2).
+        scheduler.add_job(
+            drain_queue,
+            trigger=IntervalTrigger(seconds=30),
+            id="drain_queue",
+            name="Playlist Queue Worker",
             jobstore="default",
             replace_existing=True,
             misfire_grace_time=60,

@@ -75,7 +75,8 @@
 - `/admin/devices/pending` â†’ `PendingDevices.vue` (Onay Bekleyen Cihazlar â€” 2026-07-14)
 - `/admin/medical-logic` â†’ `MedicalLogic.vue` (Kategori/Soru/EtkenMadde CRUD)
 - `/admin/danisma` â†’ `DanismaYonetimi.vue` (DanÄ±ÅŸma kategorileri CRUD)
-- `/admin/campaigns` → `CampaignWizard.vue` (Kiosk Kampanyaları — 6 adımlı wizard; Step 2: iki medya alanı: Bekleme/İşlem ekranı)
+- `/admin/campaigns` → `CampaignWizard.vue` (Kiosk Kampanyaları — 6 adımlı wizard; Step 2: iki medya alanı hem image hem video: Bekleme/İşlem ekranı. **2026-08-09:** active_media_url video desteği eklendi; video thumbnail video kartı gösteriyor.)
+- `/admin/kiosk-activities` → `KioskActivities.vue` (Kiosk Hareketleri: QR/Oturum, Kampanya Gösterimleri, Kiosk Olayları, **Yayın Akışı** — 2026-08-09)
 - `/admin/pharmacy-campaigns` → `PharmacyCampaigns.vue` *(2026-07-31)* (Eczacı Paneli Kampanyaları — bağımsız CRUD)
 - `/admin/dooh/control-center` → `DoohControlCenter.vue` (DOOH izleme — kampanya/job/kiosk) — **Faz 6**
 - `/admin/playlists` â†’ `PlaylistEditor.vue` (Playlist ÅŸablon/manuel dÃ¼zenleme)

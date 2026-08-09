@@ -191,6 +191,10 @@ export const forceRegenerateKiosk = (kioskId, targetDate = null) =>
     ...(targetDate ? { date: targetDate } : {}),
   });
 
+// ── Yayın Akışı — kiosk günlük playlist özeti (read-only) ──
+export const getKioskDayStream = (kioskId, date) =>
+  http.get('/api/campaigns/v2/playlists/day-stream/', { params: { kiosk: kioskId, date } });
+
 // ── Lokasyon Lookup'ları (hedefleme ağacı için) ──
 // getIller / getIlceler → lookups.js'den kullanın
 

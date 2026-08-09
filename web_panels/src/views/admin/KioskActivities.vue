@@ -11,15 +11,18 @@ import { useRoute, useRouter } from 'vue-router';
 import { getKioskActivities, getCampaignImpressions, getKioskEvents } from '../../services/analytics';
 import { getPharmacies, getKioskStatus } from '../../services/devices';
 import { getIller, getIlceler } from '../../services/lookups';
+import { getKioskDayStream } from '../../services/dooh.js';
+import { calcKioskRolloutStatus } from '../../composables/useKioskRolloutStatus.js';
 
 const route  = useRoute();
 const router = useRouter();
 
-// ─── Tab ─────────────────────────────────────────────────────────────────────
+// ─── Tab ───────────────────────────────────────────────────────────────────────────────
 const TABS = [
   { key: 'sessions',    label: 'QR / Oturum İşlemleri', icon: 'fa-qrcode'   },
   { key: 'impressions', label: 'Kampanya Gösterimleri',  icon: 'fa-bullhorn' },
   { key: 'events',      label: 'Kiosk Olayları',          icon: 'fa-triangle-exclamation' },
+  { key: 'broadcast',   label: 'Yayın Akışı',              icon: 'fa-tv'       },
 ];
 const activeTab = ref(route.query.tab || 'sessions');
 
@@ -189,8 +192,109 @@ function setTab(key) {
   syncUrl();
   if (key === 'sessions') loadSessions();
   else if (key === 'impressions') loadImpressions();
-  else loadEvents();
+  else if (key === 'events') loadEvents();
+  else if (key === 'broadcast') loadDayStream();
 }
+
+// ─── Yayın Akışı ──────────────────────────────────────────────────────────────────────
+const bcastKioskId  = ref(filters.value.kiosk_id || '');
+const bcastDate     = ref(new Date().toISOString().slice(0, 10)); // YYYY-MM-DD Istanbul
+const bcastLoading  = ref(false);
+const bcastError    = ref('');
+const bcastData     = ref(null);  // API yanıtı
+const bcastNow      = ref(Date.now()); // her saniyede değil, item hesabında kullanılır
+const bcastLastRefreshed = ref(null);
+
+/** Is a media URL a video? (query string tolerant, case insensitive) */
+function isVideoUrlBC(url) {
+  if (!url) return false;
+  return /\.(mp4|webm|ogg|mov)(\?|$)/i.test(url);
+}
+
+async function loadDayStream() {
+  if (!bcastKioskId.value) { bcastData.value = null; return; }
+  bcastLoading.value = true;
+  bcastError.value = '';
+  try {
+    const { data } = await getKioskDayStream(bcastKioskId.value, bcastDate.value);
+    bcastData.value = data;
+    bcastLastRefreshed.value = new Date();
+    bcastNow.value = Date.now();
+  } catch (e) {
+    bcastError.value = e?.response?.data?.error || 'Yayın akışı yüklenemedi.';
+  } finally {
+    bcastLoading.value = false;
+  }
+}
+
+watch([bcastKioskId, bcastDate], () => {
+  if (activeTab.value === 'broadcast') loadDayStream();
+});
+
+/**
+ * Europe/Istanbul saati ile şu an saatin kaçıncı saniyesindeyiz (0..3599)
+ */
+function istanbulSecondOfHour() {
+  // Tarayıcı yerel saatinden UTC’ya, sonra Istanbul’a (+3h sabit; DST yok 2016’dan beri)
+  const now = new Date();
+  const istanbul = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
+  return (istanbul.getMinutes() * 60) + istanbul.getSeconds();
+}
+
+function istanbulHour() {
+  const now = new Date();
+  const istanbul = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
+  return istanbul.getHours();
+}
+
+/** Playlist items for the current Istanbul hour */
+const currentHourItems = computed(() => {
+  if (!bcastData.value?.hours?.length) return [];
+  const h = istanbulHour();
+  const hourPl = bcastData.value.hours.find((x) => x.target_hour === h);
+  return hourPl?.items || [];
+});
+
+/** Şu an yayında olan playlist item (saat-mutlak offset mantığı) */
+const currentItem = computed(() => {
+  const items = currentHourItems.value;
+  if (!items.length) return null;
+  const pos = istanbulSecondOfHour();
+  // offset <= pos olan son öğe aktif
+  let active = items[0];
+  for (const item of items) {
+    if (item.estimated_start_offset_seconds <= pos) active = item;
+    else break;
+  }
+  return active;
+});
+
+/** Kiosk senkronizasyon durumu — canonical calcKioskRolloutStatus ile aynı sözleşme */
+const kioskSyncStatus = computed(() => {
+  const d = bcastData.value;
+  if (!d) return null;
+  // calcKioskRolloutStatus applied_playlist_version bekler; day-stream applied_version döner
+  const kioskLike = {
+    is_online: d.is_online,
+    son_goruldu: d.son_goruldu,
+    last_playlist_version: d.last_playlist_version,
+    applied_playlist_version: d.applied_version,
+    applied_horizon_end: d.applied_horizon_end,
+  };
+  const { status } = calcKioskRolloutStatus(kioskLike, null);
+  // up_to_date → 'synced'; diğer tüm durumlar "doğrulanamadı" grubunda
+  if (status === 'up_to_date') return 'synced';
+  if (status === 'offline') return 'offline';
+  if (status === 'behind') return 'behind';
+  if (status === 'ack_pending') return 'ack_pending';
+  if (status === 'no_publish') return 'no_publish';
+  return status;
+});
+
+const bcastRefreshLabel = computed(() => {
+  if (!bcastLastRefreshed.value) return null;
+  return bcastLastRefreshed.value.toLocaleTimeString('tr-TR');
+});
 
 // ─── Detay drawer ─────────────────────────────────────────────────────────────
 const selected = ref(null);
@@ -216,7 +320,8 @@ onMounted(() => {
   loadIller();
   if (activeTab.value === 'sessions') loadSessions();
   else if (activeTab.value === 'impressions') loadImpressions();
-  else loadEvents();
+  else if (activeTab.value === 'events') loadEvents();
+  else if (activeTab.value === 'broadcast') loadDayStream();
 });
 </script>
 
@@ -518,6 +623,207 @@ onMounted(() => {
       </template>
     </template>
 
+    <!-- ── Yayın Akışı ──────────────────────────────────────────────────── -->
+    <template v-if="activeTab === 'broadcast'">
+      <!-- Üst kontrol çubuğu -->
+      <div class="eisa-panel" style="margin-bottom:1rem;padding:1rem 1.25rem;">
+        <div style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:flex-end;">
+          <div style="flex:1;min-width:180px;">
+            <label class="eisa-label">Kiosk</label>
+            <select v-model="bcastKioskId" class="eisa-field">
+              <option value="">— Kiosk seçin —</option>
+              <option v-for="k in kioskler" :key="k.id" :value="k.id">{{ k.ad || k.mac }}</option>
+            </select>
+            <p v-if="!kioskler.length" class="muted small" style="margin-top:0.25rem;">Kiosk için önce eczane seçin (Filtreler paneli).</p>
+          </div>
+          <div style="flex:0 0 160px;">
+            <label class="eisa-label">Tarih</label>
+            <input v-model="bcastDate" type="date" class="eisa-field" />
+          </div>
+          <button class="eisa-btn eisa-btn-cta" @click="loadDayStream" :disabled="!bcastKioskId || bcastLoading">
+            <i class="fa-solid" :class="bcastLoading ? 'fa-circle-notch fa-spin' : 'fa-rotate-right'"></i>
+            Yenile
+          </button>
+          <span v-if="bcastRefreshLabel" style="font-size:0.78rem;color:#9CA3AF;align-self:center;">
+            Son: {{ bcastRefreshLabel }}
+          </span>
+        </div>
+
+        <!-- Kiosk durum özeti -->
+        <div v-if="bcastData" style="display:flex;flex-wrap:wrap;gap:0.75rem;margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid rgba(255,255,255,0.08);">
+          <div style="flex:0 0 auto;">
+            <span class="eisa-pill" :class="bcastData.is_online ? 'eisa-pill-success' : 'eisa-pill-danger'">
+              <i class="fa-solid" :class="bcastData.is_online ? 'fa-circle' : 'fa-circle-xmark'"></i>
+              {{ bcastData.is_online ? 'Çevrimiçi' : 'Çevrimdışı' }}
+            </span>
+          </div>
+          <div style="font-size:0.8rem;color:#94a3b8;align-self:center;">
+            Son görülme: {{ bcastData.son_goruldu ? fmtDT(bcastData.son_goruldu) : '—' }}
+          </div>
+          <div style="font-size:0.8rem;color:#94a3b8;align-self:center;">
+            Desired (backend): v{{ bcastData.desired_version ?? '—' }}
+            <template v-if="bcastData.applied_version != null">
+              → Applied (kiosk ACK): v{{ bcastData.applied_version }}
+            </template>
+            <template v-else>
+              → Applied (kiosk ACK): yok
+            </template>
+          </div>
+
+          <!-- Senkronizasyon uyarısı -->
+          <div v-if="kioskSyncStatus === 'offline'" style="font-size:0.8rem;color:#f59e0b;display:flex;align-items:center;gap:0.3rem;">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            Kiosk çevrimdışı — planlanan yayın, doğrulanamadı.
+          </div>
+          <div v-else-if="kioskSyncStatus === 'behind'" style="font-size:0.8rem;color:#f59e0b;display:flex;align-items:center;gap:0.3rem;">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            Kiosk geride — applied &lt; desired; kiosktaki içerik farklı olabilir.
+          </div>
+          <div v-else-if="kioskSyncStatus === 'ack_pending'" style="font-size:0.8rem;color:#f59e0b;display:flex;align-items:center;gap:0.3rem;">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            ACK bekleniyor — kiosk henüz uygulama onayı göndermedi.
+          </div>
+          <div v-else-if="kioskSyncStatus === 'no_publish'" style="font-size:0.8rem;color:#94a3b8;display:flex;align-items:center;gap:0.3rem;">
+            <i class="fa-solid fa-circle-info"></i>
+            Henüz yayın üretilmemiş (desired version yok).
+          </div>
+          <div v-else-if="kioskSyncStatus === 'synced'" style="font-size:0.8rem;color:#10b981;display:flex;align-items:center;gap:0.3rem;">
+            <i class="fa-solid fa-circle-check"></i>
+            Kiosk güncel — aşağıdaki içerik şu an gösterilmesi bekleniyor.
+          </div>
+        </div>
+      </div>
+
+      <div v-if="bcastLoading" style="padding:3rem;text-align:center;color:#6B7280;">
+        <i class="fa-solid fa-circle-notch fa-spin" style="font-size:1.5rem;"></i>
+      </div>
+      <div v-else-if="bcastError" class="eisa-error-banner" style="margin-bottom:1rem;">
+        <i class="fa-solid fa-triangle-exclamation"></i> {{ bcastError }}
+      </div>
+      <div v-else-if="!bcastData && !bcastKioskId" class="eisa-panel" style="padding:3rem;text-align:center;color:#6B7280;">
+        <i class="fa-solid fa-tv" style="font-size:2rem;opacity:0.25;display:block;margin-bottom:0.75rem;"></i>
+        <p>Yayın akışını görmek için bir kiosk ve tarih seçin.</p>
+      </div>
+      <template v-else-if="bcastData">
+
+        <!-- Şu an yayında -->
+        <div class="eisa-panel" style="margin-bottom:1rem;">
+          <div class="eisa-panel-header">
+            <span class="eisa-panel-title"><i class="fa-solid fa-circle-play" style="color:#10b981;margin-right:0.4rem;"></i>Şu An Yayında</span>
+          </div>
+          <div v-if="!currentItem" style="padding:1.5rem;text-align:center;color:#6B7280;">
+            <template v-if="!bcastData.hours?.length">
+              <i class="fa-solid fa-rectangle-ad" style="font-size:1.5rem;opacity:0.3;display:block;margin-bottom:0.5rem;"></i>
+              <p style="font-weight:600;">Playlist bulunamadı</p>
+              <p class="muted small">Bu kiosk için {{ bcastDate }} tarihinde üretilmiş playlist yok. Reklam yerine "Bu Alana Reklam Verebilirsiniz" (AdPromo) gösterilir.</p>
+            </template>
+            <template v-else>
+              <p class="muted">Bu saatte gösterim yok.</p>
+            </template>
+          </div>
+          <div v-else style="padding:1.25rem;display:flex;flex-wrap:wrap;gap:1.5rem;">
+            <!-- Bekleme ekranı preview -->
+            <div style="flex:1;min-width:160px;">
+              <p style="font-size:0.7rem;color:#94a3b8;margin-bottom:0.4rem;text-transform:uppercase;letter-spacing:0.05em;">Bekleme Ekranı (IdleScreen)</p>
+              <div style="width:100%;max-width:180px;aspect-ratio:9/16;background:#0f172a;border-radius:8px;border:1px solid rgba(255,255,255,0.1);display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;position:relative;">
+                <template v-if="isVideoUrlBC(currentItem.media_url)">
+                  <div style="display:flex;flex-direction:column;align-items:center;gap:0.4rem;color:#60a5fa;">
+                    <i class="fa-solid fa-circle-play" style="font-size:2rem;"></i>
+                    <span style="font-size:0.75rem;">Video</span>
+                  </div>
+                </template>
+                <img v-else-if="currentItem.media_url" :src="currentItem.media_url" style="width:100%;height:100%;object-fit:cover;" loading="lazy" :alt="currentItem.name" />
+                <div v-else style="color:#64748b;font-size:0.75rem;">Görsel yok</div>
+              </div>
+            </div>
+            <!-- İşlem ekranı preview -->
+            <div style="flex:1;min-width:160px;">
+              <p style="font-size:0.7rem;color:#94a3b8;margin-bottom:0.4rem;text-transform:uppercase;letter-spacing:0.05em;">İşlem Ekranı (AdStrip)</p>
+              <div style="width:100%;max-width:220px;aspect-ratio:7/5;background:#0f172a;border-radius:8px;border:1px solid rgba(255,255,255,0.1);display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;">
+                <template v-if="isVideoUrlBC(currentItem.active_media_url || currentItem.media_url)">
+                  <div style="display:flex;flex-direction:column;align-items:center;gap:0.4rem;color:#60a5fa;">
+                    <i class="fa-solid fa-circle-play" style="font-size:2rem;"></i>
+                    <span style="font-size:0.75rem;">Video</span>
+                    <span v-if="!currentItem.active_media_url" style="font-size:0.65rem;color:#94a3b8;">Fallback (bekleme görseli)</span>
+                  </div>
+                </template>
+                <img v-else-if="currentItem.active_media_url || currentItem.media_url"
+                  :src="currentItem.active_media_url || currentItem.media_url"
+                  style="width:100%;height:100%;object-fit:cover;" loading="lazy" :alt="currentItem.name" />
+                <div v-else style="color:#64748b;font-size:0.75rem;">Görsel yok</div>
+                <span v-if="!currentItem.active_media_url" style="position:absolute;bottom:4px;right:4px;font-size:0.6rem;background:rgba(0,0,0,0.7);color:#94a3b8;padding:1px 4px;border-radius:4px;">Fallback</span>
+              </div>
+            </div>
+            <!-- Detay -->
+            <div style="flex:2;min-width:200px;">
+              <p style="font-weight:600;margin-bottom:0.25rem;">{{ currentItem.name || '—' }}</p>
+              <p style="font-size:0.8rem;color:#94a3b8;">
+                <span class="eisa-pill eisa-pill-muted" style="font-size:0.7rem;">{{ currentItem.asset_type === 'creative' ? 'Kampanya' : 'HouseAd' }}</span>
+              </p>
+              <div style="margin-top:0.75rem;display:grid;grid-template-columns:1fr 1fr;gap:0.4rem 1rem;font-size:0.8rem;">
+                <div><span style="color:#94a3b8;">Süre:</span> {{ currentItem.duration_seconds }}sn</div>
+                <div><span style="color:#94a3b8;">Saat offset:</span> {{ currentItem.estimated_start_offset_seconds }}sn</div>
+                <div v-if="!currentItem.active_media_url"><span style="color:#f59e0b;">⚠ Alt alan:</span> Fallback (bekleme görseli)</div>
+              </div>
+
+              <!-- Güvenilirlik uyarısı -->
+              <div v-if="kioskSyncStatus !== 'synced'" style="margin-top:0.75rem;padding:0.5rem 0.75rem;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:6px;font-size:0.78rem;color:#f59e0b;">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                Planlanan yayın — kiosk güncelliği doğrulanamadı
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Günün yayın akışı -->
+        <div class="eisa-panel">
+          <div class="eisa-panel-header">
+            <span class="eisa-panel-title"><i class="fa-solid fa-timeline" style="margin-right:0.4rem;"></i>Günün Yayın Akışı — {{ bcastDate }}</span>
+          </div>
+          <div v-if="!bcastData.hours?.length" style="padding:2rem;text-align:center;color:#6B7280;">
+            <p>Bu tarih için playlist üretilmemiş.</p>
+          </div>
+          <div v-else style="padding:1rem 1.25rem;">
+            <div v-for="hourPl in bcastData.hours" :key="hourPl.target_hour" style="margin-bottom:1.25rem;">
+              <h4 style="font-size:0.8rem;color:#94a3b8;margin-bottom:0.5rem;display:flex;align-items:center;gap:0.4rem;">
+                <i class="fa-regular fa-clock"></i>
+                {{ String(hourPl.target_hour).padStart(2,'0') }}:00 — {{ String(hourPl.target_hour).padStart(2,'0') }}:59
+                <span class="eisa-pill eisa-pill-muted" style="font-size:0.65rem;">v{{ hourPl.version }}</span>
+              </h4>
+              <div v-if="!hourPl.items?.length" style="font-size:0.8rem;color:#64748b;font-style:italic;">Bu saatte playlist öğesi yok.</div>
+              <div v-else style="display:flex;flex-wrap:wrap;gap:0.5rem;">
+                <div v-for="item in hourPl.items" :key="item.id"
+                  :class="currentItem?.id === item.id ? 'broadcast-card broadcast-card--active' : 'broadcast-card'"
+                  :title="`${item.name} | ${item.asset_type} | ${item.estimated_start_offset_seconds}s | ${item.duration_seconds}s`"
+                >
+                  <!-- Medya preview -->
+                  <div class="broadcast-thumb">
+                    <template v-if="isVideoUrlBC(item.media_url)">
+                      <div class="video-thumb-bc"><i class="fa-solid fa-circle-play"></i></div>
+                    </template>
+                    <img v-else-if="item.media_url" :src="item.media_url" loading="lazy" :alt="item.name" style="width:100%;height:100%;object-fit:cover;" />
+                    <div v-else style="color:#64748b;font-size:0.7rem;">—</div>
+                  </div>
+                  <!-- Info -->
+                  <div class="broadcast-info">
+                    <p class="broadcast-name">{{ item.name || '—' }}</p>
+                    <p class="broadcast-meta">
+                      <span class="eisa-pill eisa-pill-muted" style="font-size:0.6rem;">{{ item.asset_type === 'creative' ? 'Kampanya' : 'HouseAd' }}</span>
+                      {{ String(hourPl.target_hour).padStart(2,'0') }}:{{ String(Math.floor(item.estimated_start_offset_seconds / 60)).padStart(2,'0') }}
+                    </p>
+                    <p class="broadcast-meta">{{ item.duration_seconds }}sn</p>
+                  </div>
+                  <div v-if="currentItem?.id === item.id" class="broadcast-now-badge">
+                    <i class="fa-solid fa-circle-play"></i> Şu an
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+    </template>
+
     <!-- ── Detay Drawer ────────────────────────────────────────────────────── -->
     <Teleport to="body">
       <div v-if="selected" class="eisa-modal-overlay" @click.self="closeDetail">
@@ -550,3 +856,65 @@ onMounted(() => {
 
   </div>
 </template>
+
+<style scoped>
+.broadcast-card {
+  position: relative;
+  width: 110px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: #1e293b;
+  overflow: hidden;
+  cursor: default;
+  transition: border-color 0.15s;
+}
+.broadcast-card:hover { border-color: rgba(255,255,255,0.2); }
+.broadcast-card--active {
+  border-color: #10b981;
+  box-shadow: 0 0 0 2px rgba(16,185,129,0.3);
+}
+.broadcast-thumb {
+  width: 100%;
+  aspect-ratio: 16/9;
+  background: #0f172a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.video-thumb-bc {
+  color: #60a5fa;
+  font-size: 1.5rem;
+}
+.broadcast-info {
+  padding: 0.35rem 0.4rem;
+}
+.broadcast-name {
+  font-size: 0.7rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: 0 0 0.15rem;
+  color: #e2e8f0;
+}
+.broadcast-meta {
+  font-size: 0.65rem;
+  color: #64748b;
+  margin: 0;
+}
+.broadcast-now-badge {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  background: #10b981;
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+</style>

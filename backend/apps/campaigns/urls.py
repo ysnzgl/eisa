@@ -12,6 +12,7 @@ from .views_v2 import (
     HouseAdViewSet,
     HourPlanViewSet,
     InventoryAvailabilityView,
+    KioskDayStreamView,
     PharmacyCampaignViewSet,
     PlaylistGenerateView,
     PlaylistTemplateViewSet,
@@ -39,6 +40,7 @@ urlpatterns = [
     path("v2/playlists/generate/", PlaylistGenerateView.as_view(), name="dooh-playlist-generate"),
     path("v2/playlists/jobs/", GenerationJobListView.as_view(), name="dooh-playlist-job-list"),
     path("v2/playlists/jobs/<uuid:job_id>/", GenerationJobView.as_view(), name="dooh-playlist-job-detail"),
+    path("v2/playlists/day-stream/", KioskDayStreamView.as_view(), name="dooh-kiosk-day-stream"),
     path("v2/", include(v2_router.urls)),
 ]
 

@@ -964,6 +964,109 @@ class GenerationJobListView(APIView):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Yayın Akışı — günlük tüm saatlerin playlist özeti (read-only admin)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class KioskDayStreamView(APIView):
+    """``GET /api/campaigns/v2/playlists/day-stream/?kiosk=<id>&date=YYYY-MM-DD``
+
+    Bir kioskin belirtilen günündeki tüm saatlerin playlist öğelerini tek
+    istekte döner. Admin "Yayın Akışı" ekranı için tasarlanmıştır.
+
+    - Tamamen read-only; DB mutation yok.
+    - select_related + prefetch_related ile N+1 yok.
+    - Kiosk durumu (is_online, son_goruldu, last_playlist_version) dahil.
+    """
+
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsSuperAdmin]
+
+    def get(self, request):
+        kiosk_id = request.query_params.get("kiosk")
+        raw_date = request.query_params.get("date")
+
+        if not kiosk_id:
+            return Response({"error": "kiosk parametresi zorunludur."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            target_date = _parse_date(raw_date) if raw_date else timezone.now().astimezone(
+                _dt.timezone(_dt.timedelta(hours=3))  # Europe/Istanbul UTC+3 approximate
+            ).date()
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        kiosk = get_object_or_404(
+            Kiosk.objects.select_related("eczane"),
+            pk=kiosk_id,
+        )
+
+        playlists = (
+            Playlist.objects
+            .filter(kiosk_id=kiosk_id, target_date=target_date)
+            .prefetch_related(
+                "items__creative__campaign",
+                "items__house_ad",
+            )
+            .order_by("target_hour")
+        )
+
+        hours_data = []
+        for pl in playlists:
+            items_data = []
+            for item in pl.items.all():
+                if item.creative_id:
+                    media_url = item.creative.media_url
+                    active_media_url = item.creative.active_media_url or ""
+                    duration = item.creative.duration_seconds
+                    asset_id = str(item.creative_id)
+                    asset_type = "creative"
+                    name = item.creative.campaign.name if item.creative.campaign_id else item.creative.name
+                else:
+                    media_url = item.house_ad.media_url
+                    active_media_url = ""
+                    duration = item.house_ad.duration_seconds
+                    asset_id = str(item.house_ad_id)
+                    asset_type = "house_ad"
+                    name = item.house_ad.name
+
+                items_data.append({
+                    "id": str(item.id),
+                    "asset_id": asset_id,
+                    "asset_type": asset_type,
+                    "name": name,
+                    "media_url": media_url,
+                    "active_media_url": active_media_url,
+                    "duration_seconds": duration,
+                    "playback_order": item.playback_order,
+                    "estimated_start_offset_seconds": item.estimated_start_offset_seconds,
+                })
+
+            hours_data.append({
+                "target_hour": pl.target_hour,
+                "version": pl.version,
+                "loop_duration_seconds": pl.loop_duration_seconds,
+                "items": items_data,
+            })
+
+        # Desired/applied version — canonical: Kiosk.last_playlist_version (desired),
+        # Kiosk.applied_playlist_version (kiosk ACK). useKioskRolloutStatus ile ayni sozlesme.
+        return Response({
+            "kiosk_id": kiosk.id,
+            "kiosk_name": kiosk.ad,
+            "is_online": kiosk.is_online,
+            "son_goruldu": kiosk.son_goruldu,
+            "last_playlist_version": kiosk.last_playlist_version,
+            "desired_version": kiosk.last_playlist_version,
+            "applied_version": kiosk.applied_playlist_version,
+            "applied_horizon_end": kiosk.applied_horizon_end,
+            "playlist_applied_at": kiosk.playlist_applied_at,
+            "target_date": str(target_date),
+            "hours": hours_data,
+        })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # PlaylistTemplate CRUD
 # ─────────────────────────────────────────────────────────────────────────────
 

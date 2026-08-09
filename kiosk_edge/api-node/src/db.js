@@ -492,6 +492,7 @@ export function rowToDanismaKategori(row) {
     ikon: row.ikon,
     ust_kategori_id: row.ust_kategori_id ?? null,
     aktif: !!row.aktif,
+    sira: row.sira ?? 100,
   };
 }
 

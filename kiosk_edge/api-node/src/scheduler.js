@@ -1004,7 +1004,6 @@ export async function pushToCentral(db, settings, log = console) {
       message: (err?.message || 'push scheduler offline').slice(0, 512),
     });
   }
-  }
 }
 
 /**

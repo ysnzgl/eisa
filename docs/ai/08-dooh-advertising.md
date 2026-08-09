@@ -641,7 +641,7 @@ slotu oynatir ve proof-of-play hizalanir.
 ## Bilinen Riskler
 
 1. **Campaign targeting priority:** Legacy M2M vs CampaignTarget — hangisi öncelikli? (Belirsiz / doğrulanmalı)
-2. **Playlist generation job tracking:** `GenerationJob` modeli mevcut ama job durumu belirsiz (Belirsiz / doğrulanmalı)
+2. ~~**Playlist generation job tracking:** `GenerationJob` modeli mevcut ama job durumu belirsiz~~ → **ÇÖZÜLDÜ (2026-08-09):** `drain_queue` APScheduler'a eklendi; PENDING job'lar artık işleniyor.
 3. **Slot overflow:** 60sn'den fazla campaign varsa ne olur? (Belirsiz / doğrulanmalı)
 4. **Playlist version mismatch:** Kiosk uzun süre offline kalırsa eski versiyon oynatılır mı? (Belirsiz / doğrulanmalı)
 5. **Media cache:** Creative medya cache mekanizması placeholder (Belirsiz / doğrulanmalı)
@@ -654,6 +654,22 @@ slotu oynatir ve proof-of-play hizalanir.
   hiç gösterilmiyordu. Artık 3600sn'lik saatlik dongu kullaniliyor.
 - **Ölü endpoint (ÇÖZÜLDÜ):** `server.js` `/api/lookups/iller*` kaldırılmıs tabloları
   sorguluyordu (db.js v9). Kullanılmadığı için tamamen kaldırıldı.
+- **drain_queue eksikliği (ÇÖZÜLDÜ 2026-08-09):** `run_scheduler.py` `drain_queue` job'ını kaydetmiyordu; tüm PENDING GenerationJob'lar sonsuza kadar PENDING kalıyordu. `IntervalTrigger(seconds=30)` ile eklendi. `scheduler` servisi yeniden başlatılmalıdır.
+- **active_media_url video desteği (ÇÖZÜLDÜ 2026-08-09):** CampaignWizard ikinci medya alanı `accept="image/*"` idi; video yüklenemiyordu. `accept="image/*,video/mp4,video/webm"` yapıldı; preview video kartı eklendi.
+- **Video thumbnail kırık resim (ÇÖZÜLDÜ 2026-08-09):** Kampanya listesinde video URL'leri `<img>` olarak render ediliyordu. `isVideoUrl()` yardımcısı ile video kartı gösteriliyor.
+
+---
+
+## Admin Endpoint — Yayın Akışı (2026-08-09)
+
+```
+GET /api/campaigns/v2/playlists/day-stream/?kiosk=<id>&date=YYYY-MM-DD
+```
+- Read-only; DB mutation yok.
+- Dönen: `{ kiosk_id, kiosk_name, is_online, son_goruldu, last_playlist_version, desired_version, applied_version, applied_horizon_end, playlist_applied_at, target_date, hours: [{target_hour, version, items: [...]}] }`
+- Her item: `{ id, asset_id, asset_type, name, media_url, active_media_url, duration_seconds, playback_order, estimated_start_offset_seconds }`
+- N+1 yok: `prefetch_related("items__creative__campaign", "items__house_ad")`
+- **Desired/applied canonical (2026-08-09):** `desired_version = Kiosk.last_playlist_version`, `applied_version = Kiosk.applied_playlist_version`. `KioskDesiredBundle` KULLANILMAZ (Faz 5 stub, boş). Frontend rollout durumu `calcKioskRolloutStatus` ile hesaplanır (Control Center ile aynı sözleşme).
 
 ---
 
