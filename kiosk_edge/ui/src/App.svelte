@@ -19,7 +19,7 @@
   import ConsultScreen      from './components/ConsultScreen.svelte';
   import QuestionScreen     from './components/QuestionScreen.svelte';
   import ResultScreen       from './components/ResultScreen.svelte';
-  import AdStrip            from './components/AdStrip.svelte';
+  import PlaylistPlayer     from './components/PlaylistPlayer.svelte';
   import WifiSetupScreen    from './components/WifiSetupScreen.svelte';
 
   let resultScreenRef = null;
@@ -387,8 +387,14 @@
     </div>
   {/if}
 
-  <!-- Reklam bandı: her zaman mount, idle ve wifi_setup ekranlarında gizli -->
-  <div class="ad-strip-host" class:ad-strip-host--hidden={$screen === 'idle' || $screen === 'wifi_setup'}>
-    <AdStrip />
+  <!-- Kalici medya oynaticisi: idle'da fullscreen, oturumda strip. Ekranlar
+       arasi gecerken ayni <video> DOM instance'i KORUNUR (remount/reload yok);
+       yalniz mode/CSS degisir. -->
+  <div class="ad-strip-host"
+       class:ad-strip-host--fullscreen={$screen === 'idle'}
+       class:ad-strip-host--hidden={$screen === 'wifi_setup'}>
+    {#if $screen !== 'wifi_setup'}
+      <PlaylistPlayer mode={$screen === 'idle' ? 'fullscreen' : 'strip'} />
+    {/if}
   </div>
 </div>

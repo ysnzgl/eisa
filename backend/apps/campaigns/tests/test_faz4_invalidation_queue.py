@@ -514,9 +514,9 @@ def test_fb19_planning_error_no_playlist_change(kiosk, house_ad):
         lock_expires_at=timezone.now() + _dt.timedelta(minutes=5),
     )
 
-    # PlacementEngineV2'yi raise edecek şekilde patch et
+    # V1 üreticiyi raise edecek şekilde patch et
     with patch(
-        "apps.campaigns.services.placement_engine_v2.PlacementEngineV2.plan_kiosk_day",
+        "apps.campaigns.services.scheduler.generate_for_kiosk",
         side_effect=RuntimeError("simulated planning error"),
     ):
         process_job(job)
@@ -560,8 +560,10 @@ def test_fb20_publish_error_rollback(kiosk, house_ad):
         lock_expires_at=timezone.now() + _dt.timedelta(minutes=5),
     )
 
+    # V1 persist sırasında (silme sonrası) hata → regenerate_kiosk_day atomik
+    # olduğundan rollback ile eski playlist geri gelir.
     with patch(
-        "apps.campaigns.services.activation_service.ActivationService._persist_plan",
+        "apps.campaigns.services.scheduler.PlaylistItem.objects.bulk_create",
         side_effect=RuntimeError("simulated publish error"),
     ):
         process_job(job)
@@ -583,19 +585,14 @@ def test_fb21_same_fingerprint_no_version_bump(kiosk, house_ad):
     Önce bir publish yapılır (PlaylistItems oluşturulur), sonra aynı plan tekrar
     işlenirse DB fingerprint == plan fingerprint → publish atlanır.
     """
-    from apps.campaigns.services.placement_engine_v2 import PlacementEngineV2
-    from apps.campaigns.services.activation_service import ActivationService
-    from django.db import transaction as _tx
+    from apps.campaigns.services.queue_worker import regenerate_kiosk_day
 
     camp = _make_campaign()
     _make_creative(camp)
     _make_rule(camp)
 
-    plan = PlacementEngineV2.plan_kiosk_day(kiosk_id=kiosk.id, target_date=TODAY, planning_run=None)
-
-    # Önce publish et: gerçek PlaylistItems oluştur
-    with _tx.atomic():
-        ActivationService._persist_plan(kiosk.id, TODAY, plan)
+    # Önce V1 ile publish et: gerçek PlaylistItems oluştur (deterministik seed)
+    regenerate_kiosk_day(kiosk.id, TODAY)
 
     assert Playlist.objects.filter(kiosk=kiosk, target_date=TODAY).count() == 24
 
@@ -804,7 +801,7 @@ def test_fb28_active_staged_publish(kiosk, house_ad):
 @pytest.mark.django_db
 @override_settings(DOOH_ASYNC_QUEUE=True)
 def test_fb29_generate_endpoint_returns_pending(kiosk, house_ad, admin_client):
-    """POST /api/campaigns/v2/playlists/generate/ → PENDING job döndürür."""
+    """POST /api/campaigns/v2/playlists/generate/ → senkron işler, job DONE."""
     resp = admin_client.post(
         "/api/campaigns/v2/playlists/generate/",
         {"date": str(TODAY), "scope": "kiosks", "kiosk_ids": [kiosk.id]},
@@ -817,7 +814,10 @@ def test_fb29_generate_endpoint_returns_pending(kiosk, house_ad, admin_client):
         job_id = data.get("job_id")
         assert job_id is not None
         job = GenerationJob.objects.get(pk=job_id)
-        assert job.status == GenerationJob.JobStatus.PENDING
+        # Buton artık senkron drenaj yapar → job terminal durumda olmalı.
+        assert job.status == GenerationJob.JobStatus.DONE
+    # Playlist üretildi
+    assert Playlist.objects.filter(kiosk=kiosk, target_date=TODAY).count() == 24
 
 
 @pytest.mark.django_db

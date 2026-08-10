@@ -319,7 +319,9 @@ def test_t07_manual_generate_creates_pending_job(kiosk, admin_client):
     )
     assert resp.status_code == 202
     assert GenerationJob.objects.count() > before
-    assert GenerationJob.objects.filter(kiosk=kiosk, status="PENDING").exists()
+    # Buton senkron drenaj yapar → job terminal duruma (DONE) geçer, PENDING kalmaz.
+    assert not GenerationJob.objects.filter(kiosk=kiosk, status="PENDING").exists()
+    assert GenerationJob.objects.filter(kiosk=kiosk, status="DONE").exists()
 
 
 # ── T-08: Job exception -> RETRY/FAILED, PENDING kalmaz ─────────────────────
@@ -401,3 +403,57 @@ def test_t10_playlist_item_serializer_creative_vs_house_ad(kiosk):
     assert ha_data["asset_type"] == "house_ad"
     assert cr_data["active_media_url"] == ""
     assert ha_data["active_media_url"] == ""
+
+
+# ── T-11: PER_LOOP kampanya kuyruk worker'i ile 24 saat dolar + versiyon bump ─
+
+
+@pytest.mark.django_db
+def test_t11_per_loop_campaign_queue_generates_full_day(kiosk):
+    """Regresyon: PER_LOOP (LEGACY_PER_LOOP) kampanya kuyruk worker'i ile
+    24 saatin tamamini creative ile doldurur ve kiosk desired versiyonu artar.
+
+    Onceki hata: process_job V2 PlacementEngine kullaniyordu; LEGACY_PER_LOOP
+    desteklenmedigi icin playlist bos kaliyordu ve kiosk yeni surumu cekmiyordu.
+    """
+    from apps.campaigns.models import ScheduleRule
+    from apps.campaigns.services.queue_worker import process_job
+
+    campaign = _make_campaign(name="T11-PerLoop")
+    Creative.objects.create(
+        campaign=campaign,
+        media_url="https://files.eisa.com.tr/eisa-files/ads/t11.jpg",
+        duration_seconds=15,
+    )
+    ScheduleRule.objects.create(
+        campaign=campaign,
+        frequency_type=ScheduleRule.FrequencyType.PER_LOOP,
+        frequency_value=1,
+    )
+
+    job = _create_or_coalesce_job(kiosk.id, TODAY, "test_t11")
+    assert job.status == "PENDING"
+
+    process_job(job)
+
+    job.refresh_from_db()
+    assert job.status == "DONE"
+
+    # 24 saatin tamami olusmali ve creative item icermeli
+    playlists = Playlist.objects.filter(kiosk=kiosk, target_date=TODAY)
+    assert playlists.count() == 24
+    creative_items = PlaylistItem.objects.filter(
+        playlist__kiosk=kiosk, playlist__target_date=TODAY, creative__isnull=False
+    )
+    assert creative_items.count() > 0
+    hours_with_creative = {
+        pi.playlist.target_hour for pi in creative_items.select_related("playlist")
+    }
+    assert len(hours_with_creative) >= 2, "Creative tum gune dagilmali, tek saate yigilmamali"
+
+    # Kiosk desired versiyonu artmis ve playlist max versiyonuyla hizali olmali
+    kiosk.refresh_from_db()
+    from django.db.models import Max
+    max_v = Playlist.objects.filter(kiosk=kiosk).aggregate(mv=Max("version"))["mv"]
+    assert kiosk.last_playlist_version == max_v
+    assert (kiosk.last_playlist_version or 0) > (kiosk.applied_playlist_version or 0)

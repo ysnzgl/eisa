@@ -65,12 +65,13 @@ def claim_next_job() -> Optional[GenerationJob]:
 
 
 def process_job(job: GenerationJob) -> None:
-    """Tek job'ı işle: plan + fingerprint karşılaştırma + staged publish.
+    """Tek job'ı işle: V1 loop-filler ile playlist üret (kanonik).
 
-    Hata durumunda eski playlist dokunulmaz kalır.
+    Kanonik playlist üretimi 24 saatin tamamını doğru dolduran V1
+    ``generate_for_kiosk`` iledir (nightly job ile aynı motor). V2
+    ``PlacementEngineV2`` yalnız kapasite simülasyonu içindir; 24 saatlik
+    dağıtımı yapmaz. Hata durumunda eski playlist dokunulmaz kalır.
     """
-    from apps.campaigns.services.placement_engine_v2 import PlacementEngineV2
-
     kiosk_id = job.kiosk_id
     target_date = job.target_date
 
@@ -80,46 +81,28 @@ def process_job(job: GenerationJob) -> None:
         return
 
     try:
-        # 1. Plan (read-only)
-        plan = PlacementEngineV2.plan_kiosk_day(
-            kiosk_id=kiosk_id,
-            target_date=target_date,
-            planning_run=None,
-        )
-        new_fp = plan.fingerprint
-
-        # Staged publish (V2 canonical — Faz 7)
-        # Fingerprint karşılaştırması Kiosk row-lock altında yapılır.
-        with transaction.atomic():
-            from apps.campaigns.services.activation_service import ActivationService
-            n_placements = ActivationService._persist_plan(
-                kiosk_id, target_date, plan, check_fingerprint=True
-            )
+        n_placements = regenerate_kiosk_day(kiosk_id, target_date)
 
         if n_placements is None:
-            # Fingerprint değişmemiş (lock altında doğrulandı) → yeniden üretme
+            # İçerik değişmemiş (deterministik seed) → versiyon artırma
             logger.debug(
-                "QueueWorker: fingerprint unchanged (verified inside lock) kiosk=%s date=%s fp=%s",
-                kiosk_id, target_date, new_fp,
+                "QueueWorker: content unchanged kiosk=%s date=%s → no version bump",
+                kiosk_id, target_date,
             )
             _complete_job(
                 job,
-                {"fingerprint": new_fp, "version_bumped": False, "unchanged": True},
+                {"version_bumped": False, "unchanged": True},
                 version_bumped=False,
             )
             return
 
         logger.info(
-            "QueueWorker: published kiosk=%s date=%s fp=%s placements=%s",
-            kiosk_id, target_date, new_fp, n_placements,
+            "QueueWorker: published (V1) kiosk=%s date=%s placements=%s",
+            kiosk_id, target_date, n_placements,
         )
         _complete_job(
             job,
-            {
-                "fingerprint": new_fp,
-                "version_bumped": True,
-                "placements": n_placements,
-            },
+            {"version_bumped": True, "placements": n_placements},
             version_bumped=True,
         )
 
@@ -210,6 +193,66 @@ def _get_current_fingerprint(kiosk_id: int, target_date: date) -> Optional[str]:
     """
     from apps.campaigns.services.activation_service import ActivationService
     return ActivationService._compute_playlist_fingerprint(kiosk_id, target_date)
+
+
+def regenerate_kiosk_day(kiosk_id: int, target_date: date) -> Optional[int]:
+    """Bir kiosk-gün için playlist'i V1 loop-filler motoruyla (yeniden) üret.
+
+    V1 ``generate_for_kiosk`` 24 saatin tamamını doğru dolduran kanonik
+    üreticidir (nightly job ile aynı) ve ``Kiosk.last_playlist_version``'ı
+    günceller → kiosk yeni playlist'i çeker.
+
+    İçerik değişmediyse (deterministik seed) gereksiz versiyon artışını ve
+    kiosk ACK dalgalanmasını önlemek için üretim geri alınır.
+
+    Returns:
+        Üretilen creative item sayısı; içerik değişmediyse None.
+    """
+    from apps.campaigns.services.scheduler import generate_for_kiosk
+    from apps.pharmacies.models import Kiosk
+
+    try:
+        kiosk = Kiosk.objects.get(pk=kiosk_id, aktif=True)
+    except Kiosk.DoesNotExist:
+        return None
+
+    before_fp = _get_current_fingerprint(kiosk_id, target_date)
+
+    unchanged = False
+    creative_count = 0
+    with transaction.atomic():
+        playlists = generate_for_kiosk(kiosk, target_date)
+        creative_count = sum(
+            p.items.filter(creative__isnull=False).count() for p in playlists
+        )
+        after_fp = _get_current_fingerprint(kiosk_id, target_date)
+        if before_fp is not None and before_fp == after_fp:
+            unchanged = True
+            transaction.set_rollback(True)
+
+    if unchanged:
+        # İçerik aynı → üretim geri alındı. Yine de desired versiyonu mevcut
+        # içerikle eşitle (eski/hatalı üretimlerden kalan desync'i onar).
+        _sync_kiosk_desired_version(kiosk_id)
+        return None
+    return creative_count
+
+
+def _sync_kiosk_desired_version(kiosk_id: int) -> None:
+    """Kiosk.last_playlist_version'ı mevcut en yüksek Playlist versiyonuna hizala.
+
+    Yalnız geride ise günceller (churn yok). İçerik değişmediği hâlde desired
+    versiyon geride kalmışsa kiosk'un pull tetiklemesini sağlar.
+    """
+    from django.db.models import Max, Q
+    from apps.campaigns.models import Playlist
+    from apps.pharmacies.models import Kiosk
+
+    max_v = Playlist.objects.filter(kiosk_id=kiosk_id).aggregate(mv=Max("version"))["mv"] or 0
+    if max_v:
+        Kiosk.objects.filter(pk=kiosk_id).filter(
+            Q(last_playlist_version__isnull=True) | Q(last_playlist_version__lt=max_v)
+        ).update(last_playlist_version=max_v)
 
 
 def _complete_job(

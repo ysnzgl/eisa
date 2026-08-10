@@ -270,6 +270,11 @@ class PlaylistGenerator:
                     order += 1
             if bulk:
                 PlaylistItem.objects.bulk_create(bulk)
+
+        # Kiosk'un desired (istenen) versiyonunu güncelle. /ping ve /manifest bu
+        # alanı raporlar; güncellenmezse kiosk yeni playlist'i asla çekmez.
+        Kiosk.objects.filter(pk=self.kiosk.pk).update(last_playlist_version=next_version)
+        self.kiosk.last_playlist_version = next_version
         return playlists
 
     # ── Helpers ────────────────────────────────────────────────────────

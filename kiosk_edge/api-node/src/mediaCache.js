@@ -43,6 +43,15 @@ function mimeFromExt(ext) {
   return 'application/octet-stream';
 }
 
+// MIME'dan otoriter render tipi ('video' | 'image' | ''). UI uzantidan tahmin
+// yerine bu degeri kullanir.
+export function mediaKindFromMime(mime) {
+  const m = String(mime || '').toLowerCase();
+  if (m.startsWith('video/')) return 'video';
+  if (m.startsWith('image/')) return 'image';
+  return '';
+}
+
 function normalizeAssets(db) {
   const creatives = db
     .prepare('SELECT id, media_url, active_media_url, checksum FROM creatives WHERE aktif = 1')
@@ -211,10 +220,30 @@ export function getLocalMediaMeta(db, assetType, assetId) {
   ).get(assetType, String(assetId));
 }
 
+// UI (MediaView/CampaignOverlay) video/gorsel ayrimini URL uzantisindan yapar.
+// Proxy URL uzantisiz oldugundan videolar <img> olarak render edilip bozuluyordu.
+const _MIME_EXT = {
+  'video/mp4': '.mp4',
+  'video/webm': '.webm',
+  'video/ogg': '.ogv',
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/gif': '.gif',
+  'image/webp': '.webp',
+};
+
+function _extFromSource(sourceUrl) {
+  if (typeof sourceUrl !== 'string') return '';
+  const path = sourceUrl.split('?')[0];
+  const m = path.match(/\.(mp4|webm|ogv|ogg|jpg|jpeg|png|gif|webp)$/i);
+  return m ? `.${m[1].toLowerCase()}` : '';
+}
+
 export function buildMediaUrl(db, assetType, assetId, sourceUrl) {
   const row = getLocalMediaMeta(db, assetType, assetId);
   if (row && row.status === 'ready' && row.local_path && fs.existsSync(row.local_path)) {
-    return `/api/media/${assetType}/${assetId}`;
+    const ext = _MIME_EXT[row.mime_type] || _extFromSource(sourceUrl);
+    return `/api/media/${assetType}/${assetId}${ext}`;
   }
   return sourceUrl;
 }

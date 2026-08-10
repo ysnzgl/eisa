@@ -335,6 +335,25 @@ def test_kiosk_proof_of_play_validation(kiosk_client, kiosk):
 
 
 @pytest.mark.django_db
+def test_kiosk_proof_of_play_unknown_creative_is_skipped(kiosk_client, kiosk):
+    """Silinmis/gecersiz creative referansi ingest'i 500'e dusurmez."""
+    payload = {"logs": [
+        {
+            "creative_id": str(uuid.uuid4()),
+            "played_at": timezone.now().isoformat(),
+            "duration_played": 15,
+        },
+    ]}
+    r = kiosk_client.post(
+        "/api/kiosk/v1/proof-of-play/", payload, format="json",
+    )
+    assert r.status_code == 201, r.content
+    body = r.json()
+    assert body["ingested"] == 0
+    assert body["invalid_refs"] == 1
+
+
+@pytest.mark.django_db
 def test_admin_pricing_matrix_create_and_get(admin_client):
     payload = {
         "base_price_per_second": "1.5000",

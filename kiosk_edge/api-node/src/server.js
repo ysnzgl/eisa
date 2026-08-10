@@ -24,7 +24,7 @@ import {
 } from './correlationId.js';
 import { recordDiagnostic } from './diagnosticOutbox.js';
 import { getWifiStatus, scanWifi, connectWifi } from './wifi.js';
-import { buildMediaUrl, getLocalMediaMeta } from './mediaCache.js';
+import { buildMediaUrl, getLocalMediaMeta, mediaKindFromMime } from './mediaCache.js';
 import { istanbulNow } from './timezone.js';
 import { requestWithRetry } from './scheduler.js';
 import { handle401Error, handle403Error, hasAppKeyCredentials } from './provisioning.js';
@@ -146,7 +146,11 @@ export async function buildServer({ db, settings, logger }) {
   app.get('/health', async () => ({ status: 'ok' }));
 
   app.get('/api/media/:assetType/:assetId', async (req, reply) => {
-    const { assetType, assetId } = req.params;
+    const { assetType } = req.params;
+    // URL'e video tespiti icin eklenen uzantiyi ayikla (asset_id UUID/_active'tir).
+    const assetId = req.params.assetId.replace(
+      /\.(mp4|webm|ogv|ogg|jpg|jpeg|png|gif|webp)$/i, '',
+    );
     if (!['creative', 'house_ad'].includes(assetType)) {
       return fail(reply, 400, 'Gecersiz asset_tipi');
     }
@@ -636,6 +640,7 @@ export async function buildServer({ db, settings, logger }) {
           active_media_url: c.active_media_url
             ? buildMediaUrl(db, 'creative', c.id + '_active', c.active_media_url)
             : '',
+          media_type: mediaKindFromMime(getLocalMediaMeta(db, 'creative', c.id)?.mime_type),
           duration_seconds: c.duration_seconds,
           estimated_start_offset_seconds: 0,
         })),
@@ -647,6 +652,7 @@ export async function buildServer({ db, settings, logger }) {
           media_url: buildMediaUrl(db, 'house_ad', h.id, h.media_url),
           remote_media_url: h.media_url,
           active_media_url: '',
+          media_type: mediaKindFromMime(getLocalMediaMeta(db, 'house_ad', h.id)?.mime_type),
           duration_seconds: h.duration_seconds,
           estimated_start_offset_seconds: 0,
         })),
@@ -679,6 +685,7 @@ export async function buildServer({ db, settings, logger }) {
         active_media_url: item.active_media_url
           ? buildMediaUrl(db, 'creative', item.asset_id + '_active', item.active_media_url)
           : '',
+        media_type: mediaKindFromMime(getLocalMediaMeta(db, item.asset_type, item.asset_id)?.mime_type),
       }));
 
     return {

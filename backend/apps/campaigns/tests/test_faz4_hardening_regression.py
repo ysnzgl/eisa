@@ -311,20 +311,18 @@ def test_fd06_concurrent_same_fingerprint_single_bump(kiosk, house_ad_fd):
     _make_creative(camp)
     _make_rule(camp)
 
-    from apps.campaigns.services.placement_engine_v2 import PlacementEngineV2
-    plan = PlacementEngineV2.plan_kiosk_day(kiosk_id=kiosk.id, target_date=TODAY, planning_run=None)
+    from apps.campaigns.services.queue_worker import regenerate_kiosk_day
 
-    # Job 1: publish
+    # Job 1: publish (V1 kanonik üretici)
     j1 = _running_job(kiosk, suffix="fd06a")
-    with transaction.atomic():
-        ActivationService._persist_plan(kiosk.id, TODAY, plan)
+    regenerate_kiosk_day(kiosk.id, TODAY)
     j1.status = GenerationJob.JobStatus.DONE
     j1.payload = {"version_bumped": True}
     j1.save(update_fields=["status", "payload", "guncellenme_tarihi"])
 
     version_after_first = Kiosk.objects.get(pk=kiosk.pk).last_playlist_version
 
-    # Job 2: aynı plan → fingerprint unchanged → skip
+    # Job 2: aynı içerik (deterministik seed) → fingerprint unchanged → skip
     j2 = _running_job(kiosk, suffix="fd06b")
     process_job(j2)
 

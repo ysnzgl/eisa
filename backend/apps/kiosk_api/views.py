@@ -13,7 +13,7 @@ import datetime as _dt
 import re
 
 from django.conf import settings
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import F, Max
 from django.utils import timezone
 from rest_framework import status
@@ -399,15 +399,38 @@ class KioskProofOfPlayView(KioskAPIView):
             .values_list("play_event_id", flat=True)
         ) if new_event_ids else set()
 
+        creative_ids = {entry["creative_id"] for entry in logs_data if entry.get("creative_id")}
+        house_ad_ids = {entry["house_ad_id"] for entry in logs_data if entry.get("house_ad_id")}
+
+        existing_creative_ids = set(
+            Creative.objects.filter(pk__in=creative_ids).values_list("pk", flat=True)
+        ) if creative_ids else set()
+        existing_house_ad_ids = set(
+            HouseAd.objects.filter(pk__in=house_ad_ids).values_list("pk", flat=True)
+        ) if house_ad_ids else set()
+
         bulk = []
+        invalid_ref_count = 0
         for entry in logs_data:
             event_id = entry.get("play_event_id")
             if event_id and event_id in existing_event_ids:
                 continue
+
+            creative_id = entry.get("creative_id")
+            house_ad_id = entry.get("house_ad_id")
+
+            # Silinmis ya da gecersiz creative/house_ad referansi 500'e dusurmesin.
+            if creative_id and creative_id not in existing_creative_ids:
+                invalid_ref_count += 1
+                continue
+            if house_ad_id and house_ad_id not in existing_house_ad_ids:
+                invalid_ref_count += 1
+                continue
+
             bulk.append(PlayLog(
                 kiosk=kiosk,
-                creative_id=entry.get("creative_id"),
-                house_ad_id=entry.get("house_ad_id"),
+                creative_id=creative_id,
+                house_ad_id=house_ad_id,
                 played_at=entry["played_at"],
                 duration_played=entry["duration_played"],
                 play_event_id=event_id,
@@ -418,11 +441,29 @@ class KioskProofOfPlayView(KioskAPIView):
                 occurred_at=entry.get("occurred_at"),
                 received_at=now,
             ))
+        ingested_count = 0
         if bulk:
-            PlayLog.objects.bulk_create(bulk, batch_size=500, ignore_conflicts=True)
+            try:
+                created = PlayLog.objects.bulk_create(
+                    bulk, batch_size=500, ignore_conflicts=True
+                )
+                ingested_count = len(created)
+            except IntegrityError:
+                # Yarista creative/house_ad silinmesi gibi durumlarda tek tek dene.
+                for row in bulk:
+                    try:
+                        row.save(force_insert=True)
+                        ingested_count += 1
+                    except IntegrityError:
+                        invalid_ref_count += 1
         Kiosk.objects.filter(pk=kiosk.pk).update(son_goruldu=now)
+        skipped_count = len(existing_event_ids) + invalid_ref_count + max(0, len(bulk) - ingested_count)
         return Response(
-            {"ingested": len(bulk), "skipped": len(existing_event_ids)},
+            {
+                "ingested": ingested_count,
+                "skipped": skipped_count,
+                "invalid_refs": invalid_ref_count,
+            },
             status=status.HTTP_201_CREATED,
         )
 
