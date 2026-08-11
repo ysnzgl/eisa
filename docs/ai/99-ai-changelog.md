@@ -5,6 +5,22 @@
 
 ---
 
+## 2026-08-12
+
+### [Kiosk Edge UI] WifiSetupScreen — Wi-Fi yanlış-negatif reconciliation düzeltmesi
+
+**Değişiklik:** `/wifi-connect` HTTP isteği hata verdiğinde OS gerçekte bağlanmış olsa bile ekran koşulsuz başarısız sayıyordu. Saha bulgusu: `wlp5s0 wifi bağlandı MedinceAP` iken "Beklenmedik bir hata oluştu" gösterilmesi ve `connected` eventi üretilmemesi.
+
+**Root cause:** `connect()` içinde `catch(err)` → koşulsuz `connectError = ...` ataması. Wi-Fi bağlantı durumu hiç sorgulanmıyordu.
+
+**Çözüm:** `/wifi-connect` hata verirse, `fetchWifiStatus()` ile `/wifi-status` üzerinden kısa ve sınırlı poll (3 deneme × 2 sn). Seçilen SSID aktif bağlı ağ olarak doğrulanırsa `connected` eventi gönderilir, hata gösterilmez. Gerçek başarısızlıklarda orijinal hata gösterilmeye devam eder. `_reconcileId` guard ile duplicate event ve stale poll koruması. `onDestroy` ile pending timer/resolver temizliği.
+
+**Dosyalar:** `kiosk_edge/ui/src/components/WifiSetupScreen.svelte` (tek üretim dosyası), `kiosk_edge/ui/src/__tests__/WifiSetupScreen.test.js` (yeni test dosyası — 7 test, tümü geçti)
+
+**Etki:** Wi-Fi bağlantısı başarılı ancak HTTP yanıtı başarısız olduğunda kullanıcı doğru şekilde ana/idle ekrana yönlendirilir. Yanlış şifre gibi gerçek başarısızlıklar hata olarak gösterilmeye devam eder.
+
+---
+
 ## 2026-08-11
 
 ### [Backend + Kiosk Edge + Web Panels] Barkod Logo Yönetimi — düzeltmeler (r2)

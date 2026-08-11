@@ -12,6 +12,8 @@
     danismaCategories, danismaLoading,
   } from './stores/kiosk.js';
 
+  import { version } from '../package.json';
+
   import IdleScreen         from './components/IdleScreen.svelte';
   import DemographicsScreen from './components/DemographicsScreen.svelte';
   import WelcomeScreen      from './components/WelcomeScreen.svelte';
@@ -404,6 +406,7 @@
   <!-- Kalici medya oynaticisi: idle'da fullscreen, oturumda strip. Ekranlar
        arasi gecerken ayni <video> DOM instance'i KORUNUR (remount/reload yok);
        yalniz mode/CSS degisir. -->
+  <span class="v-badge">v{version}</span>
   <div class="ad-strip-host"
        class:ad-strip-host--fullscreen={$screen === 'idle'}
        class:ad-strip-host--hidden={$screen === 'wifi_setup'}>
@@ -414,4 +417,15 @@
 </div>
 
 <style>
+  .v-badge {
+    position: absolute;
+    bottom: 6px;
+    right: 10px;
+    z-index: 9999;
+    font-size: 10px;
+    line-height: 1;
+    color: rgba(255, 255, 255, 0.45);
+    pointer-events: none;
+    letter-spacing: 0.03em;
+  }
 </style>
