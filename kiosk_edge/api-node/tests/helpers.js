@@ -65,6 +65,7 @@ export function makeMemoryDb() {
     CREATE TABLE creatives (
       id TEXT PRIMARY KEY,
       media_url TEXT NOT NULL DEFAULT '',
+      active_media_url TEXT,
       duration_seconds INTEGER NOT NULL DEFAULT 15,
       checksum TEXT NOT NULL DEFAULT '',
       type TEXT NOT NULL DEFAULT 'creative',

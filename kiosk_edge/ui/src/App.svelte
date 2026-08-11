@@ -200,8 +200,6 @@
     sessionFinalized = false;
   }
 
-  let submitError = null;
-
   async function showFlowAResult(cat, completed = true) {
     // Cift sonlandirmayi engelle (zaman asimi + normal bitis yarisabilir).
     if (sessionFinalized) return;
@@ -216,28 +214,23 @@
     const recs = getRecommendations(qs, answers, age ?? '18-25', sex ?? 'M');
     const ingredientList = recsToIngredientList(recs);
     const { qrCode, qrPayload, syncDurum } = await doSubmitSession(cat?.slug ?? '', false, ingredientList, completed);
-    if (!qrCode) {
-      submitError = 'QR kodu üretilemedi. Kiosk yapılandırmasını kontrol edin.';
-      setTimeout(() => { submitError = null; resetToIdle(); }, 5000);
-      sessionFinalized = false;
-      return;
-    }
+    // QR olmasa bile sonuç ekranına geç; ResultScreen kendi mesajını gösterir.
+    // syncDurum='hata' ise ResultScreen sarı ünlem gösterir.
     const firstRec = recs[0];
-
     result.set({
       label:          `Önerilen Etken Maddeler — ${cat?.ad ?? ''}`,
       recs,
       ana:            firstRec?.primary    ?? '—',
       destek:         firstRec?.supportive ?? '',
       isSensitive:    false,
-      qrCode,
-      qrPayload,
-      syncDurum,
+      qrCode:         qrCode ?? null,
+      qrPayload:      qrPayload ?? null,
+      syncDurum:      syncDurum ?? 'hata',
       idempotencyKey: sessionId,
     });
     goTo('result');
     await tick();
-    resultScreenRef?.drawQR(qrPayload);
+    if (qrCode) resultScreenRef?.drawQR(qrPayload);
   }
 
   function startNewComplaint() {
@@ -282,21 +275,15 @@
     } finally {
       sessionSubmitting = false;
     }
-    if (!qrCode) {
-      submitError = 'QR kodu üretilemedi. Kiosk yapılandırmasını kontrol edin.';
-      setTimeout(() => { submitError = null; resetToIdle(); }, 5000);
-      sessionFinalized = false;
-      return;
-    }
     sessionFinalized = true; // Danışma hemen tamamlanır
     result.set({
       label:          'Danışma talebi gönderildi',
       ana:            cat?.ad ?? cat,
       destek:         'Eczacınız sizi bekliyor — QR kodu okutunuz.',
       isSensitive:    true,
-      qrCode,
-      qrPayload,
-      syncDurum,
+      qrCode:         qrCode ?? null,
+      qrPayload:      qrPayload ?? null,
+      syncDurum:      syncDurum ?? 'hata',
       idempotencyKey: sessionId,
     });
     goTo('result');
@@ -414,15 +401,6 @@
     </div>
   {/if}
 
-  {#if submitError}
-    <div class="submit-error-overlay" role="alert">
-      <div class="submit-error-card">
-        <i class="fa-solid fa-triangle-exclamation"></i>
-        {submitError}
-      </div>
-    </div>
-  {/if}
-
   <!-- Kalici medya oynaticisi: idle'da fullscreen, oturumda strip. Ekranlar
        arasi gecerken ayni <video> DOM instance'i KORUNUR (remount/reload yok);
        yalniz mode/CSS degisir. -->
@@ -436,28 +414,4 @@
 </div>
 
 <style>
-  .submit-error-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 9999;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(0,0,0,0.55);
-  }
-  .submit-error-card {
-    background: #7f1d1d;
-    color: #fff;
-    padding: 24px 32px;
-    border-radius: 16px;
-    font-size: 18px;
-    font-weight: 700;
-    text-align: center;
-    max-width: 480px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 12px;
-  }
-  .submit-error-card i { font-size: 36px; color: #fbbf24; }
 </style>
