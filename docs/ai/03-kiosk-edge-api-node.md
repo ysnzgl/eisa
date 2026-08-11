@@ -26,25 +26,23 @@
 - `kiosk_edge/api-node/src/mediaCache.js` — Media download cache
 - `kiosk_edge/api-node/src/config.js` — Config management
 
-### Session QR Akışı (2026-08-06 — offline-first)
+### Session QR Akışı (2026-08-11 — offline-first, kesinleşti)
 ```
 UI → POST /api/oturum/gonder { ..., tamamlandi: true }
   → Edge: eczane_kiosk_no kiosk_meta'dan alınır
-  → Yoksa → 503 { code: "kiosk_no_missing" } — rastgele QR üretilmez
+  → Yoksa → 503 { code: "kiosk_no_missing" } — backend çağrısı yapılmaz
   → Atomik SQLite: QR üret (qrGen.js) + sayaç güncelle + outbox insert
   → UI'a hemen { qr_kodu, sync_durum: "bekliyor" } döner
   → setImmediate: backend push arka planda
   → Push başarılı → gonderilme_tarihi set, sync_durum: "gonderildi"
   → Push başarısız → PENDING, scheduler sonra retry
 
+GET /api/oturum/sync-durum/:idempotency_key
+  → { sync_durum: "bekliyor" | "gonderildi" }   (UI polling için)
+
 Backend kapalı/erişilemezse:
   → UI yine de QR alır (SQLite'tan)
   → Scheduler sonraki döngüde backend push dener
-
-eczane_kiosk_no edinme:
-  → Bootstrap APPROVED yanıtında backend atar
-  → kiosk_meta["eczane_kiosk_no"] = 1-31
-  → settings.eczaneKioskNo ile runtime'a yayılır
 ```
 
 ---

@@ -5,7 +5,26 @@
 
 ---
 
+## 2026-08-11
+
+### [Kiosk Edge] 5 Issue Fix — QR offline, HAYIR butonu, etken madde kutuları, logo, AdPromo konumu
+
+**QR Gerçek Kök Neden:** `server.js`'de `!hasSlot` bloğu senkron backend çağrısı yapıyordu; backend kapalıyken 503 döndürüyor, App.svelte'de `completed=true` için try/catch yoktu → UI çöküyordu.
+
+**Değişiklikler:**
+1. **QR offline-first**: `server.js` `!hasSlot` → anında `503 kiosk_no_missing` (eski senkron backend fallback kaldırıldı). Sync-durum polling endpoint `GET /api/oturum/sync-durum/:key` eklendi. `api.js` `submitSession` artık `syncDurum` döner; `fetchSessionSyncStatus` eklendi. App.svelte `doSubmitSession`/`doSubmitConsult` hata yakalamaya alındı; result store'a `syncDurum` ve `idempotencyKey` eklendi. ResultScreen 3s/+8s sonra durum polllar; gönderilmemişse köşede koyu sarı ünlem ikonu gösterir.
+2. **HAYIR butonu koyu gri**: QuestionScreen.svelte `.btn-hayir` scoped class → `#4B5563/#374151` gradient.
+3. **Etken madde kutuları**: ResultScreen ana/destek/ek ayrımı kaldırıldı; tüm `recs` eşit beyaz kutu (`ingredient-box`) koyu kırmızı (`#7f1d1d`) zemin üzerinde gösterilir.
+4. **Logo**: ResultScreen'deki `e-İSA` metin logosu kaldırıldı; `<Logo height="40px" />` kullanıldı.
+5. **AdPromo konumu**: `.ad-promo` `align-items: center → flex-end`, normal: `padding-bottom:20px`, large: `padding-bottom:48px`.
+
+**Dosyalar:** `kiosk_edge/api-node/src/server.js`, `kiosk_edge/ui/src/lib/api.js`, `kiosk_edge/ui/src/App.svelte`, `kiosk_edge/ui/src/components/ResultScreen.svelte`, `kiosk_edge/ui/src/components/QuestionScreen.svelte`, `kiosk_edge/ui/src/components/AdPromo.svelte`
+**Build:** `vite build` ✓ 142 modül, 0 hata.
+
+---
+
 ## 2026-08-09
+
 
 ### [Web Panels + Backend] 4 Issue Fix — video aktif medya, job worker, video thumbnail, yayın akışı
 

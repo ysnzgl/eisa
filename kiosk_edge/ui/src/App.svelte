@@ -1,7 +1,7 @@
 <script>
   import { tick, onMount, onDestroy } from 'svelte';
   import { getRecommendations, recsToIngredientList } from './lib/ingredients.js';
-  import { fetchCategories, fetchQuestions, fetchDanismaCategories, submitSession, fetchWifiStatus } from './lib/api.js';
+  import { fetchCategories, fetchQuestions, fetchDanismaCategories, submitSession, fetchWifiStatus, fetchSessionSyncStatus } from './lib/api.js';
   import {
     screen,
     selectedAge, selectedSex,
@@ -200,6 +200,8 @@
     sessionFinalized = false;
   }
 
+  let submitError = null;
+
   async function showFlowAResult(cat, completed = true) {
     // Cift sonlandirmayi engelle (zaman asimi + normal bitis yarisabilir).
     if (sessionFinalized) return;
@@ -213,17 +215,25 @@
 
     const recs = getRecommendations(qs, answers, age ?? '18-25', sex ?? 'M');
     const ingredientList = recsToIngredientList(recs);
-    const { qrCode, qrPayload } = await doSubmitSession(cat?.slug ?? '', false, ingredientList, completed);
+    const { qrCode, qrPayload, syncDurum } = await doSubmitSession(cat?.slug ?? '', false, ingredientList, completed);
+    if (!qrCode) {
+      submitError = 'QR kodu üretilemedi. Kiosk yapılandırmasını kontrol edin.';
+      setTimeout(() => { submitError = null; resetToIdle(); }, 5000);
+      sessionFinalized = false;
+      return;
+    }
     const firstRec = recs[0];
 
     result.set({
-      label:       `Önerilen Etken Maddeler — ${cat?.ad ?? ''}`,
+      label:          `Önerilen Etken Maddeler — ${cat?.ad ?? ''}`,
       recs,
-      ana:         firstRec?.primary    ?? '—',
-      destek:      firstRec?.supportive ?? '',
-      isSensitive: false,
+      ana:            firstRec?.primary    ?? '—',
+      destek:         firstRec?.supportive ?? '',
+      isSensitive:    false,
       qrCode,
       qrPayload,
+      syncDurum,
+      idempotencyKey: sessionId,
     });
     goTo('result');
     await tick();
@@ -266,20 +276,28 @@
     sessionId = (crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`);
     sessionFinalized = false;
     sessionSubmitting = true;
-    let qrCode, qrPayload;
+    let qrCode, qrPayload, syncDurum;
     try {
-      ({ qrCode, qrPayload } = await doSubmitConsult(cat?.slug ?? cat?.ad ?? ''));
+      ({ qrCode, qrPayload, syncDurum } = await doSubmitConsult(cat?.slug ?? cat?.ad ?? ''));
     } finally {
       sessionSubmitting = false;
     }
+    if (!qrCode) {
+      submitError = 'QR kodu üretilemedi. Kiosk yapılandırmasını kontrol edin.';
+      setTimeout(() => { submitError = null; resetToIdle(); }, 5000);
+      sessionFinalized = false;
+      return;
+    }
     sessionFinalized = true; // Danışma hemen tamamlanır
     result.set({
-      label:       'Danışma talebi gönderildi',
-      ana:         cat?.ad ?? cat,
-      destek:      'Eczacınız sizi bekliyor — QR kodu okutunuz.',
-      isSensitive: true,
+      label:          'Danışma talebi gönderildi',
+      ana:            cat?.ad ?? cat,
+      destek:         'Eczacınız sizi bekliyor — QR kodu okutunuz.',
+      isSensitive:    true,
       qrCode,
       qrPayload,
+      syncDurum,
+      idempotencyKey: sessionId,
     });
     goTo('result');
     await tick();
@@ -290,19 +308,23 @@
     let age, sex;
     selectedAge.update(v => { age = v; return v; });
     selectedSex.update(v => { sex = v; return v; });
-    // No try/catch: backend QR is authoritative. Caller handles error.
-    return await submitSession({
-      ageRange:       age,
-      gender:         sex,
-      oturumTipi:     'OZEL_DANISMANLIK',
-      categorySlug:   null,
-      danismaKategorisiSlug: categorySlug,
-      isSensitiveFlow: true,
-      answersPayload:  {},
-      ingredientList:  [],
-      completed:       true,
-      sessionId,
-    });
+    try {
+      return await submitSession({
+        ageRange:       age,
+        gender:         sex,
+        oturumTipi:     'OZEL_DANISMANLIK',
+        categorySlug:   null,
+        danismaKategorisiSlug: categorySlug,
+        isSensitiveFlow: true,
+        answersPayload:  {},
+        ingredientList:  [],
+        completed:       true,
+        sessionId,
+      });
+    } catch (err) {
+      console.error('Danisma oturumu gonderme hatasi:', err);
+      return { qrCode: null, qrPayload: null, syncDurum: 'hata' };
+    }
   }
 
   async function doSubmitSession(categorySlug, isSensitiveFlow, ingredientList, completed = true) {
@@ -311,8 +333,7 @@
     selectedSex.update(v => { sex = v; return v; });
     currentAnswers.update(v => { answers = v; return v; });
 
-    // No try/catch for completed sessions: backend QR is authoritative.
-    // For abandoned sessions, errors are silently ignored.
+    // Abandoned sessions silently ignore errors.
     if (!completed) {
       try {
         return await submitSession({
@@ -331,18 +352,24 @@
         return { qrCode: null }; // Abandoned sessions silently fail
       }
     }
-    return await submitSession({
-      ageRange:       age,
-      gender:         sex,
-      oturumTipi:     'SIKAYET',
-      categorySlug,
-      danismaKategorisiSlug: null,
-      isSensitiveFlow,
-      answersPayload: Object.fromEntries(answers.map(a => [String(a.questionId ?? a.id), a.answer])),
-      ingredientList,
-      completed,
-      sessionId,
-    });
+    // For completed sessions: errors are caught; flow continues with null QR.
+    try {
+      return await submitSession({
+        ageRange:       age,
+        gender:         sex,
+        oturumTipi:     'SIKAYET',
+        categorySlug,
+        danismaKategorisiSlug: null,
+        isSensitiveFlow,
+        answersPayload: Object.fromEntries(answers.map(a => [String(a.questionId ?? a.id), a.answer])),
+        ingredientList,
+        completed,
+        sessionId,
+      });
+    } catch (err) {
+      console.error('Oturum gonderme hatasi:', err);
+      return { qrCode: null, qrPayload: null, syncDurum: 'hata' };
+    }
   }
 </script>
 
@@ -387,6 +414,15 @@
     </div>
   {/if}
 
+  {#if submitError}
+    <div class="submit-error-overlay" role="alert">
+      <div class="submit-error-card">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+        {submitError}
+      </div>
+    </div>
+  {/if}
+
   <!-- Kalici medya oynaticisi: idle'da fullscreen, oturumda strip. Ekranlar
        arasi gecerken ayni <video> DOM instance'i KORUNUR (remount/reload yok);
        yalniz mode/CSS degisir. -->
@@ -398,3 +434,30 @@
     {/if}
   </div>
 </div>
+
+<style>
+  .submit-error-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,0.55);
+  }
+  .submit-error-card {
+    background: #7f1d1d;
+    color: #fff;
+    padding: 24px 32px;
+    border-radius: 16px;
+    font-size: 18px;
+    font-weight: 700;
+    text-align: center;
+    max-width: 480px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+  .submit-error-card i { font-size: 36px; color: #fbbf24; }
+</style>

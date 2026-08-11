@@ -112,7 +112,16 @@ export async function submitSession({ ageRange, gender, oturumTipi, categorySlug
     // retry, Node'un her seferinde farklı UUID üretmesine yol açar → çift kayıt
     retry: 0,
   });
-  return { qrCode: data.qr_kodu, qrPayload: data.qr_payload || data.qr_kodu };
+  return {
+    qrCode:    data.qr_kodu,
+    qrPayload: data.qr_payload || data.qr_kodu,
+    syncDurum: data.sync_durum || (data.qr_kodu ? 'bekliyor' : null),
+  };
+}
+
+/** Backend'e gönderilme durumunu sorgular ('bekliyor' | 'gonderildi'). */
+export async function fetchSessionSyncStatus(idempotencyKey) {
+  return _request(`${API_BASE}/api/oturum/sync-durum/${encodeURIComponent(idempotencyKey)}`, { timeoutMs: 3000 });
 }
 
 // ── WiFi API ────────────────────────────────────────────────────────────────

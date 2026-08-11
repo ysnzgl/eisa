@@ -1,12 +1,40 @@
 <script>
-  import { createEventDispatcher, onMount } from 'svelte';
+  import { createEventDispatcher, onMount, onDestroy } from 'svelte';
   import { result } from '../stores/kiosk.js';
+  import Logo from './Logo.svelte';
+  import { fetchSessionSyncStatus } from '../lib/api.js';
 
   const dispatch = createEventDispatcher();
 
   let qrCanvas = null;
+  let syncDurum = null;
+  let pollTimer = null;
+
+  async function pollSync() {
+    const key = $result?.idempotencyKey;
+    if (!key) return;
+    try {
+      const status = await fetchSessionSyncStatus(key);
+      if (status?.sync_durum === 'gonderildi') syncDurum = 'gonderildi';
+    } catch { /* ignore */ }
+  }
+
+  onMount(() => {
+    syncDurum = $result?.syncDurum ?? null;
+    if (syncDurum === 'bekliyor') {
+      pollTimer = setTimeout(async () => {
+        await pollSync();
+        if (syncDurum === 'bekliyor') {
+          pollTimer = setTimeout(pollSync, 8000);
+        }
+      }, 3000);
+    }
+  });
+
+  onDestroy(() => { if (pollTimer) clearTimeout(pollTimer); });
 
   export async function drawQR(code) {
+    if (!code) return;
     const QrCreator = (await import('qr-creator')).default;
     if (!qrCanvas) return;
     // Şifrelenmiş payload uzun olabileceği için Q yerine L, modül daha sık.
@@ -18,7 +46,14 @@
 </script>
 
 <div class="screen">
-  <div class="kiosk-header"><div class="kiosk-logo">e-<span>İSA</span></div></div>
+  <div class="result-header">
+    <Logo height="40px" />
+    {#if syncDurum === 'bekliyor' || syncDurum === 'hata'}
+      <span class="sync-warn" title="Sunucuya henüz gönderilemedi">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+      </span>
+    {/if}
+  </div>
 
   <div class="flex-grow-1 d-flex flex-column justify-content-center gap-2">
     <div
@@ -34,16 +69,11 @@
         {/if}
         {$result?.label ?? ''}
       </div>
-      <div class="result-ingredient-main" style="color:{$result?.isSensitive ? '#dc2626' : '#166534'}">
-        {$result?.ana ?? ''}
-      </div>
-      <div class="result-ingredient-sub">{$result?.destek ?? ''}</div>
-      {#if $result?.recs && $result.recs.length > 1}
-        <div style="margin-top:12px; display:flex; flex-direction:column; gap:6px;">
-          {#each $result.recs.slice(1) as rec}
-            <div style="font-size:0.85rem; color:#166534; background:#dcfce7; border-radius:6px; padding:6px 10px;">
-              <strong>{rec.primary}</strong>
-              {#if rec.supportive}<span style="color:#6b7280;"> + {rec.supportive}</span>{/if}
+      {#if $result?.recs?.length}
+        <div class="ingredient-area">
+          {#each $result.recs as rec}
+            <div class="ingredient-box">
+              {rec.primary}{#if rec.supportive} + {rec.supportive}{/if}
             </div>
           {/each}
         </div>
@@ -55,11 +85,13 @@
         <i class="fa-solid fa-ticket text-success"></i>
         Lütfen fişinizi/QR kodunuzu alınız
       </p>
-      <div class="qr-box">
-        <canvas bind:this={qrCanvas} style="border-radius:8px;"></canvas>
-      </div>
       {#if $result?.qrCode}
+        <div class="qr-box">
+          <canvas bind:this={qrCanvas} style="border-radius:8px;"></canvas>
+        </div>
         <p class="qr-code-text">{$result.qrCode}</p>
+      {:else}
+        <p style="color:#6B7280; font-size:14px; margin:12px 0;">QR kodu oluşturulamadı. Lütfen eczacıya danışın.</p>
       {/if}
       <p class="qr-note">Bu QR kodu eczacınıza gösterin — bilgileriniz ekranına düşecek.</p>
     </div>
@@ -74,3 +106,50 @@
     </button>
   </div>
 </div>
+
+<style>
+  .result-header {
+    position: relative;
+    text-align: center;
+    margin-bottom: 24px;
+  }
+  .result-header :global(.eisa-logo) {
+    margin: 0 auto;
+  }
+  .sync-warn {
+    position: absolute;
+    top: 50%;
+    right: 0;
+    transform: translateY(-50%);
+    font-size: 22px;
+    color: #d97706;
+    line-height: 1;
+    pointer-events: none;
+  }
+  .ingredient-area {
+    background: #7f1d1d;
+    border-radius: 12px;
+    padding: 14px;
+    margin-top: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center;
+  }
+  .ingredient-box {
+    background: #fff;
+    border-radius: 10px;
+    padding: 14px 16px;
+    flex: 1 1 calc(50% - 10px);
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-size: 18px;
+    font-weight: 700;
+    color: #111827;
+    word-break: break-word;
+    overflow-wrap: break-word;
+  }
+</style>

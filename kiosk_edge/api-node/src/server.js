@@ -305,7 +305,7 @@ export async function buildServer({ db, settings, logger }) {
 
     // Idempotency: ayni key daha once yerel QR ile kaydedilmis mi?
     const existingRow = db.prepare(
-      'SELECT payload FROM oturum_outbox WHERE idempotency_anahtari = ? LIMIT 1'
+      'SELECT payload, gonderilme_tarihi FROM oturum_outbox WHERE idempotency_anahtari = ? LIMIT 1'
     ).get(idempotencyAnahtari);
     if (existingRow) {
       const existingPayload = safeJson(existingRow.payload, {});
@@ -332,7 +332,7 @@ export async function buildServer({ db, settings, logger }) {
           qr_kodu: existingPayload.qr_kodu,
           durum: 'kaydedildi',
           yazici_ok: printerOk,
-          sync_durum: existingPayload.gonderilme_tarihi ? 'gonderildi' : 'bekliyor',
+          sync_durum: existingRow.gonderilme_tarihi ? 'gonderildi' : 'bekliyor',
           ...(printerError ? { yazici_hatasi: printerError } : {}),
         });
       }
@@ -399,56 +399,8 @@ export async function buildServer({ db, settings, logger }) {
     const hasSlot = Number.isInteger(eczaneKioskNo) && eczaneKioskNo >= 1 && eczaneKioskNo <= 31;
 
     if (!hasSlot) {
-      // eczane_kiosk_no henüz catalog sync ile gelmemiş → eski backend-sync akışına fallback.
-      // Bu durum ilk açılışta veya backend henüz bu alanı dağıtmadan önceki kioskta oluşabilir.
-      if (!settings.centralApiBase || !hasAppKeyCredentials(db)) {
-        return reply.status(503).send({
-          error: 'Merkez API yapilandirilmamis veya kimlik bilgisi eksik.',
-          code: 'backend_unavailable',
-        });
-      }
-      db.prepare(
-        'INSERT OR IGNORE INTO oturum_outbox (idempotency_anahtari, payload) VALUES (?, ?)',
-      ).run(idempotencyAnahtari, JSON.stringify(payload));
-
-      let backendQr = null;
-      try {
-        const res = await requestWithRetry(
-          db, settings, 'POST', '/api/kiosk/v1/sessions/', { items: [payload] }, app.log
-        );
-        if (res.status === 200 || res.status === 207) {
-          let rb = {};
-          try { rb = await res.json(); } catch { rb = {}; }
-          const ri = (rb?.results || []).find(
-            (r) => String(r.idempotency_key) === String(idempotencyAnahtari)
-          );
-          if (ri?.qr_kodu) backendQr = ri.qr_kodu;
-        } else if (res.status === 401) {
-          handle401Error(db, settings, app.log);
-          return reply.status(401).send({ error: 'Kimlik dogrulamasi basarisiz.', code: 'auth_failed' });
-        } else if (res.status === 403) {
-          handle403Error(db, settings, app.log);
-          return reply.status(403).send({ error: 'Yetki hatasi.', code: 'forbidden' });
-        } else {
-          return reply.status(503).send({ error: 'Merkez sunucu hatasi.', code: 'backend_error', sync_durum: 'bekliyor' });
-        }
-      } catch (err) {
-        app.log.warn({ event: 'backend_unreachable_fallback', err: err.message }, 'Backend erisimi basarisiz');
-        return reply.status(503).send({ error: 'Merkez sunucusuna ulasilamiyor.', code: 'backend_unreachable', sync_durum: 'bekliyor' });
-      }
-      if (!backendQr) {
-        return reply.status(502).send({ error: 'Merkez QR kodu dondurmedi.', code: 'backend_no_qr' });
-      }
-      const payloadWithQr = { ...payload, qr_kodu: backendQr };
-      db.prepare(
-        'UPDATE oturum_outbox SET payload = ?, gonderilme_tarihi = ?, error_reason = NULL WHERE idempotency_anahtari = ?',
-      ).run(JSON.stringify(payloadWithQr), new Date().toISOString(), idempotencyAnahtari);
-      let printerOk2 = true;
-      let printerError2 = null;
-      try {
-        printReceipt({ qrCode: backendQr, qrPayload: backendQr, categoryName: body.kategori_slug || body.danisma_kategorisi_slug, ingredients: body.onerilen_etken_maddeler, isSensitive: body.hassas_akis, host: settings.thermalPrinterHost, port: settings.thermalPrinterPort, logger: app.log });
-      } catch (err) { printerOk2 = false; printerError2 = err?.message || 'Yazici hatasi'; }
-      return reply.status(201).send({ qr_kodu: backendQr, durum: 'kaydedildi', yazici_ok: printerOk2, sync_durum: 'gonderildi', ...(printerError2 ? { yazici_hatasi: printerError2 } : {}) });
+      // eczane_kiosk_no atanmamış → provisioning tamamlanmadan QR üretilemez.
+      return reply.status(503).send({ error: 'Kiosk numarasi atanmamis; QR uretilemedi.', code: 'kiosk_no_missing' });
     }
 
     // Atomik transaction: QR uret + sayac guncelle + outbox insert
@@ -571,7 +523,16 @@ export async function buildServer({ db, settings, logger }) {
       return { bulundu: true, oturum: JSON.parse(row.payload) };
     },
   );
-
+  // ── oturum sync-durum sorgusu (UI polling için) ──────────────────────────
+  app.get('/api/oturum/sync-durum/:key', async (req, reply) => {
+    const key = String(req.params.key ?? '');
+    if (!key || key.length > 128) return fail(reply, 400, 'Gecersiz anahtar');
+    const row = db.prepare(
+      'SELECT gonderilme_tarihi FROM oturum_outbox WHERE idempotency_anahtari = ? LIMIT 1'
+    ).get(key);
+    if (!row) return fail(reply, 404, 'Kayit bulunamadi');
+    return { sync_durum: row.gonderilme_tarihi ? 'gonderildi' : 'bekliyor' };
+  });
   // â”€â”€ reklamlar / DOOH assets (geriye dÃ¶nÃ¼k uyumluluk) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   app.get('/api/reklamlar/aktif', async () => {
     const creatives = db

@@ -107,6 +107,11 @@ export function makeMemoryDb() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       idempotency_anahtari TEXT UNIQUE,
       payload TEXT NOT NULL,
+      play_event_id TEXT,
+      status TEXT NOT NULL DEFAULT 'COMPLETED',
+      error_code TEXT NOT NULL DEFAULT '',
+      occurred_at TEXT,
+      expected_duration INTEGER,
       olusturulma_tarihi TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
       gonderilme_tarihi TEXT);
 
@@ -123,6 +128,12 @@ export function makeMemoryDb() {
     CREATE TABLE kiosk_meta (
       key   TEXT PRIMARY KEY,
       value TEXT NOT NULL DEFAULT '');
+
+    CREATE TABLE qr_counter (
+      id INTEGER PRIMARY KEY CHECK(id = 1),
+      last_value INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')));
+    INSERT INTO qr_counter (id, last_value) VALUES (1, 0);
   `);
   return db;
 }

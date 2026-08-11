@@ -247,12 +247,11 @@ describe('Graceful fallback (eczane_kiosk_no eksik)', () => {
   });
   afterEach(async () => { await app.close(); db.close(); });
 
-  it('503 alır ama kiosk_no_missing kodu OLMAZ', async () => {
+  it('503 kiosk_no_missing kodu döner (provisioning tamamlanmamış)', async () => {
     const res = await app.inject({ method: 'POST', url: '/api/oturum/gonder', payload: body() });
     expect(res.statusCode).toBe(503);
     const d = JSON.parse(res.body);
-    expect(d.code).not.toBe('kiosk_no_missing');
-    expect(['backend_unavailable', 'backend_unreachable', 'backend_error']).toContain(d.code);
+    expect(d.code).toBe('kiosk_no_missing');
   });
 });
 

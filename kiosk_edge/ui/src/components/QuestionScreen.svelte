@@ -39,7 +39,7 @@
           <i class="fa-solid fa-check"></i> EVET
         </button>
         <button
-          class="btn-touch btn-danger-touch"
+          class="btn-touch btn-danger-touch btn-hayir"
           class:btn-answer-selected={currentAnswer === 'N'}
           on:click={() => dispatch('answer', 'N')}
         >
@@ -66,5 +66,10 @@
   .btn-answer-selected {
     outline: 3px solid #B1121B;
     outline-offset: 2px;
+  }
+  /* HAYIR butonu için koyu gri ton */
+  .btn-hayir {
+    background: linear-gradient(135deg, #4B5563, #374151);
+    box-shadow: 0 6px 24px rgba(55, 65, 81, 0.35);
   }
 </style>

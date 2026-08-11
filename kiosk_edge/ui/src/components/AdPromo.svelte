@@ -31,8 +31,9 @@
     position: absolute;
     inset: 0;
     display: flex;
-    align-items: center;
+    align-items: flex-end;
     justify-content: center;
+    padding-bottom: 20px;
     background:
       radial-gradient(120% 140% at 50% 0%, #1b2436 0%, #0f1622 55%, #0b1019 100%);
     overflow: hidden;
@@ -122,6 +123,9 @@
   }
 
   /* ── Buyuk (ekran koruyucu) varyant ── */
+  .ad-promo--large {
+    padding-bottom: 48px;
+  }
   .ad-promo--large .ad-promo-card {
     gap: 26px;
     padding: 28px 48px;

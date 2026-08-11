@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { buildServer } from '../src/server.js';
 import { makeMemoryDb, fakeSettings } from './helpers.js';
+import { CROCKFORD_QR_RE } from '../src/qrGen.js';
 
 // requestWithRetry'yi mock'la — tamamlandi=true testleri için gerçek HTTP yapılmaz
 vi.mock('../src/scheduler.js', async (importOriginal) => {
@@ -163,9 +164,8 @@ describe('Kiosk API (Turkce sema)', () => {
     expect(payload.danisma_kategorisi_id).toBe(10);  // lokal katalogdan cozuldu
   });
 
-  it('POST /api/oturum/gonder tamamlandi=true backend yoksa 503 doner', async () => {
-    // Completed sessions require backend; fakeSettings has centralApiBase but
-    // no kiosk_app_key in kiosk_meta → hasAppKeyCredentials() = false → 503
+  it('POST /api/oturum/gonder tamamlandi=true kiosk_no yoksa 503 doner', async () => {
+    // No eczane_kiosk_no in kiosk_meta → kiosk_no_missing
     const r = await app.inject({
       method: 'POST',
       url: '/api/oturum/gonder',
@@ -179,7 +179,7 @@ describe('Kiosk API (Turkce sema)', () => {
       },
     });
     expect(r.statusCode).toBe(503);
-    expect(r.json().code).toBe('backend_unavailable');
+    expect(r.json().code).toBe('kiosk_no_missing');
   });
 
   it('POST /api/oturum/gonder gecersiz yas 422', async () => {
@@ -274,6 +274,8 @@ async function makeAppWithCredentials() {
     // Kiosk kimlik bilgileri — hasAppKeyCredentials() true döner
     db.prepare("INSERT OR REPLACE INTO kiosk_meta (key, value) VALUES ('kiosk_app_key', 'test-app-key-for-tests')").run();
     db.prepare("INSERT OR REPLACE INTO kiosk_meta (key, value) VALUES ('kiosk_mac', '00:11:22:33:44:55')").run();
+    // Offline-first QR: eczane_kiosk_no (kiosk_no=5) kiosk_meta'da bulunuyor
+    db.prepare("INSERT OR REPLACE INTO kiosk_meta (key, value) VALUES ('eczane_kiosk_no', '5')").run();
     const app = await buildServer({ db, settings: fakeSettings, logger: false });
     return { app, db };
   })();
@@ -287,138 +289,148 @@ describe('POST /api/oturum/gonder — tamamlandi=true backend senaryolari', () =
     ({ app, db } = await makeAppWithCredentials());
   });
 
-  // Senaryo 1: Merkez tüm kayıtları kabul eder (200)
-  it('Senaryo 1 — backend 200, kabul: 201 + qr_kodu', async () => {
+  // Senaryo 1: Offline-first QR; backend push async olarak 200 döner → gonderildi
+  it('Senaryo 1 — offline QR + backend 200: 201, yerel 9-char QR, async push sonrası gonderildi', async () => {
     requestWithRetry.mockResolvedValueOnce({
       status: 200,
       json: async () => ({
-        results: [{ idempotency_key: IDEM_KEY, status: 'created', qr_kodu: 'AB12CD34' }],
+        results: [{ idempotency_key: IDEM_KEY, status: 'created', qr_kodu: 'ignored' }],
         errors: [],
       }),
     });
     const r = await app.inject({ method: 'POST', url: '/api/oturum/gonder', payload: BASE_PAYLOAD });
     expect(r.statusCode).toBe(201);
-    expect(r.json().qr_kodu).toBe('AB12CD34');
-    expect(r.json().sync_durum).toBe('gonderildi');
-    // Outbox gonderilme_tarihi set edilmeli
+    // Yerel Crockford QR, prefix = kiosk_no=5 → '5'
+    expect(CROCKFORD_QR_RE.test(r.json().qr_kodu)).toBe(true);
+    expect(r.json().qr_kodu[0]).toBe('5');
+    expect(r.json().sync_durum).toBe('bekliyor'); // HTTP cevabı anında döner, push async
+    // setImmediate bekle → async push tamamlanır
+    await new Promise(resolve => setImmediate(resolve));
     const row = db.prepare('SELECT gonderilme_tarihi FROM oturum_outbox WHERE idempotency_anahtari = ?').get(IDEM_KEY);
     expect(row.gonderilme_tarihi).toBeTruthy();
   });
 
-  // Senaryo 2: Merkez duplicate (existing) döndürür
-  it('Senaryo 2 — backend 200 existing: 201 + mevcut qr_kodu', async () => {
+  // Senaryo 2: Backend existing döner → aynı şekilde gonderildi
+  it('Senaryo 2 — offline QR + backend existing: async push sonrası gonderildi', async () => {
     requestWithRetry.mockResolvedValueOnce({
       status: 200,
       json: async () => ({
-        results: [{ idempotency_key: IDEM_KEY, status: 'existing', qr_kodu: 'EX12ST34' }],
+        results: [{ idempotency_key: IDEM_KEY, status: 'existing', qr_kodu: 'ignored' }],
         errors: [],
       }),
     });
     const r = await app.inject({ method: 'POST', url: '/api/oturum/gonder', payload: BASE_PAYLOAD });
     expect(r.statusCode).toBe(201);
-    expect(r.json().qr_kodu).toBe('EX12ST34');
-    expect(r.json().sync_durum).toBe('gonderildi');
+    expect(CROCKFORD_QR_RE.test(r.json().qr_kodu)).toBe(true);
+    expect(r.json().sync_durum).toBe('bekliyor');
+    await new Promise(resolve => setImmediate(resolve));
+    const row = db.prepare('SELECT gonderilme_tarihi FROM oturum_outbox WHERE idempotency_anahtari = ?').get(IDEM_KEY);
+    expect(row.gonderilme_tarihi).toBeTruthy();
   });
 
-  // Senaryo 3: 207 — bazıları kabul, bazıları validation hatalı
-  it('Senaryo 3 — backend 207 kısmi: kabul edilen 201, reddedilen 422', async () => {
-    const OTHER = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
-    // Bu test için iki kayıt göndermek yerine: hata olan kaydın 422 döndüğünü test et
-    const errKey = IDEM_KEY;
+  // Senaryo 3: 207 backend reddeder → HTTP 201 hemen döner, async retry_count=99
+  it('Senaryo 3 — offline QR + backend 207 rejection: 201, async push retry_count=99', async () => {
     requestWithRetry.mockResolvedValueOnce({
       status: 207,
       json: async () => ({
         results: [],
-        errors: [{ index: 0, idempotency_anahtari: errKey, errors: { kategori_slug: ['Not found'] } }],
+        errors: [{ index: 0, idempotency_anahtari: IDEM_KEY, errors: { kategori_slug: ['Not found'] } }],
       }),
     });
     const r = await app.inject({ method: 'POST', url: '/api/oturum/gonder', payload: BASE_PAYLOAD });
-    expect(r.statusCode).toBe(422);
-    expect(r.json().code).toBe('backend_rejected');
-    // Outbox kaydı hâlâ var (silinmedi), retry_count=99 (kalıcı hata işareti)
+    expect(r.statusCode).toBe(201); // Yerel QR hemen döner
+    expect(CROCKFORD_QR_RE.test(r.json().qr_kodu)).toBe(true);
+    await new Promise(resolve => setImmediate(resolve));
     const row = db.prepare('SELECT retry_count, gonderilme_tarihi FROM oturum_outbox WHERE idempotency_anahtari = ?').get(IDEM_KEY);
     expect(row).toBeTruthy();
     expect(row.gonderilme_tarihi).toBeNull();
     expect(row.retry_count).toBe(99);
   });
 
-  // Senaryo 4: Merkez 401 döndürür
-  it('Senaryo 4 — backend 401: 401 doner', async () => {
+  // Senaryo 4: Backend 401 → HTTP 201 hemen; 401 async handle
+  it('Senaryo 4 — offline QR + backend 401: 201 yerel QR', async () => {
     requestWithRetry.mockResolvedValueOnce({ status: 401, json: async () => ({}) });
     const r = await app.inject({ method: 'POST', url: '/api/oturum/gonder', payload: BASE_PAYLOAD });
-    expect(r.statusCode).toBe(401);
+    expect(r.statusCode).toBe(201);
+    expect(CROCKFORD_QR_RE.test(r.json().qr_kodu)).toBe(true);
   });
 
-  // Senaryo 4b: Merkez 403 döndürür
-  it('Senaryo 4b — backend 403: 403 doner', async () => {
+  // Senaryo 4b: Backend 403 → HTTP 201 hemen
+  it('Senaryo 4b — offline QR + backend 403: 201 yerel QR', async () => {
     requestWithRetry.mockResolvedValueOnce({ status: 403, json: async () => ({}) });
     const r = await app.inject({ method: 'POST', url: '/api/oturum/gonder', payload: BASE_PAYLOAD });
-    expect(r.statusCode).toBe(403);
+    expect(r.statusCode).toBe(201);
+    expect(CROCKFORD_QR_RE.test(r.json().qr_kodu)).toBe(true);
   });
 
-  // Senaryo 5: Merkez 500 döndürür
-  it('Senaryo 5 — backend 500: 503 doner, outbox\'ta bekler', async () => {
+  // Senaryo 5: Backend 500 → HTTP 201 hemen; outbox PENDING
+  it('Senaryo 5 — offline QR + backend 500: 201, outbox PENDING', async () => {
     requestWithRetry.mockResolvedValueOnce({ status: 500, json: async () => ({}) });
     const r = await app.inject({ method: 'POST', url: '/api/oturum/gonder', payload: BASE_PAYLOAD });
-    expect(r.statusCode).toBe(503);
+    expect(r.statusCode).toBe(201);
     expect(r.json().sync_durum).toBe('bekliyor');
-    // Outbox kaydı gönderilmedi işareti olmadan var olmalı
+    await new Promise(resolve => setImmediate(resolve));
     const row = db.prepare('SELECT gonderilme_tarihi FROM oturum_outbox WHERE idempotency_anahtari = ?').get(IDEM_KEY);
     expect(row).toBeTruthy();
-    expect(row.gonderilme_tarihi).toBeNull();
+    expect(row.gonderilme_tarihi).toBeNull(); // backend 500 → gonderildi değil
   });
 
-  // Senaryo 6: Outbox insert başarılı, anlık merkezi sync başarısız
-  it('Senaryo 6 — backend erişilemez: 503, outbox kaydı korunur', async () => {
+  // Senaryo 6: Backend ECONNREFUSED → HTTP 201 hemen; outbox PENDING
+  it('Senaryo 6 — offline QR + backend ECONNREFUSED: 201, outbox PENDING', async () => {
     requestWithRetry.mockRejectedValueOnce(new Error('ECONNREFUSED'));
     const r = await app.inject({ method: 'POST', url: '/api/oturum/gonder', payload: BASE_PAYLOAD });
-    expect(r.statusCode).toBe(503);
-    expect(r.json().code).toBe('backend_unreachable');
+    expect(r.statusCode).toBe(201);
+    expect(CROCKFORD_QR_RE.test(r.json().qr_kodu)).toBe(true);
+    await new Promise(resolve => setImmediate(resolve));
     const row = db.prepare('SELECT * FROM oturum_outbox WHERE idempotency_anahtari = ?').get(IDEM_KEY);
     expect(row).toBeTruthy();
     expect(row.gonderilme_tarihi).toBeNull();
   });
 
-  // Senaryo 7: Aynı idempotency key iki kez lokal endpoint'e gönderilir
-  it('Senaryo 7 — aynı idempotency_anahtari iki kez: ikinci isteğe mevcut QR döner', async () => {
+  // Senaryo 7: Aynı idempotency key → aynı yerel QR; ikinci istekte backend çağrılmaz
+  it('Senaryo 7 — offline idempotency: ikinci istekte aynı QR, ek backend çağrısı yok', async () => {
     requestWithRetry.mockResolvedValue({
       status: 200,
       json: async () => ({
-        results: [{ idempotency_key: IDEM_KEY, status: 'created', qr_kodu: 'QR123456' }],
+        results: [{ idempotency_key: IDEM_KEY, status: 'created', qr_kodu: 'ignored' }],
         errors: [],
       }),
     });
-    // İlk istek
     const r1 = await app.inject({ method: 'POST', url: '/api/oturum/gonder', payload: BASE_PAYLOAD });
     expect(r1.statusCode).toBe(201);
-    expect(r1.json().qr_kodu).toBe('QR123456');
-    // İkinci istek — aynı idempotency_anahtari, backend ÇAĞRILMAMALI
-    const callCountBefore = requestWithRetry.mock.calls.length;
+    const qr1 = r1.json().qr_kodu;
+    expect(CROCKFORD_QR_RE.test(qr1)).toBe(true);
+    // setImmediate bekle → async push tamamlanır, gonderilme_tarihi set
+    await new Promise(resolve => setImmediate(resolve));
+    const callCountAfterFirst = requestWithRetry.mock.calls.length;
+
+    // İkinci istek — aynı idempotency_anahtari
     const r2 = await app.inject({ method: 'POST', url: '/api/oturum/gonder', payload: BASE_PAYLOAD });
     expect(r2.statusCode).toBe(201);
-    expect(r2.json().qr_kodu).toBe('QR123456');
-    expect(r2.json().sync_durum).toBe('onceden_gonderildi');
-    // requestWithRetry bir kez daha çağrılmamalı
-    expect(requestWithRetry.mock.calls.length).toBe(callCountBefore);
+    expect(r2.json().qr_kodu).toBe(qr1); // aynı QR
+    expect(r2.json().sync_durum).toBe('gonderildi'); // gonderilme_tarihi sütunundan okunur
+    // Yeni backend çağrısı yapılmadı
+    expect(requestWithRetry.mock.calls.length).toBe(callCountAfterFirst);
   });
 
-  // Senaryo 9: Kabul edilen kayıtlar gönderildi işaretlenir
-  it('Senaryo 9 — kabul edilen kayıt gonderilme_tarihi set edilir', async () => {
+  // Senaryo 9: Kabul edilen kayıt → gonderilme_tarihi set
+  it('Senaryo 9 — async push kabul: gonderilme_tarihi set edilir', async () => {
     requestWithRetry.mockResolvedValueOnce({
       status: 200,
       json: async () => ({
-        results: [{ idempotency_key: IDEM_KEY, status: 'created', qr_kodu: 'OK123456' }],
+        results: [{ idempotency_key: IDEM_KEY, status: 'created', qr_kodu: 'ignored' }],
         errors: [],
       }),
     });
     await app.inject({ method: 'POST', url: '/api/oturum/gonder', payload: BASE_PAYLOAD });
+    await new Promise(resolve => setImmediate(resolve));
     const row = db.prepare('SELECT gonderilme_tarihi, retry_count FROM oturum_outbox WHERE idempotency_anahtari = ?').get(IDEM_KEY);
     expect(row.gonderilme_tarihi).toBeTruthy();
     expect(row.retry_count).toBe(0);
   });
 
-  // Senaryo 10: Reddedilen kayıt yanlışlıkla gönderildi işaretlenmez
-  it('Senaryo 10 — backend_rejected: gonderilme_tarihi null kalir, retry_count=99', async () => {
+  // Senaryo 10: Reddedilen kayıt → retry_count=99, gonderilme_tarihi=null
+  it('Senaryo 10 — async push reddedildi: gonderilme_tarihi null, retry_count=99', async () => {
     requestWithRetry.mockResolvedValueOnce({
       status: 207,
       json: async () => ({
@@ -427,6 +439,7 @@ describe('POST /api/oturum/gonder — tamamlandi=true backend senaryolari', () =
       }),
     });
     await app.inject({ method: 'POST', url: '/api/oturum/gonder', payload: BASE_PAYLOAD });
+    await new Promise(resolve => setImmediate(resolve));
     const row = db.prepare('SELECT gonderilme_tarihi, retry_count FROM oturum_outbox WHERE idempotency_anahtari = ?').get(IDEM_KEY);
     expect(row.gonderilme_tarihi).toBeNull();
     expect(row.retry_count).toBe(99);
@@ -434,22 +447,39 @@ describe('POST /api/oturum/gonder — tamamlandi=true backend senaryolari', () =
 
   // Senaryo 12: Loglarda / response'ta App Key ve secret'lar bulunmaz
   it('Senaryo 12 — App Key ve secret\'lar response\'ta bulunmaz', async () => {
-    // server.js sadece event adı, kiosk_id ve sayısal değerler loglar (kod incelemesinde doğrulandı)
-    // Bu test response body'nin gizli bilgi içermediğini garanti eder
     requestWithRetry.mockRejectedValueOnce(new Error('ECONNREFUSED'));
     const r = await app.inject({ method: 'POST', url: '/api/oturum/gonder', payload: BASE_PAYLOAD });
     const bodyStr = JSON.stringify(r.json());
-    // Response'da App Key, fleet key veya provision secret bulunmamalı
     expect(bodyStr).not.toContain('test-app-key-for-tests');
     expect(bodyStr).not.toContain('test-fleet-key');
     expect(bodyStr).not.toContain('test-secret');
-    // requestWithRetry'ye geçilen body'de (log arg) secrets yok — payload'dan doğrula
+    await new Promise(resolve => setImmediate(resolve));
     const callArgs = requestWithRetry.mock.calls[0];
-    // 3. arg = path (string), 4. arg = body object
     const sentBody = JSON.stringify(callArgs?.[4] ?? {});
     expect(sentBody).not.toContain('test-app-key-for-tests');
     expect(sentBody).not.toContain('test-fleet-key');
     expect(sentBody).not.toContain('test-secret');
+  });
+
+  // Senaryo 13 (yeni): GET /api/oturum/sync-durum/:key endpoint çalışıyor
+  it('Senaryo 13 — sync-durum: PENDING → bekliyor, sonra gonderildi', async () => {
+    // Önce oturum oluştur
+    requestWithRetry.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+    await app.inject({ method: 'POST', url: '/api/oturum/gonder', payload: BASE_PAYLOAD });
+    await new Promise(resolve => setImmediate(resolve));
+
+    // PENDING durumu
+    const r1 = await app.inject({ method: 'GET', url: `/api/oturum/sync-durum/${IDEM_KEY}` });
+    expect(r1.statusCode).toBe(200);
+    expect(r1.json().sync_durum).toBe('bekliyor');
+
+    // Manuel olarak gonderilme_tarihi set et (scheduler simülasyonu)
+    db.prepare('UPDATE oturum_outbox SET gonderilme_tarihi = ? WHERE idempotency_anahtari = ?').run(new Date().toISOString(), IDEM_KEY);
+
+    // gonderildi durumu
+    const r2 = await app.inject({ method: 'GET', url: `/api/oturum/sync-durum/${IDEM_KEY}` });
+    expect(r2.statusCode).toBe(200);
+    expect(r2.json().sync_durum).toBe('gonderildi');
   });
 });
 
