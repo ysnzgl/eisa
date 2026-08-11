@@ -39,6 +39,9 @@ class OturumLoguItemSerializer(serializers.Serializer):
     danisma_tamamlayan_eczaci = serializers.CharField(
         source="danisma_tamamlayan_eczaci.get_full_name", read_only=True, default=""
     )
+    # Fişte basılan barkod logosu ID'si (UUID). Null = e-ISA fallback.
+    # Eski kiosk payload'larında bu alan bulunmayabilir; geriye dönük uyumluluk için opsiyoneldir.
+    barkod_logo_id = serializers.UUIDField(required=False, allow_null=True, default=None)
 
 
 class OturumLoguSerializer(serializers.ModelSerializer):

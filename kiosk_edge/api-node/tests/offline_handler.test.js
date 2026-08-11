@@ -36,7 +36,11 @@ vi.mock('../src/wifi.js', () => ({
   scanWifi: vi.fn().mockResolvedValue([]),
   connectWifi: vi.fn().mockResolvedValue(false),
 }));
-vi.mock('../src/printer.js', () => ({ printReceipt: vi.fn() }));
+vi.mock('../src/printer.js', () => ({
+  printReceipt: vi.fn(),
+  buildReceiptBuffer: vi.fn(() => ({ buffer: Buffer.from([]), logoId: null })),
+  sendToTransport: vi.fn(),
+}));
 vi.mock('../src/mediaCache.js', () => ({
   buildMediaUrl: vi.fn((db, type, id, url) => url),
   getLocalMediaMeta: vi.fn().mockReturnValue(null),
@@ -96,6 +100,9 @@ function makeDb({ withKioskNo = true, kioskNo = 3 } = {}) {
     CREATE TABLE pending_ack (id INTEGER PRIMARY KEY CHECK(id = 1), playlist_version INTEGER NOT NULL, horizon_start TEXT NOT NULL, horizon_end TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')), retry_count INTEGER NOT NULL DEFAULT 0, next_retry_at TEXT);
     CREATE TABLE qr_counter (id INTEGER PRIMARY KEY CHECK(id = 1), last_value INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')));
     INSERT INTO qr_counter (id, last_value) VALUES (1, 0);
+
+    CREATE TABLE barkod_logolar (id TEXT PRIMARY KEY, ad TEXT NOT NULL DEFAULT '', media_url TEXT NOT NULL DEFAULT '', checksum TEXT NOT NULL DEFAULT '', baslangic_zamani TEXT NOT NULL, bitis_zamani TEXT NOT NULL, aktif INTEGER NOT NULL DEFAULT 1, gunluk_limit INTEGER, local_path TEXT NOT NULL DEFAULT '', cache_status TEXT NOT NULL DEFAULT 'pending', synced_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')));
+    CREATE TABLE barkod_logo_baski_sayaclari (logo_id TEXT NOT NULL, tarih_istanbul TEXT NOT NULL, sayi INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (logo_id, tarih_istanbul));
 
     INSERT INTO cinsiyetler VALUES (1,'M','Erkek'),(2,'F','Kadin'),(3,'O','Diger');
     INSERT INTO yas_araliklari VALUES (1,'18-24','18-24 Yas',18,24),(2,'25-34','25-34 Yas',25,34);

@@ -1,7 +1,7 @@
 <script>
-  import { createEventDispatcher, onMount } from 'svelte';
+  import { createEventDispatcher, onMount, onDestroy } from 'svelte';
   import ScreenHeader from './ScreenHeader.svelte';
-  import { fetchWifiNetworks, connectToWifi } from '../lib/api.js';
+  import { fetchWifiNetworks, connectToWifi, fetchWifiStatus } from '../lib/api.js';
 
   const dispatch = createEventDispatcher();
   const MAX_PASSWORD_LENGTH = 128;
@@ -113,17 +113,79 @@
     }
   }
 
+  // Per-attempt counter; stale reconciliation polls compare against this and abort.
+  let _reconcileId = 0;
+  let _pendingTimers = [];
+  let _pendingResolvers = [];
+
+  const RECONCILE_ATTEMPTS = 3;
+  const RECONCILE_INTERVAL_MS = 2000;
+
+  /** Cancellable delay; resolves on timer or immediately on unmount. */
+  function _delay(ms) {
+    return new Promise((resolve) => {
+      _pendingResolvers.push(resolve);
+      const id = setTimeout(() => {
+        _pendingTimers = _pendingTimers.filter((t) => t !== id);
+        _pendingResolvers = _pendingResolvers.filter((r) => r !== resolve);
+        resolve();
+      }, ms);
+      _pendingTimers.push(id);
+    });
+  }
+
   async function connect() {
     if (!canConnect || !selectedNet) return;
+
+    const targetSsid = selectedNet.ssid;
+    const myId = ++_reconcileId; // invalidate any in-flight poll from a prior attempt
+
     connecting = true;
     connectError = '';
+
+    let connectFailed = false;
+    let originalError = '';
+
     try {
-      await connectToWifi(selectedNet.ssid, password || undefined);
-      dispatch('connected');
+      await connectToWifi(targetSsid, password || undefined);
     } catch (err) {
-      connectError = err.userMessage ?? 'Bağlantı kurulamadı. Şifreyi kontrol edin.';
-    } finally {
+      connectFailed = true;
+      originalError = err.userMessage ?? 'Bağlantı kurulamadı. Şifreyi kontrol edin.';
+    }
+
+    if (myId !== _reconcileId) return;
+
+    if (!connectFailed) {
       connecting = false;
+      dispatch('connected');
+      return;
+    }
+
+    // /wifi-connect rejected, but the OS may have connected anyway.
+    // Poll /wifi-status briefly to detect false negatives.
+    let verified = false;
+    for (let i = 0; i < RECONCILE_ATTEMPTS && !verified; i++) {
+      await _delay(RECONCILE_INTERVAL_MS);
+      if (myId !== _reconcileId) return;
+
+      try {
+        const status = await fetchWifiStatus();
+        if (myId !== _reconcileId) return;
+        if (status.connected && status.ssid === targetSsid) {
+          verified = true;
+        }
+      } catch {
+        // status check failed; continue to next poll
+      }
+    }
+
+    if (myId !== _reconcileId) return;
+
+    connecting = false;
+    if (verified) {
+      dispatch('connected');
+    } else {
+      connectError = originalError;
     }
   }
 
@@ -131,6 +193,14 @@
     scan();
     window.addEventListener('keydown', handlePhysicalKeyboard);
     return () => window.removeEventListener('keydown', handlePhysicalKeyboard);
+  });
+
+  onDestroy(() => {
+    _reconcileId++;
+    for (const resolve of _pendingResolvers) resolve();
+    _pendingResolvers = [];
+    for (const id of _pendingTimers) clearTimeout(id);
+    _pendingTimers = [];
   });
 </script>
 

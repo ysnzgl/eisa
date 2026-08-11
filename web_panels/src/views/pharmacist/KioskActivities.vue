@@ -14,6 +14,7 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { http } from '../../services/api';
 import { getKioskActivities, getCampaignImpressions, getKioskEvents } from '../../services/analytics';
+import SessionDetailModal from '../../components/SessionDetailModal.vue';
 
 // ─── URL senkronizasyonu ──────────────────────────────────────────────────────
 const route  = useRoute();
@@ -453,76 +454,13 @@ onMounted(() => {
       </template>
     </template>
 
-    <!-- ── Detay Drawer ────────────────────────────────────────────────────── -->
-    <Teleport to="body">
-      <div v-if="selected" class="eisa-modal-overlay" @click.self="closeDetail">
-        <div class="eisa-modal" style="max-width:480px;">
-          <div class="eisa-modal-header">
-            <h3>Oturum Detayı</h3>
-            <button class="eisa-modal-close" @click="closeDetail"><i class="fa-solid fa-xmark"></i></button>
-          </div>
-          <div class="eisa-modal-body" style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem 1.25rem;">
-            <div>
-              <p style="font-size:0.7rem;color:#9CA3AF;">QR Kodu</p>
-              <p style="font-family:'DM Mono',monospace;font-weight:700;">{{ selected.qr_kodu }}</p>
-            </div>
-            <div>
-              <p style="font-size:0.7rem;color:#9CA3AF;">Durum</p>
-              <span class="eisa-pill" :class="DURUM_LABEL[selected.durum]?.cls || ''">
-                {{ DURUM_LABEL[selected.durum]?.text || selected.durum }}
-              </span>
-            </div>
-            <div>
-              <p style="font-size:0.7rem;color:#9CA3AF;">Kiosk</p>
-              <p>{{ selected.kiosk_ad || '—' }}</p>
-            </div>
-            <div>
-              <p style="font-size:0.7rem;color:#9CA3AF;">İşlem Türü</p>
-              <p>{{ selected.oturum_tipi === 'OZEL_DANISMANLIK' ? 'Özel Danışmanlık' : 'Şikayet' }}</p>
-            </div>
-            <div>
-              <p style="font-size:0.7rem;color:#9CA3AF;">Yaş Aralığı</p>
-              <p>{{ selected.yas_araligi_ad || '—' }}</p>
-            </div>
-            <div>
-              <p style="font-size:0.7rem;color:#9CA3AF;">Cinsiyet</p>
-              <p>{{ selected.cinsiyet_ad || '—' }}</p>
-            </div>
-            <div>
-              <p style="font-size:0.7rem;color:#9CA3AF;">Kategori</p>
-              <p>{{ selected.kategori_adi || selected.danisma_kategorisi_adi || '—' }}</p>
-            </div>
-            <div>
-              <p style="font-size:0.7rem;color:#9CA3AF;">Hassas Konu</p>
-              <p>{{ selected.hassas_akis ? 'Evet' : 'Hayır' }}</p>
-            </div>
-            <div style="grid-column:1/span 2;">
-              <p style="font-size:0.7rem;color:#9CA3AF;">Oluşturulma Tarihi (Sunucu)</p>
-              <p>{{ fmtDT(selected.olusturulma_tarihi) }}</p>
-            </div>
-            <div v-if="selected.cihaz_zamani" style="grid-column:1/span 2;">
-              <p style="font-size:0.7rem;color:#9CA3AF;">Kiosk Saati</p>
-              <p>{{ fmtDT(selected.cihaz_zamani) }}</p>
-            </div>
-            <div v-if="selected.danisma_tamamlandi" style="grid-column:1/span 2;">
-              <p style="font-size:0.7rem;color:#9CA3AF;">Danışma Tamamlanma</p>
-              <p>{{ fmtDT(selected.danisma_tamamlanma_tarihi) }}</p>
-            </div>
-          </div>
-          <div class="eisa-modal-footer">
-            <button class="eisa-btn eisa-btn-ghost" @click="closeDetail">Kapat</button>
-            <RouterLink
-              v-if="selected.tamamlandi && !selected.danisma_tamamlandi"
-              :to="`/pharmacist/qr`"
-              class="eisa-btn eisa-btn-cta"
-              @click="closeDetail"
-            >
-              <i class="fa-solid fa-qrcode"></i> QR ile İşlem Yap
-            </RouterLink>
-          </div>
-        </div>
-      </div>
-    </Teleport>
+    <!-- ── Oturum Detay Modal ─────────────────────────────────────────────── -->
+    <SessionDetailModal
+      :session="selected"
+      :readonly="false"
+      @close="closeDetail"
+      @completed="(updated) => { const row = sessions.find(s => s.id === updated.id); if (row) row.danisma_tamamlandi = updated.danisma_tamamlandi; closeDetail(); }"
+    />
 
   </div>
 </template>

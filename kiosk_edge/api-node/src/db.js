@@ -279,11 +279,34 @@ function initSchema(db, options = {}) {
     );
     CREATE INDEX IF NOT EXISTS media_cache_status_idx ON media_cache(status);
 
-    -- DOOH PLAYLIST (merkezi scheduler'dan cekilir)
     CREATE TABLE IF NOT EXISTS kiosk_meta (
       key   TEXT PRIMARY KEY,
       value TEXT NOT NULL DEFAULT ''
     );
+
+    -- BARKOD LOGO (fiş baskısında e-ISA başlığı yerine logo rotasyonu)
+    CREATE TABLE IF NOT EXISTS barkod_logolar (
+      id               TEXT    PRIMARY KEY,
+      ad               TEXT    NOT NULL DEFAULT '',
+      media_url        TEXT    NOT NULL DEFAULT '',
+      checksum         TEXT    NOT NULL DEFAULT '',
+      baslangic_zamani TEXT    NOT NULL,
+      bitis_zamani     TEXT    NOT NULL,
+      aktif            INTEGER NOT NULL DEFAULT 1,
+      gunluk_limit     INTEGER,
+      local_path       TEXT    NOT NULL DEFAULT '',
+      cache_status     TEXT    NOT NULL DEFAULT 'pending',
+      synced_at        TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
+    -- Kiosk başına günlük baskı sayacı (Istanbul takvim günü bazında)
+    CREATE TABLE IF NOT EXISTS barkod_logo_baski_sayaclari (
+      logo_id          TEXT    NOT NULL,
+      tarih_istanbul   TEXT    NOT NULL,
+      sayi             INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (logo_id, tarih_istanbul)
+    );
+    -- Eski sayaçları temizlemek için indeks
+    CREATE INDEX IF NOT EXISTS bl_sayac_tarih_idx ON barkod_logo_baski_sayaclari(tarih_istanbul);
     CREATE TABLE IF NOT EXISTS playlists (
       id                    TEXT    PRIMARY KEY,
       target_date           TEXT    NOT NULL,

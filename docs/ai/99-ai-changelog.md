@@ -7,6 +7,49 @@
 
 ## 2026-08-11
 
+### [Backend + Kiosk Edge + Web Panels] Barkod Logo Yönetimi — düzeltmeler (r2)
+
+**Değişiklik:** İlk uygulamadaki 8 açık kapatıldı.
+
+1. **PROTECT FK**: `OturumLogu.barkod_logo` SET_NULL→PROTECT. `0014` migration rollback+fix. Fiziksel logo silme 405.
+2. **PNG doğrulama yeniden yazıldı**: stdlib (struct+zlib, Pillow yok). Piksel decode: RGBA opak kabul; alfa<255 red; RGB renkliyse red; tRNS red; palette gri kontrolü. `0002_alter_*` migration eklendi.
+3. **Atomik commit**: `commitBasariliBaski(db, logoId, idempotencyKey)` — counter+cursor+outbox tek transaction. Süreç çökmesi dokümante edildi.
+4. **Bozuk aday atla**: `buildReceiptBuffer({logoCandidates})` tüm adayları bellekte dener; `sendToTransport` tek seferlik. `getOrderedLogoCandidates(db)` eklendi.
+5. **Yetki testleri**: Anonim/eczacı red, superadmin kabul.
+6. **Panel**: `npm test` (57 test, 5 dosya) + `npm run build` (✓) çalıştırıldı.
+7. **Dokümantasyon**: 01, 02, 03, 05, 06, 07 güncellendi.
+8. **Son kontroller**: `manage.py check` ✓, `makemigrations --check` ✓, backend 566 test ✓, edge 170 test ✓.
+
+**Dosyalar:** `apps/barkod_logo/serializers.py`, `apps/barkod_logo/migrations/0002_*`, `apps/analytics/models.py`, `apps/analytics/migrations/0014_*`, `apps/barkod_logo/tests/test_barkod_logo.py`, `kiosk_edge/api-node/src/{barkodLogoService,printer,server}.js`, `kiosk_edge/api-node/tests/{barkodLogo,printerBuffer,offline_handler}.test.js`, `docs/ai/{01,02,03,05,06,07,99}-*.md`
+
+---
+
+### [Backend + Kiosk Edge + Web Panels] Barkod Logo Yönetimi — yeni özellik
+
+**Değişiklik:** Kiosk fiş baskısında sabit `e-ISA` başlığının yerini alacak bağımsız logo rotasyon sistemi.
+
+**Backend:**
+- Yeni `apps.barkod_logo` uygulaması: `BarkodLogo` modeli (UUID PK, ad, media_url, object_key, checksum, baslangic/bitis_zamani, aktif, gunluk_baski_limiti, hedef_kiosklar M2M), migration `0001_initial`.
+- `/api/barkod-logo/logolar/` (ModelViewSet, SuperAdmin), `/api/barkod-logo/upload-gorsel/` (PNG doğrulama: format, 336×336, ≤1 MB, alfa kanalı).
+- `OturumLogu.barkod_logo` FK (SET_NULL), migration `analytics/0014`.
+- `KioskCatalogView`: `barkod_logolar` snapshot (aktif + bitis_zamani > now + hedef kiosk).
+- Session ingest: opsiyonel `barkod_logo_id` alanı; gecikmiş outbox logo pasifleşmiş olsa bile kabul edilir.
+
+**Kiosk Edge:**
+- SQLite: `barkod_logolar`, `barkod_logo_baski_sayaclari` tabloları (SCHEMA_VERSION değişmedi; `CREATE TABLE IF NOT EXISTS`).
+- `barkodLogoService.js`: round-robin (`last_barkod_logo_id`), günlük sayaç, cache download.
+- `printer.js`: `pngToEscposRaster()` — built-in `node:zlib` ile PNG → ESC/POS GS v 0 raster.
+- `server.js`: logo adayı seç → yazdır → başarılıysa sayaç/cursor/outbox_payload güncelle.
+- `scheduler.js`: `pullFromCentral`'da `barkod_logolar` snapshot sync.
+
+**Web Panels:** `BarkodLogoYonetimi.vue`, router `/admin/barkod-logolar`, AdminLayout menüsü.
+
+**Testler:** 20 backend + 162 edge (tümü pass). Fiziksel yazıcı testi yapılmadı.
+
+**Dosyalar:** `apps/barkod_logo/**`, `apps/analytics/migrations/0014*`, `apps/analytics/models.py`, `apps/analytics/serializers.py`, `apps/analytics/services.py`, `apps/kiosk_api/views.py`, `core_api/settings.py`, `core_api/urls.py`, `kiosk_edge/api-node/src/{barkodLogoService,printer,server,scheduler,db}.js`, `kiosk_edge/api-node/tests/{barkodLogo,helpers,offline_handler}.js`, `web_panels/src/views/admin/BarkodLogoYonetimi.vue`, `web_panels/src/router/index.js`, `web_panels/src/views/admin/AdminLayout.vue`
+
+---
+
 ### [Kiosk Edge] 5 Issue Fix — QR offline, HAYIR butonu, etken madde kutuları, logo, AdPromo konumu
 
 **QR Gerçek Kök Neden:** `server.js`'de `!hasSlot` bloğu senkron backend çağrısı yapıyordu; backend kapalıyken 503 döndürüyor, App.svelte'de `completed=true` için try/catch yoktu → UI çöküyordu.

@@ -14,6 +14,27 @@
 
 ---
 
+## 7. Barkod Logo Dağıtım ve Rotasyon Akışı *(2026-08-11)*
+
+**Akış:**
+```
+web_panels (BarkodLogoYonetimi) → POST /api/barkod-logo/upload-gorsel/ (PNG → RustFS)
+  → POST /api/barkod-logo/logolar/ (BarkodLogo kaydı, hedef_kiosklar)
+  → /api/kiosk/v1/catalog/ (aktif+hedefli logolar snapshot)
+  → kiosk_edge/api-node barkodLogoService.syncBarkodLogoCache(db, logolar)
+  → SQLite barkod_logolar + PNG indir
+  → POST /api/oturum/gonder: seciSonrakiLogo() → printReceipt(barkodLogoPath)
+  → başarılıysa: artirGunlukSayi + setLastLogoId + outbox payload.barkod_logo_id güncelle
+  → pushOutbox → POST /api/kiosk/v1/sessions/ { items: [{...barkod_logo_id}] }
+  → OturumLogu.barkod_logo FK kaydedilir
+```
+
+**Offline davranış:** Kiosk son başarılı catalog snapshot ile çalışır; yeni logo için internet bağlantısı gerekir.
+
+**Idempotency:** Aynı outbox kaydı retry edildiğinde `barkod_logo_id` değişmez; backend idempotency_anahtari ile tekrar sayım oluşturmaz.
+
+---
+
 ## 6. Teknik Log Akışı *(2026-07-16)*
 
 Uygulama operasyonel logları PostgreSQL'e yazılmaz; standart JSON stdout üzerinden Kubernetes node collector'a (ileride Alloy/Loki) gider.

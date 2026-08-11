@@ -58,6 +58,7 @@
 6. KullanÄ±cÄ± yÃ¶netimi (UserManagement)
 7. QR kodu tarama ve session detayÄ± (QrScan)
 8. Dashboard analytics (kampanya performansÄ±, session Ã¶zeti)
+9. **Barkod Logo Yönetimi** *(2026-08-11)* — `/admin/barkod-logolar`, `BarkodLogoYonetimi.vue`. DOOH'dan bağımsız. Logo oluştur/düzenle/pasifleştir; PNG yükle (336×336, ≤1MB); kiosk hedefleme; günlük limit. DELETE yok.
 
 ---
 

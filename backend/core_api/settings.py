@@ -60,6 +60,7 @@ INSTALLED_APPS = [
     "apps.campaigns",
     "apps.audit",
     "apps.kiosk_api",
+    "apps.barkod_logo",
 ]
 
 MIDDLEWARE = [

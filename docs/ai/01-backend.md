@@ -26,6 +26,7 @@
 - `backend/apps/pharmacies/auth.py` — Kiosk authentication (tek `KioskAppKeyAuthentication`)
 - `backend/apps/kiosk_api/` — Kiosk API facade (`/api/kiosk/v1/`; bootstrap + operasyonel endpoint'ler)
 - `backend/apps/analytics/models.py` — OturumLogu/PlayLog models
+- `backend/apps/barkod_logo/` — Barkod Logo Yönetimi *(2026-08-11, DOOH'dan bağımsız)*
 
 ---
 
@@ -70,6 +71,8 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 | `/api/kiosk/v1/sessions/` | `kiosk_api.KioskSessionsView` | AppKey+MAC | Oturum outbox; backend QR üretir; response: `{results:[{idempotency_key,status,qr_kodu}]}` |
 | `/api/kiosk/v1/proof-of-play/` | `kiosk_api.KioskProofOfPlayView` | AppKey+MAC | Bulk PlayLog ingest |
 | `/api/kiosk/v1/diagnostics/` | `kiosk_api.KioskDiagnosticsView` | AppKey+MAC | Diagnostic (DB'ye yazılmaz) |
+| `/api/barkod-logo/logolar/` | `barkod_logo.BarkodLogoViewSet` | JWT (SuperAdmin) | Barkod Logo CRUD (DELETE=405) |
+| `/api/barkod-logo/upload-gorsel/` | `barkod_logo.BarkodLogoGorselUploadView` | JWT (SuperAdmin) | PNG yükleme (336×336, ≤1MB, no alfa, gri tonlu) |
 
 **RBAC:** `IsSuperAdmin`, `IsPharmacist`, `IsKiosk` permission sınıfları mevcut.
 
@@ -109,10 +112,17 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 - `Kiosk`: Kiosk cihaz (eczane FK, mac_adresi, **device_id** (UUID, unique, nullable), uygulama_anahtari, aktif, is_online, son_goruldu, last_playlist_version). device_id ilk enrollment'ta tek-seferlik bağlanır, değiştirilemez. TPM tabanlı değil; runtime DB kopyalanırsa kopyalanabilir.
 - `KioskProvisioningRequest`: Kayıtsız kiosk onay talebi (UUID pk, mac_adresi, **device_id** (max 36, partial-unique non-empty), hostname, device_metadata JSON, status PENDING/APPROVED/REJECTED, last_seen_at, request_count, approved_by/at, rejected_by/at, rejection_reason, kiosk FK nullable). Onay anında `device_id` `Kiosk.device_id`'ye aktarılır. **Raw fleet_key/provision_secret saklanmaz.**
 
-### Analytics (`apps.analytics`) *(updated 2026-07-20)*
-- `OturumLogu`: Anonim kullanici session (**oturum_tipi** [SIKAYET/OZEL_DANISMANLIK],RUN_ONERI/DANISMANLIK], kategori FK (nullable), **danisma_kategorisi** FK (nullable, products.Danisma), hassas_akis bool, **qr_kodu** (max_length=8, unique, DB constraint), cevaplar JSON (backup), onerilen_etken_maddeler JSON (backup), tamamlandi bool). **QR backend tarafından üretilir; istemciden gelen qr_kodu yoksayılır.**
-- `OturumCevap`: Normalize cevaplar (oturum FK CASCADE, soru FK PROTECT nullable, cevap FK PROTECT nullable, soru_metni_snapshot, cevap_metni_snapshot, cevap_degeri_snapshot). unique_together (oturum, soru).
-- `OturumOnerilenEtkenMadde`: Normalize önerilen etken maddeler (oturum FK CASCADE, etken_madde FK PROTECT nullable, etken_madde_adi_snapshot). unique_together (oturum, etken_madde).
+### Analytics (`apps.analytics`) *(updated 2026-08-11)*
+- `OturumLogu`: Anonim kullanici session. **barkod_logo FK (PROTECT, nullable)** — fişte basılan logo; null=fallback. PROTECT: logo fiziksel silinemez; geçmiş ölçüm kaybolmaz.
+- `OturumCevap`: Normalize cevaplar.
+- `OturumOnerilenEtkenMadde`: Normalize önerilen etken maddeler.
+
+### Barkod Logo (`apps.barkod_logo`) *(new 2026-08-11 — DOOH sisteminden tamamen bağımsız)*
+- `BarkodLogo`: Kiosk fiş baskısında e-ISA başlığının yerini alacak logo. UUID PK, ad, media_url, object_key, checksum, baslangic_zamani, bitis_zamani, aktif, gunluk_baski_limiti (nullable ≥1), hedef_kiosklar M2M.
+- **Fiziksel silme kapalı** (DELETE → 405). Geçmiş `OturumLogu.barkod_logo` kayıtları PROTECT ile korunur.
+- **PNG doğrulama** (yükleme endpoint'inde): 336×336 px, ≤1 MB, gri tonlu (RGB/RGBA için piksel piksel R=G=B kontrolü), şeffaf piksel yok (alpha channel + tRNS). stdlib (struct, zlib) — Pillow gerektirmez.
+- Catalog: `GET /api/kiosk/v1/catalog/` artık `barkod_logolar` snapshot içerir (aktif + bitis > now + hedef kiosk filtreli). Gelecek tarihli aktif logolar önceden dağıtılabilir.
+- Migrations: `barkod_logo/0001_initial`, `barkod_logo/0002_alter_*`, `analytics/0014_oturumlogu_barkod_logo`
 
 ### Products (`apps.products`)
 - `Kategori`: Şikayet kategorisi (ad, slug, ikon, hedef_cinsiyet, hedef_yas_araliklari M2M, bagli_kategori self-FK)

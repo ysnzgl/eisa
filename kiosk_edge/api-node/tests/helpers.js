@@ -135,6 +135,25 @@ export function makeMemoryDb() {
       last_value INTEGER NOT NULL DEFAULT 0,
       updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')));
     INSERT INTO qr_counter (id, last_value) VALUES (1, 0);
+
+    CREATE TABLE barkod_logolar (
+      id TEXT PRIMARY KEY,
+      ad TEXT NOT NULL DEFAULT '',
+      media_url TEXT NOT NULL DEFAULT '',
+      checksum TEXT NOT NULL DEFAULT '',
+      baslangic_zamani TEXT NOT NULL,
+      bitis_zamani TEXT NOT NULL,
+      aktif INTEGER NOT NULL DEFAULT 1,
+      gunluk_limit INTEGER,
+      local_path TEXT NOT NULL DEFAULT '',
+      cache_status TEXT NOT NULL DEFAULT 'pending',
+      synced_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')));
+
+    CREATE TABLE barkod_logo_baski_sayaclari (
+      logo_id TEXT NOT NULL,
+      tarih_istanbul TEXT NOT NULL,
+      sayi INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (logo_id, tarih_istanbul));
   `);
   return db;
 }

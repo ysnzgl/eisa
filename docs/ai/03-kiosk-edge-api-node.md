@@ -119,8 +119,19 @@ Backend kapalı/erişilemezse:
 - `reklam_gosterim_outbox`: id, payload JSON, olusturulma_tarihi, gonderilme_tarihi (null = pending)
 
 **Meta:**
-- `kiosk_meta`: key, value (kiosk_app_key, kiosk_id, pharmacy_id, playlist_version, last_sync_at, provisioning_state, registration_id)
+- `kiosk_meta`: key, value (kiosk_app_key, kiosk_id, pharmacy_id, playlist_version, last_sync_at, provisioning_state, registration_id, **last_barkod_logo_id** *(2026-08-11)*)
 - `media_cache`: asset_id, asset_type, source_url, source_checksum (backend'den: sha256:<hex>), file_checksum (raw hex, downloadToFile), local_path, status, error_message, synced_at
+
+**Barkod Logo Cache *(2026-08-11 — DOOH'dan bağımsız)*:**
+- `barkod_logolar`: id, ad, media_url, checksum, baslangic_zamani, bitis_zamani, aktif, gunluk_limit (nullable), local_path, cache_status, synced_at
+- `barkod_logo_baski_sayaclari`: (logo_id, tarih_istanbul, sayi) — Europe/Istanbul takvim gününe göre sayaç
+- `src/barkodLogoService.js`: `getOrderedLogoCandidates(db)`, `seciSonrakiLogo(db)`, `commitBasariliBaski(db, logoId, idempotencyKey)` — counter+cursor+outbox tek atomic transaction
+- Round-robin cursor: `kiosk_meta.last_barkod_logo_id` — yalnız başarılı transport sonrası ilerler
+- **Aday logo** (belirlenmiş) ≠ **başarıyla basılmış logo** (transport onaylı). `commitBasariliBaski` yalnız transport sonrası çağrılır.
+- Süreç çökmesi (transport başarılı ama transaction tamamlanmadan): outbox `barkod_logo_id=null` kalır → muhafazakâr/güvenli.
+- `src/printer.js`: `buildReceiptBuffer({qrPayload, logoCandidates, logger})` — adayları sırayla dener, ilk başarılıyı kullanır, tüm fiş bellekte hazırlanır sonra `sendToTransport` ile tek seferlik gönderilir.
+- `sendToTransport({buffer, host, port, logger})` — cihaz dosyası (sync throw) veya TCP (async, no throw).
+- Catalog sync: `pullFromCentral` → `/api/kiosk/v1/catalog/` → `barkod_logolar` → `syncBarkodLogoCache` (snapshot reconciliation, PNG indir).
 
 **Checksum sözleşmesi (Faz 0.5+):**
 - `source_checksum`: backend'den gelen `sha256:<hex>` formatı, freshness karşılaştırması için

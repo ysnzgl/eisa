@@ -134,7 +134,7 @@
 
 ### Analytics
 
-**oturum_loglari** *(updated 2026-07-20)*
+**oturum_loglari** *(updated 2026-08-11)*
 - id, idempotency_anahtari (UUID, unique), kiosk_id FK
 - yas_araligi_id FK, cinsiyet_id FK
 - kategori_id FK (nullable), danisma_kategorisi_id FK (nullable)
@@ -146,6 +146,19 @@
 - danisma_tamamlanma_tarihi (datetime, nullable)
 - danisma_notu (text, blank)
 - danisma_tamamlayan_eczaci_id FK (users_eisauser, nullable)
+- **barkod_logo_id FK (barkod_logolar, PROTECT, nullable)** — fişte basılan logo; null = e-ISA fallback *(2026-08-11)*. PROTECT: geçmiş ölçüm kaybolmaz; logo fiziksel silinemez.
+
+### Barkod Logo *(new 2026-08-11)*
+
+**barkod_logolar**
+- id (UUID PK), ad (max 255)
+- media_url (kalıcı public URL), object_key (RustFS key), checksum (sha256:\<hex>)
+- baslangic_zamani, bitis_zamani (UTC DateTimeField)
+- aktif (bool, indexed), gunluk_baski_limiti (nullable PositiveInt, ≥1)
+- olusturulma_tarihi, hedef_kiosklar (M2M → kiosklar)
+- Endpoint: `/api/barkod-logo/logolar/` (ModelViewSet, SuperAdmin JWT)
+- Upload: `POST /api/barkod-logo/upload-gorsel/` — PNG, 336×336, ≤1MB, alfa yok
+- Catalog (kiosk): `GET /api/kiosk/v1/catalog/` artık `barkod_logolar` listesini içerir (aktif + bitis > now + hedef kiosk filtreli)
 
 **oturum_cevaplar** *(new 2026-07-20)*
 - id, oturum_id FK (CASCADE), soru_id FK (PROTECT, nullable), cevap_id FK (PROTECT, nullable)

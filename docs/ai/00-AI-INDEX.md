@@ -105,7 +105,8 @@ kiosk_edge/ui (ResultScreen QR) → web_panels (QrScan) → Backend API (GET /ap
 - **ScheduleRule:** Kampanya frekans matrisi (per_loop/per_hour/per_day, saat hedefleme)
 - **Playlist:** Kiosk için üretilmiş 60sn reklam döngüsü (date/hour bazlı)
 - **HouseAd:** Filler reklam (slot boşsa oynatılır)
-- **OturumLogu:** KVKK uyumlu anonim kullanıcı session (yaş aralığı, cinsiyet, kategori, QR kodu, tamamlanma durumu)
+- **BarkodLogo:** Kiosk fiş baskısında e-ISA başlığının yerini alan logo (UUID PK, ad, media_url, checksum, baslangic/bitis_zamani, aktif, gunluk_baski_limiti, hedef_kiosklar M2M). DOOH sisteminden bağımsız. Backend: `apps.barkod_logo`. Kiosk: `barkodLogoService.js`.
+- **OturumLogu:** KVKK uyumlu anonim kullanıcı session (yaş aralığı, cinsiyet, kategori, QR kodu, tamamlanma durumu, **barkod_logo FK** *(2026-08-11)*).
 - **PlayLog:** Reklam gösterim kanıtı / proof-of-play (creative_id veya house_ad_id, played_at, duration_played)
 - **Kiosk:** Fiziksel cihaz (mac_adresi, uygulama_anahtari, eczane, aktif/online durumu)
 - **Eczane:** Kiosk'un bulunduğu fiziksel lokasyon (il/ilçe, sahip, telefon)

@@ -14,6 +14,7 @@ import re
 
 from django.conf import settings
 from django.db import IntegrityError, transaction
+from django.db import models
 from django.db.models import F, Max
 from django.utils import timezone
 from rest_framework import status
@@ -324,13 +325,36 @@ class KioskSyncView(KioskAPIView):
 
 
 class KioskCatalogView(KioskAPIView):
-    """``GET /api/kiosk/v1/catalog/`` — kategori/soru/cevap/etken madde/danisma."""
+    """``GET /api/kiosk/v1/catalog/`` — kategori/soru/cevap/etken madde/danisma + barkod logoları."""
 
     def get(self, request):
+        from apps.barkod_logo.models import BarkodLogo
+        from apps.barkod_logo.serializers import BarkodLogoKatalogSerializer
+
         data = build_catalog_payload()
-        # eczane_kiosk_no: kiosk slot bilgisi, scheduler kiosk_meta'ya kaydeder.
-        kiosk_meta = {"eczane_kiosk_no": request.kiosk.eczane_kiosk_no}
-        return Response({**data, "kiosk_meta": kiosk_meta})
+        kiosk = request.kiosk
+        now = timezone.now()
+
+        # Aktif, süresi dolmamış barkod logoları:
+        # - hedef_kiosklar boşsa → tüm kiosklar için (boş = sınırsız hedef)
+        # - hedef_kiosklar doluysa → yalnız bu kiosk için atanmış olanlar
+        barkod_logolar_qs = (
+            BarkodLogo.objects
+            .filter(aktif=True, bitis_zamani__gt=now)
+            .filter(
+                models.Q(hedef_kiosklar__isnull=True) |
+                models.Q(hedef_kiosklar=kiosk)
+            )
+            .distinct()
+            .order_by("olusturulma_tarihi", "id")
+        )
+
+        kiosk_meta = {"eczane_kiosk_no": kiosk.eczane_kiosk_no}
+        return Response({
+            **data,
+            "kiosk_meta": kiosk_meta,
+            "barkod_logolar": BarkodLogoKatalogSerializer(barkod_logolar_qs, many=True).data,
+        })
 
 
 class KioskPlaylistView(KioskAPIView):

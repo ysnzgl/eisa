@@ -27,6 +27,7 @@ const adminNavItems = [
   { to: '/admin/content-management',         icon: 'fa-images',        label: 'İçerik Yönetimi' },
   { to: '/admin/campaigns',                  icon: 'fa-display',       label: 'Kiosk Kampanyaları' },
   { to: '/admin/pharmacy-campaigns',         icon: 'fa-prescription-bottle-medical', label: 'Eczacı Paneli Kampanyaları' },
+  { to: '/admin/barkod-logolar',             icon: 'fa-barcode',       label: 'Barkod Logo Yönetimi' },
   { to: '/admin/dooh/control-center',        icon: 'fa-gauge-high',    label: 'Kontrol Merkezi' },
   // Gelişmiş Manuel Yayın — salt okunur; ana kampanya yolu CampaignWizard
   { to: '/admin/playlists',                  icon: 'fa-list-ol',       label: 'Gelişmiş Manuel Yayın' },

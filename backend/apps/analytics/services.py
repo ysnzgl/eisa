@@ -309,6 +309,15 @@ def ingest_session_items(kiosk, items: list[Any]) -> tuple[list[dict], list[dict
                         cihaz_zamani=d.get("olusturulma_tarihi"),
                         sunucu_zamani=now,
                     )
+                    # barkod_logo_id: kiosk payload'ından gelen opsiyonel alan.
+                    # Gecikmiş outbox kaydında logo artık pasif/silinmiş olabilir → SET_NULL ile kabul edilir.
+                    # Eski payload'lar bu alanı içermeyebilir → None ile çalışmaya devam eder.
+                    raw_logo_id = d.get("barkod_logo_id")
+                    if raw_logo_id:
+                        from apps.barkod_logo.models import BarkodLogo
+                        logo = BarkodLogo.objects.filter(pk=raw_logo_id).first()
+                        if logo:
+                            instance.barkod_logo = logo
                     with UnitOfWork(user=None) as uow:
                         uow.add(instance)
 

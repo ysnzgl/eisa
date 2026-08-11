@@ -43,13 +43,18 @@
 
 **Geriye uyumluluk:** Eski 8-char `[A-Z0-9]{8}` kayıtlar sorgulanabilir.
 
-**Edge akışı (tamamlandi=true):**
-1. `eczane_kiosk_no` kiosk_meta'da mevcut değilse → 503 `kiosk_no_missing` (rastgele QR üretilmez)
-2. Atomik SQLite transaction: QR üret + sayaç güncelle + outbox insert
-3. UI'a hemen `{ qr_kodu, sync_durum: 'bekliyor' }` dön
-4. `setImmediate` ile arka planda backend push — HTTP cevabını bloklamaz
-5. Push başarılı → `gonderilme_tarihi` set edilir (`sync_durum: 'gonderildi'`)
-6. Scheduler aynı payload'ı PENDING bırakır, retry eder
+**Edge akışı (tamamlandi=true) *(2026-08-11 — barkod logo + atomic commit)*:**
+1. `eczane_kiosk_no` kiosk_meta'da mevcut değilse → 503 `kiosk_no_missing`
+2. `getOrderedLogoCandidates(db)` → uygun logoların rotation sıralı listesi
+3. Atomik SQLite: QR üret + outbox insert (`barkod_logo_id=null` başlangıçta)
+4. `buildReceiptBuffer({qrPayload, logoCandidates})` → adayları sırayla dener; ilk başarılı raster kullanılır → `{buffer, logoId}`
+5. `sendToTransport({buffer, host})` — tüm fiş bellekte hazır, tek seferlik transport
+6. Transport başarısı (no throw):
+   - `commitBasariliBaski(db, logoId, idempotencyKey)` — tek atomik transaction: günlük sayaç + cursor + outbox.barkod_logo_id
+   - Süreç çökmesi sonrası: outbox null kalır → scheduler null payload gönderir (muhafazakâr)
+7. setImmediate: outbox'tan nihai payload oku → backend push (retry'da değişmez)
+
+**"Başarılı baskı" tanımı:** `sendToTransport` throw etmedi. TCP için bu bağlantı girişiminin başlatıldığını gösterir; fiziksel baskı teyit edilemez. Cihaz dosyası için writeFileSync başarısı teyit edilir.
 
 **Backend QR doğrulama (ingest):**
 - 9-char Crockford → checksum kontrol, prefix=kiosk.eczane_kiosk_no kontrolü, eczane unique kontrolü

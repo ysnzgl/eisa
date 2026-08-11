@@ -109,6 +109,17 @@ class OturumLogu(BaseModel):
         related_name="tamamlanan_danismalar",
     )
 
+    # Fişte basılan barkod logosu. PROTECT: geçmiş ölçüm kaybolmamasın.
+    # Admin API'de fiziksel silme kapalıdır; DELETE → 405.
+    barkod_logo = models.ForeignKey(
+        "barkod_logo.BarkodLogo",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="oturumlar",
+        help_text="Fişte başarıyla basılan barkod logosu. Null = fallback e-ISA başlığı kullanıldı.",
+    )
+
     class Meta:
         db_table = "oturum_loglari"
         ordering = ("-olusturulma_tarihi",)

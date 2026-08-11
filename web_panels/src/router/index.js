@@ -23,6 +23,7 @@ const routes = [
       { path: 'content-management', component: () => import('../views/admin/ContentManagement.vue') },
       { path: 'campaigns',     component: () => import('../views/admin/CampaignWizard.vue') },
       { path: 'pharmacy-campaigns', component: () => import('../views/admin/PharmacyCampaigns.vue') },
+      { path: 'barkod-logolar', component: () => import('../views/admin/BarkodLogoYonetimi.vue') },
       { path: 'dooh/control-center', component: () => import('../views/admin/DoohControlCenter.vue') },
       { path: 'playlists',     component: () => import('../views/admin/PlaylistEditor.vue') },
       { path: 'pricing',       component: () => import('../views/admin/PricingMatrixConfigurator.vue') },

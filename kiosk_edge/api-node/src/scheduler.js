@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import { Agent, fetch } from 'undici';
 import { checkOutboxPressure } from './db.js';
 import { syncMediaCache } from './mediaCache.js';
+import { syncBarkodLogoCache, temizleEskiSayaclar } from './barkodLogoService.js';
 import { getAuthHeaders, getProvisioningState, handle401Error, handle403Error, hasAppKeyCredentials, enrollDeviceId, resolveRuntimeSettings } from './provisioning.js';
 import { istanbulNow } from './timezone.js';
 import {
@@ -428,6 +429,19 @@ export async function pullFromCentral(db, settings, log = console) {
           log.info?.({ eczane_kiosk_no: kNo }, 'PULL: eczane_kiosk_no kiosk_meta\'ya kaydedildi');
         }
       }
+
+      // Barkod logo cache sync (snapshot reconciliation)
+      const barkodLogolar = data.barkod_logolar;
+      if (Array.isArray(barkodLogolar)) {
+        try {
+          await syncBarkodLogoCache(db, barkodLogolar, settings.mediaDir, settings.verifyTls, log);
+          log.info?.(`PULL: ${barkodLogolar.length} barkod logo senkronize edildi`);
+        } catch (err) {
+          log.warn?.({ err: err?.message }, 'Barkod logo cache sync hatası');
+        }
+      }
+      // Eski sayaç kayıtlarını temizle (7 günden eski)
+      try { temizleEskiSayaclar(db); } catch { /* temizlik opsiyonel */ }
     } else if (r1.status === 401) {
       handle401Error(db, settings, log);
     } else if (r1.status === 403) {

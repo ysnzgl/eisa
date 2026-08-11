@@ -14,6 +14,7 @@ import {
 import { requireLocalSecret } from './auth.js';
 import { encodeQrCode } from './qrBitpack.js';
 import { printReceipt } from './printer.js';
+import { buildReceiptBuffer, sendToTransport } from './printer.js';
 import { buildLoggerOptions } from './logger.js';
 import {
   CORRELATION_HEADER,
@@ -29,6 +30,13 @@ import { istanbulNow } from './timezone.js';
 import { requestWithRetry } from './scheduler.js';
 import { handle401Error, handle403Error, hasAppKeyCredentials } from './provisioning.js';
 import { generateNextQr, CROCKFORD_QR_RE } from './qrGen.js';
+import {
+  seciSonrakiLogo,
+  artirGunlukSayi,
+  setLastLogoId,
+  getOrderedLogoCandidates,
+  commitBasariliBaski,
+} from './barkodLogoService.js';
 
 /**
  * @param {object} opts
@@ -313,6 +321,15 @@ export async function buildServer({ db, settings, logger }) {
         app.log.info({ event: 'session_idempotent_redelivery' }, 'Idempotent yeniden teslim; mevcut QR donuluyor');
         let printerOk = true;
         let printerError = null;
+        // Aynı logo yeniden basılır (yeni seçim yapılmaz, sayaç artırılmaz, cursor ilerletilmez)
+        const existingLogoId = existingPayload.barkod_logo_id || null;
+        let rePrintLogoPath = null;
+        if (existingLogoId) {
+          const logoRow = db.prepare('SELECT local_path, cache_status FROM barkod_logolar WHERE id = ?').get(existingLogoId);
+          if (logoRow && logoRow.cache_status === 'ready' && logoRow.local_path) {
+            rePrintLogoPath = logoRow.local_path;
+          }
+        }
         try {
           printReceipt({
             qrCode: existingPayload.qr_kodu,
@@ -320,6 +337,7 @@ export async function buildServer({ db, settings, logger }) {
             categoryName: body.kategori_slug || body.danisma_kategorisi_slug,
             ingredients: body.onerilen_etken_maddeler,
             isSensitive: body.hassas_akis,
+            barkodLogoPath: rePrintLogoPath,
             host: settings.thermalPrinterHost,
             port: settings.thermalPrinterPort,
             logger: app.log,
@@ -408,7 +426,8 @@ export async function buildServer({ db, settings, logger }) {
     try {
       const txn = db.transaction(() => {
         qrKodu = generateNextQr(db, eczaneKioskNo);
-        const payloadWithQr = { ...payload, qr_kodu: qrKodu };
+        // barkod_logo_id başlangıçta null; başarılı baskı sonrası güncellenir.
+        const payloadWithQr = { ...payload, qr_kodu: qrKodu, barkod_logo_id: null };
         db.prepare(
           'INSERT OR IGNORE INTO oturum_outbox (idempotency_anahtari, payload) VALUES (?, ?)',
         ).run(idempotencyAnahtari, JSON.stringify(payloadWithQr));
@@ -423,33 +442,48 @@ export async function buildServer({ db, settings, logger }) {
       });
     }
 
-    // Termal yazici (opsiyonel)
+    // Barkod logo adayları (rotation sırasında)
+    const logoCandidates = getOrderedLogoCandidates(db);
+
+    // Fiş byte'larını bellekte oluştur (tüm adaylar denenir, başarısızlar atlanır)
+    const { buffer: receipBuffer, logoId: basilanLogoId } = buildReceiptBuffer({
+      qrPayload: qrKodu,
+      logoCandidates,
+      logger: app.log,
+    });
+
+    // Termal yazici: tek tamamlanmış buffer transport'a verilir
     let printerOk = true;
     let printerError = null;
-    try {
-      printReceipt({
-        qrCode: qrKodu,
-        qrPayload: qrKodu,
-        categoryName: body.kategori_slug || body.danisma_kategorisi_slug,
-        ingredients: body.onerilen_etken_maddeler,
-        isSensitive: body.hassas_akis,
-        host: settings.thermalPrinterHost,
-        port: settings.thermalPrinterPort,
-        logger: app.log,
-      });
-    } catch (err) {
-      printerOk = false;
-      printerError = err?.message || 'Yazici hatasi';
-      app.log.warn({ err: printerError }, 'Termal yazici tetiklenemedi');
+    if (settings.thermalPrinterHost) {
+      try {
+        sendToTransport({
+          buffer: receipBuffer,
+          host: settings.thermalPrinterHost,
+          port: settings.thermalPrinterPort,
+          logger: app.log,
+        });
+        // Transport başarısı (no throw): counter+cursor+outbox_payload tek transaction
+        if (basilanLogoId) {
+          commitBasariliBaski(db, basilanLogoId, idempotencyAnahtari);
+        }
+      } catch (err) {
+        printerOk = false;
+        printerError = err?.message || 'Yazici hatasi';
+        app.log.warn({ err: printerError }, 'Termal yazici gonderilemedi — sayac/cursor ilerlemez');
+        // Yazıcı hatasında: sayaç artmaz, cursor ilerlemiyor, barkod_logo_id null kalır
+      }
     }
 
     // Backend push: arka planda, HTTP cevabini bekletmez
     if (settings.centralApiBase && hasAppKeyCredentials(db)) {
       setImmediate(async () => {
-        const payloadWithQr = { ...payload, qr_kodu: qrKodu };
         try {
+          // Outbox'tan nihai payload'ı oku (commitBasariliBaski'de güncellenmiş olabilir)
+          const finalOutboxRow = db.prepare('SELECT payload FROM oturum_outbox WHERE idempotency_anahtari = ?').get(idempotencyAnahtari);
+          const finalPayload = finalOutboxRow ? safeJson(finalOutboxRow.payload, {}) : { ...payload, qr_kodu: qrKodu };
           const res = await requestWithRetry(
-            db, settings, 'POST', '/api/kiosk/v1/sessions/', { items: [payloadWithQr] }, app.log
+            db, settings, 'POST', '/api/kiosk/v1/sessions/', { items: [finalPayload] }, app.log
           );
           if (res.status === 200 || res.status === 207) {
             let resBody = {};
