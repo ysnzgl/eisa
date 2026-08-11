@@ -135,16 +135,18 @@
 
 <div class="player player--{mode}">
   {#if asset}
-    <!-- Iki katman da HER ZAMAN mount kalir (asset degismedikce); mode yalniz
-         opacity degistirir → 7:5 strip <-> 9:16 fullscreen gecisinde HICBIR
-         video reload olmaz, ikisi de kesintisiz oynar. {#key} yalniz gercek
-         slot degisiminde remount eder. -->
+    <!-- Her iki video da slot boyunca DAIMA oynar (playing={true}); mode yalniz
+         CSS opacity/z-index degistirir. Boylece fullscreen ve mini video slotun
+         baslangicindan itibaren AYNI currentTime'da ilerler: geciste seek/reset
+         gerekmez, yalniz gorunurluk degisir. {#key} yalniz gercek slot
+         degisiminde (slotKey farklilasinca) her iki video'yu birlikte remount
+         eder ve ikisi de t=0'dan baslar. -->
     {#key slotKey}
       <MediaView
         src={asset.media_url}
         type={asset.media_type}
         alt={asset.name ?? 'Reklam'}
-        playing={mode === 'fullscreen'}
+        playing={true}
         class={mode === 'fullscreen' ? 'player-media' : 'player-media player-media--behind'}
         on:error={handleMediaError}
       />
@@ -155,7 +157,7 @@
           src={asset.active_media_url}
           type={asset.media_type}
           alt={asset.name ?? 'Reklam'}
-          playing={mode === 'strip'}
+          playing={true}
           class={mode === 'strip' ? 'player-media player-media--strip' : 'player-media player-media--strip player-media--behind'}
         />
       {/key}
