@@ -484,6 +484,9 @@ export async function buildServer({ db, settings, logger }) {
         app.log.warn({ err: printerError }, 'Termal yazici gonderilemedi — sayac/cursor ilerlemez');
         // Yazıcı hatasında: sayaç artmaz, cursor ilerlemiyor, barkod_logo_id null kalır
       }
+    } else if (settings.devMode && basilanLogoId) {
+      // Dev modda yazıcı yok; buffer başarıyla oluşturuldu — logo id'yi outbox'a yaz
+      commitBasariliBaski(db, basilanLogoId, idempotencyAnahtari);
     }
 
     // Backend push: arka planda, HTTP cevabini bekletmez

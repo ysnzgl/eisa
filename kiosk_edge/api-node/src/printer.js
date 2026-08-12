@@ -55,8 +55,9 @@ export function pngToEscposRaster(filePath) {
 
   if (bitDepth !== 8) throw new Error(`Desteklenmeyen bit derinliği: ${bitDepth} (yalnız 8 desteklenir)`);
   if (interlace !== 0) throw new Error('Interlaced PNG desteklenmiyor');
-  if (colorType !== 0 && colorType !== 2) {
-    throw new Error(`Desteklenmeyen renk tipi: ${colorType} (grayscale=0 veya RGB=2 bekleniyor)`);
+  // 0=grayscale, 2=RGB, 6=RGBA (backend opak RGBA kabul eder — alpha kanalı yoksayılır)
+  if (colorType !== 0 && colorType !== 2 && colorType !== 6) {
+    throw new Error(`Desteklenmeyen renk tipi: ${colorType} (grayscale=0, RGB=2, RGBA=6 desteklenir)`);
   }
 
   // Tüm IDAT chunk'larını birleştir
@@ -76,8 +77,8 @@ export function pngToEscposRaster(filePath) {
   const compressed = Buffer.concat(idatBuffers);
   const raw = zlib.inflateSync(compressed);
 
-  // Kanal sayısı
-  const channels = colorType === 2 ? 3 : 1;
+  // Kanal sayısı: RGBA (6) = 4, RGB (2) = 3, grayscale (0) = 1
+  const channels = colorType === 6 ? 4 : colorType === 2 ? 3 : 1;
   const bytesPerRow = width * channels;
   const strideRaw = 1 + bytesPerRow; // 1 filter byte + pixel data
 
@@ -127,8 +128,12 @@ export function pngToEscposRaster(filePath) {
       let lum;
       if (colorType === 0) {
         lum = pixels[y * bytesPerRow + x];
+      } else if (colorType === 6) {
+        // RGBA: alpha=255 olarak doğrulanmış (backend); RGB kanalları al
+        const base = y * bytesPerRow + x * 4;
+        lum = Math.round((pixels[base] * 299 + pixels[base + 1] * 587 + pixels[base + 2] * 114) / 1000);
       } else {
-        // RGB: luminance = 0.299R + 0.587G + 0.114B (approx: (R+G+B)/3 yeterli)
+        // RGB
         const base = y * bytesPerRow + x * 3;
         lum = Math.round((pixels[base] * 299 + pixels[base + 1] * 587 + pixels[base + 2] * 114) / 1000);
       }
