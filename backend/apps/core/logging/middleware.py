@@ -33,6 +33,7 @@ from .correlation import (
 from .formatters import LOG_HANDLED_MARK
 
 logger = logging.getLogger("eisa.request")
+_db_logger = logging.getLogger("eisa.db")
 
 # Health/readiness ve boş sistem endpoint'lerinde gürültüyü azalt.
 _QUIET_PATHS = frozenset({
@@ -87,18 +88,15 @@ class RequestLoggingMiddleware(MiddlewareMixin):
         if marker:
             return None
         setattr(request, LOG_HANDLED_MARK, True)
-        actor = _actor_type(request)
-        logger.error(
-            "request_failed",
-            exc_info=True,
-            extra={
-                "event": "request_failed",
-                "request_method": request.method,
-                "request_path": _safe_path(request.path),
-                "actor_type": actor,
-                "duration_ms": _elapsed_ms(request),
-            },
-        )
+        extra: dict = {
+            "event": "request_failed",
+            "request_method": request.method,
+            "request_path": _safe_path(request.path),
+            "actor_type": _actor_type(request),
+            "duration_ms": _elapsed_ms(request),
+        }
+        _enrich_actor(request, extra)
+        logger.error("request_failed", exc_info=True, extra=extra)
         return None
 
     def _emit(
@@ -134,6 +132,8 @@ class RequestLoggingMiddleware(MiddlewareMixin):
         route = getattr(getattr(request, "resolver_match", None), "route", None)
         if route:
             extra["route"] = route
+        _enrich_actor(request, extra)
+        _enrich_db(request, extra)
 
         if exc is None and getattr(request, LOG_HANDLED_MARK, False):
             # Exception önce loglanmış — kısa tamamlanma satırıyla yetin.
@@ -171,3 +171,104 @@ def _actor_type(request: HttpRequest) -> str:
     if request.META.get("HTTP_X_KIOSK_KEY"):
         return "kiosk"
     return "anonymous"
+
+
+def _get_user_id(request: HttpRequest) -> int | None:
+    user = getattr(request, "user", None)
+    if user is not None and getattr(user, "is_authenticated", False):
+        pk = getattr(user, "pk", None)
+        return int(pk) if pk is not None else None
+    return None
+
+
+def _get_kiosk_id(request: HttpRequest) -> int | None:
+    kiosk = getattr(request, "kiosk", None)
+    if kiosk is not None:
+        pk = getattr(kiosk, "pk", None)
+        return int(pk) if pk is not None else None
+    auth = getattr(request, "auth", None)
+    if isinstance(auth, dict):
+        kid = auth.get("kiosk_id")
+        return int(kid) if kid is not None else None
+    return None
+
+
+def _enrich_actor(request: HttpRequest, extra: dict) -> None:
+    """user_id ve kiosk_id'yi extra'ya ekler (None ise atlar)."""
+    user_id = _get_user_id(request)
+    if user_id is not None:
+        extra["user_id"] = user_id
+    kiosk_id = _get_kiosk_id(request)
+    if kiosk_id is not None:
+        extra["kiosk_id"] = kiosk_id
+
+
+def _enrich_db(request: HttpRequest, extra: dict) -> None:
+    """DB sorgu sayısını extra'ya ekler (SlowQueryMiddleware set etmişse)."""
+    db_queries = getattr(request, "_eisa_db_query_count", None)
+    if db_queries is not None:
+        extra["db_queries"] = db_queries
+    db_slow = getattr(request, "_eisa_db_slow_count", None)
+    if db_slow:
+        extra["db_slow_queries"] = db_slow
+
+
+def _fingerprint_sql(sql: str) -> str:
+    """Whitespace normalize, 300 char kırp. Django %s placeholder kullanır → PII yok."""
+    return " ".join(sql.split())[:300] if sql else ""
+
+
+class SlowQueryMiddleware:
+    """
+    Her request'te toplam DB sorgu sayısını ve yavaş sorguları takip eder.
+
+    `_eisa_db_query_count` ve `_eisa_db_slow_count` request nesnesi üzerine yazılır;
+    `RequestLoggingMiddleware._emit()` bunları request_completed log'una ekler.
+    Yavaş sorgular ayrıca `eisa.db` logger'ına WARNING olarak yazılır.
+
+    MIDDLEWARE listesinde RequestLoggingMiddleware'dan SONRA olmalı
+    (response zincirinde daha önce çalışır, sayaç set edilir).
+    """
+
+    def __init__(self, get_response) -> None:
+        self.get_response = get_response
+        from django.conf import settings as _s
+        self._threshold_ms: int = getattr(_s, "SLOW_QUERY_THRESHOLD_MS", 500)
+
+    def __call__(self, request: HttpRequest) -> HttpResponse:
+        from django.db import connection
+
+        slow: list[dict] = []
+        query_count = 0
+
+        def _wrap(execute, sql, params, many, context):
+            nonlocal query_count
+            t0 = time.perf_counter_ns()
+            try:
+                return execute(sql, params, many, context)
+            finally:
+                query_count += 1
+                elapsed = (time.perf_counter_ns() - t0) // 1_000_000
+                if elapsed >= self._threshold_ms:
+                    slow.append({"duration_ms": elapsed, "sql": _fingerprint_sql(sql)})
+
+        with connection.execute_wrapper(_wrap):
+            response = self.get_response(request)
+
+        request._eisa_db_query_count = query_count  # type: ignore[attr-defined]
+        request._eisa_db_slow_count = len(slow)  # type: ignore[attr-defined]
+
+        if slow:
+            _db_logger.warning(
+                "slow_queries_detected",
+                extra={
+                    "event": "slow_queries_detected",
+                    "request_path": _safe_path(request.path),
+                    "request_method": request.method,
+                    "slow_count": len(slow),
+                    "queries": slow[:5],
+                    "correlation_id": get_correlation_id(),
+                },
+            )
+
+        return response

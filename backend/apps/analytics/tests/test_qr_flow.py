@@ -143,7 +143,7 @@ def test_complete_session_accepts_sale_result(eczaci_client, kiosk):
 
     assert res.status_code == 200
     assert res.data["danisma_tamamlandi"] is True
-    assert res.data["satis_sonucu"] == "Satış yapıldı"
+    assert res.data["sold"] is True
 
 
 def test_complete_session_invalid_sale_result_returns_400(eczaci_client, kiosk):

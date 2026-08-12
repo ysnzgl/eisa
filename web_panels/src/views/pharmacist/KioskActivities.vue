@@ -37,6 +37,7 @@ const filters = ref({
   start_date:   route.query.start_date   || '',
   end_date:     route.query.end_date     || '',
 });
+const onlyPending = ref(route.query.only_pending !== 'false');
 
 // ─── Kiosk listesi — dashboard'dan eczane kioskları ──────────────────────────
 const kioskler  = ref([]);
@@ -133,12 +134,14 @@ function buildParams() {
   if (filters.value.hassas_akis) p.hassas_akis  = filters.value.hassas_akis;
   if (filters.value.start_date)  p.start_date   = filters.value.start_date;
   if (filters.value.end_date)    p.end_date     = filters.value.end_date;
+  if (onlyPending.value)         p.danisma_tamamlandi = 'false';
   return p;
 }
 
 function syncUrl() {
   const q = { tab: activeTab.value, page: sessionsPage.value };
   Object.entries(filters.value).forEach(([k, v]) => { if (v) q[k] = v; });
+  if (!onlyPending.value) q.only_pending = 'false';
   router.replace({ query: q });
 }
 
@@ -151,6 +154,7 @@ function applyFilters() {
 
 function clearFilters() {
   filters.value = { kiosk_id: '', durum: '', oturum_tipi: '', hassas_akis: '', start_date: '', end_date: '' };
+  onlyPending.value = true;
   applyFilters();
 }
 
@@ -281,6 +285,12 @@ onMounted(() => {
         <button class="eisa-btn eisa-btn-cta" @click="applyFilters" style="flex:0 0 auto;">
           <i class="fa-solid fa-magnifying-glass"></i> Filtrele
         </button>
+
+        <!-- Sadece bekleyenler -->
+        <label v-if="activeTab === 'sessions'" style="flex:0 0 auto;display:flex;align-items:center;gap:0.4rem;cursor:pointer;font-size:0.85rem;color:#374151;padding-bottom:2px;">
+          <input type="checkbox" v-model="onlyPending" @change="applyFilters" style="accent-color:#0D9488;width:1rem;height:1rem;" />
+          Sadece bekleyenler
+        </label>
       </div>
     </div>
 

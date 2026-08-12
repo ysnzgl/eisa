@@ -12,9 +12,10 @@ export const getSessions = (params = {}) =>
   http.get('/api/analytics/sessions/', { params });
 
 /** Bir oturum danışmasını tamamlandı olarak işaretler. */
-export const completeSession = (sessionId, note = '', saleResult = null) => {
+export const completeSession = (sessionId, note = '', saleResult = null, selectedIngredients = []) => {
   const payload = { note };
   if (saleResult) payload.sale_result = saleResult;
+  if (selectedIngredients?.length) payload.satildi_ids = selectedIngredients;
   return http.post(`/api/analytics/sessions/${sessionId}/complete/`, payload);
 };
 

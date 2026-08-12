@@ -153,6 +153,17 @@ export async function buildServer({ db, settings, logger }) {
   // â”€â”€ health â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   app.get('/health', async () => ({ status: 'ok' }));
 
+  // Dev ortamı: barkod logo PNG dosyasını doğrudan sun (yazıcı simülasyonu için)
+  app.get('/api/barkod-logo-gorsel/:id', async (req, reply) => {
+    const row = db.prepare('SELECT local_path, cache_status FROM barkod_logolar WHERE id = ?').get(req.params.id);
+    if (!row || row.cache_status !== 'ready' || !row.local_path || !fs.existsSync(row.local_path)) {
+      return fail(reply, 404, 'Logo bulunamadi');
+    }
+    reply.header('Content-Type', 'image/png');
+    reply.header('Cache-Control', 'public, max-age=3600');
+    return reply.send(fs.createReadStream(row.local_path));
+  });
+
   app.get('/api/media/:assetType/:assetId', async (req, reply) => {
     const { assetType } = req.params;
     // URL'e video tespiti icin eklenen uzantiyi ayikla (asset_id UUID/_active'tir).
@@ -526,11 +537,18 @@ export async function buildServer({ db, settings, logger }) {
       });
     }
 
+    // Dev önizlemesi: yalnız EISA_DEV_MODE=true ortamında göster
+    const devMode = settings.devMode;
+    const devLogoUrl = devMode && basilanLogoId
+      ? `/api/barkod-logo-gorsel/${basilanLogoId}`
+      : null;
+
     return reply.status(201).send({
       qr_kodu: qrKodu,
       durum: 'kaydedildi',
       yazici_ok: printerOk,
       sync_durum: 'bekliyor',
+      ...(devMode ? { dev_preview: true, barkod_logo_gorsel_url: devLogoUrl } : {}),
       ...(printerError ? { yazici_hatasi: printerError } : {}),
     });
   });

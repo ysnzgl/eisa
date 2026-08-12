@@ -2,6 +2,7 @@
   import { createEventDispatcher, onMount, onDestroy } from 'svelte';
   import ScreenHeader from './ScreenHeader.svelte';
   import { fetchWifiNetworks, connectToWifi, fetchWifiStatus } from '../lib/api.js';
+  import { logger } from '../lib/logger.js';
 
   const dispatch = createEventDispatcher();
   const MAX_PASSWORD_LENGTH = 128;
@@ -49,6 +50,19 @@
     selectedSsid = null;
     password = '';
     connectError = '';
+
+    // Önce bağlantı durumunu kontrol et; zaten bağlıysa taramaya gerek yok.
+    try {
+      const status = await fetchWifiStatus();
+      if (status.connected) {
+        scanning = false;
+        dispatch('connected');
+        return;
+      }
+    } catch {
+      // durum sorgusu başarısız; ağ taramasına devam et
+    }
+
     try {
       networks = await fetchWifiNetworks();
       if (!networks.length) scanError = 'Çevrede Wi-Fi ağı bulunamadı.';
@@ -145,12 +159,14 @@
 
     let connectFailed = false;
     let originalError = '';
+    let connectDiagnostic = ''; // HTTP durum / hata tipi — şifre asla eklenmez
 
     try {
       await connectToWifi(targetSsid, password || undefined);
     } catch (err) {
       connectFailed = true;
       originalError = err.userMessage ?? 'Bağlantı kurulamadı. Şifreyi kontrol edin.';
+      connectDiagnostic = err.status ? `HTTP ${err.status}` : (err.name || 'NetworkError');
     }
 
     if (myId !== _reconcileId) return;
@@ -183,8 +199,11 @@
 
     connecting = false;
     if (verified) {
+      // /wifi-connect hata verdi ama OS bağlantıyı kurmuştu — yanlış-negatif
+      logger.warn('wifi_operation_failed', `false-negative: ${connectDiagnostic}`, { component: 'WifiSetupScreen' });
       dispatch('connected');
     } else {
+      logger.error('wifi_operation_failed', connectDiagnostic, { component: 'WifiSetupScreen' });
       connectError = originalError;
     }
   }

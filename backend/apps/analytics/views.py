@@ -25,7 +25,7 @@ from apps.lookups.models import Cinsiyet, YasAraligi
 from apps.pharmacies.permissions import IsEczaci, IsSuperAdmin
 from apps.products.models import Kategori
 
-from .models import OturumLogu
+from .models import OturumLogu, OturumOnerilenEtkenMadde
 from .serializers import (
     CampaignImpressionSerializer,
     KioskActivityListSerializer,
@@ -278,7 +278,7 @@ class OturumLoguCompleteView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        sale_result = request.data.get("sale_result") or request.data.get("satis_sonucu")
+        sale_result = request.data.get("sale_result")
         if sale_result not in (None, "sold", "not_sold"):
             return Response(
                 {"detail": "Geçersiz satış sonucu. 'sold' veya 'not_sold' olmalıdır."},
@@ -286,17 +286,19 @@ class OturumLoguCompleteView(APIView):
             )
 
         if oturum.danisma_tamamlandi:
-            # Zaten tamamlanmış, mevcut durumu döndür (idempotency).
-            serializer = OturumLoguSerializer(
-                oturum,
-                context={"include_detail_fields": True, "sale_result": sale_result},
-            )
+            serializer = OturumLoguSerializer(oturum, context={"include_detail_fields": True})
             return Response(serializer.data, status=status.HTTP_200_OK)
 
         oturum.danisma_tamamlandi = True
         oturum.danisma_tamamlanma_tarihi = timezone.now()
         oturum.danisma_tamamlayan_eczaci = user
         oturum.danisma_notu = request.data.get("note", "") or request.data.get("not", "")
+        if sale_result == "sold":
+            oturum.sold = True
+        elif sale_result == "not_sold":
+            oturum.sold = False
+        else:
+            oturum.sold = None
 
         with UnitOfWork(user=user) as uow:
             uow.update(
@@ -306,12 +308,23 @@ class OturumLoguCompleteView(APIView):
                     "danisma_tamamlanma_tarihi",
                     "danisma_tamamlayan_eczaci_id",
                     "danisma_notu",
+                    "sold",
                 ],
             )
 
+        # Mark selected ingredients as satildi=True on the normalized table
+        satildi_keys = {str(k) for k in request.data.get("satildi_ids", [])}
+        if satildi_keys:
+            for record in OturumOnerilenEtkenMadde.objects.filter(oturum=oturum):
+                key = str(record.etken_madde_id) if record.etken_madde_id else record.etken_madde_adi_snapshot
+                new_val = key in satildi_keys
+                if record.satildi != new_val:
+                    record.satildi = new_val
+                    record.save(update_fields=["satildi"])
+
         serializer = OturumLoguSerializer(
             oturum,
-            context={"include_detail_fields": True, "sale_result": sale_result},
+            context={"include_detail_fields": True},
         )
         return Response(serializer.data, status=status.HTTP_200_OK)
 

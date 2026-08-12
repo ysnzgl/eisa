@@ -101,6 +101,7 @@ class OturumLogu(BaseModel):
     danisma_tamamlandi = models.BooleanField(default=False, db_index=True)
     danisma_tamamlanma_tarihi = models.DateTimeField(null=True, blank=True)
     danisma_notu = models.TextField(blank=True)
+    sold = models.BooleanField(null=True, blank=True)
     danisma_tamamlayan_eczaci = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -196,6 +197,7 @@ class OturumOnerilenEtkenMadde(BaseModel):
 
     # Snapshot
     etken_madde_adi_snapshot = models.CharField(max_length=250, blank=True)
+    satildi = models.BooleanField(default=False)
 
     class Meta:
         db_table = "oturum_onerilen_etken_maddeler"

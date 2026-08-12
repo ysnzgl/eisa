@@ -22,6 +22,7 @@ from apps.core.logging.correlation import (
     new_correlation_id,
 )
 from apps.core.logging.formatters import LOG_HANDLED_MARK
+from apps.core.logging.middleware import _actor_type, _get_kiosk_id, _get_user_id
 
 logger = logging.getLogger("eisa.errors")
 
@@ -51,6 +52,10 @@ def custom_exception_handler(exc, context):
             "request_method": getattr(request, "method", None),
             "request_path": getattr(request, "path", None),
             "correlation_id": correlation_id,
+            "actor_type": _actor_type(request) if request else "unknown",
+            "user_id": _get_user_id(request) if request else None,
+            "kiosk_id": _get_kiosk_id(request) if request else None,
+            "db_queries": getattr(request, "_eisa_db_query_count", None),
         },
     )
     response = Response(

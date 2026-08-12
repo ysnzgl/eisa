@@ -66,6 +66,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "apps.core.logging.middleware.CorrelationIdMiddleware",
     "apps.core.logging.middleware.RequestLoggingMiddleware",
+    "apps.core.logging.middleware.SlowQueryMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -340,6 +341,9 @@ LOG_FORMAT = config("LOG_FORMAT", default=_default_log_format).lower()
 if LOG_FORMAT not in ("json", "console"):
     LOG_FORMAT = "json"
 
+# 500ms üzerindeki DB sorguları `eisa.db` logger'ına WARNING yazar.
+SLOW_QUERY_THRESHOLD_MS = config("SLOW_QUERY_THRESHOLD_MS", default=500, cast=int)
+
 _root_handler = "console_json" if LOG_FORMAT == "json" else "console_readable"
 
 LOGGING = {
@@ -414,6 +418,12 @@ LOGGING = {
         "eisa.errors": {
             "handlers": [_root_handler],
             "level": "INFO",
+            "propagate": False,
+        },
+        "eisa.db": {
+            # Yavaş sorgu uyarıları (SlowQueryMiddleware). Her zaman WARNING+.
+            "handlers": [_root_handler],
+            "level": "WARNING",
             "propagate": False,
         },
     },

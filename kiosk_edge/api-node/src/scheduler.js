@@ -2,7 +2,7 @@ import cron from 'node-cron';
 import { Agent, fetch } from 'undici';
 import { checkOutboxPressure } from './db.js';
 import { syncMediaCache } from './mediaCache.js';
-import { syncBarkodLogoCache, temizleEskiSayaclar } from './barkodLogoService.js';
+import { syncBarkodLogoCache, temizleEskiSayaclar, syncBarkodLogoFiles } from './barkodLogoService.js';
 import { getAuthHeaders, getProvisioningState, handle401Error, handle403Error, hasAppKeyCredentials, enrollDeviceId, resolveRuntimeSettings } from './provisioning.js';
 import { istanbulNow } from './timezone.js';
 import {
@@ -756,6 +756,7 @@ export async function pingAndSyncManifest(db, settings, log = console) {
 
     log.info?.(`MANIFEST sync tamam: 3 gün uygulandı (v${manifestVersion ?? serverVersion})`);
     await syncMediaCache(db, settings, log);
+    await syncBarkodLogoFiles(db, settings.mediaDir, settings.verifyTls, log);
 
     // 7. ACK gönder
     const ackPayload = {
@@ -1184,6 +1185,7 @@ export function startScheduler(db, settings, log = console) {
   syncMediaCache(db, settings, log).catch((err) =>
     log.warn?.({ event: 'media_cache_bootstrap_failed', err: err?.message }, 'Baslangicta medya cache senkronizasyonu basarisiz'),
   );
+  syncBarkodLogoFiles(db, settings.mediaDir, settings.verifyTls, log).catch(() => {});
 
   log.info?.({
     event: 'scheduler_started',

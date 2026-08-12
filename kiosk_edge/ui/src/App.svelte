@@ -215,7 +215,7 @@
 
     const recs = getRecommendations(qs, answers, age ?? '18-25', sex ?? 'M');
     const ingredientList = recsToIngredientList(recs);
-    const { qrCode, qrPayload, syncDurum } = await doSubmitSession(cat?.slug ?? '', false, ingredientList, completed);
+    const { qrCode, qrPayload, syncDurum, baskiLogoUrl, devPreview } = await doSubmitSession(cat?.slug ?? '', false, ingredientList, completed);
     // QR olmasa bile sonuç ekranına geç; ResultScreen kendi mesajını gösterir.
     // syncDurum='hata' ise ResultScreen sarı ünlem gösterir.
     const firstRec = recs[0];
@@ -229,6 +229,8 @@
       qrPayload:      qrPayload ?? null,
       syncDurum:      syncDurum ?? 'hata',
       idempotencyKey: sessionId,
+      baskiLogoUrl:   baskiLogoUrl ?? null,
+      devPreview:     devPreview ?? false,
     });
     goTo('result');
     await tick();
@@ -271,9 +273,9 @@
     sessionId = (crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`);
     sessionFinalized = false;
     sessionSubmitting = true;
-    let qrCode, qrPayload, syncDurum;
+    let qrCode, qrPayload, syncDurum, baskiLogoUrl, devPreview;
     try {
-      ({ qrCode, qrPayload, syncDurum } = await doSubmitConsult(cat?.slug ?? cat?.ad ?? ''));
+      ({ qrCode, qrPayload, syncDurum, baskiLogoUrl, devPreview } = await doSubmitConsult(cat?.slug ?? cat?.ad ?? ''));
     } finally {
       sessionSubmitting = false;
     }
@@ -287,6 +289,8 @@
       qrPayload:      qrPayload ?? null,
       syncDurum:      syncDurum ?? 'hata',
       idempotencyKey: sessionId,
+      baskiLogoUrl:   baskiLogoUrl ?? null,
+      devPreview:     devPreview ?? false,
     });
     goTo('result');
     await tick();

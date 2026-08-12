@@ -289,3 +289,52 @@ export async function syncBarkodLogoCache(db, logolar, mediaDir, verifyTls, log)
     );
   }
 }
+
+/**
+ * DB'deki eksik/hatalı barkod logo dosyalarını yeniden indirir.
+ * Catalog listesi gerekmez — mevcut barkod_logolar tablosunu okur.
+ * syncMediaCache ile birlikte çağrılır: DOOH media sync sırasında logoları da günceller.
+ */
+export async function syncBarkodLogoFiles(db, mediaDir, verifyTls, log) {
+  const eksik = db.prepare(`
+    SELECT id, media_url, checksum, local_path
+    FROM barkod_logolar
+    WHERE media_url != ''
+      AND (cache_status != 'ready' OR local_path = '' OR local_path IS NULL)
+  `).all();
+
+  // Dosyası silinmiş ama cache_status='ready' olanları da yakala
+  const silinmis = db.prepare(`
+    SELECT id, media_url, checksum, local_path
+    FROM barkod_logolar
+    WHERE cache_status = 'ready' AND local_path != '' AND local_path IS NOT NULL AND media_url != ''
+  `).all().filter((r) => !fs.existsSync(r.local_path));
+
+  const hedefler = [...eksik, ...silinmis];
+  if (!hedefler.length) return;
+
+  if (!fs.existsSync(mediaDir)) fs.mkdirSync(mediaDir, { recursive: true });
+
+  for (const logo of hedefler) {
+    const logoId = String(logo.id);
+    const localPath = path.join(mediaDir, `barkod_logo_${logoId}.png`);
+    try {
+      const tmpPath = `${localPath}.tmp`;
+      const res = await fetch(logo.media_url, {
+        method: 'GET',
+        dispatcher: getAgent(verifyTls),
+        signal: AbortSignal.timeout(30000),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const buf = Buffer.from(await res.arrayBuffer());
+      fs.writeFileSync(tmpPath, buf);
+      fs.renameSync(tmpPath, localPath);
+      db.prepare(
+        "UPDATE barkod_logolar SET local_path = ?, cache_status = 'ready' WHERE id = ?",
+      ).run(localPath, logoId);
+      log?.info?.({ logoId, size: buf.length }, 'Barkod logo dosyası (retry) indirildi');
+    } catch (err) {
+      log?.warn?.({ logoId, err: err?.message }, 'Barkod logo dosyası retry indirilemedi');
+    }
+  }
+}

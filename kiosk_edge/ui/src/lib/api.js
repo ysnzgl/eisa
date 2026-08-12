@@ -113,9 +113,13 @@ export async function submitSession({ ageRange, gender, oturumTipi, categorySlug
     retry: 0,
   });
   return {
-    qrCode:    data.qr_kodu,
-    qrPayload: data.qr_payload || data.qr_kodu,
-    syncDurum: data.sync_durum || (data.qr_kodu ? 'bekliyor' : null),
+    qrCode:      data.qr_kodu,
+    qrPayload:   data.qr_payload || data.qr_kodu,
+    syncDurum:   data.sync_durum || (data.qr_kodu ? 'bekliyor' : null),
+    devPreview:  !!data.dev_preview,
+    baskiLogoUrl: data.barkod_logo_gorsel_url
+      ? `${API_BASE}${data.barkod_logo_gorsel_url}`
+      : null,
   };
 }
 

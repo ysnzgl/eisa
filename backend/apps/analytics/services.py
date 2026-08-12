@@ -484,7 +484,12 @@ def _create_child_records(instance: OturumLogu, d: dict) -> None:
                     else:
                         etken_madde_adi = f"Etken Madde #{etken_id}"
                 except (ValueError, TypeError):
+                    # String name — try to resolve to a DB record by name
                     etken_madde_adi = str(value)
+                    em = EtkenMadde.objects.filter(ad__iexact=etken_madde_adi).first()
+                    if em:
+                        etken_madde = em
+                        etken_madde_adi = em.ad
             elif isinstance(value, dict):
                 etken_id = value.get("id")
                 if etken_id:
@@ -496,7 +501,15 @@ def _create_child_records(instance: OturumLogu, d: dict) -> None:
                     except (ValueError, TypeError):
                         pass
                 if not etken_madde_adi:
-                    etken_madde_adi = value.get("ad", str(value))
+                    # Try name lookup for dict entries too
+                    name = value.get("ad", "")
+                    if name:
+                        em = EtkenMadde.objects.filter(ad__iexact=name).first()
+                        if em:
+                            etken_madde = em
+                            etken_madde_adi = em.ad
+                        else:
+                            etken_madde_adi = name
 
             if etken_madde or etken_madde_adi:
                 if etken_madde is not None:

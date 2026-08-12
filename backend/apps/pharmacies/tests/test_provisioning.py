@@ -339,6 +339,7 @@ class TestAdminApproval:
         assert kiosk is not None
         assert kiosk.eczane_id == eczane.id
         assert kiosk.aktif is True
+        assert kiosk.eczane_kiosk_no == 1  # ilk kiosk → slot 1
 
         # Pending → APPROVED
         req.refresh_from_db()

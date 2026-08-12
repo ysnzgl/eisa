@@ -59,7 +59,6 @@ class OturumLoguSerializer(serializers.ModelSerializer):
     danisma_kategorisi_detay = serializers.SerializerMethodField()
     cevap_detaylari = serializers.SerializerMethodField()
     onerilen_etken_madde_detaylari = serializers.SerializerMethodField()
-    satis_sonucu = serializers.SerializerMethodField()
     danisma_tamamlayan_eczaci_adi = serializers.CharField(
         source="danisma_tamamlayan_eczaci.get_full_name", read_only=True, default=""
     )
@@ -94,7 +93,7 @@ class OturumLoguSerializer(serializers.ModelSerializer):
             "cinsiyet_detay",
             "kategori_detay",
             "danisma_kategorisi_detay",
-            "satis_sonucu",
+            "sold",
             "danisma_tamamlandi",
             "danisma_tamamlanma_tarihi",
             "danisma_notu",
@@ -282,23 +281,15 @@ class OturumLoguSerializer(serializers.ModelSerializer):
         details.sort(key=lambda item: (item.get("sira") or 0, item.get("soru_id") or 0))
         return details
 
-    def get_onerilen_etken_madde_detaylari(self, obj):
-        if not self._include_detail_fields():
-            return []
-
-        values = obj.onerilen_etken_maddeler
+    def _resolve_etken_madde_list(self, values):
         if not isinstance(values, list) or not values:
             return []
 
-        ids = []
-        for value in values:
-            if isinstance(value, dict):
-                parsed = self._parse_int(value.get("id"))
-            else:
-                parsed = self._parse_int(value)
-            if parsed is not None:
-                ids.append(parsed)
-
+        ids = [
+            self._parse_int(v.get("id") if isinstance(v, dict) else v)
+            for v in values
+        ]
+        ids = [i for i in ids if i is not None]
         ingredient_rows = {
             row["id"]: row["ad"]
             for row in EtkenMadde.objects.filter(id__in=ids).values("id", "ad")
@@ -314,20 +305,34 @@ class OturumLoguSerializer(serializers.ModelSerializer):
                 elif name:
                     details.append({"id": None, "ad": str(name)})
                 continue
-
             parsed = self._parse_int(value)
             if parsed is not None:
                 details.append({"id": parsed, "ad": ingredient_rows.get(parsed, f"Etken Madde #{parsed}")})
             else:
                 details.append({"id": None, "ad": str(value)})
-
         return details
 
+    def get_onerilen_etken_madde_detaylari(self, obj):
+        if not self._include_detail_fields():
+            return []
+        # Prefer normalized table rows (include satildi flag)
+        records = list(obj.onerilen_etken_madde_detaylari.select_related("etken_madde").all())
+        if records:
+            return [
+                {
+                    "id": r.etken_madde_id,
+                    "ad": r.etken_madde.ad if r.etken_madde else r.etken_madde_adi_snapshot,
+                    "satildi": r.satildi,
+                }
+                for r in records
+            ]
+        # Fallback to JSON field for pre-normalization sessions
+        return self._resolve_etken_madde_list(obj.onerilen_etken_maddeler)
+
     def get_satis_sonucu(self, obj):
-        value = self.context.get("sale_result")
-        if value == "sold":
+        if obj.sold is True:
             return "Satış yapıldı"
-        if value == "not_sold":
+        if obj.sold is False:
             return "Satış yapılmadı"
         return None
 

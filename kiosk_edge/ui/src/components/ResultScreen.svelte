@@ -96,13 +96,17 @@
       <p class="qr-note">Bu QR kodu eczacınıza gösterin — bilgileriniz ekranına düşecek.</p>
     </div>
 
-    {#if $result?.baskiLogoUrl}
+    {#if $result?.devPreview}
       <div class="receipt-preview">
         <p class="receipt-preview-label">
           <i class="fa-solid fa-print"></i> Termal fiş önizlemesi
         </p>
         <div class="receipt-paper">
-          <img src={$result.baskiLogoUrl} alt="Barkod logosu" class="receipt-logo" />
+          {#if $result?.baskiLogoUrl}
+            <img src={$result.baskiLogoUrl} alt="Barkod logosu" class="receipt-logo" />
+          {:else}
+            <p class="receipt-eisa">e-ISA</p>
+          {/if}
           <p class="receipt-text">Saglikli gunler diler.</p>
           <p class="receipt-text" style="font-size:11px; color:#9ca3af;">— QR kodu yazıcıdan çıkar —</p>
           <p class="receipt-text" style="font-size:11px; margin-top:2px;">{$result.qrCode}</p>
@@ -191,6 +195,14 @@
     object-fit: contain;
     display: block;
     margin: 0 auto 6px;
+  }
+  .receipt-eisa {
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: .06em;
+    color: #111827;
+    margin: 4px 0 8px;
+    font-family: 'Courier New', monospace;
   }
   .receipt-text {
     font-size: 12px;
