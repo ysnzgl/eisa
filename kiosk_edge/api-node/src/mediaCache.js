@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Agent, fetch } from 'undici';
 
+import { getAuthHeaders } from './provisioning.js';
+
 let _running = false;
 let _agent = null;
 
@@ -92,9 +94,10 @@ function normalizeAssets(db) {
   return [...creatives, ...houseAds];
 }
 
-async function downloadToFile(url, filePath, verifyTls) {
+async function downloadToFile(url, filePath, verifyTls, authHeaders = {}) {
   const res = await fetch(url, {
     method: 'GET',
+    headers: authHeaders,
     dispatcher: getAgent(verifyTls),
     signal: AbortSignal.timeout(30000),
   });
@@ -162,9 +165,13 @@ export async function syncMediaCache(db, settings, log = console) {
 
       if (localReady) continue;
 
+      const isBackendUrl = settings.centralApiBase
+        && asset.media_url.startsWith(settings.centralApiBase.replace(/\/+$/, ''));
+      const authHdrs = isBackendUrl ? getAuthHeaders(db) : {};
+
       try {
         const tmpPath = `${localPath}.tmp`;
-        const downloaded = await downloadToFile(asset.media_url, tmpPath, settings.verifyTls);
+        const downloaded = await downloadToFile(asset.media_url, tmpPath, settings.verifyTls, authHdrs);
         fs.renameSync(tmpPath, localPath);
 
         upsert.run({

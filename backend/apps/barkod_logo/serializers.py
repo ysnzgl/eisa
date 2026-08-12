@@ -12,13 +12,13 @@ from .models import BarkodLogo
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PNG Doğrulama — stdlib (struct + zlib). Pillow gerektirmez.
-# Kontroller: magic, 336×336, ≤1 MB, şeffaf piksel yok, yalnız gri tonlu.
+# Kontroller: magic, max 336×336, ≤1 MB, şeffaf piksel yok.
 # ─────────────────────────────────────────────────────────────────────────────
 
 _PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 _PNG_MAX_BYTES = 1 * 1024 * 1024
-_PNG_REQUIRED_W = 336
-_PNG_REQUIRED_H = 336
+_PNG_MAX_W = 336
+_PNG_MAX_H = 336
 
 
 def _parse_png_chunks(data: bytes) -> dict:
@@ -83,7 +83,7 @@ def _decode_idat_rows(chunks: dict, width: int, height: int, color_type: int) ->
 
 
 def validate_barkod_logo_png(uploaded_file) -> None:
-    """PNG doğrulama: 336×336, ≤1 MB, şeffaf piksel yok, yalnız gri tonlu.
+    """PNG doğrulama: max 336×336, ≤1 MB, şeffaf piksel yok.
 
     Dönüş öncesi dosya pozisyonu 0'a sıfırlanır.
     """
@@ -104,9 +104,9 @@ def validate_barkod_logo_png(uploaded_file) -> None:
     height = struct.unpack(">I", data[20:24])[0]
     bit_depth = data[24]
     color_type = data[25]
-    if width != _PNG_REQUIRED_W or height != _PNG_REQUIRED_H:
+    if width > _PNG_MAX_W or height > _PNG_MAX_H:
         raise serializers.ValidationError(
-            f"Görsel boyutu tam {_PNG_REQUIRED_W}×{_PNG_REQUIRED_H} px olmalıdır "
+            f"Görsel boyutu en fazla {_PNG_MAX_W}×{_PNG_MAX_H} px olabilir "
             f"({width}×{height} px yüklendi)."
         )
     if bit_depth != 8:
@@ -115,8 +115,8 @@ def validate_barkod_logo_png(uploaded_file) -> None:
         raise serializers.ValidationError(f"Desteklenmeyen PNG renk tipi: {color_type}.")
     chunks = _parse_png_chunks(data)
     has_trns = b"tRNS" in chunks
-    # Renk tipleri 2/4/6: piksel decode gerekir
-    if color_type in (2, 4, 6):
+    # Alfa kanalı olan tipler için şeffaflık kontrolü
+    if color_type in (4, 6):
         try:
             rows = _decode_idat_rows(chunks, width, height, color_type)
         except serializers.ValidationError:
@@ -125,43 +125,18 @@ def validate_barkod_logo_png(uploaded_file) -> None:
             raise serializers.ValidationError(f"PNG piksel verisi okunamadı: {exc}") from exc
         for row in rows:
             for x in range(width):
-                if color_type == 2:
-                    r, g, b = row[x * 3], row[x * 3 + 1], row[x * 3 + 2]
-                    if r != g or g != b:
-                        raise serializers.ValidationError(
-                            "Renkli görsel kabul edilmez. Yalnız gri tonlu veya siyah-beyaz PNG kullanın."
-                        )
-                elif color_type == 4:
-                    if row[x * 2 + 1] < 255:
-                        raise serializers.ValidationError(
-                            "Şeffaf piksel içeren görsel kabul edilmez. Arka plan beyaz olmalıdır."
-                        )
-                else:  # 6 RGBA
-                    r, g, b, a = row[x * 4], row[x * 4 + 1], row[x * 4 + 2], row[x * 4 + 3]
-                    if a < 255:
-                        raise serializers.ValidationError(
-                            "Şeffaf piksel içeren görsel kabul edilmez. Arka plan beyaz olmalıdır."
-                        )
-                    if r != g or g != b:
-                        raise serializers.ValidationError(
-                            "Renkli görsel kabul edilmez. Yalnız gri tonlu veya siyah-beyaz PNG kullanın."
-                        )
-    elif color_type == 3:
-        if has_trns:
-            trns = chunks[b"tRNS"][0]
-            if any(v < 255 for v in trns):
-                raise serializers.ValidationError(
-                    "Paletli PNG tRNS şeffaflığı kabul edilmez. Arka plan beyaz olmalıdır."
-                )
-        plte = chunks.get(b"PLTE", [b""])[0]
-        for i in range(0, len(plte) - 2, 3):
-            r, g, b = plte[i], plte[i + 1], plte[i + 2]
-            if r != g or g != b:
-                raise serializers.ValidationError(
-                    "Renkli görsel kabul edilmez. Yalnız gri tonlu veya siyah-beyaz PNG kullanın."
-                )
-    elif has_trns:
-        # color_type 0 (grayscale) ile tRNS: belirli bir değer saydam sayılır
+                alpha = row[x * 2 + 1] if color_type == 4 else row[x * 4 + 3]
+                if alpha < 255:
+                    raise serializers.ValidationError(
+                        "Şeffaf piksel içeren görsel kabul edilmez. Arka plan beyaz olmalıdır."
+                    )
+    elif color_type == 3 and has_trns:
+        trns = chunks[b"tRNS"][0]
+        if any(v < 255 for v in trns):
+            raise serializers.ValidationError(
+                "Paletli PNG tRNS şeffaflığı kabul edilmez. Arka plan beyaz olmalıdır."
+            )
+    elif color_type == 0 and has_trns:
         raise serializers.ValidationError(
             "tRNS şeffaflığı kabul edilmez. Arka plan beyaz olmalıdır."
         )
@@ -247,14 +222,26 @@ class BarkodLogoSerializer(serializers.ModelSerializer):
 class BarkodLogoKatalogSerializer(serializers.ModelSerializer):
     """Kiosk katalog endpoint'inde kullanılan minimal payload."""
 
+    media_url = serializers.SerializerMethodField()
+
     class Meta:
         model = BarkodLogo
         fields = [
             "id",
             "ad",
             "media_url",
+            "object_key",
             "checksum",
             "baslangic_zamani",
             "bitis_zamani",
             "gunluk_baski_limiti",
         ]
+
+    def get_media_url(self, obj):
+        request = self.context.get("request")
+        if obj.object_key:
+            rel = f"/api/kiosk/v1/media/{obj.object_key}"
+            if request is not None:
+                return request.build_absolute_uri(rel)
+            return rel
+        return obj.media_url

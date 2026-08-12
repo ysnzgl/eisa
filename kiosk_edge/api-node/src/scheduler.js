@@ -434,7 +434,7 @@ export async function pullFromCentral(db, settings, log = console) {
       const barkodLogolar = data.barkod_logolar;
       if (Array.isArray(barkodLogolar)) {
         try {
-          await syncBarkodLogoCache(db, barkodLogolar, settings.mediaDir, settings.verifyTls, log);
+          await syncBarkodLogoCache(db, barkodLogolar, settings.mediaDir, settings.verifyTls, log, settings);
           log.info?.(`PULL: ${barkodLogolar.length} barkod logo senkronize edildi`);
         } catch (err) {
           log.warn?.({ err: err?.message }, 'Barkod logo cache sync hatası');
@@ -756,7 +756,7 @@ export async function pingAndSyncManifest(db, settings, log = console) {
 
     log.info?.(`MANIFEST sync tamam: 3 gün uygulandı (v${manifestVersion ?? serverVersion})`);
     await syncMediaCache(db, settings, log);
-    await syncBarkodLogoFiles(db, settings.mediaDir, settings.verifyTls, log);
+    await syncBarkodLogoFiles(db, settings.mediaDir, settings.verifyTls, log, settings);
 
     // 7. ACK gönder
     const ackPayload = {
@@ -1185,7 +1185,7 @@ export function startScheduler(db, settings, log = console) {
   syncMediaCache(db, settings, log).catch((err) =>
     log.warn?.({ event: 'media_cache_bootstrap_failed', err: err?.message }, 'Baslangicta medya cache senkronizasyonu basarisiz'),
   );
-  syncBarkodLogoFiles(db, settings.mediaDir, settings.verifyTls, log).catch(() => {});
+  syncBarkodLogoFiles(db, settings.mediaDir, settings.verifyTls, log, settings).catch(() => {});
 
   log.info?.({
     event: 'scheduler_started',

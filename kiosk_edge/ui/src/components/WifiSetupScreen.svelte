@@ -230,7 +230,7 @@
       Bağlantı kurulumu
     </div>
     <ScreenHeader
-      height="50px"
+      height="100px"
       subtitle="Devam etmek için kullanmak istediğiniz Wi-Fi ağını seçin."
     />
   </div>

@@ -323,25 +323,52 @@ class DeliveryRuleSerializer(serializers.ModelSerializer):
 
 # ── Kiosk Edge DTOs ──
 
+def _kiosk_media_url(request, object_key: str, fallback: str = "") -> str:
+    """Backend proxy URL'i döndürür; object_key yoksa doğrudan fallback URL'i kullan.
+
+    Proxy: GET /api/kiosk/v1/media/<object_key> — App Key ile doğrulanır,
+    hiçbir zaman süre dolmaz (presigned URL yerine kullanılır).
+    """
+    if not object_key:
+        return fallback
+    rel = f"/api/kiosk/v1/media/{object_key}"
+    if request is not None:
+        return request.build_absolute_uri(rel)
+    return rel
+
+
 class KioskCreativeSyncSerializer(serializers.ModelSerializer):
     """`/api/kiosk/v1/sync` icindeki tek bir creative."""
 
+    media_url = serializers.SerializerMethodField()
+    active_media_url = serializers.SerializerMethodField()
     type = serializers.SerializerMethodField()
 
     class Meta:
         model = Creative
         fields = ["id", "media_url", "active_media_url", "duration_seconds", "checksum", "type"]
 
+    def get_media_url(self, obj):
+        return _kiosk_media_url(self.context.get("request"), obj.object_key, obj.media_url)
+
+    def get_active_media_url(self, obj):
+        # active_media_url için ayrı object_key yok; stable URL ise doğrudan kullan
+        return obj.active_media_url or ""
+
     def get_type(self, obj):  # noqa: D401
         return "creative"
 
 
 class KioskHouseAdSyncSerializer(serializers.ModelSerializer):
+    media_url = serializers.SerializerMethodField()
     type = serializers.SerializerMethodField()
 
     class Meta:
         model = HouseAd
         fields = ["id", "media_url", "duration_seconds", "type"]
+
+    def get_media_url(self, obj):
+        return _kiosk_media_url(self.context.get("request"), obj.object_key, obj.media_url)
 
     def get_type(self, obj):  # noqa: D401
         return "house_ad"
@@ -364,10 +391,11 @@ class KioskPlaylistItemSerializer(serializers.ModelSerializer):
         ]
 
     def get_media_url(self, obj):
+        req = self.context.get("request")
         if obj.creative_id:
-            return obj.creative.media_url
+            return _kiosk_media_url(req, obj.creative.object_key, obj.creative.media_url)
         if obj.house_ad_id:
-            return obj.house_ad.media_url
+            return _kiosk_media_url(req, obj.house_ad.object_key, obj.house_ad.media_url)
         return None
 
     def get_active_media_url(self, obj):

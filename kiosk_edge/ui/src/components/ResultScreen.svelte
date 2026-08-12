@@ -47,7 +47,7 @@
 
 <div class="screen">
   <div class="result-header">
-    <Logo height="40px" />
+    <Logo height="100px" />
     {#if syncDurum === 'bekliyor' || syncDurum === 'hata'}
       <span class="sync-warn" title="Sunucuya henüz gönderilemedi">
         <i class="fa-solid fa-triangle-exclamation"></i>
@@ -107,7 +107,7 @@
           {:else}
             <p class="receipt-eisa">e-ISA</p>
           {/if}
-          <p class="receipt-text">Saglikli gunler diler.</p>
+          <p class="receipt-text">Sağlıklı günler diler</p>
           <p class="receipt-text" style="font-size:11px; color:#9ca3af;">— QR kodu yazıcıdan çıkar —</p>
           <p class="receipt-text" style="font-size:11px; margin-top:2px;">{$result.qrCode}</p>
         </div>
@@ -158,7 +158,7 @@
     background: #fff;
     border-radius: 10px;
     padding: 14px 16px;
-    flex: 1 1 calc(50% - 10px);
+    flex: 1 1 100%;
     min-width: 0;
     display: flex;
     align-items: center;

@@ -13,6 +13,7 @@ from .views import (
     KioskEventIngestView,
     KioskIdentityEnrollView,
     KioskManifestView,
+    KioskMediaProxyView,
     KioskPingView,
     KioskPlaylistView,
     KioskProofOfPlayView,
@@ -28,6 +29,7 @@ urlpatterns = [
     # Identity enrollment (AppKey + MAC, one-time device_id binding)
     path("identity/enroll/", KioskIdentityEnrollView.as_view(), name="kiosk-identity-enroll"),
     # Operasyonel (AppKey + MAC)
+    path("media/<path:object_key>", KioskMediaProxyView.as_view(), name="kiosk-media"),
     path("ping/", KioskPingView.as_view(), name="kiosk-ping"),
     path("sync/", KioskSyncView.as_view(), name="kiosk-sync"),
     path("catalog/", KioskCatalogView.as_view(), name="kiosk-catalog"),

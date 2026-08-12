@@ -44,7 +44,7 @@ class BarkodLogoViewSet(ModelViewSet):
 class BarkodLogoGorselUploadView(APIView):
     """``POST /api/barkod-logo/upload-gorsel/``
 
-    PNG doğrulama (format, 336×336, ≤1 MB, şeffaf piksel yok, gri tonlu) ve depo yükleme.
+    PNG doğrulama (format, max 336×336, ≤1 MB, şeffaf piksel yok, gri tonlu) ve depo yükleme.
     DOOH_PERSISTENT_MEDIA_URL=True  → kalıcı URL + sha256 checksum (prod)
     DOOH_PERSISTENT_MEDIA_URL=False → presigned URL, checksum boş (dev/varsayılan)
     Döner: {media_url, object_key, checksum}

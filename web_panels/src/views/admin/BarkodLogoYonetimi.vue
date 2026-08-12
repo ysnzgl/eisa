@@ -225,8 +225,8 @@ async function onFileChange(event) {
   await new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
-      if (img.width !== 336 || img.height !== 336)
-        uploadError.value = `Görsel tam 336×336 px olmalıdır (yüklenen: ${img.width}×${img.height}).`;
+      if (img.width > 336 || img.height > 336)
+        uploadError.value = `Görsel en fazla 336×336 px olabilir (yüklenen: ${img.width}×${img.height}).`;
       resolve();
     };
     img.onerror = resolve;
@@ -359,7 +359,7 @@ function kioskHedefOzeti(logo) {
         </div>
 
         <div class="form-group">
-          <label>PNG Görsel (336×336 px, ≤ 1 MB)</label>
+          <label>PNG Görsel (max 336×336 px, ≤ 1 MB)</label>
           <input type="file" accept="image/png" @change="onFileChange" class="form-control" />
           <p v-if="uploadError" class="field-error">{{ uploadError }}</p>
           <img v-if="previewUrl" :src="previewUrl" alt="Önizleme" class="preview" />

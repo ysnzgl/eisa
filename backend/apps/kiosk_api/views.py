@@ -10,12 +10,14 @@ Namespace: /api/kiosk/v1/  (kiosk ID URL'de YOK; kiosk auth context'ten gelir).
 from __future__ import annotations
 
 import datetime as _dt
+import mimetypes
 import re
 
 from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.db import models
 from django.db.models import F, Max
+from django.http import StreamingHttpResponse
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import AllowAny
@@ -292,6 +294,7 @@ class KioskSyncView(KioskAPIView):
         kiosk = self.kiosk
         now = timezone.now()
         eczane_id = kiosk.eczane_id
+        ctx = {"request": request}
 
         creatives_qs = (
             Creative.objects
@@ -307,14 +310,14 @@ class KioskSyncView(KioskAPIView):
             targets = c.campaign.target_pharmacies.all()
             if targets.exists() and not targets.filter(pk=eczane_id).exists():
                 continue
-            creative_payload.append(KioskCreativeSyncSerializer(c).data)
+            creative_payload.append(KioskCreativeSyncSerializer(c, context=ctx).data)
 
         house_ads = HouseAd.objects.filter(aktif=True)
         return Response({
             "kiosk_id": int(kiosk.pk),
             "generated_at": now.isoformat(),
             "creatives": creative_payload,
-            "house_ads": KioskHouseAdSyncSerializer(house_ads, many=True).data,
+            "house_ads": KioskHouseAdSyncSerializer(house_ads, many=True, context=ctx).data,
             "lookups": {
                 "cinsiyetler": list(Cinsiyet.objects.values("id", "kod", "ad").order_by("id")),
                 "yas_araliklari": list(YasAraligi.objects.values("id", "kod", "ad", "alt_sinir", "ust_sinir").order_by("id")),
@@ -350,10 +353,11 @@ class KioskCatalogView(KioskAPIView):
         )
 
         kiosk_meta = {"eczane_kiosk_no": kiosk.eczane_kiosk_no}
+        ctx = {"request": request}
         return Response({
             **data,
             "kiosk_meta": kiosk_meta,
-            "barkod_logolar": BarkodLogoKatalogSerializer(barkod_logolar_qs, many=True).data,
+            "barkod_logolar": BarkodLogoKatalogSerializer(barkod_logolar_qs, many=True, context=ctx).data,
         })
 
 
@@ -376,8 +380,45 @@ class KioskPlaylistView(KioskAPIView):
             "kiosk_id": int(kiosk.pk),
             "target_date": str(target_date),
             "loop_duration_seconds": 60,
-            "playlists": KioskPlaylistSerializer(playlists, many=True).data,
+            "playlists": KioskPlaylistSerializer(playlists, many=True, context={"request": request}).data,
         })
+
+
+class KioskMediaProxyView(KioskAPIView):
+    """``GET /api/kiosk/v1/media/<object_key>`` — RustFS medya proxy'si.
+
+    Kiosk App Key ile doğrulanır; object_key RustFS'ten okunur ve
+    streaming yanıt olarak iletilir. Presigned URL süresi dolsa bile
+    bu URL her zaman geçerlidir.
+    Cache-Control: max-age=86400 (çünkü object_key içerik kimliğidir).
+    """
+
+    def get(self, request, object_key: str):
+        # path traversal koruşası
+        if ".." in object_key or object_key.startswith("/"):
+            return Response({"detail": "Geçersiz anahtar."}, status=status.HTTP_400_BAD_REQUEST)
+
+        from apps.core.services.storage_service import StorageService
+        try:
+            storage = StorageService()
+            minio_resp = storage.client.get_object(storage.bucket_name, object_key)
+        except Exception:
+            return Response({"detail": "Medya bulunamadı."}, status=status.HTTP_404_NOT_FOUND)
+
+        content_type, _ = mimetypes.guess_type(object_key)
+        content_type = content_type or "application/octet-stream"
+
+        def _stream():
+            try:
+                for chunk in minio_resp.stream(amt=65536):
+                    yield chunk
+            finally:
+                minio_resp.close()
+                minio_resp.release_conn()
+
+        http_resp = StreamingHttpResponse(_stream(), content_type=content_type)
+        http_resp["Cache-Control"] = "max-age=86400, immutable"
+        return http_resp
 
 
 class KioskSessionsView(KioskAPIView):

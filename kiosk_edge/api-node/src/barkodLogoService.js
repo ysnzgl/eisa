@@ -10,6 +10,7 @@ import path from 'node:path';
 import { Agent, fetch } from 'undici';
 
 import { istanbulNow } from './timezone.js';
+import { getAuthHeaders } from './provisioning.js';
 
 let _agent = null;
 function getAgent(verifyTls) {
@@ -19,6 +20,15 @@ function getAgent(verifyTls) {
 }
 
 // ─── Sayaç yardımcıları ───────────────────────────────────────────────────
+
+/** Backend URL'leri için App Key auth header'ları üret; dış URL'ler için boş ob. */
+function _mediaAuthHeaders(db, settings, url) {
+  if (!settings?.centralApiBase || !url) return {};
+  const base = settings.centralApiBase.replace(/\/+$/, '');
+  if (!url.startsWith(base)) return {};
+  return getAuthHeaders(db);
+}
+
 
 /** Bugünün Istanbul takvim tarihini 'YYYY-MM-DD' formatında döner. */
 function todayIstanbul() {
@@ -68,7 +78,7 @@ export function temizleEskiSayaclar(db) {
 /** Son başarıyla basılan logo ID'sini kiosk_meta'dan okur. */
 function getLastLogoId(db) {
   const row = db.prepare("SELECT value FROM kiosk_meta WHERE key = 'last_barkod_logo_id'").get();
-  return row ? row.value : null;
+  return row?.value ? String(row.value) : null;
 }
 
 /** Son başarıyla basılan logo ID'sini kiosk_meta'ya yazar. */
@@ -76,7 +86,7 @@ export function setLastLogoId(db, logoId) {
   db.prepare(`
     INSERT INTO kiosk_meta (key, value) VALUES ('last_barkod_logo_id', ?)
     ON CONFLICT(key) DO UPDATE SET value = excluded.value
-  `).run(logoId ?? '');
+  `).run(String(logoId ?? ''));
 }
 
 /**
@@ -170,7 +180,7 @@ export function getOrderedLogoCandidates(db) {
   const lastId = getLastLogoId(db);
   if (!lastId) return uygunlar;
 
-  const lastIdx = uygunlar.findIndex((l) => l.id === lastId);
+  const lastIdx = uygunlar.findIndex((l) => String(l.id) === lastId);
   if (lastIdx === -1) return uygunlar;
 
   const nextIdx = (lastIdx + 1) % uygunlar.length;
@@ -197,7 +207,7 @@ export function seciSonrakiLogo(db) {
  * @param {boolean} verifyTls
  * @param {object} log
  */
-export async function syncBarkodLogoCache(db, logolar, mediaDir, verifyTls, log) {
+export async function syncBarkodLogoCache(db, logolar, mediaDir, verifyTls, log, settings = null) {
   if (!logolar || !logolar.length) {
     // Catalog'da logo yok → DB'yi temizle (snapshot reconciliation)
     db.prepare('DELETE FROM barkod_logolar').run();
@@ -243,8 +253,10 @@ export async function syncBarkodLogoCache(db, logolar, mediaDir, verifyTls, log)
       // İndir
       try {
         const tmpPath = `${localPath}.tmp`;
+        const authHeaders = _mediaAuthHeaders(db, settings, logo.media_url);
         const res = await fetch(logo.media_url, {
           method: 'GET',
+          headers: authHeaders,
           dispatcher: getAgent(verifyTls),
           signal: AbortSignal.timeout(30000),
         });
@@ -295,7 +307,7 @@ export async function syncBarkodLogoCache(db, logolar, mediaDir, verifyTls, log)
  * Catalog listesi gerekmez — mevcut barkod_logolar tablosunu okur.
  * syncMediaCache ile birlikte çağrılır: DOOH media sync sırasında logoları da günceller.
  */
-export async function syncBarkodLogoFiles(db, mediaDir, verifyTls, log) {
+export async function syncBarkodLogoFiles(db, mediaDir, verifyTls, log, settings = null) {
   const eksik = db.prepare(`
     SELECT id, media_url, checksum, local_path
     FROM barkod_logolar
@@ -320,8 +332,10 @@ export async function syncBarkodLogoFiles(db, mediaDir, verifyTls, log) {
     const localPath = path.join(mediaDir, `barkod_logo_${logoId}.png`);
     try {
       const tmpPath = `${localPath}.tmp`;
+      const authHeaders = _mediaAuthHeaders(db, settings, logo.media_url);
       const res = await fetch(logo.media_url, {
         method: 'GET',
+        headers: authHeaders,
         dispatcher: getAgent(verifyTls),
         signal: AbortSignal.timeout(30000),
       });

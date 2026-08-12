@@ -1,14 +1,17 @@
 /**
- * Termal yazıcı (ESC/POS) — opsiyonel TCP/IP bağlantısı.
- *
- * `EISA_THERMAL_PRINTER_HOST` env tanımlıysa, ESC/POS komutları 9100 (raw)
- * portuna gönderilir. Tanımsızsa fonksiyon log'lar ve sessiz döner.
- *
- * Bu sayede kiosk yazıcısız da çalışır, yazıcı eklendiğinde yeniden derleme
- * gerekmez. Çoğu termal yazıcı (Epson, Star, Bixolon, vs.) raw port destekler.
+ * Termal yazıcı (ESC/POS).
+ * EISA_THERMAL_PRINTER_HOST:
+ *   default          → Windows varsayılan yazıcısı (Spooler API, PowerShell)
+ *   POS-80           → Windows yazıcı adı (Spooler API, PowerShell)
+ *   COM3 / USB001    → Windows cihaz portu (writeFileSync → \\.\COM3 / \\.\USB001)
+ *   /dev/usb/lp0     → Linux cihaz dosyası
+ *   192.168.1.x      → TCP/IP raw port 9100
  */
 import net from 'node:net';
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { execSync } from 'node:child_process';
 import zlib from 'node:zlib';
 
 const ESC = 0x1b;
@@ -202,7 +205,7 @@ export function buildReceiptBuffer({ qrPayload, logoCandidates = [], logger }) {
       return {
         buffer: Buffer.concat([
           INIT, ALIGN_CENTER, raster,
-          text('Saglikli gunler diler.'), text(''),
+          text('Sağlıklı günler diler.'), text(''),
           qrCommands(qrPayload),
           text(''), text(qrPayload),
           Buffer.from([LF, LF, LF]), CUT,
@@ -217,8 +220,8 @@ export function buildReceiptBuffer({ qrPayload, logoCandidates = [], logger }) {
   // Tüm adaylar başarısız veya liste boş: e-ISA fallback
   return {
     buffer: Buffer.concat([
-      INIT, ALIGN_CENTER, BOLD_ON, text('e-ISA'), BOLD_OFF,
-      text('Saglikli gunler diler.'), text(''),
+      INIT, ALIGN_CENTER, BOLD_ON, text('e-isa'), BOLD_OFF,
+      text('Sağlıklı günler diler.'), text(''),
       qrCommands(qrPayload),
       text(''), text(qrPayload),
       Buffer.from([LF, LF, LF]), CUT,
@@ -228,7 +231,76 @@ export function buildReceiptBuffer({ qrPayload, logoCandidates = [], logger }) {
 }
 
 /**
- * Tam oluşturulmuş fiş buffer'ını yazıcıya gönderir (fire-and-forget).
+ * Windows Print Spooler API üzerinden ham ESC/POS baytlarını gönderir.
+ * printerName boşsa veya 'default' ise sistemin varsayılan yazıcısı kullanılır.
+ * Geçici dosyalar otomatik temizlenir.
+ */
+function sendToWindowsSpooler(buffer, printerName, log) {
+  const tmp = os.tmpdir();
+  const dataFile   = path.join(tmp, `eisa_esc_${Date.now()}.bin`);
+  const scriptFile = path.join(tmp, `eisa_print_${Date.now()}.ps1`);
+
+  // Yazıcı adı boşsa varsayılanı al; 'default' anahtar kelimesini de destekle
+  const resolvedName = (!printerName || printerName.toLowerCase() === 'default') ? '' : printerName;
+
+  const ps1 = `
+param([string]$DataFile, [string]$PrinterName)
+if (-not $PrinterName) {
+    $PrinterName = (Get-CimInstance Win32_Printer -Filter "Default='True'").Name
+}
+$bytes = [System.IO.File]::ReadAllBytes($DataFile)
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public class RawPrint {
+    [DllImport("winspool.drv", EntryPoint="OpenPrinterA")]
+    public static extern bool OpenPrinter(string n, ref IntPtr h, IntPtr d);
+    [DllImport("winspool.drv", EntryPoint="ClosePrinter")]
+    public static extern bool ClosePrinter(IntPtr h);
+    [DllImport("winspool.drv", EntryPoint="StartDocPrinterA")]
+    public static extern int StartDocPrinter(IntPtr h, int l, ref DOCINFO d);
+    [DllImport("winspool.drv", EntryPoint="EndDocPrinter")]
+    public static extern bool EndDocPrinter(IntPtr h);
+    [DllImport("winspool.drv", EntryPoint="StartPagePrinter")]
+    public static extern bool StartPagePrinter(IntPtr h);
+    [DllImport("winspool.drv", EntryPoint="EndPagePrinter")]
+    public static extern bool EndPagePrinter(IntPtr h);
+    [DllImport("winspool.drv", EntryPoint="WritePrinter")]
+    public static extern bool WritePrinter(IntPtr h, byte[] b, int c, ref int w);
+}
+[System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential, CharSet=System.Runtime.InteropServices.CharSet.Ansi)]
+public struct DOCINFO {
+    [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPStr)] public string pDocName;
+    [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPStr)] public string pOutputFile;
+    [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPStr)] public string pDataType;
+}
+'@
+$h = [IntPtr]::Zero
+[RawPrint]::OpenPrinter($PrinterName, [ref]$h, [IntPtr]::Zero) | Out-Null
+$di = New-Object DOCINFO; $di.pDocName = 'eISA-Fis'; $di.pDataType = 'RAW'
+[RawPrint]::StartDocPrinter($h, 1, [ref]$di) | Out-Null
+[RawPrint]::StartPagePrinter($h) | Out-Null
+$w = 0; [RawPrint]::WritePrinter($h, $bytes, $bytes.Length, [ref]$w) | Out-Null
+[RawPrint]::EndPagePrinter($h) | Out-Null
+[RawPrint]::EndDocPrinter($h) | Out-Null
+[RawPrint]::ClosePrinter($h) | Out-Null
+`;
+
+  try {
+    fs.writeFileSync(dataFile, buffer);
+    fs.writeFileSync(scriptFile, ps1, 'utf8');
+    execSync(
+      `powershell -NoProfile -ExecutionPolicy Bypass -File "${scriptFile}" -DataFile "${dataFile}" -PrinterName "${resolvedName}"`,
+      { timeout: 15000 },
+    );
+    log?.info?.({ printer: resolvedName || '(default)' }, 'Windows Spooler gonderimi tamamlandi');
+  } finally {
+    try { fs.unlinkSync(dataFile); } catch { /* temizlik */ }
+    try { fs.unlinkSync(scriptFile); } catch { /* temizlik */ }
+  }
+}
+
+/**
  * Cihaz dosyası için: writeFileSync (senkron) — hata throw eder.
  * TCP için: async — hata yalnız log'lanır, throw etmez.
  *
@@ -238,10 +310,23 @@ export function buildReceiptBuffer({ qrPayload, logoCandidates = [], logger }) {
 export function sendToTransport({ buffer, host, port = 9100, logger }) {
   const log = logger ?? null;
   if (!host) return;
-  if (host.startsWith('/')) {
-    fs.writeFileSync(host, buffer); // sync: throw olursa caller yakalar
+  // Linux device path (/dev/usb/lp0 vb.) veya Windows port (C:\, COM3, USB001, LPT1 vb.)
+  const isFilePath = host.startsWith('/') || /^[A-Za-z]:[/\\]/.test(host)
+    || host.startsWith('\\\\') || /^(COM|USB|LPT)\d+$/i.test(host);
+  if (isFilePath) {
+    // COM3 / USB001 / LPT1 → \\.\COM3 / \\.\USB001 / \\.\LPT1
+    const target = /^(COM|USB|LPT)\d+$/i.test(host) ? `\\\\.\\${host}` : host;
+    fs.writeFileSync(target, buffer); // sync: throw olursa caller yakalar
     return;
   }
+  // Windows yazıcı adı: 'default', 'POS-80', 'EPSON TM-T20' vb.
+  // TCP IP adresi veya hostname değilse Windows Spooler üzerinden gönder
+  const looksLikeTcp = /^\d{1,3}(\.\d{1,3}){3}$/.test(host) || /^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/i.test(host);
+  if (!looksLikeTcp && process.platform === 'win32') {
+    sendToWindowsSpooler(buffer, host, log); // sync, throw olursa caller yakalar
+    return;
+  }
+  // TCP / IP
   const socket = new net.Socket();
   socket.setTimeout(4000);
   socket.once('error', (err) => log?.warn?.({ err: err.message }, 'Termal yazici TCP hatasi'));

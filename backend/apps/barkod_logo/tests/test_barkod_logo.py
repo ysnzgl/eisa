@@ -116,9 +116,16 @@ class TestPngValidation:
         with pytest.raises(Exception):
             validate_barkod_logo_png(f)
 
-    def test_yanlis_olcu_reddedilir(self):
+    def test_kucuk_olcu_kabul(self):
+        # 100×100 < 336×336 → max kısıtlaması sağlandığından kabul edilmeli
+        validate_barkod_logo_png(_png_file(width=100, height=100, color_type=0))
+
+    def test_tam_336x336_hala_kabul(self):
+        validate_barkod_logo_png(_png_file(color_type=0))
+
+    def test_336_asimi_reddedilir(self):
         with pytest.raises(Exception):
-            validate_barkod_logo_png(_png_file(width=100, height=100))
+            validate_barkod_logo_png(_png_file(width=400, height=400, color_type=0))
 
     def test_boyut_asimi_reddedilir(self):
         f = _png_file_with_size_override(2 * 1024 * 1024)
@@ -153,24 +160,18 @@ class TestPngValidation:
         with pytest.raises(Exception):
             validate_barkod_logo_png(f)
 
-    # ── Renkli görsel ret ─────────────────────────────────────────────────
-    def test_renkli_rgb_reddedilir(self):
-        # color_type=2 (RGB), R=255, G=0, B=0 (kırmızı) → renkli, ret
-        row_pix = b"\xFF\x00\x00" * 336  # kırmızı piksel
-        with pytest.raises(Exception):
-            validate_barkod_logo_png(_png_file(color_type=2, pixels=row_pix))
+    # ── Renkli görsel (artık kabul) ───────────────────────────────────────
+    def test_renkli_rgb_kabul(self):
+        row_pix = b"\xFF\x00\x00" * 336  # kırmızı piksel → artık kabul edilir
+        validate_barkod_logo_png(_png_file(color_type=2, pixels=row_pix))
 
-    def test_renkli_rgba_reddedilir(self):
-        # color_type=6 (RGBA), R=255, G=0, B=0, A=255 (opak kırmızı) → renkli, ret
-        row_pix = b"\xFF\x00\x00\xFF" * 336
-        with pytest.raises(Exception):
-            validate_barkod_logo_png(_png_file(color_type=6, pixels=row_pix))
+    def test_renkli_rgba_opak_kabul(self):
+        row_pix = b"\xFF\x00\x00\xFF" * 336  # opak kırmızı → artık kabul edilir
+        validate_barkod_logo_png(_png_file(color_type=6, pixels=row_pix))
 
-    def test_renkli_palet_reddedilir(self):
-        # Paletli PNG, palette'de renkli giriş
-        plte = b"\xFF\x00\x00"  # kırmızı
-        with pytest.raises(Exception):
-            validate_barkod_logo_png(_png_file(color_type=3, plte=plte))
+    def test_renkli_palet_kabul(self):
+        plte = b"\xFF\x00\x00"  # kırmızı palet → artık kabul edilir
+        validate_barkod_logo_png(_png_file(color_type=3, plte=plte))
 
     # ── Dosya pozisyonu sıfırlama ─────────────────────────────────────────
     def test_dosya_pozisyonu_sifirlanir(self):

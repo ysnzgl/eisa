@@ -4,7 +4,7 @@
   import Logo from './Logo.svelte';
 
   /** Logo yuksekligi (CSS birimi). */
-  export let height = '70px';
+  export let height = '100px';
   /** Opsiyonel alt baslik metni. */
   export let subtitle = '';
 </script>
