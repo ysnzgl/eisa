@@ -25,6 +25,7 @@ from typing import Dict, List, Optional, Set
 
 from django.db import transaction
 from django.db.models import Max
+from django.utils import timezone
 
 from apps.campaigns.models import (
     Campaign,
@@ -100,6 +101,7 @@ class ActivationResult:
     fingerprint: str
     is_complete: bool
     blocking_reasons: List[str]
+    job_id: Optional[str] = None  # GUARANTEED kuyruğa alma job'ı; None = BEST_EFFORT
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -193,6 +195,23 @@ class ActivationService:
 
         canonical = json.dumps(canonical_items, sort_keys=True)
         return hashlib.sha256(canonical.encode()).hexdigest()[:16]
+
+    @staticmethod
+    def _effective_horizon_dates(campaign: Campaign) -> List[date]:
+        """Campaign için rolling horizon ile kesişen tarihleri döndür."""
+        from apps.campaigns.services.invalidation_service import get_horizon_dates
+
+        campaign_start = (
+            campaign.start_date.date()
+            if hasattr(campaign.start_date, "date")
+            else campaign.start_date
+        )
+        campaign_end = (
+            campaign.end_date.date()
+            if hasattr(campaign.end_date, "date")
+            else campaign.end_date
+        )
+        return [d for d in get_horizon_dates() if campaign_start <= d <= campaign_end]
 
     # ── Validation ────────────────────────────────────────────────────────────
 
@@ -508,6 +527,69 @@ class ActivationService:
             blocking_reasons=final_blocking or blocking_reasons,
         )
 
+    @staticmethod
+    def activate_rolling_horizon(campaign: Campaign, user=None) -> ActivationResult:
+        """Kampanya aktivasyonunu queue tabanlı rolling horizon akışına al.
+
+        Her iki mod da hızlı döner; endpoint içinde PlacementEngine veya _persist_plan çalışmaz.
+        GUARANTEED: tek bir kampanya-seviyesi GenerationJob (worker re-validate + atomik üretim).
+        BEST_EFFORT: kiosk-tarih granülaritesinde bağımsız job'lar.
+        """
+        from apps.campaigns.models import GenerationJob
+
+        ActivationService.validate_for_activation(campaign)
+
+        target_kiosks = ActivationService._resolve_target_kiosks(campaign)
+        date_range = ActivationService._effective_horizon_dates(campaign)
+
+        delivery_rule = campaign.delivery_rule
+        is_guaranteed = (
+            delivery_rule.guarantee_mode == DeliveryRule.GuaranteeMode.GUARANTEED
+        )
+
+        guaranteed_job_id: Optional[str] = None
+
+        if is_guaranteed:
+            dedupe_key = f"campaign_guaranteed:{campaign.id}"
+            existing = GenerationJob.objects.filter(
+                dedupe_key=dedupe_key,
+                status__in=[GenerationJob.JobStatus.PENDING, GenerationJob.JobStatus.RETRY],
+            ).first()
+            if existing:
+                guaranteed_job_id = str(existing.pk)
+            else:
+                new_job = GenerationJob.objects.create(
+                    target_date=date_range[0] if date_range else timezone.now().date(),
+                    kiosk=None,
+                    status=GenerationJob.JobStatus.PENDING,
+                    triggered_by="campaign_activate_guaranteed",
+                    dedupe_key=dedupe_key,
+                    payload={
+                        "campaign_id": str(campaign.id),
+                        "kiosk_ids": list(target_kiosks),
+                        "dates": [str(d) for d in date_range],
+                        "guarantee_mode": "GUARANTEED",
+                    },
+                    available_at=timezone.now(),
+                )
+                guaranteed_job_id = str(new_job.pk)
+        else:
+            from apps.campaigns.services.invalidation_service import enqueue_for_campaign
+            enqueue_for_campaign(campaign, trigger_reason="campaign_activate")
+
+        return ActivationResult(
+            campaign_id=str(campaign.id),
+            planning_run_id=None,
+            activated_kiosks=len(target_kiosks),
+            activated_dates=len(date_range),
+            total_placements=0,
+            fingerprint="",
+            # GUARANTEED: iş kuyruğa alındı, henüz tamamlanmadı
+            is_complete=not is_guaranteed,
+            blocking_reasons=[],
+            job_id=guaranteed_job_id,
+        )
+
     # ── Persistence helper ────────────────────────────────────────────────────
 
     @staticmethod
@@ -609,7 +691,7 @@ class ActivationService:
                     )
 
             if bulk:
-                PlaylistItem.objects.bulk_create(bulk)
+                PlaylistItem.objects.bulk_create(bulk, batch_size=500)
 
         # Desired version bump + fingerprint storage (Kiosk satırı zaten kilitli)
         update_fields = ["guncellenme_tarihi"]

@@ -660,6 +660,7 @@ class ActivationResultSerializer(serializers.Serializer):
     fingerprint = serializers.CharField()
     is_complete = serializers.BooleanField()
     blocking_reasons = serializers.ListField(child=serializers.CharField(), default=list)
+    job_id = serializers.UUIDField(allow_null=True, default=None)  # GUARANTEED queue job; null = BEST_EFFORT
 
 
 # =============================================================================

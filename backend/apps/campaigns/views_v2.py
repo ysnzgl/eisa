@@ -540,7 +540,7 @@ class CampaignViewSet(viewsets.ModelViewSet):
         campaign = self.get_object()
 
         try:
-            result = ActivationService.activate(campaign, user=request.user)
+            result = ActivationService.activate_rolling_horizon(campaign, user=request.user)
         except ActivationValidationError as exc:
             return Response(
                 {"error": str(exc), "validation_errors": exc.errors},
@@ -552,38 +552,8 @@ class CampaignViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_409_CONFLICT,
             )
 
-        # Aktivasyon sonrası kanonik playlist'i (24 saat) senkron üret. Bu,
-        # kampanyanın kiosk'ta anında görünmesini sağlar (run_scheduler'a
-        # bağımlı değildir) ve V2 activation'ın yazdığı içeriği V1 ile eşitler.
-        try:
-            self._generate_now_for_campaign(campaign)
-        except Exception:
-            logger.exception("activate: senkron playlist uretimi basarisiz camp=%s", campaign.pk)
-
         ser = ActivationResultSerializer(result)
         return Response(ser.data, status=status.HTTP_200_OK)
-
-    @staticmethod
-    def _generate_now_for_campaign(campaign) -> int:
-        """Kampanyanın hedef kiosk'ları × horizon için V1 playlist'i senkron üret."""
-        from apps.campaigns.services.invalidation_service import get_horizon_dates
-        from apps.campaigns.services.placement_engine_v2 import _resolve_target_kiosks
-        from apps.campaigns.services.queue_worker import regenerate_kiosk_day
-
-        kiosk_ids = list(_resolve_target_kiosks(campaign))
-        if not kiosk_ids:
-            return 0
-
-        c_start = campaign.start_date.date() if hasattr(campaign.start_date, "date") else campaign.start_date
-        c_end = campaign.end_date.date() if hasattr(campaign.end_date, "date") else campaign.end_date
-        dates = [d for d in get_horizon_dates() if c_start <= d <= c_end]
-
-        generated = 0
-        for kiosk_id in kiosk_ids:
-            for d in dates:
-                if regenerate_kiosk_day(kiosk_id, d) is not None:
-                    generated += 1
-        return generated
 
 
 class CreativeViewSet(viewsets.ModelViewSet):

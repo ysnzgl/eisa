@@ -330,12 +330,15 @@ class PlacementEngineV2:
     def _build_demands(kiosk, target_date: date, planning_run) -> List[PlacementDemand]:
         """Active kampanyalardan placement demand'leri üret."""
         demands = []
+
+        day_start = timezone.make_aware(datetime.combine(target_date, time.min))
+        day_end = timezone.make_aware(datetime.combine(target_date, time.max))
         
         # Active campaigns for this date
         campaigns = Campaign.objects.filter(
             status="ACTIVE",
-            start_date__lte=target_date,
-            end_date__gte=target_date,
+            start_date__lte=day_end,
+            end_date__gte=day_start,
         ).prefetch_related(
             "delivery_rule",
             "creatives",

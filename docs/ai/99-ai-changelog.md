@@ -7,6 +7,20 @@
 
 ## 2026-08-12
 
+### [Backend/DOOH] Aktivasyon timeout düzeltmesi — queue tabanlı horizon aktivasyon
+
+**Değişiklik:** `POST /api/campaigns/v2/campaigns/{id}/activate/` artık kampanyanın tüm tarih aralığı için senkron playlist üretmiyor. Endpoint doğrulama yapıp üretimi mevcut DB-backed queue'ya (`GenerationJob`) bırakıyor; kapsam yalnız rolling horizon (varsayılan 3 gün).
+
+**Kritik davranışlar:**
+- GUARANTEED için horizon pre-check başarısızsa 409 dönüyor ve `campaign_activate` job enqueue edilmiyor (kısmi publish başlamaz).
+- Tekrarlı aktivasyonlar mevcut dedupe/coalesce (`kd:{kiosk_id}:{date}`) ile duplicate `PENDING` job üretmiyor.
+- `PlacementEngineV2` date filtreleri timezone-aware gün sınırlarıyla düzeltildi; naive datetime RuntimeWarning giderildi.
+- `PlaylistItem` persistlerinde `bulk_create(batch_size=500)` kullanıldı.
+
+**Dosyalar:** `backend/apps/campaigns/services/activation_service.py`, `backend/apps/campaigns/views_v2.py`, `backend/apps/campaigns/services/placement_engine_v2.py`, `backend/apps/campaigns/services/scheduler.py`, `backend/apps/campaigns/tests/test_faz3_simulation_activation.py`, `docs/ai/06-db-and-api-contracts.md`, `docs/ai/08-dooh-advertising.md`
+
+---
+
 ### [Kiosk Edge UI] WifiSetupScreen — Wi-Fi yanlış-negatif reconciliation düzeltmesi
 
 **Değişiklik:** `/wifi-connect` HTTP isteği hata verdiğinde OS gerçekte bağlanmış olsa bile ekran koşulsuz başarısız sayıyordu. Saha bulgusu: `wlp5s0 wifi bağlandı MedinceAP` iken "Beklenmedik bir hata oluştu" gösterilmesi ve `connected` eventi üretilmemesi.

@@ -74,6 +74,15 @@ def process_job(job: GenerationJob) -> None:
     """
     kiosk_id = job.kiosk_id
     target_date = job.target_date
+    payload = job.payload or {}
+
+    # GUARANTEED kampanya-seviyesi atomik job
+    if kiosk_id is None and payload.get("guarantee_mode") == "GUARANTEED":
+        try:
+            _process_guaranteed_campaign_job(job)
+        except Exception as exc:
+            _handle_failure(job, exc)
+        return
 
     if kiosk_id is None:
         # Multi-kiosk nightly job (eski akış) → atla
@@ -255,6 +264,65 @@ def _sync_kiosk_desired_version(kiosk_id: int) -> None:
         ).update(last_playlist_version=max_v)
 
 
+def _process_guaranteed_campaign_job(job: GenerationJob) -> None:
+    """GUARANTEED kampanya job: worker re-validation + tüm kiosk+date için atomik üretim.
+
+    Tüm kiosk+date üretimi tek transaction.atomic() içinde çalışır.
+    Herhangi birinde hata → tüm horizon rollback (kısmi publish yok).
+    """
+    from apps.campaigns.models import Campaign
+    from apps.campaigns.services.placement_engine_v2 import PlacementEngineV2
+    from apps.campaigns.services.scheduler import generate_for_kiosk
+    from apps.pharmacies.models import Kiosk
+    from datetime import date as _date
+
+    payload = job.payload or {}
+    campaign_id = payload.get("campaign_id")
+    kiosk_ids = payload.get("kiosk_ids") or []
+    date_strs = payload.get("dates") or []
+
+    if not campaign_id:
+        _complete_job(job, {"skipped": True, "reason": "invalid_payload"}, version_bumped=False)
+        return
+
+    dates = [_date.fromisoformat(d) for d in date_strs]
+
+    try:
+        campaign = Campaign.objects.get(pk=campaign_id)
+        delivery_rule = campaign.delivery_rule
+    except Exception as exc:
+        _complete_job(job, {"skipped": True, "reason": f"load_error:{exc}"}, version_bumped=False)
+        return
+
+    # Worker-time kapasite re-validasyonu
+    blocking = []
+    for kiosk_id in kiosk_ids:
+        for d in dates:
+            plan = PlacementEngineV2.plan_kiosk_day(kiosk_id=kiosk_id, target_date=d, planning_run=None)
+            placed = len([i for i in plan.playlist_items if i["asset_type"] == "creative"])
+            if placed < delivery_rule.count:
+                blocking.append(f"kiosk={kiosk_id} date={d}: placed={placed}<required={delivery_rule.count}")
+
+    if blocking:
+        raise RuntimeError(f"GUARANTEED kapasite doğrulaması başarısız: {'; '.join(blocking[:3])}")
+
+    # Tüm kiosk+date için atomik üretim — herhangi birinde hata → tam rollback
+    total_placements = 0
+    with transaction.atomic():
+        for kiosk_id in kiosk_ids:
+            try:
+                kiosk = Kiosk.objects.get(pk=kiosk_id, aktif=True)
+            except Kiosk.DoesNotExist:
+                raise RuntimeError(f"Kiosk {kiosk_id} bulunamadı veya aktif değil")
+            for d in dates:
+                playlists = generate_for_kiosk(kiosk, d)
+                total_placements += sum(
+                    pl.items.filter(creative__isnull=False).count() for pl in playlists
+                )
+
+    _complete_job(job, {"version_bumped": True, "placements": total_placements}, version_bumped=True)
+
+
 def _complete_job(
     job: GenerationJob,
     result_payload: dict,
@@ -296,3 +364,15 @@ def _handle_failure(job: GenerationJob, exc: Exception) -> None:
             failed_kiosks=1,
             error_detail=error_msg,
         )
+        # GUARANTEED aktivasyon kalıcı başarısız → kampanyayı PAUSED yap
+        if (job.payload or {}).get("guarantee_mode") == "GUARANTEED":
+            campaign_id = (job.payload or {}).get("campaign_id")
+            if campaign_id:
+                from apps.campaigns.models import Campaign as _Campaign
+                updated = _Campaign.objects.filter(
+                    pk=campaign_id, status=_Campaign.Status.ACTIVE
+                ).update(status=_Campaign.Status.PAUSED)
+                if updated:
+                    logger.warning(
+                        "QueueWorker: GUARANTEED job FAILED → campaign %s PAUSED", campaign_id
+                    )

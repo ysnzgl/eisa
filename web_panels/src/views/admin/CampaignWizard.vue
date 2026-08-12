@@ -35,16 +35,27 @@ const stepError  = ref('');   // per-step inline error shown below footer
 const TOTAL_STEPS = 6;
 const STEP_LABELS = ['Bilgiler', 'Medya', 'Hedefleme', 'Frekans', 'Simülasyon', 'Aktive Et'];
 
+const _defaultStartDate = () => {
+  const d = new Date();
+  return d.toISOString().slice(0, 16);
+};
+const _defaultEndDate = () => {
+  const d = new Date();
+  d.setMonth(d.getMonth() + 1);
+  return d.toISOString().slice(0, 16);
+};
+const BUSINESS_HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
+
 const empty = () => ({
   name: '',
   advertiser_name: '',
-  start_date: '',
-  end_date: '',
+  start_date: _defaultStartDate(),
+  end_date: _defaultEndDate(),
   status: 'ACTIVE',
   target_scope: 'ALL',
   impression_goal: null,
   creatives: [],
-  rule: { frequency_type: 'PER_LOOP', frequency_value: 1, target_hours: null },
+  rule: { frequency_type: 'PER_DAY', frequency_value: 100, target_hours: [...BUSINESS_HOURS] },
 });
 const form = reactive(empty());
 
@@ -159,7 +170,11 @@ async function doActivate() {
   try {
     const { data } = await activateCampaign(editingId.value);
     activateResult.value = data;
-    toast.success('Kampanya başarıyla aktive edildi!');
+    if (data.job_id) {
+      toast.info('Aktivasyon kuyrukta — üretim arka planda işleniyor.');
+    } else {
+      toast.success('Kampanya başarıyla aktive edildi!');
+    }
     await refresh();
   } catch (e) {
     const err = e?.response?.data;
@@ -469,6 +484,8 @@ function toggleHour(rule, h) {
   arr.sort((a, b) => a - b);
   rule.target_hours = arr.length ? arr : null;
 }
+function clearHours(rule) { rule.target_hours = null; }
+function setBusinessHours(rule) { rule.target_hours = [...BUSINESS_HOURS]; }
 
 // ── Per-step validation ───────────────────────────────────────────────────────
 function validateStep(n) {
@@ -1090,6 +1107,14 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
                             :class="{ active: form.rule.target_hours?.includes(h) }"
                             @click="toggleHour(form.rule, h)">{{ String(h).padStart(2,'0') }}</button>
                   </div>
+                  <div class="hour-actions">
+                    <button type="button" class="eisa-btn eisa-btn-ghost eisa-btn-sm" @click="setBusinessHours(form.rule)">
+                      <i class="fa-solid fa-briefcase"></i> Mesai içi
+                    </button>
+                    <button type="button" class="eisa-btn eisa-btn-ghost eisa-btn-sm" @click="clearHours(form.rule)">
+                      <i class="fa-solid fa-xmark"></i> Temizle
+                    </button>
+                  </div>
                 </div>
 
               </div>
@@ -1133,6 +1158,14 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
                     <button v-for="h in HOURS" :key="h" type="button" class="hr"
                             :class="{ active: form.rule.target_hours?.includes(h) }"
                             @click="toggleHour(form.rule, h)">{{ String(h).padStart(2,'0') }}</button>
+                  </div>
+                  <div class="hour-actions">
+                    <button type="button" class="eisa-btn eisa-btn-ghost eisa-btn-sm" @click="setBusinessHours(form.rule)">
+                      <i class="fa-solid fa-briefcase"></i> Mesai içi
+                    </button>
+                    <button type="button" class="eisa-btn eisa-btn-ghost eisa-btn-sm" @click="clearHours(form.rule)">
+                      <i class="fa-solid fa-xmark"></i> Temizle
+                    </button>
                   </div>
                 </div>
               </div>
@@ -1249,7 +1282,14 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
               </span>
             </div>
 
-            <div v-if="activateResult" class="pacing-callout" style="background:#f0fdf4;border-color:#86efac">
+            <div v-if="activateResult && activateResult.job_id" class="pacing-callout" style="background:#fffbeb;border-color:#fcd34d">
+              <i class="fa-solid fa-hourglass-half" style="color:#d97706"></i>
+              <div>
+                <strong>Aktivasyon kuyrukta!</strong>
+                <span class="muted small"> Playlist üretimi arka planda çalışıyor. Sonuç için "Playlist Üretim İşleri" bölümünü izleyin.</span>
+              </div>
+            </div>
+            <div v-else-if="activateResult" class="pacing-callout" style="background:#f0fdf4;border-color:#86efac">
               <i class="fa-solid fa-circle-check" style="color:#16a34a"></i>
               <div>
                 <strong>Kampanya başarıyla aktive edildi!</strong>
@@ -1490,4 +1530,8 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
   cursor: not-allowed;
   pointer-events: none;
 }
+
+/* Hour preset buttons row */
+.hour-actions { display:flex; gap:.5rem; margin-top:.5rem; flex-wrap:wrap; }
+.eisa-btn-sm  { padding:.25rem .65rem; font-size:.78rem; height:auto; }
 </style>

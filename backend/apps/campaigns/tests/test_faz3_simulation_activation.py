@@ -23,6 +23,7 @@ FA-10, FA-11 PostgreSQL gerektirdiğinden integration/ altında ayrı dosyada.
 from __future__ import annotations
 
 import datetime as _dt
+import warnings
 from unittest.mock import patch
 
 import pytest
@@ -34,6 +35,7 @@ from apps.campaigns.models import (
     CampaignTotalAllocation,
     Creative,
     DeliveryRule,
+    GenerationJob,
     HouseAd,
     KioskDayQuota,
     Playlist,
@@ -46,6 +48,7 @@ from apps.campaigns.services.activation_service import (
     CapacityError,
 )
 from apps.campaigns.services.placement_engine_v2 import PlacementEngineV2
+from apps.campaigns.services.queue_worker import process_job
 from apps.pharmacies.models import Eczane, Kiosk
 
 
@@ -431,12 +434,23 @@ def test_fa13b_shadow_v1_authoritative():
 @pytest.mark.django_db
 @override_settings(DOOH_ENGINE_V2="active")
 def test_fa14_active_mode_publish(kiosk, house_ad, admin_client):
-    """active modunda activate endpoint Playlist oluşturmalı."""
-    camp = _make_campaign(start_offset=-1, end_offset=1)
+    """activate endpoint hızlı döner ve yalnız queue job oluşturur."""
+    from apps.campaigns.services.invalidation_service import get_horizon_dates
+
+    now = timezone.now()
+    camp = Campaign.objects.create(
+        name="FA14Async",
+        start_date=now - _dt.timedelta(days=1),
+        end_date=now + _dt.timedelta(days=2),
+        status=Campaign.Status.ACTIVE,
+        target_scope="ALL",
+    )
     _make_creative(camp, duration=15)
     _make_rule(camp, count=1, guarantee="BEST_EFFORT")
 
-    assert Playlist.objects.filter(kiosk=kiosk, target_date=TODAY).count() == 0
+    # Sinyal kaynaklı job gürültüsünü temizle; bu test yalnız activate etkisini ölçer.
+    GenerationJob.objects.all().delete()
+    assert Playlist.objects.filter(kiosk=kiosk).count() == 0
 
     resp = admin_client.post(f"/api/campaigns/v2/campaigns/{camp.pk}/activate/")
     assert resp.status_code == 200, f"Beklenen 200, alınan {resp.status_code}: {resp.content}"
@@ -444,7 +458,55 @@ def test_fa14_active_mode_publish(kiosk, house_ad, admin_client):
     data = resp.json()
     assert data["activated_kiosks"] >= 1
     assert data["activated_dates"] >= 1
-    assert Playlist.objects.filter(kiosk=kiosk, target_date=TODAY).count() == 24
+    assert Playlist.objects.filter(kiosk=kiosk).count() == 0
+
+    c_start = camp.start_date.date()
+    c_end = camp.end_date.date()
+    expected_dates = {d for d in get_horizon_dates() if c_start <= d <= c_end}
+
+    jobs = GenerationJob.objects.filter(
+        kiosk=kiosk,
+        status=GenerationJob.JobStatus.PENDING,
+        triggered_by="campaign_activate",
+    )
+    assert jobs.count() == len(expected_dates)
+    assert {j.target_date for j in jobs} == expected_dates
+
+
+@pytest.mark.django_db
+def test_fa14c_repeat_activate_coalesces_jobs(kiosk, house_ad, admin_client):
+    """Tekrarlı activate çağrısı duplicate pending job oluşturmamalı."""
+    from apps.campaigns.services.invalidation_service import get_horizon_dates
+
+    now = timezone.now()
+    camp = Campaign.objects.create(
+        name="FA14Coalesce",
+        start_date=now - _dt.timedelta(days=1),
+        end_date=now + _dt.timedelta(days=2),
+        status=Campaign.Status.ACTIVE,
+        target_scope="ALL",
+    )
+    _make_creative(camp, duration=15)
+    _make_rule(camp, count=1, guarantee="BEST_EFFORT")
+
+    GenerationJob.objects.all().delete()
+
+    r1 = admin_client.post(f"/api/campaigns/v2/campaigns/{camp.pk}/activate/")
+    r2 = admin_client.post(f"/api/campaigns/v2/campaigns/{camp.pk}/activate/")
+    assert r1.status_code == 200
+    assert r2.status_code == 200
+
+    c_start = camp.start_date.date()
+    c_end = camp.end_date.date()
+    expected_dates = {d for d in get_horizon_dates() if c_start <= d <= c_end}
+
+    jobs = GenerationJob.objects.filter(
+        kiosk=kiosk,
+        status=GenerationJob.JobStatus.PENDING,
+        triggered_by="campaign_activate",
+    )
+    assert jobs.count() == len(expected_dates)
+    assert jobs.values("dedupe_key").distinct().count() == len(expected_dates)
 
 
 @pytest.mark.django_db
@@ -452,6 +514,64 @@ def test_fa14b_active_mode_flags():
     """Faz 7: Flag helper'lar kaldırıldı; V2 canonical."""
     # is_enabled / is_active_mode / should_publish Faz 7'de kaldırıldı.
     assert not hasattr(PlacementEngineV2, 'is_enabled')
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FA-14d  GUARANTEED activate endpoint → job oluşturur, playlist üretmez, hızlı döner
+# ─────────────────────────────────────────────────────────────────────────────
+
+@pytest.mark.django_db
+def test_fa14d_guaranteed_activate_creates_job_not_playlists(kiosk, house_ad, admin_client):
+    """GUARANTEED activate: endpoint playlist üretmeden GenerationJob oluşturur, 200 döner."""
+    now = timezone.now()
+    camp = Campaign.objects.create(
+        name="FA14DGuaranteed",
+        start_date=now - _dt.timedelta(days=1),
+        end_date=now + _dt.timedelta(days=2),
+        status=Campaign.Status.ACTIVE,
+        target_scope="ALL",
+    )
+    _make_creative(camp, duration=15)
+    _make_rule(camp, count=1, guarantee="GUARANTEED")
+    GenerationJob.objects.all().delete()
+
+    resp = admin_client.post(f"/api/campaigns/v2/campaigns/{camp.pk}/activate/")
+    assert resp.status_code == 200
+    assert Playlist.objects.filter(kiosk=kiosk).count() == 0
+
+    job = GenerationJob.objects.filter(
+        dedupe_key=f"campaign_guaranteed:{camp.id}",
+        triggered_by="campaign_activate_guaranteed",
+    ).first()
+    assert job is not None
+    assert job.status == GenerationJob.JobStatus.PENDING
+    assert job.payload.get("guarantee_mode") == "GUARANTEED"
+    assert job.payload.get("campaign_id") == str(camp.id)
+    assert job.kiosk_id is None
+
+
+@pytest.mark.django_db
+def test_fa14d_guaranteed_repeat_activate_dedupes_job(kiosk, house_ad, admin_client):
+    """GUARANTEED tekrarlanan activate tek PENDING job oluşturur (dedupe_key ile)."""
+    now = timezone.now()
+    camp = Campaign.objects.create(
+        name="FA14DGuaranteedDedup",
+        start_date=now - _dt.timedelta(days=1),
+        end_date=now + _dt.timedelta(days=2),
+        status=Campaign.Status.ACTIVE,
+        target_scope="ALL",
+    )
+    _make_creative(camp, duration=15)
+    _make_rule(camp, count=1, guarantee="GUARANTEED")
+    GenerationJob.objects.all().delete()
+
+    admin_client.post(f"/api/campaigns/v2/campaigns/{camp.pk}/activate/")
+    admin_client.post(f"/api/campaigns/v2/campaigns/{camp.pk}/activate/")
+
+    assert GenerationJob.objects.filter(
+        dedupe_key=f"campaign_guaranteed:{camp.id}",
+        status=GenerationJob.JobStatus.PENDING,
+    ).count() == 1
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -494,14 +614,55 @@ def test_fa15_missing_delivery_rule_400(kiosk, house_ad, admin_client):
 @pytest.mark.django_db
 @override_settings(DOOH_ENGINE_V2="active")
 def test_fa15_capacity_409(kiosk, house_ad, admin_client):
-    """GUARANTEED kapasitesiz → 409 Conflict."""
-    camp = _make_campaign(start_offset=-1, end_offset=1)
+    """GUARANTEED kampanya: endpoint hızlı döner ve GUARANTEED job oluşturur; kapasite kontrolü worker'da."""
+    now = timezone.now()
+    camp = Campaign.objects.create(
+        name="FA15GuaranteedFail",
+        start_date=now - _dt.timedelta(days=1),
+        end_date=now + _dt.timedelta(days=2),
+        status=Campaign.Status.ACTIVE,
+        target_scope="ALL",
+    )
     _make_creative(camp, duration=15)
-    _make_rule(camp, count=10000, guarantee="GUARANTEED")  # impossible
+    _make_rule(camp, count=10000, guarantee="GUARANTEED")
+
+    GenerationJob.objects.all().delete()
 
     resp = admin_client.post(f"/api/campaigns/v2/campaigns/{camp.pk}/activate/")
-    assert resp.status_code == 409
-    assert "blocking_reasons" in resp.json()
+    # Endpoint hızlı döner; kapasite kontrolü artık worker'da yapılır
+    assert resp.status_code == 200
+    assert Playlist.objects.filter(kiosk=kiosk).count() == 0
+    job = GenerationJob.objects.filter(dedupe_key=f"campaign_guaranteed:{camp.id}").first()
+    assert job is not None
+    assert job.status == GenerationJob.JobStatus.PENDING
+
+
+@pytest.mark.django_db
+def test_fa15b_activate_has_no_naive_datetime_warning(kiosk, house_ad, admin_client):
+    """activate sırasında start/end date filtreleri naive datetime warning üretmemeli."""
+    now = timezone.now()
+    camp = Campaign.objects.create(
+        name="FA15NoNaiveWarning",
+        start_date=now - _dt.timedelta(days=1),
+        end_date=now + _dt.timedelta(days=2),
+        status=Campaign.Status.ACTIVE,
+        target_scope="ALL",
+    )
+    _make_creative(camp, duration=15)
+    _make_rule(camp, count=1, guarantee="GUARANTEED")
+
+    GenerationJob.objects.all().delete()
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", RuntimeWarning)
+        resp = admin_client.post(f"/api/campaigns/v2/campaigns/{camp.pk}/activate/")
+
+    assert resp.status_code == 200
+    naive_warnings = [
+        w for w in caught
+        if "naive datetime" in str(w.message).lower()
+    ]
+    assert not naive_warnings
 
 
 @pytest.mark.django_db
@@ -569,3 +730,265 @@ def test_fa16b_target_scope_rules_empty_returns_error(house_ad):
         ActivationService.validate_for_activation(camp)
 
     assert "targets" in exc_info.value.errors
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FA-17  GUARANTEED worker başarısızlığı → atomik rollback (hiç publish yok)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@pytest.mark.django_db
+def test_fa17_guaranteed_worker_failure_no_partial_publish(kiosk, house_ad):
+    """GUARANTEED job: ikinci generate_for_kiosk çağrısı patlatılırsa hiçbir tarih publish edilmemeli."""
+    from apps.campaigns.services.scheduler import generate_for_kiosk as real_generate
+    from apps.campaigns.services.invalidation_service import get_horizon_dates
+
+    now = timezone.now()
+    camp = Campaign.objects.create(
+        name="FA17WorkerFail",
+        start_date=now - _dt.timedelta(days=1),
+        end_date=now + _dt.timedelta(days=2),
+        status=Campaign.Status.ACTIVE,
+        target_scope="ALL",
+    )
+    _make_creative(camp, duration=15)
+    _make_rule(camp, count=1, guarantee="GUARANTEED")
+
+    c_start = camp.start_date.date()
+    c_end = camp.end_date.date()
+    dates = [d for d in get_horizon_dates() if c_start <= d <= c_end]
+    assert len(dates) >= 2, "Test için en az 2 horizon tarihi gerekli"
+
+    job = GenerationJob.objects.create(
+        target_date=dates[0],
+        kiosk=None,
+        status=GenerationJob.JobStatus.RUNNING,
+        attempt_count=1,
+        max_attempts=3,
+        triggered_by="campaign_activate_guaranteed",
+        dedupe_key=f"campaign_guaranteed:{camp.id}",
+        payload={
+            "campaign_id": str(camp.id),
+            "kiosk_ids": [kiosk.id],
+            "dates": [str(d) for d in dates],
+            "guarantee_mode": "GUARANTEED",
+        },
+        available_at=timezone.now(),
+        worker_id="test-worker",
+        lock_expires_at=timezone.now() + _dt.timedelta(minutes=5),
+    )
+
+    pl_before = Playlist.objects.count()
+
+    call_count = [0]
+
+    def fail_on_second(k, d):
+        call_count[0] += 1
+        if call_count[0] >= 2:
+            raise RuntimeError("simulated generation failure")
+        return real_generate(k, d)
+
+    with patch("apps.campaigns.services.scheduler.generate_for_kiosk", fail_on_second):
+        process_job(job)
+
+    job.refresh_from_db()
+    assert job.status in (GenerationJob.JobStatus.RETRY, GenerationJob.JobStatus.FAILED)
+    # Atomik rollback: birinci tarih için yazılan playlist'ler de geri alınmış olmalı
+    assert Playlist.objects.count() == pl_before
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FA-18  Aktivasyon sonrası ACTIVE status ve PlacementEngine dahil etme
+# ─────────────────────────────────────────────────────────────────────────────
+
+@pytest.mark.django_db
+def test_fa18_active_status_preserved_and_included_in_placement_engine(kiosk, house_ad):
+    """activate_rolling_horizon kampanya.status'u değiştirmez; PlacementEngine ACTIVE kampanyayı dahil eder."""
+    from apps.campaigns.services.placement_engine_v2 import PlacementEngineV2
+    from apps.campaigns.services.invalidation_service import get_horizon_dates
+
+    now = timezone.now()
+    camp = Campaign.objects.create(
+        name="FA18StatusEngine",
+        start_date=now - _dt.timedelta(days=1),
+        end_date=now + _dt.timedelta(days=2),
+        status=Campaign.Status.ACTIVE,
+        target_scope="ALL",
+    )
+    _make_creative(camp, duration=15)
+    _make_rule(camp, count=1, guarantee="BEST_EFFORT")
+
+    ActivationService.activate_rolling_horizon(camp)
+
+    camp.refresh_from_db()
+    assert camp.status == Campaign.Status.ACTIVE, "activate_rolling_horizon kampanya statusunu değiştirmemeli"
+
+    c_start = camp.start_date.date()
+    c_end = camp.end_date.date()
+    horizon_dates = [d for d in get_horizon_dates() if c_start <= d <= c_end]
+    assert horizon_dates, "Test kampanyası horizon ile kesişmeli"
+
+    plan = PlacementEngineV2.plan_kiosk_day(
+        kiosk_id=kiosk.id, target_date=horizon_dates[0], planning_run=None
+    )
+    campaign_ids = {i.get("campaign_id") for i in plan.playlist_items}
+    assert str(camp.id) in campaign_ids, "ACTIVE kampanya PlacementEngine planına dahil edilmeli"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FA-19  GUARANTEED async response: job_id içerir, is_complete=False
+# ─────────────────────────────────────────────────────────────────────────────
+
+@pytest.mark.django_db
+def test_fa19_guaranteed_response_is_queued(kiosk, house_ad, admin_client):
+    """GUARANTEED activate response: is_complete=False ve job_id mevcut job ile eşleşmeli."""
+    now = timezone.now()
+    camp = Campaign.objects.create(
+        name="FA19QueuedResponse",
+        start_date=now - _dt.timedelta(days=1),
+        end_date=now + _dt.timedelta(days=2),
+        status=Campaign.Status.ACTIVE,
+        target_scope="ALL",
+    )
+    _make_creative(camp, duration=15)
+    _make_rule(camp, count=1, guarantee="GUARANTEED")
+    GenerationJob.objects.all().delete()
+
+    resp = admin_client.post(f"/api/campaigns/v2/campaigns/{camp.pk}/activate/")
+    assert resp.status_code == 200
+
+    data = resp.json()
+    assert data["is_complete"] is False
+    assert data["job_id"] is not None
+
+    job = GenerationJob.objects.filter(dedupe_key=f"campaign_guaranteed:{camp.id}").first()
+    assert job is not None
+    assert data["job_id"] == str(job.pk)
+
+
+@pytest.mark.django_db
+def test_fa19_best_effort_response_is_complete(kiosk, house_ad, admin_client):
+    """BEST_EFFORT activate response: is_complete=True ve job_id=null (granular jobs, tek ID yok)."""
+    now = timezone.now()
+    camp = Campaign.objects.create(
+        name="FA19BestEffortComplete",
+        start_date=now - _dt.timedelta(days=1),
+        end_date=now + _dt.timedelta(days=2),
+        status=Campaign.Status.ACTIVE,
+        target_scope="ALL",
+    )
+    _make_creative(camp, duration=15)
+    _make_rule(camp, count=1, guarantee="BEST_EFFORT")
+    GenerationJob.objects.all().delete()
+
+    resp = admin_client.post(f"/api/campaigns/v2/campaigns/{camp.pk}/activate/")
+    assert resp.status_code == 200
+
+    data = resp.json()
+    assert data["is_complete"] is True
+    assert data["job_id"] is None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FA-20  GUARANTEED kalıcı worker hatası → kampanya PAUSED
+# ─────────────────────────────────────────────────────────────────────────────
+
+@pytest.mark.django_db
+def test_fa20_guaranteed_permanent_failure_pauses_campaign(kiosk, house_ad):
+    """GUARANTEED job max_attempts tüketirse kampanya PAUSED olmalı; BEST_EFFORT etkilenmemeli."""
+    from apps.campaigns.services.invalidation_service import get_horizon_dates
+
+    now = timezone.now()
+    camp = Campaign.objects.create(
+        name="FA20PermanentFail",
+        start_date=now - _dt.timedelta(days=1),
+        end_date=now + _dt.timedelta(days=2),
+        status=Campaign.Status.ACTIVE,
+        target_scope="ALL",
+    )
+    _make_creative(camp, duration=15)
+    _make_rule(camp, count=1, guarantee="GUARANTEED")
+
+    c_start = camp.start_date.date()
+    c_end = camp.end_date.date()
+    dates = [d for d in get_horizon_dates() if c_start <= d <= c_end]
+
+    # max_attempts tükenmiş RUNNING job — bir sonraki hata → FAILED
+    job = GenerationJob.objects.create(
+        target_date=dates[0] if dates else timezone.now().date(),
+        kiosk=None,
+        status=GenerationJob.JobStatus.RUNNING,
+        attempt_count=3,
+        max_attempts=3,
+        triggered_by="campaign_activate_guaranteed",
+        dedupe_key=f"campaign_guaranteed:{camp.id}",
+        payload={
+            "campaign_id": str(camp.id),
+            "kiosk_ids": [kiosk.id],
+            "dates": [str(d) for d in dates],
+            "guarantee_mode": "GUARANTEED",
+        },
+        available_at=timezone.now(),
+        worker_id="test-worker",
+        lock_expires_at=timezone.now() + _dt.timedelta(minutes=5),
+    )
+
+    with patch("apps.campaigns.services.scheduler.generate_for_kiosk",
+               side_effect=RuntimeError("kapasite yetersiz")):
+        process_job(job)
+
+    job.refresh_from_db()
+    assert job.status == GenerationJob.JobStatus.FAILED
+
+    camp.refresh_from_db()
+    assert camp.status == Campaign.Status.PAUSED, "GUARANTEED kalıcı hata → kampanya PAUSED olmalı"
+
+
+@pytest.mark.django_db
+def test_fa20_guaranteed_retry_does_not_pause_campaign(kiosk, house_ad):
+    """GUARANTEED job ilk hatada RETRY'a geçer; kampanya PAUSED olmamalı."""
+    from apps.campaigns.services.invalidation_service import get_horizon_dates
+
+    now = timezone.now()
+    camp = Campaign.objects.create(
+        name="FA20RetryNoPause",
+        start_date=now - _dt.timedelta(days=1),
+        end_date=now + _dt.timedelta(days=2),
+        status=Campaign.Status.ACTIVE,
+        target_scope="ALL",
+    )
+    _make_creative(camp, duration=15)
+    _make_rule(camp, count=1, guarantee="GUARANTEED")
+
+    c_start = camp.start_date.date()
+    c_end = camp.end_date.date()
+    dates = [d for d in get_horizon_dates() if c_start <= d <= c_end]
+
+    # attempt_count=1 < max_attempts=3 → RETRY, kampanya dokunulmaz
+    job = GenerationJob.objects.create(
+        target_date=dates[0] if dates else timezone.now().date(),
+        kiosk=None,
+        status=GenerationJob.JobStatus.RUNNING,
+        attempt_count=1,
+        max_attempts=3,
+        triggered_by="campaign_activate_guaranteed",
+        dedupe_key=f"campaign_guaranteed:{camp.id}-retry",
+        payload={
+            "campaign_id": str(camp.id),
+            "kiosk_ids": [kiosk.id],
+            "dates": [str(d) for d in dates],
+            "guarantee_mode": "GUARANTEED",
+        },
+        available_at=timezone.now(),
+        worker_id="test-worker",
+        lock_expires_at=timezone.now() + _dt.timedelta(minutes=5),
+    )
+
+    with patch("apps.campaigns.services.scheduler.generate_for_kiosk",
+               side_effect=RuntimeError("geçici hata")):
+        process_job(job)
+
+    job.refresh_from_db()
+    assert job.status == GenerationJob.JobStatus.RETRY
+
+    camp.refresh_from_db()
+    assert camp.status == Campaign.Status.ACTIVE, "RETRY aşamasında kampanya ACTIVE kalmalı"

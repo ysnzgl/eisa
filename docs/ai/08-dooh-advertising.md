@@ -426,11 +426,13 @@ class PlayLog(BaseModel):
   - PlacementEngineV2 ile aynı hesaplama yolu
   - sim == generate == activation fingerprint doğrulandı
 - **Activation API:** `POST /api/campaigns/v2/campaigns/{id}/activate/`
-  - DOOH_ENGINE_V2=active gerektirir
-  - GUARANTEED: all-or-nothing (atomic rollback on any failure)
-  - BEST_EFFORT: mevcut kapasiteye sığanı yerleştir
-  - CAMPAIGN_TOTAL global invariant: select_for_update ile serialize edildi
-- **Feature flag:** off → shadow → active (off/shadow V1 authoritative, active = V2 activate endpoint açık)
+  - Faz 7+: Feature flag yok, endpoint her zaman açık
+  - Endpoint kampanya tarih aralığının tamamı için senkron playlist üretmez
+  - Ağır üretim DB-backed queue'ya alınır (`GenerationJob`, `triggered_by=campaign_activate`)
+  - Üretim kapsamı rolling horizon ile sınırlıdır (varsayılan 3 gün: bugün + 2 gün)
+  - GUARANTEED: queue'ya almadan horizon için pre-check; başarısızsa 409 ve enqueue yok (kısmi publish başlamaz)
+  - BEST_EFFORT: doğrulama sonrası horizon job'ları enqueue edilir
+- **Feature flag durumu:** Faz 7 sonrası `DOOH_ENGINE_V2` kaldırıldı; V2 akışları canonical.
 - **Idempotency:** Re-activation replaces (delete+recreate), not appends
 - **Faz 3 testleri:** 21 passed (FA-01..FA-16), PostgreSQL race testleri dahil
 - **Tüm backend testleri (Faz 3):** 371 passed, 7 skipped, 0 failed

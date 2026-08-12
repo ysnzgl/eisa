@@ -456,16 +456,16 @@ X-Kiosk-Device-ID: <DEVICE_UUID>  # zorunlu (device_id set edildiyse)
 
 **POST /api/campaigns/v2/campaigns/{id}/activate/**
 - Auth: JWT (SuperAdmin)
-- DOOH_ENGINE_V2: `active` gerektirir. `off`/`shadow` ise 403.
+- Faz 7+: Feature flag yok, endpoint her zaman açık.
 - Request: body yok
 - Response 200:
   ```json
   {
     "campaign_id": "uuid",
-    "planning_run_id": "uuid",
+    "planning_run_id": null,
     "activated_kiosks": 2,
     "activated_dates": 3,
-    "total_placements": 24,
+    "total_placements": 0,
     "fingerprint": "hex16",
     "is_complete": true,
     "blocking_reasons": []
@@ -475,17 +475,18 @@ X-Kiosk-Device-ID: <DEVICE_UUID>  # zorunlu (device_id set edildiyse)
   ```json
   { "error": "...", "validation_errors": { "delivery_rule": "...", "creatives": "..." } }
   ```
-- Response 403: `DOOH_ENGINE_V2 != active`
 - Response 404: campaign bulunamadı
 - Response 409: `CapacityError` (GUARANTEED kapasite yetersiz)
   ```json
   { "error": "...", "blocking_reasons": ["kiosk=1 date=2026-07-22: ..."] }
   ```
-- **Transaction davranışı:**
-  - GUARANTEED: `transaction.atomic()` wrapper; herhangi bir kiosk/date'te kapasite yetersizse → `CapacityError` fırlatılır → tüm değişiklikler rollback edilir
-  - BEST_EFFORT: kısmi başarı kabul edilir; başarısız kiosk/date'ler `blocking_reasons`'da raporlanır
-  - CAMPAIGN_TOTAL: `GlobalQuotaService.reserve_for_kiosk_day` → `select_for_update(nowait=False)` ile global invariant sağlanır
-- **Idempotency:** `_persist_plan` mevcut Playlist satırlarını siler ve yeniden oluşturur → re-activation aynı içeriği yazar, çift kayıt üretmez
+- **Çalışma akışı (2026-08):**
+  - Endpoint artık kampanya tarih aralığının tamamı için senkron playlist üretmez.
+  - `activate` yalnız doğrulama + (GUARANTEED ise) rolling horizon kapasite kontrolü yapar.
+  - Ağır üretim `GenerationJob` kuyruğuna bırakılır (`triggered_by=campaign_activate`).
+  - Üretim kapsamı yalnız rolling horizon'dur (varsayılan: bugün + 2 gün).
+- **Dedupe/coalesce:** Aynı kiosk+tarih için mevcut `dedupe_key=kd:{kiosk_id}:{date}` mekanizması duplicate `PENDING` job üretimini engeller.
+- **GUARANTEED all-or-nothing:** GUARANTEED pre-check başarısızsa 409 döner, `campaign_activate` job enqueue edilmez; kısmi publish başlamaz.
 - **Serializer**: `ActivationResultSerializer` (apps/campaigns/serializers.py)
 
 ---
