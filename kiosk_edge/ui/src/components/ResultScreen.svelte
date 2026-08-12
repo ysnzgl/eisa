@@ -95,6 +95,20 @@
       {/if}
       <p class="qr-note">Bu QR kodu eczacınıza gösterin — bilgileriniz ekranına düşecek.</p>
     </div>
+
+    {#if $result?.baskiLogoUrl}
+      <div class="receipt-preview">
+        <p class="receipt-preview-label">
+          <i class="fa-solid fa-print"></i> Termal fiş önizlemesi
+        </p>
+        <div class="receipt-paper">
+          <img src={$result.baskiLogoUrl} alt="Barkod logosu" class="receipt-logo" />
+          <p class="receipt-text">Saglikli gunler diler.</p>
+          <p class="receipt-text" style="font-size:11px; color:#9ca3af;">— QR kodu yazıcıdan çıkar —</p>
+          <p class="receipt-text" style="font-size:11px; margin-top:2px;">{$result.qrCode}</p>
+        </div>
+      </div>
+    {/if}
   </div>
 
   <div class="d-flex flex-column gap-2 mt-3">
@@ -151,5 +165,37 @@
     color: #111827;
     word-break: break-word;
     overflow-wrap: break-word;
+  }
+  .receipt-preview {
+    text-align: center;
+    margin-top: 8px;
+  }
+  .receipt-preview-label {
+    font-size: 11px;
+    color: #9ca3af;
+    margin-bottom: 6px;
+    letter-spacing: .02em;
+  }
+  .receipt-paper {
+    display: inline-block;
+    background: #fff;
+    border: 1px dashed #d1d5db;
+    border-radius: 4px;
+    padding: 10px 16px;
+    min-width: 140px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.08);
+  }
+  .receipt-logo {
+    width: 84px;
+    height: 84px;
+    object-fit: contain;
+    display: block;
+    margin: 0 auto 6px;
+  }
+  .receipt-text {
+    font-size: 12px;
+    color: #374151;
+    margin: 2px 0;
+    font-family: 'Courier New', monospace;
   }
 </style>
