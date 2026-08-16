@@ -25,11 +25,7 @@
 
   <!-- Logo + CTA -->
   <div class="ss-overlay-text">
-    <Logo height="96px" light class="ss-logo-img" />
-    <div class="ss-tap">
-      <i class="fa-solid fa-hand-pointer ss-pulse-icon"></i>
-      Baslamak icin dokunun
-    </div>
+    <Logo height="100px" light class="ss-logo-img" />
   </div>
 </div>
 
