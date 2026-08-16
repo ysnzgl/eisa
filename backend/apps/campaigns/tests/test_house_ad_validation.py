@@ -118,16 +118,16 @@ def test_ha07_no_media_kind_video_still_accepted(admin_client, mock_storage_cls)
     assert r.status_code == 201, r.content
 
 
-# ─── HA-08: Serializer video URL uzantısı reddi ──────────────────────────────
+# ─── HA-08: Serializer artık video URL kabul eder (HouseAd video desteği eklendi) ──
 
-def test_ha08_serializer_rejects_video_url():
+def test_ha08_serializer_accepts_video_url():
+    """HouseAd artık video dosyalarını da destekliyor (görsel kısıtlaması kaldırıldı)."""
     s = HouseAdSerializer(data={
         "name": "Test",
         "media_url": "https://cdn.example.com/ads/promo.mp4",
         "duration_seconds": 15,
     })
-    assert not s.is_valid()
-    assert "media_url" in s.errors
+    assert s.is_valid(), s.errors
 
 
 # ─── HA-09: Serializer görsel URL kabul ──────────────────────────────────────

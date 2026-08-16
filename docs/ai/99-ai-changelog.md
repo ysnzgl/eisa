@@ -5,6 +5,154 @@
 
 ---
 
+## 2026-08-16
+
+### [Kiosk UI] Kalp Atışı Animasyonu Güncelleme — Beyaz 3-Pikli + Smile Curve + Modüler Widget
+
+**Değişiklik:** Sponsor fallback ekranındaki animasyon özelleştirilerek yeni modüler widget olarak ayrıldı.
+
+**Yeni özellikler:**
+- **3 pikli kalp atışı:** Küçük-BÜYÜK-küçük ritim (ortadaki 2 kat büyük pik: y:40-160 vs y:80-100)
+- **Beyaz renk şeması:** Tüm animasyon beyaz (#fff) - gradient, çizgiler, halkalar, glow
+- **Gülen yüz (smile curve):** Kalp atışının altında bezier eğrisi `M220,130 Q260,150 Q300,130`
+- **Modüler yapı:** `HeartbeatAnimation.svelte` ayrı component (yeniden kullanılabilir)
+- **Daha büyük halkalar:** 140px başlangıç → 460px bitiş (önceki 120-420px)
+- **Döngü:** 2.8sn (önceki 2.6sn), yumuşak ve sakin
+- Animasyon `prefers-reduced-motion: reduce` durumunda durur
+
+**Dosyalar:**
+- `kiosk_edge/ui/src/components/HeartbeatAnimation.svelte` (YENİ - 250 satır)
+- `kiosk_edge/ui/src/components/AdPromo.svelte` (eski EKG kodu kaldırıldı, HeartbeatAnimation import)
+- `docs/ai/04-kiosk-edge-ui.md` (component #11 eklendi, numaralandırma güncellendi)
+
+**Test:** Build başarılı (93KB bundle), http://127.0.0.1:5173/ → animasyon görünür, dokunma çalışıyor, demographics geçişi OK.
+
+---
+
+## 2026-08-15
+
+### [Kiosk UI] İdeal/Attractor Ekranına Dekoratif EKG Animasyonu
+
+**Değişiklik:** Reklam olmadığında gösterilen sponsor fallback ekranına (AdPromo.svelte large varyant) sağlık teknolojisi temalı dekoratif animasyon eklendi.
+
+**Animasyon özellikleri:**
+- Yatay EKG çizgisi (soldan sağa ilerleyen parlak enerji izi, SVG `stroke-dasharray` + `stroke-dashoffset` animasyon)
+- İki pikli kalp atışı ritmi (gerçekçi EKG dalga formu, 2.6sn döngü)
+- Eş merkezli kırmızı halkalar (merkezden dışa yayılıp saydamlaşma, 3 halka 0s/0.15s/0.3s gecikme)
+- Merkez kırmızı glow efekti (`radial-gradient` + pulse)
+- E-İSA kırmızı (#B1121B), beyaz, koyu lacivert renk paleti
+- `clamp(460px, 28vw, 540px)` responsive boyut, ekran ortasında (~%48-52 yükseklik)
+- `pointer-events: none`, `aria-hidden="true"` — dokunma engellenmez
+- `prefers-reduced-motion: reduce` → animasyonlar durur, statik EKG + halkalar görünür
+
+**Korunan öğeler (DEĞIŞMEDI):**
+- Mevcut arka plan, renkler ve gradient
+- Üst logo, "Başlamak için dokunun" metni ve el ikonu
+- Alt "Bu alana sponsor olabilirsiniz" kartı (megafon + shimmer başlık)
+- Tüm öğelerin konumları, ölçüleri, stilleri
+- Mevcut dokunma/click davranışı (demographics geçişi)
+- Kampanya/house ad medya gösterimi (animasyon YOK, medya tam ekran gösterilir)
+- Playlist, MediaView, impression akışları
+- Responsive davranış
+- `AdPromo` küçük varyantında animasyon YOKTUR (yalnız `large` modda)
+
+**Teknik:** Inline SVG + CSS animasyonlar, harici dependency veya görsel dosya YOK. Chromium kiosk uyumlu, performans optimizasyonlu (küçük öğeler üzerinde glow, ağır filtre yok).
+
+**Dosyalar:** `kiosk_edge/ui/src/components/AdPromo.svelte` (HTML + CSS), `docs/ai/04-kiosk-edge-ui.md` (AdPromo açıklaması güncellendi)
+
+**Test:** Manuel doğrulama (http://127.0.0.1:5173/, idle ekran → sponsor fallback → animasyon görünür, dokunma → demographics ekran). Gerçek kampanya gösterilirken animasyon görünmez.
+
+---
+
+## 2026-08-15
+
+### [Backend/Frontend] Medya Kalıcı URL, Creative/HouseAd İndirme, HouseAd Yönetim Ekranı
+
+**Root cause:** `DOOH_PERSISTENT_MEDIA_URL=False` (default) nedeniyle upload sırasında süreli presigned URL veritabanına yazılıyordu. Süre dolunca medya admin panelde görünmez oluyordu.
+
+**Değişiklikler özeti:**
+1. `DOOH_PERSISTENT_MEDIA_URL` default=True yapıldı; yeni yüklemelerde presigned URL DB'ye yazılmıyor.
+2. `Creative.active_object_key` modeli ve migration 0026 eklendi.
+3. `CreativeSerializer` + `active_object_key`; HouseAd video kısıtlaması kaldırıldı.
+4. `CreativeViewSet` ve `HouseAdViewSet`'e `/download/` streaming action eklendi (SuperAdmin, Content-Disposition:attachment).
+5. `backfill_media_object_keys` komutu `active_media_url` backfill'ini de destekliyor.
+6. `CampaignWizard.vue`: HTML5 video player + görsel thumbnail, Bekleme/İşlem medya ayrımı, `active_object_key` takibi.
+7. `HouseAdManagement.vue` yeni sayfa (CRUD + medya önizleme + indirme).
+8. Router + AdminLayout güncellendi.
+
+**API (additive):** `GET /api/campaigns/v2/creatives/{id}/download/`, `GET /api/campaigns/v2/house-ads/{id}/download/`
+**Test:** 13 yeni test, test_closure C01 + test_house_ad_validation HA08 güncellendi (305 passed).
+
+---
+
+## 2026-08-15
+
+### [Backend/Frontend] Görüş ve Destek (Ticket) Sistemi
+
+**Değişiklik:** Pharmacy ve Admin panellerinde kullanılacak tam kapsamlı destek talebi sistemi eklendi.
+
+**Backend (`apps.destek`):**
+- `DestekParametresi` — TALEP_TURU/ALAN/ALT_KONU/DURUM gruplarını yöneten tek parametrik tablo.
+- `TalepSayac` — Concurrency-safe yıllık sayaç (`select_for_update`). `count+1` kullanılmadı.
+- `DestekTalebi` — Ticket modeli (talep_no: `EISA-YYYY-NNNNNN`, PROTECT FK'lar).
+- `DestekYorumu` — Append-only yorum geçmişi; durum otomatik geçişleri (admin→YANITLANDI, eczacı cevabı→INCELENIYOR).
+- API: `/api/destek/parametreler/`, `/api/destek/talepler/` (list/create/retrieve + yorum-ekle/durum-degistir/yeni-sayisi).
+- Queryset izolasyonu: eczacı yalnız kendi eczanesinin taleplerini görür.
+- 40 backend testi; tamamı geçiyor.
+
+**Frontend:**
+- `DestekTalepleri.vue` (pharmacist) — Karşılama banner, yeni talep formu, liste, detay modal + konuşma.
+- `DestekYonetimi.vue` (admin) — Filtreli liste, detay modal, yorum ekleme, durum değiştirme.
+- `AdminLayout.vue` — "Görüş ve Destek Yönetimi" ve "Görüş ve Destek" nav öğeleri; Yeni sayısı badge.
+- Router: `/admin/destek`, `/pharmacist/destek`.
+
+**Dosyalar:**
+- `backend/apps/destek/` (yeni app — models, serializers, views, urls, migrations, seed, tests)
+- `backend/core_api/settings.py`, `core_api/urls.py`
+- `web_panels/src/views/admin/DestekYonetimi.vue` (yeni)
+- `web_panels/src/views/pharmacist/DestekTalepleri.vue` (yeni)
+- `web_panels/src/router/index.js`, `AdminLayout.vue`, `services/api.js`, `styles.css`
+
+---
+
+### [Backend/Frontend] Dashboard Satış İstatistikleri, Kiosk Hareketleri Satış Sekmesi, AutoComplete
+
+**Değişiklik:** Üç özellik birlikte uygulandı:
+
+1. **Dashboard Satış İstatistikleri:**  
+   - `AdminDashboardView` ve `EczaciDashboardView` API'lerine `satis_sayisi` ve `en_cok_satilan_etken_madde` eklendi.  
+   - Opsiyonel `start_date` / `end_date` query parametreleriyle tarih filtresi.  
+   - Eczacı yalnız kendi eczanesine ait veriye erişir (backend queryset scope).  
+   - Admin/Eczacı Dashboard UI'larına iki yeni KPI kartı ve tarih filtreli "Satış Özeti" paneli eklendi.
+
+2. **Kiosk Hareketleri Satış Sekmesi:**  
+   - `_build_oturum_queryset`'e `?sold=true|false` filtresi eklendi.  
+   - `KioskActivityView`, `sold=true` isteklerinde `prefetch_related` uyguluyor (N+1 yok).  
+   - `KioskActivityListSerializer`'a `sold` ve `etken_madde_adlari` alanları eklendi.  
+   - Admin ve Eczacı KioskActivities panellerine "Satışlar" sekmesi eklendi.
+
+3. **Kiosk/Eczane AutoComplete:**  
+   - Admin KioskActivities: il/ilçe/eczane/kiosk 4'lü cascading `<select>` kaldırıldı; yerine "İl/İlçe/Eczane" ve "İl/İlçe/Eczane/Kiosk" birleşik etiketli 2 EisaLookup eklendi.  
+   - Eczacı KioskActivities: kiosk `<select>` → EisaLookup (dashboard'dan kiosk listesi).  
+   - Tüm seçim sonuçları mevcut kiosk/eczane ID değerini API'ye iletmeye devam eder.
+
+**Yetkilendirme:** Tüm sold filtreleri ve istatistikler backend queryset seviyesinde eczane scope ile korunmaktadır. Frontend seçimlerine güvenilmiyor.
+
+**Dosyalar:**  
+- `backend/apps/analytics/views.py` — sold filtresi, AdminDashboard sold stats, KioskActivityView prefetch  
+- `backend/apps/analytics/serializers.py` — KioskActivityListSerializer sold + etken_madde_adlari  
+- `backend/apps/pharmacies/dashboard.py` — EczaciDashboard sold stats  
+- `backend/apps/analytics/tests/test_sold_stats.py` — 13 yeni test (hepsi geçiyor)  
+- `web_panels/src/views/admin/Dashboard.vue` — sold KPI kartları, tarih filtresi  
+- `web_panels/src/views/pharmacist/Dashboard.vue` — sold KPI kartları, tarih filtresi  
+- `web_panels/src/views/admin/KioskActivities.vue` — Satışlar sekmesi, EisaLookup AutoComplete  
+- `web_panels/src/views/pharmacist/KioskActivities.vue` — Satışlar sekmesi, EisaLookup kiosk  
+- `web_panels/src/services/analytics.js` — getAdminDashboard() eklendi
+
+**API eklenti:** `GET /api/analytics/admin-dashboard/` → `satis_sayisi`, `en_cok_satilan_etken_madde` (mevcut alanlar korundu); `GET /api/pharmacies/me/dashboard/` → aynı. `GET /api/analytics/kiosk-activities/?sold=true|false` yeni filtre.
+
+---
+
 ## 2026-08-12
 
 ### [Backend/DOOH] Aktivasyon timeout düzeltmesi — queue tabanlı horizon aktivasyon

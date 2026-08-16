@@ -159,14 +159,28 @@
 
 10. **AdPromo.svelte**
    - Reklam yokken donen "Bu Alana Reklam Verebilirsiniz" tasarimi (konik isik halkasi + megafon + shimmer baslik + logo). `large` prop tam-ekran (attractor) varyanti
+   - **Dekoratif kalp atışı animasyonu (2026-08-16):** `large` varyantinda merkezde HeartbeatAnimation component görünür
+     - `HeartbeatAnimation.svelte` ayrı modüler widget olarak oluşturuldu
 
-11. **MediaView.svelte**
+11. **HeartbeatAnimation.svelte** (2026-08-16)
+   - Sponsor fallback ekranı için dekoratif kalp atışı animasyonu
+   - **3 pikli kalp atışı:** Küçük-BÜYÜK-küçük (ortadaki diğerlerinin 2 katı büyüklükte)
+   - **Beyaz renk:** Tüm animasyon beyaz (#fff), gradient ve halkalar
+   - **Gülen yüz (smile curve):** Kalp atışının hemen altında bezier eğrisi (Q220,130 Q260,150 Q300,130)
+   - Eş merkezli beyaz halkalar (merkezden dışa yayılıp saydamlaşma, 2.8sn döngü)
+   - Merkez beyaz glow + pulse
+   - `clamp(460px, 28vw, 540px)` responsive boyut, ekran ortasında (~%48 yükseklik)
+   - `pointer-events: none`, `aria-hidden="true"` — erişilebilirlik
+   - `prefers-reduced-motion: reduce` → animasyonlar durur, statik görünüm
+   - Yalnızca **sponsor fallback ekranında** görünür (gerçek kampanya medyası gösterilirken GÖRÜNMEZ)
+
+12. **MediaView.svelte**
    - URL uzantisina gore `<video>` veya `<img>` render eder. Props: `src`, `alt`, `loop`, `class`. AdStrip + IdleScreen tarafindan ortak kullanilir
 
-12. **ScreenHeader.svelte**
+13. **ScreenHeader.svelte**
    - Ortak ekran basligi: `Logo` + opsiyonel `subtitle`. Props: `height`, `subtitle`. Welcome/Demographics/Category/Consult/Question ekranlarinda kullanilir
 
-13. **WifiSetupScreen.svelte**
+14. **WifiSetupScreen.svelte**
    - WiFi ağ listesi (`GET http://localhost:5234/wifi-status`)
    - Ağ seçimi + şifre girişi
    - "Bağlan" butonu → `POST http://localhost:5234/wifi-connect` (nmcli)

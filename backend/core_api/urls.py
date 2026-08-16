@@ -76,6 +76,7 @@ urlpatterns = [
     path("api/inventory/", include((inventory_urlpatterns, "inventory"))),
     path("api/kiosk/v1/", include("apps.kiosk_api.urls")),
     path("api/barkod-logo/", include("apps.barkod_logo.urls")),
+    path("api/destek/", include("apps.destek.urls")),
 ]
 
 # Swagger / ReDoc yalnızca geliştirme ortamında

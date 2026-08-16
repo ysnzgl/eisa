@@ -131,27 +131,3 @@ class MediaUploadView(APIView):
                 {"error": "Dosya MinIO'ya yüklenirken bir hata oluştu."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
-            storage_service = StorageService()
-            object_key, checksum = storage_service.upload_file_with_checksum(
-                uploaded, prefix="ads"
-            )
-            media_url = storage_service.public_url(object_key)
-        except Exception:
-            logger.exception("Campaign media upload to MinIO failed")
-            return Response(
-                {"error": "Dosya MinIO'ya yüklenirken bir hata oluştu."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-
-        return Response(
-            {
-                "object_key": object_key,
-                "media_url": media_url,
-                "checksum": checksum,
-                # Geçiş dönemi geriye-uyumlu alias'lar — eski API tüketicileri için zorunlu
-                "url": media_url,
-                "filename": object_key.rsplit("/", 1)[-1],
-                "object_name": object_key,
-            },
-            status=status.HTTP_201_CREATED,
-        )

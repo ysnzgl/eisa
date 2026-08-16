@@ -202,6 +202,14 @@ class OturumOnerilenEtkenMadde(BaseModel):
     class Meta:
         db_table = "oturum_onerilen_etken_maddeler"
         unique_together = (("oturum", "etken_madde"),)
+        constraints = [
+            # FK null olduğunda (eski/çözümlenemeyen madde) snapshot adı üzerinden tekillik.
+            models.UniqueConstraint(
+                fields=["oturum", "etken_madde_adi_snapshot"],
+                condition=models.Q(etken_madde__isnull=True),
+                name="uniq_oturum_snapshot_null_fk",
+            ),
+        ]
         ordering = ("oturum_id", "id")
         verbose_name = "Oturum Onerilen Etken Madde"
         verbose_name_plural = "Oturum Onerilen Etken Maddeler"

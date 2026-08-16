@@ -3,6 +3,7 @@
   // Verebilirsiniz" tasarimi. Hem reklam bandinda (AdStrip) hem de ekran
   // koruyucuda (IdleScreen) kullanilir.
   import Logo from './Logo.svelte';
+  import HeartbeatAnimation from './HeartbeatAnimation.svelte';
 
   /** Buyuk kart boyutu icin true (idle/attractor kullanimi). */
   export let large = false;
@@ -12,6 +13,12 @@
 
 <div class="ad-promo" class:ad-promo--large={large} class:ad-promo--float={floatCard}>
   <span class="ad-promo-glow" aria-hidden="true"></span>
+  
+  <!-- Dekoratif kalp atışı animasyonu (yalnız large varyantında) -->
+  {#if large}
+    <HeartbeatAnimation />
+  {/if}
+
   <div class="ad-promo-card">
     <div class="ad-promo-badge">
       <i class="fa-solid fa-bullhorn"></i>

@@ -180,6 +180,62 @@ def _backfill_queryset(
         result.updated += 1
 
 
+def _backfill_active_media_queryset(
+    qs, endpoint, bucket, public_base, allowed_hosts,
+    apply, skip_head_check, storage_service, result, stdout,
+):
+    """Creative.active_media_url → active_object_key backfill."""
+    for obj in qs:
+        if obj.active_object_key:
+            result.already_filled += 1
+            continue
+
+        key, reason = _extract_object_key(
+            obj.active_media_url, endpoint, bucket, public_base, allowed_hosts
+        )
+
+        if key is None:
+            result.failed += 1
+            result.failures.append({
+                "model": "Creative(active)", "id": str(obj.pk),
+                "media_url": obj.active_media_url, "reason": reason,
+            })
+            stdout.write(f"  [FAIL] Creative(active) pk={obj.pk}: {reason}")
+            continue
+
+        if apply and not skip_head_check:
+            ok, err = _head_check(storage_service, key)
+            if not ok:
+                result.failed += 1
+                result.failures.append({
+                    "model": "Creative(active)", "id": str(obj.pk),
+                    "media_url": obj.active_media_url, "reason": f"head_check_failed: {err}",
+                })
+                stdout.write(f"  [HEAD FAIL] Creative(active) pk={obj.pk}: key={key!r} err={err}")
+                continue
+
+        if public_base:
+            base = public_base.rstrip("/")
+        else:
+            s3_secure = getattr(settings, "S3_SECURE", False)
+            scheme = "https" if s3_secure else "http"
+            base = f"{scheme}://{endpoint}"
+        new_active_url = f"{base}/{bucket}/{key}"
+
+        if apply:
+            obj.active_object_key = key
+            obj.active_media_url = new_active_url
+            obj.save(update_fields=["active_object_key", "active_media_url"])
+            stdout.write(f"  [OK] Creative(active) pk={obj.pk}: key={key!r}")
+        else:
+            stdout.write(
+                f"  [DRY-RUN] Creative(active) pk={obj.pk}: "
+                f"key={key!r} new_url={new_active_url!r} reason={reason!r}"
+            )
+
+        result.updated += 1
+
+
 class Command(BaseCommand):
     help = (
         "Faz 0.5 backfill: presigned/eksik object_key kayitlari icin "
@@ -253,6 +309,17 @@ class Command(BaseCommand):
         _backfill_queryset(
             qs=HouseAd.objects.filter(object_key__isnull=True),
             model_label="HouseAd", endpoint=endpoint, bucket=bucket,
+            public_base=public_base, allowed_hosts=allowed,
+            apply=apply, skip_head_check=skip_head_check,
+            storage_service=storage_service, result=result, stdout=self.stdout,
+        )
+
+        self.stdout.write("\n--- Creative (active_media_url) ---")
+        _backfill_active_media_queryset(
+            qs=Creative.objects.filter(
+                active_object_key__isnull=True,
+            ).exclude(active_media_url=""),
+            endpoint=endpoint, bucket=bucket,
             public_base=public_base, allowed_hosts=allowed,
             apply=apply, skip_head_check=skip_head_check,
             storage_service=storage_service, result=result, stdout=self.stdout,

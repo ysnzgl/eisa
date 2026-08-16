@@ -61,6 +61,7 @@ INSTALLED_APPS = [
     "apps.audit",
     "apps.kiosk_api",
     "apps.barkod_logo",
+    "apps.destek",
 ]
 
 MIDDLEWARE = [
@@ -264,7 +265,7 @@ S3_PRESIGNED_URL_TTL_MINUTES = config("S3_PRESIGNED_URL_TTL_MINUTES",
 S3_PUBLIC_BASE_URL = config("S3_PUBLIC_BASE_URL", default="")
 
 # DOOH kalıcı medya URL feature flag.
-DOOH_PERSISTENT_MEDIA_URL = config("DOOH_PERSISTENT_MEDIA_URL", default=False, cast=bool)
+DOOH_PERSISTENT_MEDIA_URL = config("DOOH_PERSISTENT_MEDIA_URL", default=True, cast=bool)
 
 # DOOH Horizon — rolling horizon gün sayısı (bugün dahil). Operasyonel ayar.
 # Default 3: bugün, bugün+1, bugün+2.

@@ -5,7 +5,7 @@
  *
  * Endpoint: GET /api/pharmacies/me/dashboard/
  */
-import { ref, onMounted, onUnmounted, computed } from 'vue';
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { http } from '../../services/api';
 
@@ -29,10 +29,31 @@ function countUp(key, target, duration = 1500) {
   requestAnimationFrame(tick);
 }
 
+// Satış filtresi state
+const soldStartDate = ref('');
+const soldEndDate   = ref('');
+const soldLoading   = ref(false);
+const soldData      = ref(null);
+
+async function loadSoldStats() {
+  soldLoading.value = true;
+  try {
+    const params = {};
+    if (soldStartDate.value) params.start_date = soldStartDate.value;
+    if (soldEndDate.value)   params.end_date   = soldEndDate.value;
+    const res = await http.get('/api/pharmacies/me/dashboard/', { params });
+    soldData.value = res.data;
+  } catch { /* toast by interceptor */ }
+  finally { soldLoading.value = false; }
+}
+
+watch([soldStartDate, soldEndDate], () => loadSoldStats());
+
 async function load() {
   try {
     const res = await http.get('/api/pharmacies/me/dashboard/');
     data.value  = res.data;
+    soldData.value = res.data;
     error.value = '';
     // Trigger count-up animations
     setTimeout(() => countUp('kiosks',        res.data.kiosk_sayisi        ?? 0),   0);
@@ -177,6 +198,64 @@ const HEALTH_LABEL = {
             <div class="dash-kpi-number">{{ kpiValues[kpi.valueKey] }}</div>
             <div v-if="kpi.sub" class="dash-kpi-sub" :class="kpi.subClass">
               {{ kpi.sub() }}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Satış İstatistikleri -->
+      <div class="eisa-panel" style="margin-bottom:1.5rem;">
+        <div class="eisa-panel-header">
+          <div>
+            <p class="eisa-eyebrow" style="font-size:0.65rem;">SATIŞ ANALİTİĞİ</p>
+            <h2 class="eisa-panel-title">Satış Özeti</h2>
+          </div>
+          <div style="display:flex;gap:0.5rem;align-items:center;">
+            <div>
+              <label class="eisa-label" style="font-size:0.7rem;">Başlangıç</label>
+              <input v-model="soldStartDate" type="date" class="eisa-field" style="font-size:0.8rem;padding:0.3rem 0.5rem;" />
+            </div>
+            <div>
+              <label class="eisa-label" style="font-size:0.7rem;">Bitiş</label>
+              <input v-model="soldEndDate" type="date" class="eisa-field" style="font-size:0.8rem;padding:0.3rem 0.5rem;" />
+            </div>
+          </div>
+        </div>
+        <div style="padding:1rem 1.25rem;display:flex;flex-wrap:wrap;gap:1rem;">
+          <div class="dash-kpi-card" style="--kpi-c:#10B981;flex:1;min-width:200px;">
+            <div class="dash-kpi-accent"></div>
+            <div class="dash-kpi-body">
+              <div class="dash-kpi-top">
+                <span class="dash-kpi-label">Satış Sayısı</span>
+                <span class="dash-kpi-icon" style="color:#10B981;"><i class="fa-solid fa-cart-shopping"></i></span>
+              </div>
+              <div class="dash-kpi-number">
+                <span v-if="soldLoading"><i class="fa-solid fa-circle-notch fa-spin"></i></span>
+                <span v-else>{{ (soldData?.satis_sayisi ?? 0).toLocaleString('tr-TR') }}</span>
+              </div>
+              <div class="dash-kpi-sub">
+                <router-link
+                  :to="{ path: '/pharmacist/kiosk-activities', query: { tab: 'sessions', sold: 'true', ...(soldStartDate ? { start_date: soldStartDate } : {}), ...(soldEndDate ? { end_date: soldEndDate } : {}) } }"
+                  style="color:inherit;text-decoration:none;opacity:0.8;font-size:0.75rem;"
+                >Satış listesini gör →</router-link>
+              </div>
+            </div>
+          </div>
+          <div class="dash-kpi-card" style="--kpi-c:#0891B2;flex:1;min-width:200px;">
+            <div class="dash-kpi-accent"></div>
+            <div class="dash-kpi-body">
+              <div class="dash-kpi-top">
+                <span class="dash-kpi-label">En Çok Satılan Etken Madde</span>
+                <span class="dash-kpi-icon" style="color:#0891B2;"><i class="fa-solid fa-flask"></i></span>
+              </div>
+              <div v-if="soldLoading" class="dash-kpi-number"><i class="fa-solid fa-circle-notch fa-spin"></i></div>
+              <template v-else-if="soldData?.en_cok_satilan_etken_madde">
+                <div class="dash-kpi-number" style="font-size:1.1rem;word-break:break-word;">
+                  {{ soldData.en_cok_satilan_etken_madde.ad }}
+                </div>
+                <div class="dash-kpi-sub">{{ soldData.en_cok_satilan_etken_madde.sayi }} satış</div>
+              </template>
+              <div v-else class="dash-kpi-number" style="font-size:1rem;color:#6B7280;">—</div>
             </div>
           </div>
         </div>

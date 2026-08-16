@@ -75,6 +75,14 @@ export const listCreatives = (params = {}) =>
 export const createCreative = (data) =>
   http.post('/api/campaigns/v2/creatives/', data);
 
+/** Orijinal Creative medyasını indirmek için blob URL üretir (SuperAdmin). */
+export const downloadCreativeMedia = (creativeId) =>
+  http.get(`/api/campaigns/v2/creatives/${creativeId}/download/`, { responseType: 'blob' });
+
+/** Orijinal HouseAd medyasını indirmek için blob URL üretir (SuperAdmin). */
+export const downloadHouseAdMedia = (houseAdId) =>
+  http.get(`/api/campaigns/v2/house-ads/${houseAdId}/download/`, { responseType: 'blob' });
+
 // ── Media upload ──
 export async function uploadMedia(file, mediaKind) {
   const fd = new FormData();

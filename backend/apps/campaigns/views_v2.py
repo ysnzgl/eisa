@@ -11,6 +11,8 @@ Endpoint haritasi:
     GET    /api/campaigns/v2/{id}/timeline/?date=YYYY-MM-DD&hour=18
     GET    /api/campaigns/v2/pricing-matrix/  -> tek (singleton) — PUT/PATCH ile guncelle
     GET    /api/campaigns/v2/house-ads/
+    GET    /api/campaigns/v2/creatives/{id}/download/  -> orijinal dosya indirme (SuperAdmin)
+    GET    /api/campaigns/v2/house-ads/{id}/download/  -> orijinal dosya indirme (SuperAdmin)
     GET    /api/inventory/availability/?date=YYYY-MM-DD&hour=18[&kiosk=<id>]
 
   Kiosk Edge API (App-Key + MAC):
@@ -22,9 +24,11 @@ from __future__ import annotations
 
 import datetime as _dt
 import logging
+import mimetypes
 from typing import Iterable
 
 from django.conf import settings
+from django.http import StreamingHttpResponse
 
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -586,6 +590,50 @@ class CreativeViewSet(viewsets.ModelViewSet):
         with UnitOfWork(user=self.request.user) as uow:
             uow.delete(instance)
 
+    @action(detail=True, methods=["get"], url_path="download")
+    def download(self, request, pk=None):
+        """``GET /api/campaigns/v2/creatives/{id}/download/``
+
+        Orijinal medya dosyasını SuperAdmin için stream eder.
+        object_key DB'den alınır; kullanıcıdan kabul edilmez.
+        Content-Disposition: attachment ile indirilir.
+        Presigned URL DB'ye kaydedilmez.
+        """
+        creative = self.get_object()
+        object_key = creative.object_key
+        if not object_key:
+            return Response(
+                {"error": "Bu creative için object_key bulunamadı. Backfill gerekebilir."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        from apps.core.services.storage_service import StorageService
+        try:
+            storage = StorageService()
+            minio_resp = storage.client.get_object(storage.bucket_name, object_key)
+        except Exception:
+            logger.warning("Creative download: object not found in storage key=%s id=%s", object_key, pk)
+            return Response(
+                {"error": "Medya storage'da bulunamadı."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        filename = object_key.rsplit("/", 1)[-1]
+        content_type, _ = mimetypes.guess_type(object_key)
+        content_type = content_type or "application/octet-stream"
+
+        def _stream():
+            try:
+                for chunk in minio_resp.stream(amt=65536):
+                    yield chunk
+            finally:
+                minio_resp.close()
+                minio_resp.release_conn()
+
+        http_resp = StreamingHttpResponse(_stream(), content_type=content_type)
+        http_resp["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return http_resp
+
 
 class ScheduleRuleViewSet(viewsets.ModelViewSet):
     queryset = ScheduleRule.objects.select_related("campaign").all()
@@ -633,6 +681,49 @@ class HouseAdViewSet(viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         with UnitOfWork(user=self.request.user) as uow:
             uow.delete(instance)
+
+    @action(detail=True, methods=["get"], url_path="download")
+    def download(self, request, pk=None):
+        """``GET /api/campaigns/v2/house-ads/{id}/download/``
+
+        Orijinal medya dosyasını SuperAdmin için stream eder.
+        object_key DB'den alınır; kullanıcıdan kabul edilmez.
+        Content-Disposition: attachment ile indirilir.
+        """
+        house_ad = self.get_object()
+        object_key = house_ad.object_key
+        if not object_key:
+            return Response(
+                {"error": "Bu HouseAd için object_key bulunamadı. Backfill gerekebilir."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        from apps.core.services.storage_service import StorageService
+        try:
+            storage = StorageService()
+            minio_resp = storage.client.get_object(storage.bucket_name, object_key)
+        except Exception:
+            logger.warning("HouseAd download: object not found in storage key=%s id=%s", object_key, pk)
+            return Response(
+                {"error": "Medya storage'da bulunamadı."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        filename = object_key.rsplit("/", 1)[-1]
+        content_type, _ = mimetypes.guess_type(object_key)
+        content_type = content_type or "application/octet-stream"
+
+        def _stream():
+            try:
+                for chunk in minio_resp.stream(amt=65536):
+                    yield chunk
+            finally:
+                minio_resp.close()
+                minio_resp.release_conn()
+
+        http_resp = StreamingHttpResponse(_stream(), content_type=content_type)
+        http_resp["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return http_resp
 
 
 class PricingMatrixView(APIView):

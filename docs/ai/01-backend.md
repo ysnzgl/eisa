@@ -27,6 +27,7 @@
 - `backend/apps/kiosk_api/` — Kiosk API facade (`/api/kiosk/v1/`; bootstrap + operasyonel endpoint'ler)
 - `backend/apps/analytics/models.py` — OturumLogu/PlayLog models
 - `backend/apps/barkod_logo/` — Barkod Logo Yönetimi *(2026-08-11, DOOH'dan bağımsız)*
+- `backend/apps/destek/` — Görüş ve Destek (ticket) sistemi *(2026-08-15)*
 
 ---
 
@@ -73,6 +74,12 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 | `/api/kiosk/v1/diagnostics/` | `kiosk_api.KioskDiagnosticsView` | AppKey+MAC | Diagnostic (DB'ye yazılmaz) |
 | `/api/barkod-logo/logolar/` | `barkod_logo.BarkodLogoViewSet` | JWT (SuperAdmin) | Barkod Logo CRUD (DELETE=405) |
 | `/api/barkod-logo/upload-gorsel/` | `barkod_logo.BarkodLogoGorselUploadView` | JWT (SuperAdmin) | PNG yükleme (336×336, ≤1MB, no alfa, gri tonlu) |
+| `/api/destek/parametreler/` | `DestekParametresiListView` | JWT | Aktif destek parametreleri (TALEP_TURU/ALAN/ALT_KONU/DURUM) |
+| `/api/destek/talepler/` | `DestekTalebiViewSet` (list/create) | JWT | Liste: admin=tümü, eczacı=kendi eczanesi; filtrelenebilir, sayfalı |
+| `/api/destek/talepler/{id}/` | `DestekTalebiViewSet` (retrieve) | JWT | Detay + yorumlar |
+| `/api/destek/talepler/{id}/yorum-ekle/` | `DestekTalebiViewSet.yorum_ekle` | JWT | Yorum ekle; durum otomatik geçişi |
+| `/api/destek/talepler/{id}/durum-degistir/` | `DestekTalebiViewSet.durum_degistir` | JWT (SuperAdmin) | Admin durum değişikliği |
+| `/api/destek/talepler/yeni-sayisi/` | `DestekTalebiViewSet.yeni_sayisi` | JWT (SuperAdmin) | YENI sayısı (badge) |
 
 **RBAC:** `IsSuperAdmin`, `IsPharmacist`, `IsKiosk` permission sınıfları mevcut.
 
@@ -119,6 +126,12 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 
 ### Barkod Logo (`apps.barkod_logo`) *(new 2026-08-11 — DOOH sisteminden tamamen bağımsız)*
 - `BarkodLogo`: Kiosk fiş baskısında e-ISA başlığının yerini alacak logo. UUID PK, ad, media_url, object_key, checksum, baslangic_zamani, bitis_zamani, aktif, gunluk_baski_limiti (nullable ≥1), hedef_kiosklar M2M.
+
+### Destek (`apps.destek`) *(new 2026-08-15)*
+- `DestekParametresi`: Tek parametrik tablo. grup (TALEP_TURU/ALAN/ALT_KONU/DURUM), kod (unique, uygulama kodu), ad, ust_parametre (self-FK nullable PROTECT), sira, aktif. Pasif parametre fiziksel silinmez.
+- `TalepSayac`: `yil` PK, `son_sayi`. `select_for_update()` ile concurrency-safe ticket no üretimi (`EISA-YYYY-NNNNNN`).
+- `DestekTalebi`: Eczane destek talebi. talep_no (unique), eczane FK (PROTECT), olusturan_kullanici FK (PROTECT), talep_turu/alan/alt_konu/durum FK (PROTECT, DestekParametresi), kiosk FK (PROTECT nullable), aciklama (max 1000), son_hareket_tarihi.
+- `DestekYorumu`: Append-only yorum. talep FK (CASCADE), yorum_metni (max 1000). Yazar bilgisi BaseModel.olusturan alanından (SET_NULL) gelir.
 - **Fiziksel silme kapalı** (DELETE → 405). Geçmiş `OturumLogu.barkod_logo` kayıtları PROTECT ile korunur.
 - **PNG doğrulama** (yükleme endpoint'inde): 336×336 px, ≤1 MB, gri tonlu (RGB/RGBA için piksel piksel R=G=B kontrolü), şeffaf piksel yok (alpha channel + tRNS). stdlib (struct, zlib) — Pillow gerektirmez.
 - Catalog: `GET /api/kiosk/v1/catalog/` artık `barkod_logolar` snapshot içerir (aktif + bitis > now + hedef kiosk filtreli). Gelecek tarihli aktif logolar önceden dağıtılabilir.

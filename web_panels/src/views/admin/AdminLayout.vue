@@ -1,10 +1,11 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, reactive, onMounted } from 'vue';
 import { RouterView, RouterLink } from 'vue-router';
 import { useAuthStore } from '../../stores/auth';
 import { useRouter } from 'vue-router';
 import logoUrl from '../../assets/eisa_logo.svg';
 import PharmacistCampaignDisplay from '../../components/pharmacist/PharmacistCampaignDisplay.vue';
+import { http } from '../../services/api';
 
 const auth = useAuthStore();
 const router = useRouter();
@@ -14,8 +15,20 @@ async function logout() {
   router.push('/login');
 }
 
-const isAdmin = computed(() => auth.role === 'superadmin');
+const isAdmin      = computed(() => auth.role === 'superadmin');
 const isPharmacist = computed(() => auth.role === 'pharmacist');
+
+const navBadges = reactive({ destekYeni: 0 });
+
+async function fetchNavBadges() {
+  if (!isAdmin.value) return;
+  try {
+    const { data } = await http.get('/api/destek/talepler/yeni-sayisi/', { __silent: true });
+    navBadges.destekYeni = data.sayi ?? 0;
+  } catch { /* badge hatası kullanıcıyı engellemesin */ }
+}
+
+onMounted(fetchNavBadges);
 
 const adminNavItems = [
   { to: '/admin',               exact: true, icon: 'fa-chart-line',   label: 'Dashboard' },
@@ -26,10 +39,11 @@ const adminNavItems = [
   { to: '/admin/danisma',                    icon: 'fa-comments',      label: 'Danışma Kategorileri' },
   { to: '/admin/content-management',         icon: 'fa-images',        label: 'İçerik Yönetimi' },
   { to: '/admin/campaigns',                  icon: 'fa-display',       label: 'Kiosk Kampanyaları' },
+  { to: '/admin/house-ads',                  icon: 'fa-photo-film',    label: 'HouseAd Yönetimi' },
   { to: '/admin/pharmacy-campaigns',         icon: 'fa-prescription-bottle-medical', label: 'Eczacı Paneli Kampanyaları' },
   { to: '/admin/barkod-logolar',             icon: 'fa-barcode',       label: 'Barkod Logo Yönetimi' },
+  { to: '/admin/destek',                     icon: 'fa-headset',       label: 'Görüş ve Destek', badgeKey: 'destekYeni' },
   { to: '/admin/dooh/control-center',        icon: 'fa-gauge-high',    label: 'Kontrol Merkezi' },
-  // Gelişmiş Manuel Yayın — salt okunur; ana kampanya yolu CampaignWizard
   { to: '/admin/playlists',                  icon: 'fa-list-ol',       label: 'Gelişmiş Manuel Yayın' },
   { to: '/admin/pricing',                    icon: 'fa-coins',         label: 'Fiyat Matrisi' },
   { to: '/admin/users',                      icon: 'fa-user-gear',     label: 'Kullanıcı Yönetimi' },
@@ -39,6 +53,7 @@ const pharmacistNavItems = [
   { to: '/pharmacist',          exact: true, icon: 'fa-house',      label: 'Ana Sayfa' },
   { to: '/pharmacist/kiosk-activities',      icon: 'fa-display',    label: 'Kiosk Hareketleri' },
   { to: '/pharmacist/qr',                    icon: 'fa-qrcode',     label: 'QR Okutma' },
+  { to: '/pharmacist/destek',                icon: 'fa-headset',    label: 'Görüş ve Destek' },
 ];
 
 const navItems   = computed(() => isAdmin.value ? adminNavItems : pharmacistNavItems);
@@ -66,6 +81,9 @@ const roleLabel  = computed(() => isAdmin.value ? 'Süper Admin' : 'Eczacı');
         >
           <i class="fa-solid" :class="item.icon"></i>
           <span>{{ item.label }}</span>
+          <span v-if="item.badgeKey && navBadges[item.badgeKey] > 0" class="nav-badge">
+            {{ navBadges[item.badgeKey] }}
+          </span>
         </RouterLink>
       </nav>
 

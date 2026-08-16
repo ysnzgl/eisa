@@ -939,6 +939,13 @@ body {
 .admin-sidebar .nav-link i { width: 18px; text-align: center; font-size: 0.95rem; color: #6B7280; }
 .admin-sidebar .nav-link:hover { background: #F3F4F6; color: #111827; }
 .admin-sidebar .nav-link:hover i { color: #B1121B; }
+.admin-sidebar .nav-badge {
+  margin-left: auto;
+  background: #B1121B; color: #fff;
+  font-size: 0.65rem; font-weight: 700; line-height: 1;
+  padding: 0.18rem 0.42rem; border-radius: 10px; min-width: 18px; text-align: center;
+  flex-shrink: 0;
+}
 .admin-sidebar .nav-link.is-active,
 .admin-sidebar .nav-link.router-link-exact-active {
   background: linear-gradient(135deg, rgba(177,18,27,0.12), rgba(177,18,27,0.05));

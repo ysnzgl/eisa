@@ -77,7 +77,7 @@ class CreativeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Creative
         fields = ["id", "campaign", "media_url", "active_media_url", "duration_seconds", "name",
-                  "checksum", "object_key", "weight", "is_grid_compliant"]
+                  "checksum", "object_key", "active_object_key", "weight", "is_grid_compliant"]
         read_only_fields = ("id", "is_grid_compliant")
 
     def validate_duration_seconds(self, value: int) -> int:
@@ -98,6 +98,8 @@ class CreativeSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         if not attrs.get("object_key"):
             attrs["object_key"] = _derive_object_key_from_url(attrs.get("media_url", ""))
+        if not attrs.get("active_object_key") and attrs.get("active_media_url"):
+            attrs["active_object_key"] = _derive_object_key_from_url(attrs.get("active_media_url", ""))
         return attrs
 
 
@@ -246,20 +248,6 @@ class HouseAdSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 f"duration_seconds {value} 15sn grid ile uyumsuz. "
                 f"Izin verilen: 15 / 30 / 45 / 60 saniye."
-            )
-        return value
-
-    _VIDEO_EXTENSIONS = frozenset(
-        {".mp4", ".webm", ".ogg", ".mov", ".avi", ".mkv", ".flv", ".wmv"}
-    )
-
-    def validate_media_url(self, value: str) -> str:
-        # URL uzantısı üzerinden video reddi (upload akışı dışı doğrudan set için guard).
-        import os
-        ext = os.path.splitext(value.lower().split("?")[0])[1]
-        if ext in self._VIDEO_EXTENSIONS:
-            raise serializers.ValidationError(
-                "HouseAd yalnizca gorsel (PNG/JPEG/WebP) olabilir; video URL kabul edilmez."
             )
         return value
 

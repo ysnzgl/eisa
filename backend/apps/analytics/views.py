@@ -11,7 +11,7 @@ from datetime import timedelta
 import re
 
 from django.db.models import Count
-from django.db.models.functions import TruncDate
+from django.db.models.functions import Coalesce, TruncDate
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.pagination import CursorPagination, PageNumberPagination
@@ -138,6 +138,14 @@ def _build_oturum_queryset(request):
     end_date = params.get("end_date")
     if end_date:
         qs = qs.filter(olusturulma_tarihi__date__lte=end_date)
+
+    # Satış durumu
+    sold = params.get("sold")
+    if sold is not None:
+        if str(sold).lower() in ("true", "1"):
+            qs = qs.filter(sold=True)
+        elif str(sold).lower() in ("false", "0"):
+            qs = qs.filter(sold=False)
 
     return qs
 
@@ -439,6 +447,36 @@ class AdminDashboardView(APIView):
             .order_by("-olusturulma_tarihi")[:5]
         ]
 
+        # Satış istatistikleri — start_date/end_date parametrelerine duyarlı
+        params = request.query_params
+        start_date = params.get("start_date")
+        end_date = params.get("end_date")
+
+        sold_qs = OturumLogu.objects.filter(sold=True)
+        if start_date:
+            sold_qs = sold_qs.filter(olusturulma_tarihi__date__gte=start_date)
+        if end_date:
+            sold_qs = sold_qs.filter(olusturulma_tarihi__date__lte=end_date)
+        satis_sayisi = sold_qs.count()
+
+        em_qs = OturumOnerilenEtkenMadde.objects.filter(oturum__sold=True)
+        if start_date:
+            em_qs = em_qs.filter(oturum__olusturulma_tarihi__date__gte=start_date)
+        if end_date:
+            em_qs = em_qs.filter(oturum__olusturulma_tarihi__date__lte=end_date)
+
+        top_em = (
+            em_qs
+            .annotate(em_adi=Coalesce("etken_madde__ad", "etken_madde_adi_snapshot"))
+            .values("em_adi")
+            .annotate(sayi=Count("id"))
+            .order_by("-sayi")
+            .first()
+        )
+        en_cok_satilan = (
+            {"ad": top_em["em_adi"], "sayi": top_em["sayi"]} if top_em else None
+        )
+
         return Response(
             {
                 "toplam_eczane": toplam_eczane,
@@ -450,6 +488,8 @@ class AdminDashboardView(APIView):
                 "haftalik_trend": haftalik,
                 "kategori_dagilim": kategori_dagilim,
                 "son_reklamlar": son_reklamlar,
+                "satis_sayisi": satis_sayisi,
+                "en_cok_satilan_etken_madde": en_cok_satilan,
             }
         )
 
@@ -487,9 +527,14 @@ class KioskActivityView(APIView):
 
     def get(self, request):
         qs = _build_oturum_queryset(request)
+        is_sold_view = request.query_params.get("sold") in ("true", "1")
+        if is_sold_view:
+            qs = qs.prefetch_related("onerilen_etken_madde_detaylari__etken_madde")
         paginator = KioskActivityPagination()
         page = paginator.paginate_queryset(qs, request)
-        serializer = KioskActivityListSerializer(page, many=True)
+        serializer = KioskActivityListSerializer(
+            page, many=True, context={"include_ingredients": is_sold_view}
+        )
         return paginator.get_paginated_response(serializer.data)
 
 

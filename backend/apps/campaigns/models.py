@@ -237,6 +237,13 @@ class Creative(BaseModel):
             "Bos birakılırsa AdStrip'te bekleme ekrani gorseli fallback olarak kullanilir."
         ),
     )
+    active_object_key = models.CharField(
+        max_length=512, null=True, blank=True,
+        help_text=(
+            "active_media_url icin S3/RustFS obje anahtarı (örn. ads/abc123.mp4). "
+            "NULL ise backfill_media_object_keys komutuyla doldurulabilir."
+        ),
+    )
 
     _GRID_DURATIONS = frozenset({15, 30, 45, 60})
 

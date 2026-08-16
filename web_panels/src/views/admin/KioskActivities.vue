@@ -4,16 +4,23 @@
  *
  * Tüm eczane ve kioskların QR/oturum hareketleri ile kampanya gösterimleri.
  * Drill-down: ?tab=sessions&durum=EXPIRED&kiosk_id=...&campaign_id=...
- * Bağımlı filtreler: il → ilçe → eczane → kiosk
+ *
+ * Eczane/Kiosk seçimi: EisaLookup — "İl / İlçe / Eczane" ve "İl / İlçe / Eczane / Kiosk"
+ * birleşik etiketleriyle tek arama kutusundan arama.
  */
 import { ref, computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { getKioskActivities, getCampaignImpressions, getKioskEvents } from '../../services/analytics';
-import { getPharmacies, getKioskStatus } from '../../services/devices';
-import { getIller, getIlceler } from '../../services/lookups';
 import { getKioskDayStream } from '../../services/dooh.js';
 import { calcKioskRolloutStatus } from '../../composables/useKioskRolloutStatus.js';
+import { fmtDT } from '../../composables/useActivityFormatters.js';
 import SessionDetailModal from '../../components/SessionDetailModal.vue';
+import EczanePicker from '../../components/shared/EczanePicker.vue';
+import KioskPicker from '../../components/shared/KioskPicker.vue';
+import SessionsPanel from '../../components/kiosk/SessionsPanel.vue';
+import SalesPanel from '../../components/kiosk/SalesPanel.vue';
+import ImpressionsPanel from '../../components/kiosk/ImpressionsPanel.vue';
+import EventsPanel from '../../components/kiosk/EventsPanel.vue';
 
 const route  = useRoute();
 const router = useRouter();
@@ -21,6 +28,7 @@ const router = useRouter();
 // ─── Tab ───────────────────────────────────────────────────────────────────────────────
 const TABS = [
   { key: 'sessions',    label: 'QR / Oturum İşlemleri', icon: 'fa-qrcode'   },
+  { key: 'sales',       label: 'Satışlar',               icon: 'fa-cart-shopping' },
   { key: 'impressions', label: 'Kampanya Gösterimleri',  icon: 'fa-bullhorn' },
   { key: 'events',      label: 'Kiosk Olayları',          icon: 'fa-triangle-exclamation' },
   { key: 'broadcast',   label: 'Yayın Akışı',              icon: 'fa-tv'       },
@@ -29,8 +37,6 @@ const activeTab = ref(route.query.tab || 'sessions');
 
 // ─── Filtreler ────────────────────────────────────────────────────────────────
 const filters = ref({
-  il_id:       route.query.il_id       || '',
-  ilce_id:     route.query.ilce_id     || '',
   eczane_id:    route.query.eczane_id    || '',
   kiosk_id:     route.query.kiosk_id     || '',
   durum:        route.query.durum        || '',
@@ -42,52 +48,19 @@ const filters = ref({
   end_date:     route.query.end_date     || '',
 });
 
-// ─── Bağımlı lookup listeleri ─────────────────────────────────────────────────
-const iller     = ref([]);
-const ilceler   = ref([]);
-const eczaneler = ref([]);
-const kioskler  = ref([]);
-
-async function loadIller() {
-  try { iller.value = await getIller(); } catch { /* */ }
-}
-
-watch(() => filters.value.il_id, async (ilId) => {
-  filters.value.ilce_id = '';
-  filters.value.eczane_id = '';
-  filters.value.kiosk_id = '';
-  ilceler.value = [];
-  eczaneler.value = [];
-  kioskler.value = [];
-  if (!ilId) return;
-  try { ilceler.value = await getIlceler(ilId); } catch { /* */ }
-});
-
-watch(() => filters.value.ilce_id, async (ilceId) => {
-  filters.value.eczane_id = '';
-  filters.value.kiosk_id = '';
-  eczaneler.value = [];
-  kioskler.value = [];
-  if (!ilceId) return;
-  try {
-    const all = await getPharmacies();
-    eczaneler.value = all.filter((e) => e.ilce === Number(ilceId));
-  } catch { /* */ }
-});
-
-watch(() => filters.value.eczane_id, async (eczaneId) => {
-  filters.value.kiosk_id = '';
-  kioskler.value = [];
-  if (!eczaneId) return;
-  try { kioskler.value = await getKioskStatus(Number(eczaneId)); } catch { /* */ }
-});
-
 // ─── Oturum listesi ───────────────────────────────────────────────────────────
 const sessions      = ref([]);
 const sessionsTotal = ref(0);
 const sessionsPage  = ref(Number(route.query.page) || 1);
 const sessionsLoad  = ref(false);
 const sessionsError = ref('');
+
+// Satışlar sekmesi için ayrı state
+const sales      = ref([]);
+const salesTotal = ref(0);
+const salesPage  = ref(1);
+const salesLoad  = ref(false);
+const salesError = ref('');
 
 async function loadSessions() {
   sessionsLoad.value  = true;
@@ -102,6 +75,23 @@ async function loadSessions() {
     sessionsError.value = 'Oturumlar yüklenemedi.';
   } finally {
     sessionsLoad.value = false;
+  }
+}
+
+async function loadSales() {
+  salesLoad.value  = true;
+  salesError.value = '';
+  try {
+    const params = buildSessionParams();
+    params.sold = 'true';
+    params.page = salesPage.value;
+    const { data } = await getKioskActivities(params);
+    sales.value      = data.results ?? data;
+    salesTotal.value = data.count ?? 0;
+  } catch {
+    salesError.value = 'Satışlar yüklenemedi.';
+  } finally {
+    salesLoad.value = false;
   }
 }
 
@@ -131,14 +121,14 @@ async function loadImpressions() {
 // ─── Param builders ───────────────────────────────────────────────────────────
 function buildSessionParams() {
   const p = {};
-  ['il_id','ilce_id','eczane_id','kiosk_id','durum','oturum_tipi','hassas_akis','kategori_slug','start_date','end_date']
+  ['eczane_id','kiosk_id','durum','oturum_tipi','hassas_akis','kategori_slug','start_date','end_date']
     .forEach((k) => { if (filters.value[k]) p[k] = filters.value[k]; });
   return p;
 }
 
 function buildImpressionParams() {
   const p = {};
-  ['il_id','ilce_id','eczane_id','kiosk_id','campaign_id','start_date','end_date']
+  ['eczane_id','kiosk_id','campaign_id','start_date','end_date']
     .forEach((k) => { if (filters.value[k]) p[k] = filters.value[k]; });
   return p;
 }
@@ -177,14 +167,16 @@ function applyFilters() {
   sessionsPage.value = 1;
   impressionsPage.value = 1;
   eventsPage.value = 1;
+  salesPage.value = 1;
   syncUrl();
   if (activeTab.value === 'sessions') loadSessions();
+  else if (activeTab.value === 'sales') loadSales();
   else if (activeTab.value === 'impressions') loadImpressions();
   else loadEvents();
 }
 
 function clearFilters() {
-  filters.value = { il_id:'', ilce_id:'', eczane_id:'', kiosk_id:'', durum:'', oturum_tipi:'', hassas_akis:'', campaign_id:'', kategori_slug:'', start_date:'', end_date:'' };
+  filters.value = { eczane_id:'', kiosk_id:'', durum:'', oturum_tipi:'', hassas_akis:'', campaign_id:'', kategori_slug:'', start_date:'', end_date:'' };
   applyFilters();
 }
 
@@ -192,6 +184,7 @@ function setTab(key) {
   activeTab.value = key;
   syncUrl();
   if (key === 'sessions') loadSessions();
+  else if (key === 'sales') loadSales();
   else if (key === 'impressions') loadImpressions();
   else if (key === 'events') loadEvents();
   else if (key === 'broadcast') loadDayStream();
@@ -199,7 +192,13 @@ function setTab(key) {
 
 // ─── Yayın Akışı ──────────────────────────────────────────────────────────────────────
 const bcastKioskId  = ref(filters.value.kiosk_id || '');
-const bcastDate     = ref(new Date().toISOString().slice(0, 10)); // YYYY-MM-DD Istanbul
+// Varsayılan gün: yarın (Istanbul)
+function _tomorrowIstanbul() {
+  const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+const bcastDate     = ref(_tomorrowIstanbul());
 const bcastLoading  = ref(false);
 const bcastError    = ref('');
 const bcastData     = ref(null);  // API yanıtı
@@ -302,24 +301,14 @@ const selected = ref(null);
 function openDetail(row) { selected.value = row; }
 function closeDetail()   { selected.value = null; }
 
-// ─── Formatters ──────────────────────────────────────────────────────────────
-const DURUM_LABEL = {
-  COMPLETED: { text: 'Tamamlandı',  cls: 'eisa-pill-success' },
-  ABANDONED: { text: 'Terk Edildi', cls: 'eisa-pill-warning' },
-  EXPIRED:   { text: 'Süresi Doldu',cls: 'eisa-pill-danger'  },
-};
-
-function fmtDT(iso) {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleString('tr-TR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
-}
-
 const totalPages = computed(() => Math.ceil(sessionsTotal.value / 50) || 1);
 const impTotalPages = computed(() => Math.ceil(impressionsTotal.value / 50) || 1);
+const salesTotalPages = computed(() => Math.ceil(salesTotal.value / 50) || 1);
+const eventsTotalPages = computed(() => Math.ceil(eventsTotal.value / 50) || 1);
 
 onMounted(() => {
-  loadIller();
   if (activeTab.value === 'sessions') loadSessions();
+  else if (activeTab.value === 'sales') loadSales();
   else if (activeTab.value === 'impressions') loadImpressions();
   else if (activeTab.value === 'events') loadEvents();
   else if (activeTab.value === 'broadcast') loadDayStream();
@@ -351,48 +340,24 @@ onMounted(() => {
       </button>
     </div>
 
-    <!-- Filtreler — bağımlı zincir: il → ilçe → eczane → kiosk -->
-    <div class="eisa-panel" style="margin-bottom:1.25rem;">
+    <!-- Filtreler — sadece broadcast dışındaki sekmelerde göster -->
+    <div v-if="activeTab !== 'broadcast'" class="eisa-panel" style="margin-bottom:1.25rem;">
       <div class="eisa-panel-header">
         <span class="eisa-panel-title"><i class="fa-solid fa-filter" style="margin-right:0.4rem;"></i>Filtreler</span>
         <button class="eisa-btn eisa-btn-ghost" style="font-size:0.78rem;" @click="clearFilters">Temizle</button>
       </div>
       <div style="padding:1rem 1.25rem;display:flex;flex-wrap:wrap;gap:0.75rem;align-items:flex-end;">
 
-        <!-- İl -->
-        <div style="flex:1;min-width:120px;">
-          <label class="eisa-label">İl</label>
-          <select v-model="filters.il_id" class="eisa-field">
-            <option value="">Tümü</option>
-            <option v-for="il in iller" :key="il.id" :value="il.id">{{ il.ad }}</option>
-          </select>
-        </div>
-
-        <!-- İlçe (il seçilince dolar) -->
-        <div style="flex:1;min-width:120px;">
-          <label class="eisa-label">İlçe</label>
-          <select v-model="filters.ilce_id" :disabled="!ilceler.length" class="eisa-field">
-            <option value="">Tümü</option>
-            <option v-for="ilce in ilceler" :key="ilce.id" :value="ilce.id">{{ ilce.ad }}</option>
-          </select>
-        </div>
-
-        <!-- Eczane (ilçe seçilince dolar) -->
-        <div style="flex:1;min-width:140px;">
+        <!-- Eczane AutoComplete -->
+        <div style="flex:2;min-width:220px;">
           <label class="eisa-label">Eczane</label>
-          <select v-model="filters.eczane_id" :disabled="!eczaneler.length" class="eisa-field">
-            <option value="">Tümü</option>
-            <option v-for="e in eczaneler" :key="e.id" :value="e.id">{{ e.name }}</option>
-          </select>
+          <EczanePicker v-model="filters.eczane_id" />
         </div>
 
-        <!-- Kiosk (eczane seçilince dolar) -->
-        <div style="flex:1;min-width:140px;">
+        <!-- Kiosk AutoComplete -->
+        <div style="flex:2;min-width:220px;">
           <label class="eisa-label">Kiosk</label>
-          <select v-model="filters.kiosk_id" :disabled="!kioskler.length" class="eisa-field">
-            <option value="">Tümü</option>
-            <option v-for="k in kioskler" :key="k.id" :value="k.id">{{ k.ad || k.mac }}</option>
-          </select>
+          <KioskPicker v-model="filters.kiosk_id" :eczane-id="filters.eczane_id" />
         </div>
 
         <template v-if="activeTab === 'sessions'">
@@ -406,22 +371,13 @@ onMounted(() => {
               <option value="EXPIRED">Süresi Doldu</option>
             </select>
           </div>
-          <!-- Oturum tipi -->
+          <!-- İşlem Türü -->
           <div style="flex:1;min-width:150px;">
             <label class="eisa-label">İşlem Türü</label>
             <select v-model="filters.oturum_tipi" class="eisa-field">
               <option value="">Tümü</option>
               <option value="SIKAYET">Şikayet</option>
               <option value="OZEL_DANISMANLIK">Özel Danışmanlık</option>
-            </select>
-          </div>
-          <!-- Hassas -->
-          <div style="flex:0 0 110px;">
-            <label class="eisa-label">Hassas</label>
-            <select v-model="filters.hassas_akis" class="eisa-field">
-              <option value="">Tümü</option>
-              <option value="true">Evet</option>
-              <option value="false">Hayır</option>
             </select>
           </div>
         </template>
@@ -444,184 +400,49 @@ onMounted(() => {
 
     <!-- ── Oturum Listesi ─────────────────────────────────────────────────── -->
     <template v-if="activeTab === 'sessions'">
-      <!-- Kategori drill-down banner -->
       <div v-if="filters.kategori_slug" style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem;padding:0.5rem 0.75rem;background:rgba(124,58,237,0.08);border:1px solid rgba(124,58,237,0.25);border-radius:6px;font-size:0.82rem;color:#a78bfa;">
         <i class="fa-solid fa-filter"></i>
         Kategori filtresi aktif: <strong>{{ filters.kategori_slug }}</strong>
         <button class="eisa-btn eisa-btn-ghost" style="font-size:0.72rem;padding:0.15rem 0.4rem;margin-left:auto;" @click="filters.kategori_slug=''; applyFilters()">Kaldır</button>
       </div>
-      <div v-if="sessionsLoad" style="padding:3rem;text-align:center;color:#6B7280;">
-        <i class="fa-solid fa-circle-notch fa-spin" style="font-size:1.5rem;"></i>
-      </div>
-      <div v-else-if="sessionsError" class="eisa-error-banner" style="margin-bottom:1rem;">
-        <i class="fa-solid fa-triangle-exclamation"></i> {{ sessionsError }}
-      </div>
-      <template v-else>
-        <div v-if="sessions.length === 0" class="eisa-panel" style="padding:3rem;text-align:center;color:#6B7280;">
-          <i class="fa-regular fa-folder-open" style="font-size:2rem;opacity:0.3;display:block;margin-bottom:0.75rem;"></i>
-          <p>Bu filtreye ait kayıt bulunamadı.</p>
-        </div>
-        <div v-else class="eisa-panel">
-          <div style="overflow-x:auto;">
-            <table class="eisa-table">
-              <thead>
-                <tr>
-                  <th>QR</th>
-                  <th>Eczane</th>
-                  <th>Kiosk</th>
-                  <th>Tür</th>
-                  <th>Durum</th>
-                  <th>Hassas</th>
-                  <th>Danışma</th>
-                  <th>Tarih</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="row in sessions" :key="row.id">
-                  <td style="font-family:'DM Mono',monospace;font-size:0.82rem;font-weight:700;">{{ row.qr_kodu }}</td>
-                  <td style="font-size:0.82rem;">{{ row.eczane_adi || '—' }}</td>
-                  <td style="font-size:0.82rem;">{{ row.kiosk_ad || '—' }}</td>
-                  <td>
-                    <span class="eisa-pill eisa-pill-muted" style="font-size:0.7rem;">
-                      {{ row.oturum_tipi === 'OZEL_DANISMANLIK' ? 'Danışmanlık' : 'Şikayet' }}
-                    </span>
-                  </td>
-                  <td>
-                    <span class="eisa-pill" :class="DURUM_LABEL[row.durum]?.cls || 'eisa-pill-muted'" style="font-size:0.7rem;">
-                      {{ DURUM_LABEL[row.durum]?.text || row.durum }}
-                    </span>
-                  </td>
-                  <td>
-                    <i v-if="row.hassas_akis" class="fa-solid fa-triangle-exclamation" style="color:#F59E0B;"></i>
-                    <span v-else style="color:#6B7280;">—</span>
-                  </td>
-                  <td>
-                    <i v-if="row.danisma_tamamlandi" class="fa-solid fa-check-circle" style="color:#10B981;"></i>
-                    <span v-else style="color:#6B7280;">Bekliyor</span>
-                  </td>
-                  <td style="white-space:nowrap;font-size:0.78rem;color:#9CA3AF;">{{ fmtDT(row.olusturulma_tarihi) }}</td>
-                  <td>
-                    <button class="eisa-btn eisa-btn-ghost" style="font-size:0.75rem;padding:0.25rem 0.5rem;" @click="openDetail(row)">
-                      Detay
-                    </button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <!-- Pagination -->
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:0.75rem 1.25rem;border-top:1px solid rgba(255,255,255,0.06);">
-            <span style="font-size:0.8rem;color:#9CA3AF;">{{ sessionsTotal }} kayıt</span>
-            <div style="display:flex;gap:0.5rem;">
-              <button class="eisa-btn eisa-btn-ghost" :disabled="sessionsPage <= 1"
-                @click="sessionsPage--; syncUrl(); loadSessions()"><i class="fa-solid fa-chevron-left"></i></button>
-              <span style="font-size:0.8rem;padding:0.4rem 0.6rem;">{{ sessionsPage }} / {{ totalPages }}</span>
-              <button class="eisa-btn eisa-btn-ghost" :disabled="sessionsPage >= totalPages"
-                @click="sessionsPage++; syncUrl(); loadSessions()"><i class="fa-solid fa-chevron-right"></i></button>
-            </div>
-          </div>
-        </div>
-      </template>
+      <SessionsPanel
+        :rows="sessions" :loading="sessionsLoad" :error="sessionsError"
+        :total="sessionsTotal" :page="sessionsPage" :total-pages="totalPages"
+        :show-eczane="true" :warn-danismanlik="true"
+        @change-page="(p) => { sessionsPage = p; syncUrl(); loadSessions(); }"
+        @open-detail="openDetail"
+      />
+    </template>
+
+    <!-- ── Satışlar Listesi ──────────────────────────────────────────────── -->
+    <template v-if="activeTab === 'sales'">
+      <SalesPanel
+        :rows="sales" :loading="salesLoad" :error="salesError"
+        :total="salesTotal" :page="salesPage" :total-pages="salesTotalPages"
+        :show-eczane="true"
+        @change-page="(p) => { salesPage = p; loadSales(); }"
+        @open-detail="openDetail"
+      />
     </template>
 
     <!-- ── Gösterim Listesi ───────────────────────────────────────────────── -->
     <template v-if="activeTab === 'impressions'">
-      <div v-if="impressionsLoad" style="padding:3rem;text-align:center;color:#6B7280;">
-        <i class="fa-solid fa-circle-notch fa-spin" style="font-size:1.5rem;"></i>
-      </div>
-      <div v-else-if="impressionsError" class="eisa-error-banner">
-        <i class="fa-solid fa-triangle-exclamation"></i> {{ impressionsError }}
-      </div>
-      <template v-else>
-        <div v-if="impressions.length === 0" class="eisa-panel" style="padding:3rem;text-align:center;color:#6B7280;">
-          <i class="fa-regular fa-folder-open" style="font-size:2rem;opacity:0.3;display:block;margin-bottom:0.75rem;"></i>
-          <p>Bu filtreye ait gösterim bulunamadı.</p>
-        </div>
-        <div v-else class="eisa-panel">
-          <div style="overflow-x:auto;">
-            <table class="eisa-table">
-              <thead>
-                <tr>
-                  <th>Kampanya</th>
-                  <th>Eczane</th>
-                  <th>Kiosk</th>
-                  <th>Süre</th>
-                  <th>Tarih</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="row in impressions" :key="row.id">
-                  <td>{{ row.campaign_adi || row.house_ad_adi || '—' }}</td>
-                  <td style="font-size:0.82rem;">{{ row.eczane_adi || '—' }}</td>
-                  <td style="font-size:0.82rem;">{{ row.kiosk_ad || '—' }}</td>
-                  <td>{{ row.duration_played }}sn</td>
-                  <td style="white-space:nowrap;font-size:0.78rem;color:#9CA3AF;">{{ fmtDT(row.played_at) }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:0.75rem 1.25rem;border-top:1px solid rgba(255,255,255,0.06);">
-            <span style="font-size:0.8rem;color:#9CA3AF;">{{ impressionsTotal }} gösterim</span>
-            <div style="display:flex;gap:0.5rem;">
-              <button class="eisa-btn eisa-btn-ghost" :disabled="impressionsPage <= 1"
-                @click="impressionsPage--; loadImpressions()"><i class="fa-solid fa-chevron-left"></i></button>
-              <span style="font-size:0.8rem;padding:0.4rem 0.6rem;">{{ impressionsPage }} / {{ impTotalPages }}</span>
-              <button class="eisa-btn eisa-btn-ghost" :disabled="impressionsPage >= impTotalPages"
-                @click="impressionsPage++; loadImpressions()"><i class="fa-solid fa-chevron-right"></i></button>
-            </div>
-          </div>
-        </div>
-      </template>
+      <ImpressionsPanel
+        :rows="impressions" :loading="impressionsLoad" :error="impressionsError"
+        :total="impressionsTotal" :page="impressionsPage" :total-pages="impTotalPages"
+        :show-eczane="true"
+        @change-page="(p) => { impressionsPage = p; loadImpressions(); }"
+      />
     </template>
 
     <!-- ── Olaylar Listesi (Faz 4) ───────────────────────────────────────── -->
     <template v-if="activeTab === 'events'">
-      <div v-if="eventsLoad" style="padding:3rem;text-align:center;color:#6B7280;">
-        <i class="fa-solid fa-circle-notch fa-spin" style="font-size:1.5rem;"></i>
-      </div>
-      <div v-else-if="eventsError" class="eisa-error-banner">
-        <i class="fa-solid fa-triangle-exclamation"></i> {{ eventsError }}
-      </div>
-      <template v-else>
-        <div v-if="events.length === 0" class="eisa-panel" style="padding:3rem;text-align:center;color:#6B7280;">
-          <i class="fa-regular fa-folder-open" style="font-size:2rem;opacity:0.3;display:block;margin-bottom:0.75rem;"></i>
-          <p>Bu filtreye ait kiosk olayı bulunamadı.</p>
-        </div>
-        <div v-else class="eisa-panel">
-          <div style="overflow-x:auto;">
-            <table class="eisa-table">
-              <thead>
-                <tr><th>Eczane</th><th>Kiosk</th><th>Olay Türü</th><th>Önem</th><th>Mesaj</th><th>Tarih</th></tr>
-              </thead>
-              <tbody>
-                <tr v-for="row in events" :key="row.id">
-                  <td style="font-size:0.82rem;">{{ row.eczane_adi || '—' }}</td>
-                  <td style="font-size:0.82rem;">{{ row.kiosk_ad || '—' }}</td>
-                  <td><span class="eisa-pill eisa-pill-muted" style="font-size:0.7rem;">{{ row.event_type }}</span></td>
-                  <td>
-                    <span class="eisa-pill" :class="row.severity === 'ERROR' || row.severity === 'CRITICAL' ? 'eisa-pill-danger' : row.severity === 'WARNING' ? 'eisa-pill-warning' : 'eisa-pill-muted'" style="font-size:0.7rem;">
-                      {{ row.severity }}
-                    </span>
-                  </td>
-                  <td style="font-size:0.82rem;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ row.message || '—' }}</td>
-                  <td style="white-space:nowrap;font-size:0.78rem;color:#9CA3AF;">{{ fmtDT(row.olusturulma_tarihi) }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:0.75rem 1.25rem;border-top:1px solid rgba(255,255,255,0.06);">
-            <span style="font-size:0.8rem;color:#9CA3AF;">{{ eventsTotal }} olay</span>
-            <div style="display:flex;gap:0.5rem;">
-              <button class="eisa-btn eisa-btn-ghost" :disabled="eventsPage <= 1"
-                @click="eventsPage--; loadEvents()"><i class="fa-solid fa-chevron-left"></i></button>
-              <span style="font-size:0.8rem;padding:0.4rem 0.6rem;">{{ eventsPage }}</span>
-              <button class="eisa-btn eisa-btn-ghost" :disabled="events.length < 50"
-                @click="eventsPage++; loadEvents()"><i class="fa-solid fa-chevron-right"></i></button>
-            </div>
-          </div>
-        </div>
-      </template>
+      <EventsPanel
+        :rows="events" :loading="eventsLoad" :error="eventsError"
+        :total="eventsTotal" :page="eventsPage" :total-pages="eventsTotalPages"
+        :show-eczane="true"
+        @change-page="(p) => { eventsPage = p; loadEvents(); }"
+      />
     </template>
 
     <!-- ── Yayın Akışı ──────────────────────────────────────────────────── -->
@@ -629,13 +450,9 @@ onMounted(() => {
       <!-- Üst kontrol çubuğu -->
       <div class="eisa-panel" style="margin-bottom:1rem;padding:1rem 1.25rem;">
         <div style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:flex-end;">
-          <div style="flex:1;min-width:180px;">
+          <div style="flex:2;min-width:220px;">
             <label class="eisa-label">Kiosk</label>
-            <select v-model="bcastKioskId" class="eisa-field">
-              <option value="">— Kiosk seçin —</option>
-              <option v-for="k in kioskler" :key="k.id" :value="k.id">{{ k.ad || k.mac }}</option>
-            </select>
-            <p v-if="!kioskler.length" class="muted small" style="margin-top:0.25rem;">Kiosk için önce eczane seçin (Filtreler paneli).</p>
+            <KioskPicker v-model="bcastKioskId" />
           </div>
           <div style="flex:0 0 160px;">
             <label class="eisa-label">Tarih</label>

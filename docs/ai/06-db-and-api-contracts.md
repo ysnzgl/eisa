@@ -40,6 +40,58 @@
 - kiosk FK (nullable, SET_NULL — OneToOne), olusturulma_tarihi, guncellenme_tarihi, surum
 - **Güvenlik:** Raw fleet_key veya provision_secret bu tabloda saklanmaz. device_id bootstrap HMAC'e dahil edilir.
 
+### Destek (Görüş ve Destek) *(new 2026-08-15)*
+
+**destek_parametreler**
+- id, grup (TALEP_TURU|ALAN|ALT_KONU|DURUM), kod (unique), ad, ust_parametre_id FK self (nullable, PROTECT), sira, aktif
+- BaseModel alanları (olusturulma_tarihi, guncellenme_tarihi, surum, vb.)
+- Başlangıç seed: TALEP_TURU (ONERI, SIKAYET), ALAN (KIOSK, PORTAL), DURUM (YENI, INCELENIYOR, YANITLANDI, KAPATILDI) + 10 ALT_KONU
+
+**destek_talep_sayac**
+- yil (PK, SmallInt), son_sayi (PositiveInt) — `select_for_update` ile concurrency-safe talep no üretimi
+
+**destek_talepler**
+- id, talep_no (unique, `EISA-YYYY-NNNNNN`), eczane_id FK (PROTECT), olusturan_kullanici_id FK (PROTECT)
+- talep_turu_id FK destek_parametreler (PROTECT), alan_id FK (PROTECT), alt_konu_id FK (PROTECT), durum_id FK (PROTECT)
+- kiosk_id FK kiosklar (PROTECT, nullable), aciklama (max 1000), son_hareket_tarihi
+- BaseModel alanları
+
+**destek_yorumlar**
+- id, talep_id FK destek_talepler (CASCADE), yorum_metni (max 1000)
+- BaseModel alanları (olusturan = yorum yazarı)
+
+### Destek API Sözleşmesi *(2026-08-15)*
+
+**GET `/api/destek/parametreler/`** — Auth: JWT (any)
+- Response: `[{id, grup, kod, ad, ust_parametre_id, sira}]`
+
+**GET `/api/destek/talepler/`** — Auth: JWT (any); sayfalı
+- Admin: tüm talepler
+- Eczacı: yalnız kendi eczanesinin talepleri
+- Query params: `eczane_id, talep_turu_kod, alan_kod, alt_konu_kod, durum_kod, durum_kategori (acik|kapali), baslangic_tarihi, bitis_tarihi, talep_no, page, page_size`
+- Response: `{count, next, previous, results: [{id, talep_no, eczane_adi, olusturan_adi, talep_turu_ad, talep_turu_kod, alan_ad, alan_kod, alt_konu_ad, alt_konu_kod, durum_ad, durum_kod, kiosk_ad, olusturulma_tarihi, son_hareket_tarihi}]}`
+
+**POST `/api/destek/talepler/`** — Auth: JWT (IsEczaci only)
+- Request: `{talep_turu_id, alan_id, alt_konu_id, kiosk_id?, aciklama}`
+- Validasyon: grup kontrolü, aktiflik, alan↔alt_konu eşleşmesi, Portal→kiosk boş, kiosk eczane sahipliği, KIOSK_CIHAZ tek kiosk otomatik atama
+- Response 201: DestekTalebiDetailSerializer
+
+**GET `/api/destek/talepler/{id}/`** — Auth: JWT (any)
+- Response: list alanları + `{eczane_id, kiosk_id, aciklama, yorumlar: [{id, yorum_metni, olusturulma_tarihi, yazar_adi, yazar_rol}]}`
+
+**POST `/api/destek/talepler/{id}/yorum-ekle/`** — Auth: JWT (any)
+- Request: `{yorum_metni}` (max 1000 karakter)
+- 400: KAPATILDI ticket
+- Admin yorum → durum YANITLANDI; Eczacı YANITLANDI'da cevap → INCELENIYOR
+- Response 201: `{id, yorum_metni, olusturulma_tarihi, yazar_adi, yazar_rol}`
+
+**PATCH `/api/destek/talepler/{id}/durum-degistir/`** — Auth: JWT (IsSuperAdmin)
+- Request: `{durum_kod}` — YENI|INCELENIYOR|YANITLANDI|KAPATILDI
+- Response 200: DestekTalebiListSerializer
+
+**GET `/api/destek/talepler/yeni-sayisi/`** — Auth: JWT (IsSuperAdmin)
+- Response: `{sayi: <int>}`
+
 ### Lookups
 
 **iller**: id, ad

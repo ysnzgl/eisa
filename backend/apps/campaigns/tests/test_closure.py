@@ -89,13 +89,13 @@ def camp3(db):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# C01  DOOH_PERSISTENT_MEDIA_URL varsayılan False
+# C01  DOOH_PERSISTENT_MEDIA_URL varsayılan True (2026-08-15 değiştirildi)
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def test_c01_persistent_media_flag_default_false():
-    """DOOH_PERSISTENT_MEDIA_URL varsayılan olarak False olmalı."""
-    assert getattr(settings, "DOOH_PERSISTENT_MEDIA_URL", False) is False
+def test_c01_persistent_media_flag_default_true():
+    """DOOH_PERSISTENT_MEDIA_URL varsayılan olarak True olmalı (presigned URL sorunu çözümü)."""
+    assert getattr(settings, "DOOH_PERSISTENT_MEDIA_URL", False) is True
 
 
 # ─────────────────────────────────────────────────────────────────────────────

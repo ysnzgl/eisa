@@ -332,7 +332,9 @@ async function openEdit(c) {
       id: cr.id, name: cr.name || 'Mevcut creative',
       duration_seconds: cr.duration_seconds, uploaded_url: cr.media_url,
       media_url: cr.media_url,
+      object_key: cr.object_key || '',
       active_media_url: cr.active_media_url || '',
+      active_object_key: cr.active_object_key || '',
     })),
   });
   simResult.value = null; simStale.value = false; simError.value = '';
@@ -408,6 +410,7 @@ async function saveDraft() {
         media_url: cr.media_url || cr.uploaded_url || '',
         active_media_url: cr.active_media_url || '',
         object_key: cr.object_key || undefined,
+        active_object_key: cr.active_object_key || undefined,
         checksum: cr.checksum || undefined,
         duration_seconds: Number(cr.duration_seconds),
         name: cr.name?.slice(0, 120) || '',
@@ -465,6 +468,7 @@ async function onPickActiveFile(ev) {
     saving.value = true;
     const data = await uploadMedia(file);
     form.creatives[0].active_media_url = data.media_url ?? data.url ?? '';
+    form.creatives[0].active_object_key = data.object_key ?? '';
   } catch (e) {
     toast.error(e?.response?.data?.error || 'Medya yüklenemedi.');
   } finally { saving.value = false; ev.target.value = ''; }
@@ -814,15 +818,32 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
                   />
                 </td>
                 <td>
-                  <div class="thumb">
+                  <!-- Compact media preview: görsel veya küçük video player -->
+                  <div class="campaign-media-preview">
                     <template v-if="thumbOf(c)">
-                      <div v-if="isVideoUrl(thumbOf(c))" class="video-thumb-placeholder" :title="c.name">
-                        <i class="fa-solid fa-circle-play"></i>
-                        <span>Video</span>
-                      </div>
-                      <img v-else :src="thumbOf(c)" :alt="c.name" loading="lazy" />
+                      <video
+                        v-if="isVideoUrl(thumbOf(c))"
+                        :src="thumbOf(c)"
+                        muted
+                        controls
+                        preload="metadata"
+                        controlslist="nodownload nofullscreen"
+                        class="campaign-media-video"
+                        :title="c.name"
+                        @error="(e) => e.target.style.display='none'"
+                      />
+                      <img
+                        v-else
+                        :src="thumbOf(c)"
+                        :alt="c.name"
+                        loading="lazy"
+                        class="campaign-media-img"
+                        @error="(e) => e.target.style.display='none'"
+                      />
                     </template>
-                    <i v-else class="fa-regular fa-image muted"></i>
+                    <div v-else class="campaign-media-placeholder">
+                      <i class="fa-regular fa-image"></i>
+                    </div>
                   </div>
                 </td>
                 <td><strong>{{ c.name }}</strong></td>
@@ -835,7 +856,19 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
                     'eisa-pill-muted':   c.status === 'COMPLETED',
                   }">{{ STATUS_LABELS[c.status] || c.status }}</span>
                 </td>
-                <td>{{ c.creatives?.length ?? 0 }}</td>
+                <td>
+                  <!-- Creative sayısı + her creative için medya bilgisi -->
+                  <div class="creative-count-cell">
+                    <span class="creative-count-badge">{{ c.creatives?.length ?? 0 }} creative</span>
+                    <div v-if="c.creatives?.length" class="creative-media-tags">
+                      <span v-for="cr in (c.creatives || []).slice(0,2)" :key="cr.id" class="creative-media-tag">
+                        <i class="fa-solid" :class="isVideoUrl(cr.media_url) ? 'fa-film' : 'fa-image'"></i>
+                        {{ cr.duration_seconds }}s
+                        <span v-if="cr.active_media_url" class="active-media-indicator" title="İşlem ekranı medyası mevcut">+2</span>
+                      </span>
+                    </div>
+                  </div>
+                </td>
                 <td class="muted">
                   <span v-if="c.targets?.length">{{ c.targets.length }} hedef</span>
                   <span v-else>Tüm eczaneler</span>
@@ -904,10 +937,10 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
           <section v-if="step === 2" class="step-pane">
             <h3 class="step-title">Medya (Creative)</h3>
 
-            <!-- Bekleme Ekranı İçeriği -->
+            <!-- Bekleme Ekranı Medyası -->
             <div class="media-slot">
               <div class="media-slot-header">
-                <span class="media-slot-label">Bekleme Ekranı İçeriği</span>
+                <span class="media-slot-label">Bekleme Ekranı Medyası</span>
                 <span class="media-slot-hint">Önerilen: 1080×1920 — 9:16 dikey</span>
               </div>
               <label v-if="!form.creatives.length" class="upload">
@@ -915,9 +948,24 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
                 <span><i class="fa-solid fa-cloud-arrow-up"></i> Dosya seç (max 100 MB)</span>
               </label>
               <div v-if="form.creatives.length" class="creative">
-                <div class="thumb">
-                  <video v-if="/\.(mp4|webm)$/i.test(form.creatives[0].uploaded_url)" :src="form.creatives[0].uploaded_url" muted />
-                  <img   v-else :src="form.creatives[0].uploaded_url" alt="" />
+                <!-- Medya önizleme: max 280×220, object-fit: contain -->
+                <div class="creative-media-preview">
+                  <video
+                    v-if="isVideoUrl(form.creatives[0].media_url || form.creatives[0].uploaded_url)"
+                    :src="form.creatives[0].media_url || form.creatives[0].uploaded_url"
+                    muted
+                    controls
+                    preload="metadata"
+                    controlslist="nodownload nofullscreen"
+                    class="creative-preview-media"
+                  />
+                  <img
+                    v-else
+                    :src="form.creatives[0].media_url || form.creatives[0].uploaded_url"
+                    alt="Bekleme ekranı medyası"
+                    class="creative-preview-media"
+                    @error="(e) => e.target.style.display='none'"
+                  />
                 </div>
                 <div class="cmeta">
                   <strong>{{ form.creatives[0].name }}</strong>
@@ -938,10 +986,10 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
               </div>
             </div>
 
-            <!-- İşlem Ekranı Alt Alan İçeriği -->
+            <!-- İşlem Ekranı Medyası -->
             <div class="media-slot" style="margin-top:1.25rem">
               <div class="media-slot-header">
-                <span class="media-slot-label">İşlem Ekranı Alt Alan İçeriği</span>
+                <span class="media-slot-label">İşlem Ekranı Medyası</span>
                 <span class="media-slot-hint">Önerilen: 1080×768 — yaklaşık 7:5 yatay</span>
               </div>
               <p class="muted small" style="margin-bottom:.5rem">
@@ -949,14 +997,26 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
                 Yüklenmezse bekleme görseli letterbox ile kullanılır.
               </p>
               <div v-if="form.creatives[0]?.active_media_url" class="creative">
-                <div class="thumb">
-                  <div v-if="isVideoUrl(form.creatives[0].active_media_url)" class="video-thumb-placeholder">
-                    <i class="fa-solid fa-circle-play"></i>
-                    <span>Video</span>
-                  </div>
-                  <img v-else :src="form.creatives[0].active_media_url" alt="İşlem ekranı içeriği" />
+                <!-- İşlem ekranı medya önizleme -->
+                <div class="creative-media-preview">
+                  <video
+                    v-if="isVideoUrl(form.creatives[0].active_media_url)"
+                    :src="form.creatives[0].active_media_url"
+                    muted
+                    controls
+                    preload="metadata"
+                    controlslist="nodownload nofullscreen"
+                    class="creative-preview-media"
+                  />
+                  <img
+                    v-else
+                    :src="form.creatives[0].active_media_url"
+                    alt="İşlem ekranı medyası"
+                    class="creative-preview-media"
+                    @error="(e) => e.target.style.display='none'"
+                  />
                 </div>
-                <div class="cmeta"><strong>İşlem ekranı içeriği</strong></div>
+                <div class="cmeta"><strong>İşlem ekranı medyası</strong></div>
                 <button class="eisa-icon-btn danger" title="Kaldır" @click="removeActiveMedia">
                   <i class="fa-solid fa-trash"></i>
                 </button>
@@ -1400,7 +1460,95 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
 .goal-card-warn  { font-size:.75rem; color:#dc2626; margin-top:.4rem; }
 .goal-card-hint  { margin-top:.4rem; font-size:.75rem; }
 
-/* Campaign list — thumbnail + selection */
+/* Campaign list — compact media preview cell */
+.campaign-media-preview {
+  width: 120px;
+  max-height: 90px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #f1f5f9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--c-border, #e2e8f0);
+}
+.campaign-media-video {
+  width: 120px;
+  max-height: 90px;
+  object-fit: contain;
+  display: block;
+}
+.campaign-media-img {
+  width: 120px;
+  max-height: 90px;
+  object-fit: contain;
+  display: block;
+}
+.campaign-media-placeholder {
+  width: 120px;
+  height: 70px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  font-size: 1.5rem;
+}
+
+/* Creative count cell */
+.creative-count-cell {
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+}
+.creative-count-badge {
+  font-size: .75rem;
+  font-weight: 600;
+  color: var(--c-text, #0f172a);
+}
+.creative-media-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .25rem;
+}
+.creative-media-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: .25rem;
+  font-size: .7rem;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  padding: .1rem .35rem;
+  color: #475569;
+}
+.active-media-indicator {
+  color: #6366f1;
+  font-weight: 700;
+  font-size: .65rem;
+}
+
+/* Wizard Step 2 — Creative media preview (max 280×220, object-fit: contain) */
+.creative-media-preview {
+  width: 100%;
+  max-width: 280px;
+  max-height: 220px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #0f172a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.creative-preview-media {
+  max-width: 280px;
+  max-height: 220px;
+  width: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+/* Thumbnail + video thumb (legacy, kept for compatibility) */
 .thumb {
   width:42px; height:42px; border-radius:6px; overflow:hidden;
   background:#f1f5f9; display:flex; align-items:center; justify-content:center;
@@ -1408,14 +1556,6 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
 }
 .thumb img { width:100%; height:100%; object-fit:cover; }
 .thumb .muted { font-size:1rem; color:#94a3b8; }
-.video-thumb-placeholder {
-  width:100%; height:100%; display:flex; flex-direction:column; align-items:center;
-  justify-content:center; gap:2px; background:#1e293b; color:#94a3b8; font-size:.6rem;
-  font-weight:600; letter-spacing:.04em; text-transform:uppercase;
-}
-.video-thumb-placeholder i { font-size:1.1rem; color:#60a5fa; }
-.row-selected { background:#eef2ff !important; }
-.eisa-table th.sortable:hover { color:var(--c-accent,#6366f1); }
 
 /* Tree-select */
 .location-tree { margin-top:.75rem; max-height:380px; overflow-y:auto;

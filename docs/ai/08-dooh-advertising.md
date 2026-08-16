@@ -122,7 +122,8 @@ class Creative(BaseModel):
     duration_seconds = PositiveSmallIntegerField(1-60)
     name = CharField
     checksum = CharField(max_length=128)  # 'sha256:<hex>' formati
-    object_key = CharField(null=True)     # Faz 0.5: S3 object key
+    object_key = CharField(null=True)     # Faz 0.5: S3 object key (media_url icin)
+    active_object_key = CharField(null=True)  # Faz 0.5+: S3 object key (active_media_url icin)
 ```
 
 ### Dual-Media Kullanim
@@ -136,8 +137,8 @@ class Creative(BaseModel):
 ### Media Upload Flow (Faz 0.5+)
 
 **Feature flag:** `DOOH_PERSISTENT_MEDIA_URL` (settings)
-- `False` (varsayilan) = legacy presigned URL davranisi
-- `True` = kalici URL akisi aktif
+- `False` = legacy presigned URL davranisi (rollback icin)
+- `True` (varsayilan, 2026-08-15'ten itibaren) = kalici URL akisi aktif
 
 Flag=True akisi:
 ```

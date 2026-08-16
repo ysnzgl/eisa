@@ -59,6 +59,7 @@
 7. QR kodu tarama ve session detayÄ± (QrScan)
 8. Dashboard analytics (kampanya performansÄ±, session Ã¶zeti)
 9. **Barkod Logo Yönetimi** *(2026-08-11)* — `/admin/barkod-logolar`, `BarkodLogoYonetimi.vue`. DOOH'dan bağımsız. Logo oluştur/düzenle/pasifleştir; PNG yükle (336×336, ≤1MB); kiosk hedefleme; günlük limit. DELETE yok.
+10. **Görüş ve Destek** *(2026-08-15)* — Admin: `/admin/destek` → `DestekYonetimi.vue`; Eczacı: `/pharmacist/destek` → `DestekTalepleri.vue`. Admin menüsünde Yeni sayısı badge'i.
 
 ---
 
@@ -82,12 +83,14 @@
 - `/admin/dooh/control-center` → `DoohControlCenter.vue` (DOOH izleme — kampanya/job/kiosk) — **Faz 6**
 - `/admin/playlists` â†’ `PlaylistEditor.vue` (Playlist ÅŸablon/manuel dÃ¼zenleme)
 - `/admin/pricing` â†’ `PricingMatrixConfigurator.vue` (FiyatlandÄ±rma matrisi)
-- `/admin/users` â†’ `UserManagement.vue` (KullanÄ±cÄ± CRUD)
+- `/admin/users` → `UserManagement.vue` (Kullanıcı CRUD)
+- `/admin/destek` → `DestekYonetimi.vue` *(2026-08-15)* (Görüş ve Destek Yönetimi)
 
 **Pharmacist routes (`/pharmacist/*`):**
 - `/pharmacist` → `Dashboard.vue`
 - `/pharmacist/inbox` → `Inbox.vue` (Eczane session'ları listesi)
 - `/pharmacist/qr` → `QrScan.vue` (QR tarama)
+- `/pharmacist/destek` → `DestekTalepleri.vue` *(2026-08-15)* (Görüş ve Destek)
 - *(Layout seviyesinde)* `PharmacistCampaignDisplay.vue` *(2026-07-31, 2026-08-01 doğrulandı)* — alt şerit + 90s idle overlay; AdminLayout'ta `v-if="isPharmacist"` ile mount edilir; route geçişinde yeniden başlamaz. Eczane eczacı kullanıcının `request.user.eczane_id`'si üzerinden il/ilçe/eczane OR eşleşmesiyle belirlenir.
 
 **EisaLookup Entegrasyon Notu:** `EisaLookup.vue` `options: [{id, label, sub?}]` ve `v-model` ile çalışır; `endpoint` veya `@select` prop'ları YOKTUR. Eczaneler `GET /api/pharmacies/` (list), iller `GET /api/lookups/iller/`, ilçeler `GET /api/lookups/ilceler/?il={id}` ile yüklenir ve `options` formatına dönüştürülür.

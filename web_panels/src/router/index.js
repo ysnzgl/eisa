@@ -22,8 +22,10 @@ const routes = [
       { path: 'danisma',           component: () => import('../views/admin/DanismaYonetimi.vue') },
       { path: 'content-management', component: () => import('../views/admin/ContentManagement.vue') },
       { path: 'campaigns',     component: () => import('../views/admin/CampaignWizard.vue') },
+      { path: 'house-ads',     component: () => import('../views/admin/HouseAdManagement.vue') },
       { path: 'pharmacy-campaigns', component: () => import('../views/admin/PharmacyCampaigns.vue') },
       { path: 'barkod-logolar', component: () => import('../views/admin/BarkodLogoYonetimi.vue') },
+      { path: 'destek', component: () => import('../views/admin/DestekYonetimi.vue') },
       { path: 'dooh/control-center', component: () => import('../views/admin/DoohControlCenter.vue') },
       { path: 'playlists',     component: () => import('../views/admin/PlaylistEditor.vue') },
       { path: 'pricing',       component: () => import('../views/admin/PricingMatrixConfigurator.vue') },
@@ -37,7 +39,8 @@ const routes = [
     children: [
       { path: '', component: () => import('../views/pharmacist/Dashboard.vue') },
       { path: 'kiosk-activities', component: () => import('../views/pharmacist/KioskActivities.vue') },
-      { path: 'qr', component: () => import('../views/pharmacist/QrScan.vue') }
+      { path: 'qr', component: () => import('../views/pharmacist/QrScan.vue') },
+      { path: 'destek', component: () => import('../views/pharmacist/DestekTalepleri.vue') }
     ]
   }
 ];

@@ -354,6 +354,17 @@ class KioskActivityListSerializer(serializers.ModelSerializer):
     danisma_kategorisi_adi = serializers.CharField(
         source="danisma_kategorisi.ad", read_only=True
     )
+    # Satış görünümünde prefetch_related ile doldurulur; aksi hâlde boş liste döner.
+    etken_madde_adlari = serializers.SerializerMethodField()
+
+    def get_etken_madde_adlari(self, obj):
+        if not self.context.get("include_ingredients"):
+            return []
+        return [
+            (r.etken_madde.ad if r.etken_madde else r.etken_madde_adi_snapshot)
+            for r in obj.onerilen_etken_madde_detaylari.all()
+            if r.etken_madde or r.etken_madde_adi_snapshot
+        ]
 
     class Meta:
         model = OturumLogu
@@ -375,6 +386,8 @@ class KioskActivityListSerializer(serializers.ModelSerializer):
             "tamamlandi",
             "danisma_tamamlandi",
             "danisma_tamamlanma_tarihi",
+            "sold",
+            "etken_madde_adlari",
             "olusturulma_tarihi",
             "cihaz_zamani",
             "sunucu_zamani",
