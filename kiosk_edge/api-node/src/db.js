@@ -209,14 +209,14 @@ function initSchema(db, options = {}) {
       aktif            INTEGER NOT NULL DEFAULT 1,
       guncellenme_tarihi TEXT  NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
     );
-    CREATE TABLE IF NOT EXISTS house_ads (
-      id               TEXT    PRIMARY KEY,
-      name             TEXT    NOT NULL DEFAULT '',
-      media_url        TEXT    NOT NULL DEFAULT '',
-      duration_seconds INTEGER NOT NULL DEFAULT 15,
-      type             TEXT    NOT NULL DEFAULT 'house_ad',
-      aktif            INTEGER NOT NULL DEFAULT 1,
-      guncellenme_tarihi TEXT  NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    CREATE TABLE IF NOT EXISTS idle_contents (
+      id                 INTEGER PRIMARY KEY,
+      baslik             TEXT    NOT NULL DEFAULT '',
+      metin              TEXT    NOT NULL DEFAULT '',
+      kategori_id        INTEGER,
+      ikon               TEXT    NOT NULL DEFAULT '',
+      aktif              INTEGER NOT NULL DEFAULT 1,
+      guncellenme_tarihi TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
     );
 
     -- OUTBOX
@@ -441,6 +441,21 @@ function initSchema(db, options = {}) {
     db.exec("ALTER TABLE danisma_kategorileri ADD COLUMN sira INTEGER NOT NULL DEFAULT 100");
   }
 
+  // v15: HouseAd kaldirildi. Eski house_ads tablosunu ve house_ad media_cache
+  // kayitlarini temizle (idempotent). Campaign creative cache kayitlarina DOKUNULMAZ.
+  // Idle icerik baslik/metin tabanli idle_contents tablosuna gecti.
+  db.exec("DROP TABLE IF EXISTS house_ads");
+  db.exec("DELETE FROM media_cache WHERE asset_type = 'house_ad'");
+
+  // v16: idle_contents.ikon kolonu — kategori ikonu (FA class, idempotent)
+  const idleCols = db.prepare("PRAGMA table_info(idle_contents)").all().map((c) => c.name);
+  if (!idleCols.includes('kategori_id')) {
+    db.exec('ALTER TABLE idle_contents ADD COLUMN kategori_id INTEGER');
+  }
+  if (!idleCols.includes('ikon')) {
+    db.exec("ALTER TABLE idle_contents ADD COLUMN ikon TEXT NOT NULL DEFAULT ''");
+  }
+
   installOutboxFifoTriggers(db, outboxMaxRows);
   installDiagnosticFifoTrigger(db, diagnosticMaxRows);
 }
@@ -546,15 +561,15 @@ export function rowToCreative(row) {
   };
 }
 
-export function rowToHouseAd(row) {
+export function rowToIdleContent(row) {
   if (!row) return null;
   return {
     id: row.id,
-    name: row.name,
-    media_url: row.media_url,
-    duration_seconds: row.duration_seconds,
-    type: row.type || 'house_ad',
+    baslik: row.baslik,
+    metin: row.metin,
+    ikon: row.ikon || '',
     aktif: !!row.aktif,
+    updated_at: row.guncellenme_tarihi,
   };
 }
 

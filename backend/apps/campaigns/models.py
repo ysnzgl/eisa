@@ -1,7 +1,7 @@
 """DOOH reklam (kampanya) modelleri.
 
 DOOH v2: ``Campaign`` / ``Creative`` / ``ScheduleRule`` / ``Playlist`` /
-``PlaylistItem`` / ``PlayLog`` / ``HouseAd`` / ``PricingMatrix`` — merkezi,
+``PlaylistItem`` / ``PlayLog`` / ``IdleScreenContent`` / ``PricingMatrix`` — merkezi,
 60sn loop tabanli, on-hesaplanmis playlist mimarisi.
 """
 import uuid
@@ -362,11 +362,6 @@ class PlaylistItem(BaseModel):
         Creative, on_delete=models.CASCADE, related_name="playlist_items",
         null=True, blank=True,
     )
-    house_ad = models.ForeignKey(
-        "campaigns.HouseAd", on_delete=models.CASCADE, related_name="playlist_items",
-        null=True, blank=True,
-        help_text="Filler (Pass 4) icin; creative NULL olur.",
-    )
     playback_order = models.PositiveSmallIntegerField()
     estimated_start_offset_seconds = models.PositiveSmallIntegerField()
 
@@ -381,9 +376,9 @@ class PlaylistItem(BaseModel):
 
     def clean(self) -> None:
         super().clean()
-        if (self.creative_id is None) == (self.house_ad_id is None):
+        if self.creative_id is None:
             raise ValidationError(
-                "PlaylistItem creative VEYA house_ad alanlarindan tam olarak birini icermelidir."
+                "PlaylistItem creative alanini icermelidir."
             )
 
 
@@ -402,10 +397,6 @@ class PlayLog(BaseModel):
     )
     creative = models.ForeignKey(
         Creative, on_delete=models.SET_NULL, null=True, blank=True,
-        related_name="play_logs",
-    )
-    house_ad = models.ForeignKey(
-        "campaigns.HouseAd", on_delete=models.SET_NULL, null=True, blank=True,
         related_name="play_logs",
     )
     played_at = models.DateTimeField(db_index=True)
@@ -462,51 +453,6 @@ class PlayLog(BaseModel):
         ]
 
 
-class HouseAd(BaseModel):
-    """Dolgu (filler) reklamlari — eczane bilgilendirme / saglik ipuclari /
-    nobetci eczane vb. Loop'ta bos kalan saniyeleri doldurur (Pass 4)."""
-
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    name = models.CharField(max_length=255)
-    media_url = models.URLField(max_length=2048, validators=[_https_url_validator])
-    duration_seconds = models.PositiveSmallIntegerField(default=10)
-    aktif = models.BooleanField(default=True)
-    priority = models.PositiveSmallIntegerField(
-        default=100,
-        help_text="Dusuk degerli once secilir (filler queue ordering).",
-    )
-    object_key = models.CharField(
-        max_length=512, null=True, blank=True,
-        help_text=(
-            "S3/RustFS obje anahtarı (örn. ads/abc123.mp4). "
-            "Kalıcı media_url üretiminde kullanılır. "
-            "NULL ise backfill_media_object_keys komutuyla doldurulabilir."
-        ),
-    )
-
-    _GRID_DURATIONS = frozenset({15, 30, 45, 60})
-
-    @property
-    def is_grid_compliant(self) -> bool:
-        """duration_seconds 15sn planning grid ile uyumlu mu?"""
-        return int(self.duration_seconds) in self._GRID_DURATIONS
-
-    class Meta:
-        db_table = "dooh_house_ads"
-        ordering = ("priority", "olusturulma_tarihi")
-        verbose_name = "House Ad"
-        verbose_name_plural = "House Ads"
-        constraints = [
-            models.CheckConstraint(
-                check=models.Q(duration_seconds__gte=1) & models.Q(duration_seconds__lte=60),
-                name="dooh_house_ad_duration_1_60",
-            ),
-        ]
-
-    def __str__(self) -> str:
-        return self.name
-
-
 class PricingMatrix(BaseModel):
     """Reklam fiyat carpan matrisi (singleton).
 
@@ -538,6 +484,51 @@ class PricingMatrix(BaseModel):
             return float(self.frequency_multipliers.get(frequency_type, 1.0))
         except (TypeError, ValueError):
             return 1.0
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# IdleScreenContent — bekleme (idle) ekraninda gosterilen baslik/metin icerigi
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class IdleScreenContent(BaseModel):
+    """Kiosk bekleme (idle) ekraninda gosterilen duz metin icerigi.
+
+    Baslik fade, metin daktilo animasyonu ile ``AdPromo large`` gorunumunde
+    rastgele (shuffled-bag) dondurulur. Medya/HTML icermez; yalniz duz metin.
+    Eski gorsel tabanli ``HouseAd`` idle icerigi bu modelle degistirildi.
+    """
+
+    id = models.BigAutoField(primary_key=True)
+    baslik = models.CharField(
+        max_length=250,
+        help_text="Idle ekrani basligi (duz metin, en fazla 250 karakter).",
+    )
+    metin = models.CharField(
+        max_length=1000,
+        help_text="Idle ekrani metni (duz metin, en fazla 500 karakter).",
+    )
+    aktif = models.BooleanField(
+        default=True,
+        help_text="Pasif icerikler kiosk katalogda gorunmez.",
+    )
+    kategori = models.ForeignKey(
+        "products.Kategori",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="idle_contents",
+        help_text="Opsiyonel: bu icerigi iliskilendiren saglik kategorisi.",
+    )
+
+    class Meta:
+        db_table = "dooh_idle_screen_contents"
+        ordering = ("-guncellenme_tarihi",)
+        verbose_name = "Idle Screen Content"
+        verbose_name_plural = "Idle Screen Contents"
+
+    def __str__(self) -> str:
+        return self.baslik
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -61,12 +61,12 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 | `/api/products/` | `apps.products.urls` | JWT | Kategori/Soru/EtkenMadde/Danışma CRUD |
 | `/api/analytics/` | `apps.analytics.urls` | JWT | Session log raporlama |
 | `/api/campaigns/` | `apps.campaigns.urls` | JWT (SuperAdmin) | Campaign/Creative/ScheduleRule yönetimi |
-| `/api/campaigns/v2/*` | `apps.campaigns.views_v2` | JWT (SuperAdmin) | DOOH v2 API (playlist, pricing, house ads) |
+| `/api/campaigns/v2/*` | `apps.campaigns.views_v2` | JWT (SuperAdmin) | DOOH v2 API (playlist, pricing, idle-contents) |
 | `/api/inventory/availability/` | `InventoryAvailabilityView` | JWT | Slot kapasite sorgusu |
 | `/api/kiosk/v1/bootstrap/` | `kiosk_api.KioskBootstrapView` | Fleet+HMAC | Provisioning; App Key döner |
 | `/api/kiosk/v1/identity/enroll/` | `kiosk_api.KioskIdentityEnrollView` | AppKey+MAC | Kalıcı device_id tek-seferlik bağlama |
 | `/api/kiosk/v1/ping/` | `kiosk_api.KioskPingView` | AppKey+MAC | Playlist versiyonu kontrolü |
-| `/api/kiosk/v1/sync/` | `kiosk_api.KioskSyncView` | AppKey+MAC | Creative/HouseAd + lookup |
+| `/api/kiosk/v1/sync/` | `kiosk_api.KioskSyncView` | AppKey+MAC | Creative + idle içerik (`idle_contents`) + lookup |
 | `/api/kiosk/v1/catalog/` | `kiosk_api.KioskCatalogView` | AppKey+MAC | Kategori/soru/etken madde/danışma |
 | `/api/kiosk/v1/playlist/` | `kiosk_api.KioskPlaylistView` | AppKey+MAC | Günlük playlist |
 | `/api/kiosk/v1/sessions/` | `kiosk_api.KioskSessionsView` | AppKey+MAC | Oturum outbox; backend QR üretir; response: `{results:[{idempotency_key,status,qr_kodu}]}` |
@@ -156,21 +156,21 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 - `KioskDayQuota`: [Faz 1] Kiosk+gün bazında kota (planning_run/campaign/kiosk/date, quota>=0, placed>=0, placed<=quota DB constraint)
 - `KioskDesiredBundle`: [Faz 1] Monoton desired_bundle_version (Faz 5'te aktif)
 - `Playlist`: Kiosk için üretilmiş playlist (kiosk FK, target_date, target_hour [Istanbul yereli], loop_duration_seconds, version; unique kiosk+date+hour)
-- `PlaylistItem`: Playlist öğeleri (playlist FK, creative/house_ad FK nullable, playback_order, estimated_start_offset_seconds [saat-mutlak 0..3599])
-- `HouseAd`: Filler reklam (name, media_url [kalıcı Faz 0.5+], duration_seconds [grid:{15,30,45,60} yeni kayıtlar], object_key, aktif, priority)
-- `PlayLog`: Reklam gösterim logu (kiosk FK, creative/house_ad FK nullable, played_at, duration_played, play_event_id [nullable UUID K5])
+- `PlaylistItem`: Playlist öğeleri (playlist FK, creative FK [creative-only, house_ad kaldırıldı — migration 0027; `clean()` creative zorunlu], playback_order, estimated_start_offset_seconds [saat-mutlak 0..3599])
+- `IdleScreenContent` *(2026-08-16)*: Bekleme ekranı başlık/metin idle içeriği — "İçerik Yönetimi" (id BigAutoField, `baslik` [CharField≤100, zorunlu], `metin` [CharField≤300, zorunlu], `aktif` [bool default True], olusturulma/guncellenme_tarihi). Tablo `dooh_idle_screen_contents`. Medya/HTML YOK, düz metin. Eski `HouseAd` modeli kaldırıldı (migration 0027, tablo `dooh_house_ads` düşürüldü).
+- `PlayLog`: Reklam gösterim logu (kiosk FK, creative FK nullable [house_ad FK kaldırıldı — migration 0027], played_at, duration_played, play_event_id [nullable UUID K5])
 - `PharmacyCampaign` *(2026-07-31, 2026-08-01)*: Eczacı paneli kampanyası (id UUID, name, media_url, object_key, start_at, end_at, duration_seconds [izin: 15/30/60], is_active, target_pharmacies M2M Eczane, target_iller M2M Il, target_ilceler M2M Ilce). Feed: OR mantığıyla; hiç hedefi olmayan feed'e girmez. Migration 0022+0024.
 
 **Sözleşme değişiklikleri (Faz 0.5–Faz 1):**
 - `POST /api/campaigns/v2/campaigns/`: `target_scope` zorunlu (ALL|RULES). Deprecated alan (is_guaranteed/impression_goal/frequency_cap_per_hour) gonderilenince 400. `follows` read-only (yalniz `set_campaign_follows()` servisi).
 - `POST /api/campaigns/upload-media/` (DOOH_PERSISTENT_MEDIA_URL=True): `{object_key, media_url, checksum, url[alias]}` döner; presigned URL üretilmez.
-- `Creative`/`HouseAd` API: `duration_seconds` yeni kayıtta {15,30,45,60} zorunlu; legacy ayni değerle güncelleme izin.
+- `Creative` API: `duration_seconds` yeni kayıtta {15,30,45,60} zorunlu; legacy ayni değerle güncelleme izin.
+- `IdleScreenContent` API *(2026-08-16)*: `GET/POST/PUT/PATCH/DELETE /api/campaigns/v2/idle-contents/` (JWT SuperAdmin, router basename `dooh-idle-content`); serializer alanları `id, baslik, metin, aktif, created_at, updated_at`. Eski `/api/campaigns/v2/house-ads/` viewset kaldırıldı.
 - `apps/campaigns/services/follows_service.py`: A→B ilişkisi tek nokta; self-link, zincir, döngü, tarih/saat kesişimi, CANCELLED kontrolü.
 - `Playlist`: Kiosk için üretilmiş playlist (kiosk FK, target_date, target_hour [Istanbul yereli], loop_duration_seconds, version; unique kiosk+date+hour)
-- `PlaylistItem`: Playlist öğeleri (playlist FK, creative FK nullable, house_ad FK nullable, playback_order, estimated_start_offset_seconds [saat-mutlak 0..3599])
+- `PlaylistItem`: Playlist öğeleri (playlist FK, creative FK [creative-only; house_ad FK kaldırıldı — migration 0027], playback_order, estimated_start_offset_seconds [saat-mutlak 0..3599])
 - `PlaylistTemplate`: Playlist şablonları (name, loop_duration_seconds, slots JSON, target_hours JSON, description)
-- `HouseAd`: Filler reklam (name, media_url, duration_seconds, aktif, priority)
-- `PlayLog`: Reklam gösterim logu / proof-of-play (kiosk FK, creative/house_ad FK nullable, played_at, duration_played)
+- `PlayLog`: Reklam gösterim logu / proof-of-play (kiosk FK, creative FK nullable [house_ad FK kaldırıldı], played_at, duration_played)
 - `DayPlan`: Günlük plan (kiosk FK, date, playlists FK M2M)
 - `HourPlan`: Saatlik plan (kiosk FK, date, hour, playlist FK)
 - `GenerationJob`: Async playlist üretim job'u (job_id, status, created_at, started_at, finished_at, result JSON)
@@ -264,7 +264,7 @@ Notlar (QR contract, 2026-07-20):
 
 ## Dış Sistem Entegrasyonları
 
-1. **MinIO / S3:** Creative/HouseAd media upload (`apps.campaigns.views.MediaUploadView`)
+1. **MinIO / S3:** Creative media upload (`apps.campaigns.views.MediaUploadView`)
 2. **Sentry:** Error tracking (prod ortamında `sentry_sdk.init`)
 3. **Kiosk Edge API:** İki yönlü senkronizasyon (kiosk → backend: outbox push; backend → kiosk: kategori/playlist pull)
 
@@ -283,7 +283,7 @@ Notlar (QR contract, 2026-07-20):
    - Breaking: playlist generation/sync fails
 
 3. **Kiosk Sync Payload (`/api/kiosk/v1/sync/`):**
-   - Response: `{ kategoriler, sorular, cevaplar, etken_maddeler, danisma_kategorileri, creatives, house_ads }`
+   - Response: `{ kategoriler, sorular, cevaplar, etken_maddeler, danisma_kategorileri, creatives, idle_contents }`
    - Request (outbox push): `{ sessions: [...] }`
    - Breaking: kiosk SQLite sync breaks
 
@@ -297,7 +297,7 @@ Notlar (QR contract, 2026-07-20):
      - Class: `ProofOfPlayView` (line 1068)
      - URL mapping: `backend/apps/campaigns/urls.py` (line 58)
      - Model: `backend/apps/campaigns/models.py` → `PlayLog`
-   - Request: `{ logs: [{ creative_id OR house_ad_id, played_at, duration_played, completed? }] }`
+   - Request: `{ logs: [{ creative_id, played_at, duration_played, completed? }] }` (house_ad_id hâlâ kabul edilir ama yok sayılır — playlist creative-only)
    - Bulk insert: `PlayLog.objects.bulk_create(bulk, batch_size=500)`
    - Breaking: impression tracking fails
 

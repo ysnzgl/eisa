@@ -1,11 +1,12 @@
 <script setup>
-import { computed, reactive, onMounted } from 'vue';
+import { computed, reactive, onMounted, onBeforeUnmount } from 'vue';
 import { RouterView, RouterLink } from 'vue-router';
 import { useAuthStore } from '../../stores/auth';
 import { useRouter } from 'vue-router';
 import logoUrl from '../../assets/eisa_logo.svg';
 import PharmacistCampaignDisplay from '../../components/pharmacist/PharmacistCampaignDisplay.vue';
 import { http } from '../../services/api';
+import { listProvisioningRequests } from '../../services/devices';
 
 const auth = useAuthStore();
 const router = useRouter();
@@ -18,28 +19,42 @@ async function logout() {
 const isAdmin      = computed(() => auth.role === 'superadmin');
 const isPharmacist = computed(() => auth.role === 'pharmacist');
 
-const navBadges = reactive({ destekYeni: 0 });
+const navBadges = reactive({ destekYeni: 0, bekleyenCihazlar: 0 });
 
 async function fetchNavBadges() {
   if (!isAdmin.value) return;
   try {
-    const { data } = await http.get('/api/destek/talepler/yeni-sayisi/', { __silent: true });
-    navBadges.destekYeni = data.sayi ?? 0;
+    const [destekResult, pendingRequests] = await Promise.all([
+      http.get('/api/destek/talepler/yeni-sayisi/', { __silent: true }),
+      listProvisioningRequests({ status: 'PENDING' }),
+    ]);
+    navBadges.destekYeni = destekResult.data.sayi ?? 0;
+    navBadges.bekleyenCihazlar = pendingRequests.length;
   } catch { /* badge hatası kullanıcıyı engellemesin */ }
 }
 
 onMounted(fetchNavBadges);
 
+function handleNavBadgeRefresh() {
+  fetchNavBadges();
+}
+
+onMounted(() => {
+  window.addEventListener('eisa-nav-badges-refresh', handleNavBadgeRefresh);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('eisa-nav-badges-refresh', handleNavBadgeRefresh);
+});
+
 const adminNavItems = [
   { to: '/admin',               exact: true, icon: 'fa-chart-line',   label: 'Dashboard' },
-  { to: '/admin/devices',                    icon: 'fa-display',       label: 'Cihaz Yönetimi' },
-  { to: '/admin/devices/pending',            icon: 'fa-clock',         label: 'Onay Bekleyen Cihazlar' },
+  { to: '/admin/devices',                    icon: 'fa-display',       label: 'Cihaz Yönetimi', badgeKey: 'bekleyenCihazlar' },
   { to: '/admin/kiosk-activities',           icon: 'fa-wave-square',   label: 'Kiosk Hareketleri' },
   { to: '/admin/medical-logic',              icon: 'fa-dna',           label: 'Algoritma Editörü' },
   { to: '/admin/danisma',                    icon: 'fa-comments',      label: 'Danışma Kategorileri' },
   { to: '/admin/content-management',         icon: 'fa-images',        label: 'İçerik Yönetimi' },
   { to: '/admin/campaigns',                  icon: 'fa-display',       label: 'Kiosk Kampanyaları' },
-  { to: '/admin/house-ads',                  icon: 'fa-photo-film',    label: 'HouseAd Yönetimi' },
   { to: '/admin/pharmacy-campaigns',         icon: 'fa-prescription-bottle-medical', label: 'Eczacı Paneli Kampanyaları' },
   { to: '/admin/barkod-logolar',             icon: 'fa-barcode',       label: 'Barkod Logo Yönetimi' },
   { to: '/admin/destek',                     icon: 'fa-headset',       label: 'Görüş ve Destek', badgeKey: 'destekYeni' },

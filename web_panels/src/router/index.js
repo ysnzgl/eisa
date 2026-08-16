@@ -22,7 +22,6 @@ const routes = [
       { path: 'danisma',           component: () => import('../views/admin/DanismaYonetimi.vue') },
       { path: 'content-management', component: () => import('../views/admin/ContentManagement.vue') },
       { path: 'campaigns',     component: () => import('../views/admin/CampaignWizard.vue') },
-      { path: 'house-ads',     component: () => import('../views/admin/HouseAdManagement.vue') },
       { path: 'pharmacy-campaigns', component: () => import('../views/admin/PharmacyCampaigns.vue') },
       { path: 'barkod-logolar', component: () => import('../views/admin/BarkodLogoYonetimi.vue') },
       { path: 'destek', component: () => import('../views/admin/DestekYonetimi.vue') },

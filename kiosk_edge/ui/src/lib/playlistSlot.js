@@ -6,7 +6,7 @@
 // disinda o item aktif DEGILDIR; hicbir item bir sonraki slota kadar
 // uzatilmaz. Aktif item yoksa cagiran taraf fallback (AdPromo) gosterir.
 //
-// Kural tamamen playlist verisine baglidir: creative/HouseAd suresi, adet ve
+// Kural tamamen playlist verisine baglidir: creative suresi, adet ve
 // ofsetler backend kaydindan gelir; burada hicbir sure/frekans sabiti yoktur.
 
 export const HOUR_SECONDS = 3600;
@@ -42,6 +42,9 @@ export function resolveActiveItem(items, pos) {
   if (!Array.isArray(items)) return null;
   let best = null;
   for (const it of items) {
+    // Defensive: HouseAd kaldirildi. Eski playlist icinde kalmis house_ad
+    // item'lari atla; yalniz creative item'lari oynatilir.
+    if (it && it.asset_type && it.asset_type !== 'creative') continue;
     const off = offsetOf(it);
     const dur = durationOf(it);
     if (dur > 0 && off <= pos && pos < off + dur) {

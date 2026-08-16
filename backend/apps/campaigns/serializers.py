@@ -15,8 +15,8 @@ from .models import (
     DayPlan,
     DeliveryRule,
     GenerationJob,
-    HouseAd,
     HourPlan,
+    IdleScreenContent,
     KioskDayQuota,
     KioskDesiredBundle,
     PharmacyCampaign,
@@ -227,34 +227,32 @@ class ScheduleRuleSerializer(serializers.ModelSerializer):
         return out
 
 
-class HouseAdSerializer(serializers.ModelSerializer):
-    is_grid_compliant = serializers.BooleanField(read_only=True)
+class IdleScreenContentSerializer(serializers.ModelSerializer):
+    """Idle ekrani baslik/metin icerigi (duz metin). HTML calistirilmaz."""
 
-    _GRID_DURATIONS = frozenset({15, 30, 45, 60})
+    created_at = serializers.DateTimeField(source="olusturulma_tarihi", read_only=True)
+    updated_at = serializers.DateTimeField(source="guncellenme_tarihi", read_only=True)
 
     class Meta:
-        model = HouseAd
-        fields = ["id", "name", "media_url", "duration_seconds", "aktif",
-                  "priority", "object_key", "is_grid_compliant"]
-        read_only_fields = ("id", "is_grid_compliant")
+        model = IdleScreenContent
+        fields = ["id", "baslik", "metin", "aktif", "kategori", "created_at", "updated_at"]
+        read_only_fields = ("id", "created_at", "updated_at")
 
-    def validate_duration_seconds(self, value: int) -> int:
-        if not 1 <= value <= 60:
-            raise serializers.ValidationError("duration_seconds 1..60 arasinda olmalidir.")
-        instance = getattr(self, "instance", None)
-        if instance and int(instance.duration_seconds) == int(value):
-            return value  # Legacy deger degismeden korunuyor
-        if value not in self._GRID_DURATIONS:
-            raise serializers.ValidationError(
-                f"duration_seconds {value} 15sn grid ile uyumsuz. "
-                f"Izin verilen: 15 / 30 / 45 / 60 saniye."
-            )
+    def validate_baslik(self, value: str) -> str:
+        value = (value or "").strip()
+        if not value:
+            raise serializers.ValidationError("Baslik zorunludur.")
+        if len(value) > 100:
+            raise serializers.ValidationError("Baslik en fazla 100 karakter olabilir.")
         return value
 
-    def validate(self, attrs):
-        if not attrs.get("object_key"):
-            attrs["object_key"] = _derive_object_key_from_url(attrs.get("media_url", ""))
-        return attrs
+    def validate_metin(self, value: str) -> str:
+        value = (value or "").strip()
+        if not value:
+            raise serializers.ValidationError("Metin zorunludur.")
+        if len(value) > 300:
+            raise serializers.ValidationError("Metin en fazla 300 karakter olabilir.")
+        return value
 
 
 class PricingMatrixSerializer(serializers.ModelSerializer):
@@ -347,19 +345,18 @@ class KioskCreativeSyncSerializer(serializers.ModelSerializer):
         return "creative"
 
 
-class KioskHouseAdSyncSerializer(serializers.ModelSerializer):
-    media_url = serializers.SerializerMethodField()
-    type = serializers.SerializerMethodField()
+class KioskIdleContentSyncSerializer(serializers.ModelSerializer):
+    """`/api/kiosk/v1/sync` icindeki tek bir aktif idle icerigi."""
+
+    updated_at = serializers.DateTimeField(source="guncellenme_tarihi", read_only=True)
+    kategori_ikon = serializers.SerializerMethodField()
 
     class Meta:
-        model = HouseAd
-        fields = ["id", "media_url", "duration_seconds", "type"]
+        model = IdleScreenContent
+        fields = ["id", "baslik", "metin", "aktif", "kategori_id", "kategori_ikon", "updated_at"]
 
-    def get_media_url(self, obj):
-        return _kiosk_media_url(self.context.get("request"), obj.object_key, obj.media_url)
-
-    def get_type(self, obj):  # noqa: D401
-        return "house_ad"
+    def get_kategori_ikon(self, obj):
+        return obj.kategori.ikon if obj.kategori_id and obj.kategori else None
 
 
 class KioskPlaylistItemSerializer(serializers.ModelSerializer):
@@ -382,8 +379,6 @@ class KioskPlaylistItemSerializer(serializers.ModelSerializer):
         req = self.context.get("request")
         if obj.creative_id:
             return _kiosk_media_url(req, obj.creative.object_key, obj.creative.media_url)
-        if obj.house_ad_id:
-            return _kiosk_media_url(req, obj.house_ad.object_key, obj.house_ad.media_url)
         return None
 
     def get_active_media_url(self, obj):
@@ -394,21 +389,17 @@ class KioskPlaylistItemSerializer(serializers.ModelSerializer):
     def get_duration_seconds(self, obj):
         if obj.creative_id:
             return obj.creative.duration_seconds
-        if obj.house_ad_id:
-            return obj.house_ad.duration_seconds
         return 0
 
     def get_asset_id(self, obj):
-        return str(obj.creative_id or obj.house_ad_id)
+        return str(obj.creative_id) if obj.creative_id else None
 
     def get_asset_type(self, obj):
-        return "creative" if obj.creative_id else "house_ad"
+        return "creative"
 
     def get_campaign_name(self, obj):
         if obj.creative_id and obj.creative.campaign_id:
             return obj.creative.campaign.name
-        if obj.house_ad_id:
-            return obj.house_ad.name or "Eczane İçeriği"
         return None
 
 
@@ -469,7 +460,7 @@ class ProofOfPlayBulkSerializer(serializers.Serializer):
 class PlayLogSerializer(serializers.ModelSerializer):
     class Meta:
         model = PlayLog
-        fields = ["id", "kiosk", "creative", "house_ad", "played_at", "duration_played"]
+        fields = ["id", "kiosk", "creative", "played_at", "duration_played"]
         read_only_fields = ("id",)
 
 

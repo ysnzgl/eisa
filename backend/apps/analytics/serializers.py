@@ -412,8 +412,6 @@ class CampaignImpressionSerializer(serializers.Serializer):
     creative_adi = serializers.SerializerMethodField()
     campaign_id = serializers.SerializerMethodField()
     campaign_adi = serializers.SerializerMethodField()
-    house_ad_id = serializers.UUIDField(read_only=True)
-    house_ad_adi = serializers.CharField(source="house_ad.name", read_only=True)
     played_at = serializers.DateTimeField(read_only=True)
     duration_played = serializers.IntegerField(read_only=True)
 

@@ -28,7 +28,7 @@ import pytest
 from django.test import override_settings
 from django.utils import timezone
 
-from apps.campaigns.models import HouseAd, Playlist
+from apps.campaigns.models import Playlist
 from apps.pharmacies.models import Kiosk
 
 
@@ -41,17 +41,6 @@ _TZ = _zi.ZoneInfo("Europe/Istanbul")
 TODAY = _dt.datetime.now(_TZ).date()
 TOMORROW = TODAY + _dt.timedelta(days=1)
 DAY_AFTER = TODAY + _dt.timedelta(days=2)
-
-
-@pytest.fixture
-def house_ad(db):
-    return HouseAd.objects.create(
-        name="FC5 HouseAd",
-        media_url="http://localhost:9000/dev/ads/fc5-filler.mp4",
-        duration_seconds=15,
-        priority=1,
-        aktif=True,
-    )
 
 
 def _set_desired_version(kiosk, version: int):
@@ -332,7 +321,7 @@ def test_fc15_no_ack_applied_stays_null(kiosk):
 
 @pytest.mark.django_db
 @override_settings(DOOH_ENGINE_V2="active")
-def test_fc16_publish_bumps_desired_version(kiosk, house_ad):
+def test_fc16_publish_bumps_desired_version(kiosk):
     """_persist_plan desired version'ı artırmalı (Kiosk.last_playlist_version)."""
     from apps.campaigns.services.activation_service import ActivationService
     from apps.campaigns.services.placement_engine_v2 import PlacementEngineV2

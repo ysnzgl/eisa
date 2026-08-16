@@ -26,7 +26,6 @@ from apps.campaigns.models import (
     Campaign,
     Creative,
     DeliveryRule,
-    HouseAd,
     PlanningRun,
     KioskDayQuota,
     CampaignTotalAllocation,
@@ -54,18 +53,6 @@ def kiosk(db):
     )
 
 
-@pytest.fixture
-def house_ad(db):
-    """House ad fixture."""
-    return HouseAd.objects.create(
-        name="House Ad 1",
-        media_url="https://example.com/house.mp4",
-        duration_seconds=15,
-        aktif=True,
-        priority=1,
-    )
-
-
 class TestFeatureFlag:
     """Faz 7: DOOH_ENGINE_V2 flag ve is_enabled/is_active_mode/should_publish metodları kaldırıldı."""
 
@@ -85,8 +72,8 @@ class TestFeatureFlag:
 class TestEmptyState:
     """Boş durum testleri."""
 
-    def test_no_campaigns_returns_empty(self, kiosk, house_ad):
-        """Kampanya yoksa yalnız house ad döner."""
+    def test_no_campaigns_returns_empty(self, kiosk):
+        """Kampanya yoksa boş plan döner (filler kaldırıldı)."""
         today = date.today()
 
         plan = PlacementEngineV2.plan_kiosk_day(
@@ -97,7 +84,7 @@ class TestEmptyState:
         assert plan.kiosk_id == kiosk.id
         assert plan.date == today
         assert plan.metrics["creative_items"] == 0
-        assert plan.metrics["house_ad_items"] > 0
+        assert plan.metrics["total_items"] == 0
         assert plan.fingerprint != ""
     
     def test_inactive_kiosk_returns_empty(self, kiosk):
@@ -119,7 +106,7 @@ class TestEmptyState:
 class TestTargetResolution:
     """Target scope resolution testleri."""
     
-    def test_target_scope_all_includes_kiosk(self, kiosk, house_ad):
+    def test_target_scope_all_includes_kiosk(self, kiosk):
         """target_scope=ALL tüm aktif kiosk'ları hedefler."""
         today = date.today()
         
@@ -157,7 +144,7 @@ class TestTargetResolution:
 class TestDateFilters:
     """Tarih/weekday filtreleri testleri."""
     
-    def test_campaign_outside_date_range_excluded(self, kiosk, house_ad):
+    def test_campaign_outside_date_range_excluded(self, kiosk):
         """Tarih aralığı dışındaki kampanya elenir."""
         today = date.today()
         past_date = today - timedelta(days=10)
@@ -191,7 +178,7 @@ class TestDateFilters:
         
         assert plan.metrics["total_campaigns"] == 0
     
-    def test_weekday_filter_excludes_campaign(self, kiosk, house_ad):
+    def test_weekday_filter_excludes_campaign(self, kiosk):
         """Active weekdays dışındaki günlerde kampanya elenir."""
         today = date.today()
         weekday = today.isoweekday()  # 1=Monday, 7=Sunday
@@ -233,7 +220,7 @@ class TestDateFilters:
 class TestGuaranteeModePriority:
     """Guarantee mode priority testleri."""
     
-    def test_guaranteed_placed_before_best_effort(self, kiosk, house_ad):
+    def test_guaranteed_placed_before_best_effort(self, kiosk):
         """GUARANTEED kampanyalar BEST_EFFORT'tan önce yerleşir."""
         today = date.today()
         
@@ -314,7 +301,7 @@ class TestGuaranteeModePriority:
 class TestSlotOverlapPrevention:
     """Slot overlap prevention testleri."""
     
-    def test_no_overlapping_slots(self, kiosk, house_ad):
+    def test_no_overlapping_slots(self, kiosk):
         """Yerleştirilen slot'lar üst üste binmez."""
         today = date.today()
         
@@ -368,7 +355,7 @@ class TestSlotOverlapPrevention:
 class TestFollowsOrdering:
     """A→B follows ordering testleri."""
     
-    def test_follows_predecessor_placed_first(self, kiosk, house_ad):
+    def test_follows_predecessor_placed_first(self, kiosk):
         """B→A ilişkisi varsa A önce yerleşir."""
         today = date.today()
         
@@ -445,7 +432,7 @@ class TestFollowsOrdering:
 class TestDeterministicOutput:
     """Deterministic output testleri."""
     
-    def test_same_input_same_fingerprint(self, kiosk, house_ad):
+    def test_same_input_same_fingerprint(self, kiosk):
         """Aynı girdiler aynı fingerprint üretir."""
         today = date.today()
         
@@ -487,7 +474,7 @@ class TestDeterministicOutput:
 
 
 @pytest.mark.django_db
-def test_v2_does_not_modify_v1_output(kiosk, house_ad):
+def test_v2_does_not_modify_v1_output(kiosk):
     """
     Faz 7: V2 canonical; generate_for_kiosk V1 scheduler çalıştırır.
 
@@ -527,7 +514,7 @@ def test_v2_does_not_modify_v1_output(kiosk, house_ad):
 
     # V1 playlist'leri oluşturuldu
     assert len(v1_playlists) == 24  # 24 saat
-    assert v1_count >= 0  # boş da olabilir (house_ad filler ile)
+    assert v1_count >= 0  # boş da olabilir (filler kaldırıldı)
 
     # Quota/allocation V1 tarafından değiştirilmez (V2 queue worker sorumlu)
     assert KioskDayQuota.objects.count() == 0

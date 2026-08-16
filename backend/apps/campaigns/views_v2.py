@@ -16,7 +16,7 @@ Endpoint haritasi:
     GET    /api/inventory/availability/?date=YYYY-MM-DD&hour=18[&kiosk=<id>]
 
   Kiosk Edge API (App-Key + MAC):
-    GET    /api/kiosk/v1/sync/                            -> tum aktif creative + house_ad listesi
+    GET    /api/kiosk/v1/sync/                            -> tum aktif creative + idle_contents listesi
     GET    /api/kiosk/v1/playlist/?date=YYYY-MM-DD
     POST   /api/kiosk/v1/proof-of-play/                   -> bulk PlayLog ingest
 """
@@ -51,8 +51,8 @@ from .models import (
     DayPlan,
     DeliveryRule,
     GenerationJob,
-    HouseAd,
     HourPlan,
+    IdleScreenContent,
     PharmacyCampaign,
     PlayLog,
     Playlist,
@@ -67,10 +67,9 @@ from .serializers import (
     CreativeSerializer,
     DayPlanSerializer,
     GenerationJobSerializer,
-    HouseAdSerializer,
     HourPlanSerializer,
+    IdleScreenContentSerializer,
     KioskCreativeSyncSerializer,
-    KioskHouseAdSyncSerializer,
     KioskPlaylistSerializer,
     PharmacyCampaignFeedSerializer,
     PharmacyCampaignSerializer,
@@ -407,7 +406,7 @@ class CampaignViewSet(viewsets.ModelViewSet):
 
         playlist = Playlist.objects.filter(
             kiosk_id=kiosk_id, target_date=target_date, target_hour=hour,
-        ).prefetch_related("items__creative__campaign", "items__house_ad").first()
+        ).prefetch_related("items__creative__campaign").first()
 
         if playlist is None:
             return Response({"playlist": None, "items": []})
@@ -440,7 +439,7 @@ class CampaignViewSet(viewsets.ModelViewSet):
         playlists = (
             Playlist.objects
             .filter(kiosk_id=kiosk_id, target_date__gte=start_date, target_date__lte=end_date)
-            .prefetch_related("items__creative__campaign", "items__house_ad")
+            .prefetch_related("items__creative__campaign")
         )
 
         # cells[date_str][hour] = {used, free, campaigns: set, top: [name1,...]}
@@ -452,8 +451,7 @@ class CampaignViewSet(viewsets.ModelViewSet):
             used = 0
             campaign_seconds: dict = {}
             for it in pl.items.all():
-                dur = (it.creative.duration_seconds if it.creative_id
-                       else it.house_ad.duration_seconds if it.house_ad_id else 0)
+                dur = (it.creative.duration_seconds if it.creative_id else 0)
                 used += dur or 0
                 if it.creative_id and it.creative.campaign_id:
                     name = it.creative.campaign.name
@@ -659,20 +657,25 @@ class ScheduleRuleViewSet(viewsets.ModelViewSet):
             uow.delete(instance)
 
 
-class HouseAdViewSet(viewsets.ModelViewSet):
-    queryset = HouseAd.objects.all()
-    serializer_class = HouseAdSerializer
+class IdleScreenContentViewSet(viewsets.ModelViewSet):
+    """Idle ekrani baslik/metin icerigi CRUD (SuperAdmin).
+
+    ``GET/POST/PUT/PATCH/DELETE /api/campaigns/v2/idle-contents/``
+    """
+
+    queryset = IdleScreenContent.objects.all()
+    serializer_class = IdleScreenContentSerializer
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsSuperAdmin]
 
     def perform_create(self, serializer):
-        instance = HouseAd(**serializer.validated_data)
+        instance = IdleScreenContent(**serializer.validated_data)
         with UnitOfWork(user=self.request.user) as uow:
             uow.add(instance)
         serializer.instance = instance
 
     def perform_update(self, serializer):
-        instance: HouseAd = serializer.instance
+        instance: IdleScreenContent = serializer.instance
         for k, v in serializer.validated_data.items():
             setattr(instance, k, v)
         with UnitOfWork(user=self.request.user) as uow:
@@ -681,49 +684,6 @@ class HouseAdViewSet(viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         with UnitOfWork(user=self.request.user) as uow:
             uow.delete(instance)
-
-    @action(detail=True, methods=["get"], url_path="download")
-    def download(self, request, pk=None):
-        """``GET /api/campaigns/v2/house-ads/{id}/download/``
-
-        Orijinal medya dosyasını SuperAdmin için stream eder.
-        object_key DB'den alınır; kullanıcıdan kabul edilmez.
-        Content-Disposition: attachment ile indirilir.
-        """
-        house_ad = self.get_object()
-        object_key = house_ad.object_key
-        if not object_key:
-            return Response(
-                {"error": "Bu HouseAd için object_key bulunamadı. Backfill gerekebilir."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        from apps.core.services.storage_service import StorageService
-        try:
-            storage = StorageService()
-            minio_resp = storage.client.get_object(storage.bucket_name, object_key)
-        except Exception:
-            logger.warning("HouseAd download: object not found in storage key=%s id=%s", object_key, pk)
-            return Response(
-                {"error": "Medya storage'da bulunamadı."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        filename = object_key.rsplit("/", 1)[-1]
-        content_type, _ = mimetypes.guess_type(object_key)
-        content_type = content_type or "application/octet-stream"
-
-        def _stream():
-            try:
-                for chunk in minio_resp.stream(amt=65536):
-                    yield chunk
-            finally:
-                minio_resp.close()
-                minio_resp.release_conn()
-
-        http_resp = StreamingHttpResponse(_stream(), content_type=content_type)
-        http_resp["Content-Disposition"] = f'attachment; filename="{filename}"'
-        return http_resp
 
 
 class PricingMatrixView(APIView):
@@ -1108,7 +1068,6 @@ class KioskDayStreamView(APIView):
             .filter(kiosk_id=kiosk_id, target_date=target_date)
             .prefetch_related(
                 "items__creative__campaign",
-                "items__house_ad",
             )
             .order_by("target_hour")
         )
@@ -1117,20 +1076,15 @@ class KioskDayStreamView(APIView):
         for pl in playlists:
             items_data = []
             for item in pl.items.all():
-                if item.creative_id:
-                    media_url = item.creative.media_url
-                    active_media_url = item.creative.active_media_url or ""
-                    duration = item.creative.duration_seconds
-                    asset_id = str(item.creative_id)
-                    asset_type = "creative"
-                    name = item.creative.campaign.name if item.creative.campaign_id else item.creative.name
-                else:
-                    media_url = item.house_ad.media_url
-                    active_media_url = ""
-                    duration = item.house_ad.duration_seconds
-                    asset_id = str(item.house_ad_id)
-                    asset_type = "house_ad"
-                    name = item.house_ad.name
+                if not item.creative_id:
+                    # Defensive: legacy/house_ad item — atla.
+                    continue
+                media_url = item.creative.media_url
+                active_media_url = item.creative.active_media_url or ""
+                duration = item.creative.duration_seconds
+                asset_id = str(item.creative_id)
+                asset_type = "creative"
+                name = item.creative.campaign.name if item.creative.campaign_id else item.creative.name
 
                 items_data.append({
                     "id": str(item.id),

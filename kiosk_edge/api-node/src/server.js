@@ -170,7 +170,7 @@ export async function buildServer({ db, settings, logger }) {
     const assetId = req.params.assetId.replace(
       /\.(mp4|webm|ogv|ogg|jpg|jpeg|png|gif|webp)$/i, '',
     );
-    if (!['creative', 'house_ad'].includes(assetType)) {
+    if (!['creative'].includes(assetType)) {
       return fail(reply, 400, 'Gecersiz asset_tipi');
     }
     const media = getLocalMediaMeta(db, assetType, assetId);
@@ -593,26 +593,35 @@ export async function buildServer({ db, settings, logger }) {
     const creatives = db
       .prepare('SELECT id, media_url, duration_seconds, type FROM creatives WHERE aktif = 1')
       .all();
-    const houseAds = db
-      .prepare('SELECT id, name, media_url, duration_seconds, type FROM house_ads WHERE aktif = 1')
+    return creatives.map((c) => ({
+      id: c.id,
+      media_url: buildMediaUrl(db, 'creative', c.id, c.media_url),
+      remote_media_url: c.media_url,
+      duration_seconds: c.duration_seconds,
+      type: c.type,
+    }));
+  });
+
+  // ── idle içerikleri (İçerik Yönetimi — başlık/metin) read-only ──────────────
+  // Kiosk UI merkezi backend'e bağlanmaz; yalnız lokal aktif idle içeriklerini alır.
+  app.get('/api/idle-contents', async () => {
+    const rows = db
+      .prepare(
+        `SELECT id, baslik, metin, kategori_id, ikon, aktif, guncellenme_tarihi
+           FROM idle_contents
+          WHERE aktif = 1
+          ORDER BY guncellenme_tarihi DESC`,
+      )
       .all();
-    return [
-      ...creatives.map((c) => ({
-        id: c.id,
-        media_url: buildMediaUrl(db, 'creative', c.id, c.media_url),
-        remote_media_url: c.media_url,
-        duration_seconds: c.duration_seconds,
-        type: c.type,
-      })),
-      ...houseAds.map((h) => ({
-        id: h.id,
-        name: h.name,
-        media_url: buildMediaUrl(db, 'house_ad', h.id, h.media_url),
-        remote_media_url: h.media_url,
-        duration_seconds: h.duration_seconds,
-        type: h.type,
-      })),
-    ];
+    return rows.map((r) => ({
+      id: r.id,
+      baslik: r.baslik,
+      metin: r.metin,
+      kategori_id: r.kategori_id ?? null,
+      ikon: r.ikon || '',
+      aktif: !!r.aktif,
+      updated_at: r.guncellenme_tarihi,
+    }));
   });
 
   // â”€â”€ playlist â€” bugÃ¼nÃ¼n aktif saati iÃ§in sÄ±ralÄ± oynatma listesi â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -638,41 +647,24 @@ export async function buildServer({ db, settings, logger }) {
       .get(today, hour);
 
     if (!playlist) {
-      // Fallback: yapÄ±landÄ±rÄ±lmamÄ±ÅŸ tÃ¼m asset'ler
+      // Fallback: yapÄ±landÄ±rÄ±lmamÄ±ÅŸ tÃ¼m creative asset'ler (house_ad kaldirildi)
       const creatives = db
         .prepare('SELECT id, media_url, active_media_url, duration_seconds, type FROM creatives WHERE aktif = 1')
         .all();
-      const houseAds  = db
-        .prepare('SELECT id, name, media_url, duration_seconds, type FROM house_ads WHERE aktif = 1')
-        .all();
-      const fallbackItems = [
-        ...creatives.map((c, i) => ({
-          id: `fallback-c-${c.id}`,
-          playback_order: i,
-          asset_id: c.id,
-          asset_type: 'creative',
-          media_url: buildMediaUrl(db, 'creative', c.id, c.media_url),
-          remote_media_url: c.media_url,
-          active_media_url: c.active_media_url
-            ? buildMediaUrl(db, 'creative', c.id + '_active', c.active_media_url)
-            : '',
-          media_type: mediaKindFromMime(getLocalMediaMeta(db, 'creative', c.id)?.mime_type),
-          duration_seconds: c.duration_seconds,
-          estimated_start_offset_seconds: 0,
-        })),
-        ...houseAds.map((h, i) => ({
-          id: `fallback-h-${h.id}`,
-          playback_order: creatives.length + i,
-          asset_id: h.id,
-          asset_type: 'house_ad',
-          media_url: buildMediaUrl(db, 'house_ad', h.id, h.media_url),
-          remote_media_url: h.media_url,
-          active_media_url: '',
-          media_type: mediaKindFromMime(getLocalMediaMeta(db, 'house_ad', h.id)?.mime_type),
-          duration_seconds: h.duration_seconds,
-          estimated_start_offset_seconds: 0,
-        })),
-      ];
+      const fallbackItems = creatives.map((c, i) => ({
+        id: `fallback-c-${c.id}`,
+        playback_order: i,
+        asset_id: c.id,
+        asset_type: 'creative',
+        media_url: buildMediaUrl(db, 'creative', c.id, c.media_url),
+        remote_media_url: c.media_url,
+        active_media_url: c.active_media_url
+          ? buildMediaUrl(db, 'creative', c.id + '_active', c.active_media_url)
+          : '',
+        media_type: mediaKindFromMime(getLocalMediaMeta(db, 'creative', c.id)?.mime_type),
+        duration_seconds: c.duration_seconds,
+        estimated_start_offset_seconds: 0,
+      }));
       return {
         version: 0,
         target_date: today,
@@ -690,7 +682,7 @@ export async function buildServer({ db, settings, logger }) {
                 CASE WHEN pi.asset_type = 'creative' THEN COALESCE(c.active_media_url, '') ELSE '' END AS active_media_url
            FROM playlist_items pi
            LEFT JOIN creatives c ON pi.asset_type = 'creative' AND c.id = pi.asset_id
-          WHERE pi.playlist_id = ?
+          WHERE pi.playlist_id = ? AND pi.asset_type = 'creative'
           ORDER BY pi.playback_order`,
       )
       .all(playlist.id)

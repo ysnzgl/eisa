@@ -25,7 +25,6 @@ from apps.campaigns.models import (
     Campaign,
     Creative,
     GenerationJob,
-    HouseAd,
     Playlist,
     PlaylistItem,
 )
@@ -272,7 +271,7 @@ def test_t06d_day_stream_no_n_plus_1(kiosk, admin_client, django_assert_max_num_
                 playlist=pl, creative=cr,
                 playback_order=i + 1, estimated_start_offset_seconds=i * 15,
             )
-    # Kiosk + playlists + prefetch(items, creative, campaign, house_ad) → sabit sorgu
+    # Kiosk + playlists + prefetch(items, creative, campaign) → sabit sorgu
     with django_assert_max_num_queries(12):
         resp = admin_client.get(
             "/api/campaigns/v2/playlists/day-stream/",
@@ -348,13 +347,6 @@ def test_t08_job_failure_transitions_to_retry_or_failed(kiosk):
 @pytest.mark.django_db
 def test_t09_drain_queue_processes_job(kiosk):
     """drain_queue PENDING job'i claim ederek terminal duruma (DONE/FAILED) gecirir."""
-    # HouseAd fillerler icin en az bir house_ad lazim (scheduler bozu calismasin diye)
-    HouseAd.objects.create(
-        name="T09 Filler",
-        media_url="https://files.eisa.com.tr/eisa-files/ads/filler.jpg",
-        duration_seconds=15,
-        aktif=True,
-    )
     job = _create_or_coalesce_job(kiosk.id, TODAY, "test_t09")
     assert job.status == "PENDING"
 
@@ -366,11 +358,11 @@ def test_t09_drain_queue_processes_job(kiosk):
     assert job.status not in ("PENDING", "RUNNING")
 
 
-# ── T-10: Creative/HouseAd ayrimi KioskPlaylistItemSerializer'da dogru ───────
+# ── T-10: Creative KioskPlaylistItemSerializer'da dogru serialize ediliyor ──────
 
 
 @pytest.mark.django_db
-def test_t10_playlist_item_serializer_creative_vs_house_ad(kiosk):
+def test_t10_playlist_item_serializer_creative(kiosk):
     from apps.campaigns.serializers import KioskPlaylistItemSerializer
 
     campaign = _make_campaign(name="T10")
@@ -380,29 +372,16 @@ def test_t10_playlist_item_serializer_creative_vs_house_ad(kiosk):
         active_media_url="",
         duration_seconds=15,
     )
-    ha = HouseAd.objects.create(
-        name="T10 HouseAd",
-        media_url="https://files.eisa.com.tr/eisa-files/ads/housead.jpg",
-        duration_seconds=10,
-        aktif=True,
-    )
     pl = _make_playlist(kiosk, TODAY, target_hour=9)
     creative_item = PlaylistItem.objects.create(
         playlist=pl, creative=creative,
         playback_order=1, estimated_start_offset_seconds=0,
     )
-    ha_item = PlaylistItem.objects.create(
-        playlist=pl, house_ad=ha,
-        playback_order=2, estimated_start_offset_seconds=15,
-    )
 
     cr_data = KioskPlaylistItemSerializer(creative_item).data
-    ha_data = KioskPlaylistItemSerializer(ha_item).data
 
     assert cr_data["asset_type"] == "creative"
-    assert ha_data["asset_type"] == "house_ad"
     assert cr_data["active_media_url"] == ""
-    assert ha_data["active_media_url"] == ""
 
 
 # ── T-11: PER_LOOP kampanya kuyruk worker'i ile 24 saat dolar + versiyon bump ─

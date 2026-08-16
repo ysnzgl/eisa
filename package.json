@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "dev:all": "concurrently -n web,backend,scheduler,edge-api,edge-ui -c blue,magenta,yellow,cyan,green \"npm --prefix web_panels run dev\" \"cd backend && py manage.py runserver\" \"cd backend && py manage.py run_scheduler\" \"npm --prefix kiosk_edge/api-node run dev\" \"npm --prefix kiosk_edge/ui run dev\""
+    "dev:all": "concurrently -n web,backend,scheduler,kiosk-api,kiosk-ui -c blue,magenta,yellow,cyan,green \"npm --prefix web_panels run dev\" \"cd backend && py manage.py runserver\" \"cd backend && py manage.py run_scheduler\" \"npm --prefix kiosk_edge/api-node run dev\" \"npm --prefix kiosk_edge/ui run dev\""
   },
   "devDependencies": {
     "concurrently": "^9.0.0"

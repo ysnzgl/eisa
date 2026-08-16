@@ -168,11 +168,11 @@ class ActivationService:
             PlaylistItem.objects
             .filter(playlist__kiosk_id=kiosk_id, playlist__target_date=target_date)
             .order_by("estimated_start_offset_seconds", "playlist__target_hour", "playback_order")
-            .select_related("creative", "house_ad")
+            .select_related("creative")
             .values(
-                "creative_id", "house_ad_id", "playback_order",
+                "creative_id", "playback_order",
                 "estimated_start_offset_seconds",
-                "creative__duration_seconds", "house_ad__duration_seconds",
+                "creative__duration_seconds",
             )
         )
         if not items:
@@ -180,12 +180,11 @@ class ActivationService:
 
         canonical_items = []
         for i in items:
-            asset_id = str(i["creative_id"]) if i["creative_id"] else str(i["house_ad_id"])
-            asset_type = "creative" if i["creative_id"] else "house_ad"
-            duration = (
-                i["creative__duration_seconds"] if i["creative_id"]
-                else i["house_ad__duration_seconds"]
-            )
+            if not i["creative_id"]:
+                continue
+            asset_id = str(i["creative_id"])
+            asset_type = "creative"
+            duration = i["creative__duration_seconds"]
             canonical_items.append({
                 "asset_id": asset_id,
                 "asset_type": asset_type,
@@ -666,29 +665,20 @@ class ActivationService:
 
             bulk: list = []
             for order, item in enumerate(hour_items):
-                if item["asset_type"] == "creative":
-                    creative_count += 1
-                    bulk.append(
-                        PlaylistItem(
-                            playlist=playlist,
-                            creative_id=item["asset_id"],
-                            playback_order=order,
-                            estimated_start_offset_seconds=item[
-                                "estimated_start_offset_seconds"
-                            ],
-                        )
+                if item["asset_type"] != "creative":
+                    # Defensive: yalniz creative item persist edilir.
+                    continue
+                creative_count += 1
+                bulk.append(
+                    PlaylistItem(
+                        playlist=playlist,
+                        creative_id=item["asset_id"],
+                        playback_order=order,
+                        estimated_start_offset_seconds=item[
+                            "estimated_start_offset_seconds"
+                        ],
                     )
-                else:
-                    bulk.append(
-                        PlaylistItem(
-                            playlist=playlist,
-                            house_ad_id=item["asset_id"],
-                            playback_order=order,
-                            estimated_start_offset_seconds=item[
-                                "estimated_start_offset_seconds"
-                            ],
-                        )
-                    )
+                )
 
             if bulk:
                 PlaylistItem.objects.bulk_create(bulk, batch_size=500)

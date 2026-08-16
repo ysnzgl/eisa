@@ -49,18 +49,6 @@ TODAY = _dt.datetime.now(_TZ).date()
 TOMORROW = TODAY + _dt.timedelta(days=1)
 
 
-@pytest.fixture
-def house_ad_fd(db):
-    from apps.campaigns.models import HouseAd
-    return HouseAd.objects.create(
-        name="FD HouseAd",
-        media_url="http://localhost:9000/dev/ads/fd-filler.mp4",
-        duration_seconds=15,
-        priority=1,
-        aktif=True,
-    )
-
-
 def _make_campaign(kiosk=None):
     base = timezone.make_aware(_dt.datetime.combine(TODAY, _dt.time(0, 0)))
     return Campaign.objects.create(
@@ -301,7 +289,7 @@ def test_fd05_409_sets_resync_flag():
 
 @pytest.mark.django_db
 @override_settings(DOOH_ENGINE_V2="active")
-def test_fd06_concurrent_same_fingerprint_single_bump(kiosk, house_ad_fd):
+def test_fd06_concurrent_same_fingerprint_single_bump(kiosk):
     """Aynı fingerprint ile iki job çalışırsa yalnız bir version bump oluşur.
 
     SQLite: sequential (lock contentious yapamayız), ama ikinci job
@@ -310,6 +298,12 @@ def test_fd06_concurrent_same_fingerprint_single_bump(kiosk, house_ad_fd):
     camp = _make_campaign()
     _make_creative(camp)
     _make_rule(camp)
+    from apps.campaigns.models import ScheduleRule
+    ScheduleRule.objects.create(
+        campaign=camp,
+        frequency_type=ScheduleRule.FrequencyType.PER_HOUR,
+        frequency_value=1,
+    )
 
     from apps.campaigns.services.queue_worker import regenerate_kiosk_day
 
@@ -342,7 +336,7 @@ def test_fd06_concurrent_same_fingerprint_single_bump(kiosk, house_ad_fd):
 
 @pytest.mark.django_db
 @override_settings(DOOH_ENGINE_V2="active")
-def test_fd07_different_date_publish_no_fingerprint_loss(kiosk, house_ad_fd):
+def test_fd07_different_date_publish_no_fingerprint_loss(kiosk):
     """TODAY ve TOMORROW için sıralı publish: her iki günün fingerprinti korunur."""
     camp = _make_campaign()
     _make_creative(camp)
@@ -379,11 +373,17 @@ def test_fd07_different_date_publish_no_fingerprint_loss(kiosk, house_ad_fd):
 
 @pytest.mark.django_db
 @override_settings(DOOH_ENGINE_V2="active")
-def test_fd08_stale_fingerprint_after_manual_mutation(kiosk, house_ad_fd):
+def test_fd08_stale_fingerprint_after_manual_mutation(kiosk):
     """V2 publish sonrası V1/manuel playlist değişimi → sonraki process_job publish eder."""
     camp = _make_campaign()
     _make_creative(camp)
     _make_rule(camp)
+    from apps.campaigns.models import ScheduleRule
+    ScheduleRule.objects.create(
+        campaign=camp,
+        frequency_type=ScheduleRule.FrequencyType.PER_HOUR,
+        frequency_value=1,
+    )
 
     from apps.campaigns.services.placement_engine_v2 import PlacementEngineV2
 
@@ -418,7 +418,7 @@ def test_fd08_stale_fingerprint_after_manual_mutation(kiosk, house_ad_fd):
 
 @pytest.mark.django_db
 @override_settings(DOOH_KIOSK_ACK=True, DOOH_ENGINE_V2="active")
-def test_fd09_manifest_uses_select_for_update(kiosk, house_ad_fd, admin_client):
+def test_fd09_manifest_uses_select_for_update(kiosk, admin_client):
     """Manifest endpoint Kiosk row-lock kullanır (select_for_update)."""
     # Bu test lock'un varlığını dolaylı olarak doğrular:
     # Manifest request Kiosk'u okur, version'ı döndürür.

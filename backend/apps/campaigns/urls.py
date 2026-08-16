@@ -9,8 +9,8 @@ from .views_v2 import (
     DayPlanViewSet,
     GenerationJobListView,
     GenerationJobView,
-    HouseAdViewSet,
     HourPlanViewSet,
+    IdleScreenContentViewSet,
     InventoryAvailabilityView,
     KioskDayStreamView,
     PharmacyCampaignViewSet,
@@ -25,14 +25,14 @@ v2_router = DefaultRouter()
 v2_router.register(r"campaigns", CampaignViewSet, basename="dooh-campaign")
 v2_router.register(r"creatives", CreativeViewSet, basename="dooh-creative")
 v2_router.register(r"rules", ScheduleRuleViewSet, basename="dooh-schedule-rule")
-v2_router.register(r"house-ads", HouseAdViewSet, basename="dooh-house-ad")
+v2_router.register(r"idle-contents", IdleScreenContentViewSet, basename="dooh-idle-content")
 v2_router.register(r"playlist-templates", PlaylistTemplateViewSet, basename="dooh-playlist-template")
 v2_router.register(r"hour-plans", HourPlanViewSet, basename="dooh-hour-plan")
 v2_router.register(r"day-plans", DayPlanViewSet, basename="dooh-day-plan")
 v2_router.register(r"pharmacy-campaigns", PharmacyCampaignViewSet, basename="pharmacy-campaign")
 
 urlpatterns = [
-    # Medya upload (creative + house ad icin ortak)
+    # Medya upload (creative icin)
     path("upload-media/", MediaUploadView.as_view(), name="media-upload"),
 
     # DOOH v2 yonetim API'si (JWT, SuperAdmin)

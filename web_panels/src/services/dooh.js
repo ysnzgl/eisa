@@ -79,10 +79,6 @@ export const createCreative = (data) =>
 export const downloadCreativeMedia = (creativeId) =>
   http.get(`/api/campaigns/v2/creatives/${creativeId}/download/`, { responseType: 'blob' });
 
-/** Orijinal HouseAd medyasını indirmek için blob URL üretir (SuperAdmin). */
-export const downloadHouseAdMedia = (houseAdId) =>
-  http.get(`/api/campaigns/v2/house-ads/${houseAdId}/download/`, { responseType: 'blob' });
-
 // ── Media upload ──
 export async function uploadMedia(file, mediaKind) {
   const fd = new FormData();
@@ -94,18 +90,18 @@ export async function uploadMedia(file, mediaKind) {
   return data;
 }
 
-// ── House ads ──
-export const listHouseAds = () =>
-  http.get('/api/campaigns/v2/house-ads/');
+// ── Idle Screen Content (İçerik Yönetimi — başlık/metin idle içerikleri) ──
+export const listIdleContents = () =>
+  http.get('/api/campaigns/v2/idle-contents/');
 
-export const createHouseAd = (data) =>
-  http.post('/api/campaigns/v2/house-ads/', data);
+export const createIdleContent = (data) =>
+  http.post('/api/campaigns/v2/idle-contents/', data);
 
-export const updateHouseAd = (id, data) =>
-  http.patch(`/api/campaigns/v2/house-ads/${id}/`, data);
+export const updateIdleContent = (id, data) =>
+  http.patch(`/api/campaigns/v2/idle-contents/${id}/`, data);
 
-export const deleteHouseAd = (id) =>
-  http.delete(`/api/campaigns/v2/house-ads/${id}/`);
+export const deleteIdleContent = (id) =>
+  http.delete(`/api/campaigns/v2/idle-contents/${id}/`);
 
 // ── Inventory ──
 export const getInventoryAvailability = (params) =>

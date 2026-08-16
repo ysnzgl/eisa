@@ -114,6 +114,8 @@ async function confirmApprove() {
       ad: ad.trim(),
     });
     await loadRequests();
+    window.dispatchEvent(new Event('eisa-nav-badges-refresh'));
+    window.dispatchEvent(new Event('eisa-provisioning-refresh'));
     closeApprove();
     showToast('Cihaz başarıyla onaylandı ve kiosk kaydı oluşturuldu.');
   } catch (err) {
@@ -150,6 +152,8 @@ async function confirmReject() {
       rejection_reason: rejectReason.value.trim(),
     });
     await loadRequests();
+    window.dispatchEvent(new Event('eisa-nav-badges-refresh'));
+    window.dispatchEvent(new Event('eisa-provisioning-refresh'));
     closeReject();
     showToast('Cihaz reddedildi.', 'warning');
   } catch (err) {

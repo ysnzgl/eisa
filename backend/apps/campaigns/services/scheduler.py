@@ -1,12 +1,14 @@
-"""DOOH Loop-Filler Scheduler.
+"""DOOH Loop Scheduler.
 
 Bir kiosk + tarih icin 24 adet 60sn loop uretir (her saat icin bir Playlist).
-Algoritma 4 pass'tir:
+Algoritma 3 pass'tir:
 
   Pass 1 — PER_LOOP : Loop icine sabit (her loop'ta N kez) yerlesim.
   Pass 2 — PER_HOUR : Saat icindeki secili loop'lara enjeksiyon.
   Pass 3 — PER_DAY  : Gun icindeki hedef saatlere rasgele dagitim.
-  Pass 4 — Filler   : Bos kalan saniyelere HouseAd dolgusu.
+
+Uygun campaign creative yoksa loop bos kalir (playlist item uretilmez);
+kiosk bu durumda idle ekranini gosterir. Filler/HouseAd dolgusu kaldirildi.
 
 Kapasite kuralı (her loop için):
 
@@ -34,7 +36,6 @@ from apps.campaigns.models import (
     Campaign,
     CampaignTarget,
     Creative,
-    HouseAd,
     Playlist,
     PlaylistItem,
     ScheduleRule,
@@ -52,7 +53,6 @@ class LoopSlot:
     """In-memory temsili: 60sn'lik bir loop'un ic dolulugu."""
 
     creative_id: Optional[str]
-    house_ad_id: Optional[str]
     duration: int
     offset: int  # saniye, 0..T_loop-1
 
@@ -75,7 +75,7 @@ class LoopBlock:
         return duration <= self.available
 
     def add(self, *, duration: int, creative_id: Optional[str] = None,
-            house_ad_id: Optional[str] = None, offset: Optional[int] = None) -> LoopSlot:
+            offset: Optional[int] = None) -> LoopSlot:
         if not self.fits(duration):
             raise ValueError(
                 f"LoopBlock(h={self.hour},i={self.loop_index}) does not fit {duration}s "
@@ -83,7 +83,6 @@ class LoopBlock:
             )
         slot = LoopSlot(
             creative_id=creative_id,
-            house_ad_id=house_ad_id,
             duration=duration,
             offset=offset if offset is not None else self.used,
         )
@@ -128,7 +127,6 @@ class PlaylistGenerator:
         self._pass1_per_loop(rules)
         self._pass2_per_hour(rules)
         self._pass3_per_day(rules)
-        self._pass4_filler()
         return self._persist()
 
     # ── Pass 1: PER_LOOP ───────────────────────────────────────────────
@@ -200,32 +198,6 @@ class PlaylistGenerator:
             for loop in candidates[:f]:
                 loop.add(duration=d, creative_id=str(creative.pk))
 
-    # ── Pass 4: Filler / House Ads ─────────────────────────────────────
-
-    def _pass4_filler(self) -> None:
-        house_ads = list(HouseAd.objects.filter(aktif=True).order_by("priority", "id"))
-        if not house_ads:
-            return
-        idx = 0
-        for h in range(24):
-            for loop in self.plan[h].loops:
-                while loop.available > 0:
-                    candidate = self._pick_filler(house_ads, loop.available, idx)
-                    if candidate is None:
-                        break
-                    loop.add(duration=int(candidate.duration_seconds),
-                             house_ad_id=str(candidate.pk))
-                    idx += 1
-
-    def _pick_filler(self, house_ads: Sequence[HouseAd], available: int,
-                     start_idx: int) -> Optional[HouseAd]:
-        n = len(house_ads)
-        for i in range(n):
-            ha = house_ads[(start_idx + i) % n]
-            if int(ha.duration_seconds) <= available:
-                return ha
-        return None
-
     # ── Persistence ────────────────────────────────────────────────────
 
     @transaction.atomic
@@ -263,7 +235,6 @@ class PlaylistGenerator:
                     bulk.append(PlaylistItem(
                         playlist=playlist,
                         creative_id=slot.creative_id,
-                        house_ad_id=slot.house_ad_id,
                         playback_order=order,
                         estimated_start_offset_seconds=base + slot.offset,
                     ))
@@ -370,7 +341,7 @@ def available_seconds(kiosk: Kiosk, target_date: date, hour: int) -> int:
     """
     pl = Playlist.objects.filter(
         kiosk=kiosk, target_date=target_date, target_hour=hour,
-    ).prefetch_related("items__creative", "items__house_ad").first()
+    ).prefetch_related("items__creative").first()
     if pl is None:
         return DEFAULT_LOOP_SECONDS
 
@@ -380,8 +351,6 @@ def available_seconds(kiosk: Kiosk, target_date: date, hour: int) -> int:
         idx = int(item.estimated_start_offset_seconds) // loop_seconds
         if item.creative_id and item.creative:
             per_loop_used[idx] = per_loop_used.get(idx, 0) + int(item.creative.duration_seconds)
-        elif item.house_ad_id and item.house_ad:
-            per_loop_used[idx] = per_loop_used.get(idx, 0) + int(item.house_ad.duration_seconds)
     if not per_loop_used:
         return loop_seconds
     return max(0, loop_seconds - max(per_loop_used.values()))

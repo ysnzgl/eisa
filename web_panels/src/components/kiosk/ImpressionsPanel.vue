@@ -49,7 +49,7 @@ const emit = defineEmits(['change-page']);
           </thead>
           <tbody>
             <tr v-for="row in rows" :key="row.id">
-              <td>{{ row.campaign_adi || row.house_ad_adi || '—' }}</td>
+              <td>{{ row.campaign_adi || '—' }}</td>
               <td v-if="showEczane" style="font-size:0.82rem;">{{ row.eczane_adi || '—' }}</td>
               <td style="font-size:0.82rem;">{{ row.kiosk_ad || '—' }}</td>
               <td>{{ row.duration_played }}sn</td>

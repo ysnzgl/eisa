@@ -16,7 +16,7 @@ from django.db import transaction
 from django.db.models.signals import post_delete, post_save, pre_delete, pre_save
 from django.dispatch import receiver
 
-from .models import Campaign, Creative, DeliveryRule, HouseAd
+from .models import Campaign, Creative, DeliveryRule
 from .models import CampaignTarget
 
 logger = logging.getLogger(__name__)
@@ -153,26 +153,6 @@ def _on_campaign_target_delete(sender, instance: CampaignTarget, **kwargs) -> No
     from apps.campaigns.services.invalidation_service import enqueue_for_campaign
     campaign = instance.campaign
     transaction.on_commit(lambda: enqueue_for_campaign(campaign, "target_delete"))
-
-
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-# HouseAd signals â€” tÃ¼m kiosklar etkilenir
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-
-@receiver(post_save, sender=HouseAd)
-def _on_house_ad_save(sender, instance: HouseAd, created: bool, **kwargs) -> None:
-    """HouseAd deÄŸiÅŸikliÄŸi â†’ tÃ¼m aktif kiosklar Ã— horizon invalidation."""
-
-    from apps.campaigns.services.invalidation_service import enqueue_for_all_kiosks
-    transaction.on_commit(lambda: enqueue_for_all_kiosks("house_ad_change"))
-
-
-@receiver(post_delete, sender=HouseAd)
-def _on_house_ad_delete(sender, instance: HouseAd, **kwargs) -> None:
-
-    from apps.campaigns.services.invalidation_service import enqueue_for_all_kiosks
-    transaction.on_commit(lambda: enqueue_for_all_kiosks("house_ad_delete"))
 
 
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

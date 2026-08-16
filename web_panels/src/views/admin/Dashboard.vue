@@ -263,7 +263,7 @@ onMounted(async () => {
     <div v-if="pendingCount > 0" class="dash-pending-alert">
       <i class="fa-solid fa-clock dash-pending-icon"></i>
       <span><strong>{{ pendingCount }}</strong> cihaz yönetici onayı bekliyor</span>
-      <router-link to="/admin/devices/pending" class="dash-pending-link">Görüntüle →</router-link>
+      <router-link to="/admin/devices" class="dash-pending-link">Görüntüle →</router-link>
     </div>
 
     <!--  KPI Cards  -->

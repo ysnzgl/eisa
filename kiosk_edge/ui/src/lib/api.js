@@ -167,6 +167,16 @@ export async function fetchActiveCampaigns() {
 }
 
 /**
+ * Lokal aktif idle içeriklerini (İçerik Yönetimi — başlık/metin) döner.
+ * UI merkezi backend'e bağlanmaz; yalnız api-node lokal endpoint'ini kullanır.
+ * @returns {Promise<Array<{id:number, baslik:string, metin:string, aktif:boolean, updated_at:string}>>}
+ */
+export async function fetchIdleContents() {
+  const list = await _request(`${API_BASE}/api/idle-contents`, { timeoutMs: 4000 });
+  return Array.isArray(list) ? list : [];
+}
+
+/**
  * Bugünün belirtilen saatine ait playlist'i döner.
  * @param {number} [hour]  — verilmezse api-node kendi saatini kullanır
  * @returns {Promise<{version:number, target_date:string, target_hour:number,

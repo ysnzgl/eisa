@@ -80,18 +80,7 @@ function normalizeAssets(db) {
       return entries;
     });
 
-  const houseAds = db
-    .prepare('SELECT id, media_url FROM house_ads WHERE aktif = 1')
-    .all()
-    .filter((x) => !!x.media_url)
-    .map((x) => ({
-      asset_id: String(x.id),
-      asset_type: 'house_ad',
-      media_url: x.media_url,
-      source_checksum: '',
-    }));
-
-  return [...creatives, ...houseAds];
+  return creatives;
 }
 
 async function downloadToFile(url, filePath, verifyTls, authHeaders = {}) {

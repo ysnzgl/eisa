@@ -72,12 +72,12 @@ export function makeMemoryDb() {
       aktif INTEGER NOT NULL DEFAULT 1,
       guncellenme_tarihi TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')));
 
-    CREATE TABLE house_ads (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL DEFAULT '',
-      media_url TEXT NOT NULL DEFAULT '',
-      duration_seconds INTEGER NOT NULL DEFAULT 15,
-      type TEXT NOT NULL DEFAULT 'house_ad',
+    CREATE TABLE idle_contents (
+      id INTEGER PRIMARY KEY,
+      baslik TEXT NOT NULL DEFAULT '',
+      metin TEXT NOT NULL DEFAULT '',
+      kategori_id INTEGER,
+      ikon TEXT NOT NULL DEFAULT '',
       aktif INTEGER NOT NULL DEFAULT 1,
       guncellenme_tarihi TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')));
 

@@ -27,10 +27,10 @@ from rest_framework.views import APIView
 
 from apps.analytics.log_ingest import MAX_BATCH_ITEMS, ingest_kiosk_diagnostic_items
 from apps.analytics.services import ingest_session_items
-from apps.campaigns.models import Campaign, Creative, HouseAd, PlayLog, Playlist
+from apps.campaigns.models import Campaign, Creative, IdleScreenContent, PlayLog, Playlist
 from apps.campaigns.serializers import (
     KioskCreativeSyncSerializer,
-    KioskHouseAdSyncSerializer,
+    KioskIdleContentSyncSerializer,
     KioskPlaylistSerializer,
     ProofOfPlayBulkSerializer,
 )
@@ -288,7 +288,7 @@ class KioskPingView(KioskAPIView):
 
 
 class KioskSyncView(KioskAPIView):
-    """``GET /api/kiosk/v1/sync/`` â€” aktif creative + house_ad + lookup listesi."""
+    """``GET /api/kiosk/v1/sync/`` â€” aktif creative + idle_contents + lookup listesi."""
 
     def get(self, request):
         kiosk = self.kiosk
@@ -312,12 +312,12 @@ class KioskSyncView(KioskAPIView):
                 continue
             creative_payload.append(KioskCreativeSyncSerializer(c, context=ctx).data)
 
-        house_ads = HouseAd.objects.filter(aktif=True)
+        idle_contents = IdleScreenContent.objects.filter(aktif=True).select_related("kategori").order_by("-guncellenme_tarihi")
         return Response({
             "kiosk_id": int(kiosk.pk),
             "generated_at": now.isoformat(),
             "creatives": creative_payload,
-            "house_ads": KioskHouseAdSyncSerializer(house_ads, many=True, context=ctx).data,
+            "idle_contents": KioskIdleContentSyncSerializer(idle_contents, many=True).data,
             "lookups": {
                 "cinsiyetler": list(Cinsiyet.objects.values("id", "kod", "ad").order_by("id")),
                 "yas_araliklari": list(YasAraligi.objects.values("id", "kod", "ad", "alt_sinir", "ust_sinir").order_by("id")),
@@ -374,7 +374,7 @@ class KioskPlaylistView(KioskAPIView):
             Playlist.objects
             .filter(kiosk=kiosk, target_date=target_date)
             .order_by("target_hour")
-            .prefetch_related("items__creative", "items__house_ad")
+            .prefetch_related("items__creative")
         )
         return Response({
             "kiosk_id": int(kiosk.pk),
@@ -465,14 +465,10 @@ class KioskProofOfPlayView(KioskAPIView):
         ) if new_event_ids else set()
 
         creative_ids = {entry["creative_id"] for entry in logs_data if entry.get("creative_id")}
-        house_ad_ids = {entry["house_ad_id"] for entry in logs_data if entry.get("house_ad_id")}
 
         existing_creative_ids = set(
             Creative.objects.filter(pk__in=creative_ids).values_list("pk", flat=True)
         ) if creative_ids else set()
-        existing_house_ad_ids = set(
-            HouseAd.objects.filter(pk__in=house_ad_ids).values_list("pk", flat=True)
-        ) if house_ad_ids else set()
 
         bulk = []
         invalid_ref_count = 0
@@ -482,20 +478,23 @@ class KioskProofOfPlayView(KioskAPIView):
                 continue
 
             creative_id = entry.get("creative_id")
-            house_ad_id = entry.get("house_ad_id")
+            # Eski kiosk surumleri house_ad_id gonderebilir; HouseAd kaldirildi,
+            # bu kayitlar sessizce atlanir (defensive legacy guard).
+            if entry.get("house_ad_id") and not creative_id:
+                invalid_ref_count += 1
+                continue
 
-            # Silinmis ya da gecersiz creative/house_ad referansi 500'e dusurmesin.
+            # Silinmis ya da gecersiz creative referansi 500'e dusurmesin.
             if creative_id and creative_id not in existing_creative_ids:
                 invalid_ref_count += 1
                 continue
-            if house_ad_id and house_ad_id not in existing_house_ad_ids:
+            if not creative_id:
                 invalid_ref_count += 1
                 continue
 
             bulk.append(PlayLog(
                 kiosk=kiosk,
                 creative_id=creative_id,
-                house_ad_id=house_ad_id,
                 played_at=entry["played_at"],
                 duration_played=entry["duration_played"],
                 play_event_id=event_id,
@@ -514,7 +513,7 @@ class KioskProofOfPlayView(KioskAPIView):
                 )
                 ingested_count = len(created)
             except IntegrityError:
-                # Yarista creative/house_ad silinmesi gibi durumlarda tek tek dene.
+                # Yarista creative silinmesi gibi durumlarda tek tek dene.
                 for row in bulk:
                     try:
                         row.save(force_insert=True)
@@ -660,7 +659,7 @@ class KioskManifestView(KioskAPIView):
                     Playlist.objects
                     .filter(kiosk=kiosk, target_date=d)
                     .order_by("target_hour")
-                    .prefetch_related("items__creative__campaign", "items__house_ad")
+                    .prefetch_related("items__creative__campaign")
                 )
                 from apps.campaigns.serializers import KioskPlaylistSerializer
                 days_data.append({

@@ -36,7 +36,6 @@ from apps.campaigns.models import (
     Campaign,
     CampaignTarget,
     Creative,
-    HouseAd,
     Playlist,
     PlaylistItem,
     ScheduleRule,
@@ -117,7 +116,7 @@ def _kiosk(eczane: Eczane, suffix: str = "") -> Kiosk:
 
 def _items_for_hour(kiosk: Kiosk, hour: int) -> list[PlaylistItem]:
     pl = Playlist.objects.get(kiosk=kiosk, target_date=TODAY, target_hour=hour)
-    return list(pl.items.select_related("creative", "house_ad").order_by("playback_order"))
+    return list(pl.items.select_related("creative").order_by("playback_order"))
 
 
 def _creative_ids_in_hour(kiosk: Kiosk, hour: int) -> set[uuid.UUID]:
@@ -129,11 +128,7 @@ def _total_duration_per_loop(kiosk: Kiosk, hour: int, loop_sec: int = 60) -> dic
     used: dict[int, int] = {}
     for item in _items_for_hour(kiosk, hour):
         idx = int(item.estimated_start_offset_seconds) // loop_sec
-        dur = (
-            item.creative.duration_seconds
-            if item.creative_id
-            else item.house_ad.duration_seconds
-        )
+        dur = item.creative.duration_seconds if item.creative_id else 0
         used[idx] = used.get(idx, 0) + int(dur)
     return used
 
@@ -200,24 +195,13 @@ def kiosk_ankara(db, eczane_ankara) -> Kiosk:
     return _kiosk(eczane_ankara, suffix="AK")
 
 
-@pytest.fixture
-def house_ad_10s(db) -> HouseAd:
-    return HouseAd.objects.create(
-        name="Filler 10s",
-        media_url="https://cdn.example.com/filler10.mp4",
-        duration_seconds=10,
-        priority=100,
-        aktif=True,
-    )
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # GM-01  tek PER_HOUR kampanya, hedef yok → tüm kiosklar
 # ─────────────────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.django_db
-def test_gm_single_per_hour_all_kiosks(kiosk_kadikoy, kiosk_besiktas, house_ad_10s):
+def test_gm_single_per_hour_all_kiosks(kiosk_kadikoy, kiosk_besiktas):
     """Hedefsiz aktif PER_HOUR kampanya her kioskun her saatinde görünmeli.
 
     Mevcut davranış (golden): hedef yoksa _campaign_targets_eczane → True.
@@ -244,7 +228,7 @@ def test_gm_single_per_hour_all_kiosks(kiosk_kadikoy, kiosk_besiktas, house_ad_1
 
 
 @pytest.mark.django_db
-def test_gm_per_day_even_distribution(kiosk_kadikoy, house_ad_10s):
+def test_gm_per_day_even_distribution(kiosk_kadikoy):
     """PER_DAY=4: gün boyunca toplam 4 loop'a creative yerleşmeli.
 
     Mevcut davranış (golden): _pass3_per_day, rng.shuffle(all_loops)[:f].
@@ -280,7 +264,7 @@ def test_gm_per_day_even_distribution(kiosk_kadikoy, house_ad_10s):
 
 
 @pytest.mark.django_db
-def test_gm_per_loop_legacy_multiplicity(kiosk_kadikoy, house_ad_10s):
+def test_gm_per_loop_legacy_multiplicity(kiosk_kadikoy):
     """PER_LOOP freq=2, dur=15: her loop'ta 2 creative slot, 0s ve 30s offset.
 
     Mevcut davranış (golden): spacing = 60/2 = 30; k=0→offset=0, k=1→offset=30.
@@ -322,7 +306,7 @@ def test_gm_per_loop_legacy_multiplicity(kiosk_kadikoy, house_ad_10s):
 
 @pytest.mark.django_db
 def test_gm_target_il_only(
-    kiosk_kadikoy, kiosk_ankara, il_istanbul, house_ad_10s
+    kiosk_kadikoy, kiosk_ankara, il_istanbul
 ):
     """IL=Istanbul → yalnız Istanbul kiosklarına yayınlanmalı; Ankara kiosku atlanmalı."""
     camp = _campaign("GM04")
@@ -354,7 +338,7 @@ def test_gm_target_il_only(
 
 @pytest.mark.django_db
 def test_gm_target_ilce_only(
-    kiosk_kadikoy, kiosk_besiktas, ilce_kadikoy, house_ad_10s
+    kiosk_kadikoy, kiosk_besiktas, ilce_kadikoy
 ):
     """ILCE=Kadikoy → yalnız Kadikoy kiosku; Besiktas atlanmalı."""
     camp = _campaign("GM05")
@@ -380,7 +364,7 @@ def test_gm_target_ilce_only(
 
 @pytest.mark.django_db
 def test_gm_target_eczane_specific(
-    kiosk_kadikoy, kiosk_besiktas, eczane_kadikoy, house_ad_10s
+    kiosk_kadikoy, kiosk_besiktas, eczane_kadikoy
 ):
     """ECZANE=eczane_kadikoy → yalnız bu eczanedeki kiosk; Besiktas atlanmalı."""
     camp = _campaign("GM06")
@@ -406,7 +390,7 @@ def test_gm_target_eczane_specific(
 
 @pytest.mark.django_db
 def test_gm_legacy_target_pharmacies_m2m(
-    kiosk_kadikoy, kiosk_besiktas, eczane_kadikoy, house_ad_10s
+    kiosk_kadikoy, kiosk_besiktas, eczane_kadikoy
 ):
     """CampaignTarget yokken legacy M2M devreye girmeli.
 
@@ -433,7 +417,7 @@ def test_gm_legacy_target_pharmacies_m2m(
 
 @pytest.mark.django_db
 def test_gm_no_target_means_all_current(
-    kiosk_kadikoy, kiosk_besiktas, kiosk_ankara, house_ad_10s
+    kiosk_kadikoy, kiosk_besiktas, kiosk_ankara
 ):
     """CampaignTarget ve target_pharmacies yoksa → tüm kiosklar (mevcut davranış golden).
 
@@ -458,7 +442,7 @@ def test_gm_no_target_means_all_current(
 
 
 @pytest.mark.django_db
-def test_gm_priority_ordering_two_campaigns(kiosk_kadikoy, house_ad_10s):
+def test_gm_priority_ordering_two_campaigns(kiosk_kadikoy):
     """priority=1 kampanya PER_LOOP=2 ile tüm kapasiteyi doldurunca,
     priority=99 kampanya hiç yerleştirilmemeli.
 
@@ -501,7 +485,7 @@ def test_gm_priority_ordering_two_campaigns(kiosk_kadikoy, house_ad_10s):
 
 
 @pytest.mark.django_db
-def test_gm_guaranteed_flag_ordering(kiosk_kadikoy, house_ad_10s):
+def test_gm_guaranteed_flag_ordering(kiosk_kadikoy):
     """Faz 7: is_guaranteed kaldırıldı; priority sıralaması canonical.
 
     Daha düşük priority sayısı = daha yüksek öncelik.
@@ -540,62 +524,12 @@ def test_gm_guaranteed_flag_ordering(kiosk_kadikoy, house_ad_10s):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# GM-11  HouseAd filler — boş kapasite priority sırasıyla dolar
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-@pytest.mark.django_db
-def test_gm_house_ad_filler_fill(kiosk_kadikoy):
-    """Kampanya kuralı yokken her loop HouseAd ile tam 60s dolmalı.
-
-    Mevcut davranış (golden): _pass4_filler, priority sırası (küçük önce).
-    """
-    ha_pri10 = HouseAd.objects.create(
-        name="Filler-10s-pri10",
-        media_url="https://cdn.example.com/ha10.mp4",
-        duration_seconds=10,
-        priority=10,
-        aktif=True,
-    )
-    ha_pri50 = HouseAd.objects.create(
-        name="Filler-10s-pri50",
-        media_url="https://cdn.example.com/ha50.mp4",
-        duration_seconds=10,
-        priority=50,
-        aktif=True,
-    )
-
-    generate_for_kiosk(kiosk_kadikoy, TODAY)
-
-    # Her loop 60s dolu olmalı
-    for hour in range(24):
-        used = _total_duration_per_loop(kiosk_kadikoy, hour)
-        for idx, total in used.items():
-            assert total == 60, (
-                f"saat={hour} loop={idx}: 60s bekleniyor, bulundu={total}"
-            )
-
-    # Saat 0, loop 0'daki house ad'lerin ilki daha düşük priority'li olmalı
-    items_h0_loop0 = [
-        i for i in _items_for_hour(kiosk_kadikoy, 0)
-        if i.estimated_start_offset_seconds < 60
-    ]
-    assert len(items_h0_loop0) > 0
-    first_ha = items_h0_loop0[0]
-    assert first_ha.house_ad_id is not None
-    # priority=10 olanın önce gelmesi bekleniyor (filler queue ordering)
-    assert first_ha.house_ad.priority == 10, (
-        f"İlk filler priority=10 bekleniyor, bulundu={first_ha.house_ad.priority}"
-    )
-
-
-# ─────────────────────────────────────────────────────────────────────────────
 # GM-12  Çoklu creative'de yalnız ilk creative kullanılır (mevcut davranış)
 # ─────────────────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.django_db
-def test_gm_multi_creative_first_only(kiosk_kadikoy, house_ad_10s):
+def test_gm_multi_creative_first_only(kiosk_kadikoy):
     """Kampanyaya 3 creative eklendiğinde yalnız ilk (olusturulma_tarihi ASC) kullanılmalı.
 
     Mevcut davranış (golden): _pick_creative → .order_by("olusturulma_tarihi").first().
@@ -643,7 +577,7 @@ def test_gm_multi_creative_first_only(kiosk_kadikoy, house_ad_10s):
 
 
 @pytest.mark.django_db
-def test_gm_hourly_offset_absolute_0_3599(kiosk_kadikoy, house_ad_10s):
+def test_gm_hourly_offset_absolute_0_3599(kiosk_kadikoy):
     """Her playlistin tüm item offset'leri 0 ≤ offset < 3600 aralığında olmalı.
 
     Ve bir saatteki loop N, offset = loop_index * loop_sec + slot_offset.
@@ -685,7 +619,7 @@ def test_gm_hourly_offset_absolute_0_3599(kiosk_kadikoy, house_ad_10s):
 
 
 @pytest.mark.django_db
-def test_gm_date_range_boundary(kiosk_kadikoy, house_ad_10s):
+def test_gm_date_range_boundary(kiosk_kadikoy):
     """Kampanya yalnız kendi tarih aralığında üretilmeli.
 
     Mevcut davranış (golden): _fetch_active_rules → noon filtresi:
@@ -741,7 +675,7 @@ def test_gm_date_range_boundary(kiosk_kadikoy, house_ad_10s):
 
 
 @pytest.mark.django_db
-def test_gm_kiosk_playlist_contract_fields(kiosk_kadikoy, house_ad_10s):
+def test_gm_kiosk_playlist_contract_fields(kiosk_kadikoy):
     """Kiosk playlist endpoint'i beklenen contract alanlarını döndürmeli.
 
     Korunan alanlar: asset_type, asset_id, media_url, duration_seconds,
@@ -750,6 +684,9 @@ def test_gm_kiosk_playlist_contract_fields(kiosk_kadikoy, house_ad_10s):
     from rest_framework.test import APIClient
     from rest_framework_simplejwt.tokens import RefreshToken
 
+    camp = _campaign("GM-CONTRACT")
+    _creative(camp, duration=15)
+    _rule(camp, "PER_HOUR", 1)
     generate_for_kiosk(kiosk_kadikoy, TODAY)
 
     client = APIClient()
@@ -781,7 +718,7 @@ def test_gm_kiosk_playlist_contract_fields(kiosk_kadikoy, house_ad_10s):
     missing = required_fields - item.keys()
     assert not missing, f"Eksik contract alanları: {missing}"
 
-    assert item["asset_type"] in ("creative", "house_ad")
+    assert item["asset_type"] == "creative"
     assert isinstance(item["asset_id"], str)
     assert item["media_url"].startswith("http")
     assert isinstance(item["duration_seconds"], int)
@@ -790,7 +727,7 @@ def test_gm_kiosk_playlist_contract_fields(kiosk_kadikoy, house_ad_10s):
 
 
 @pytest.mark.django_db
-def test_gm_kiosk_ping_returns_playlist_version(kiosk_kadikoy, house_ad_10s):
+def test_gm_kiosk_ping_returns_playlist_version(kiosk_kadikoy):
     """Ping endpoint'i playlist_version döndürmeli; üretim sonrası ≥ 1 olmalı."""
     from rest_framework.test import APIClient
     from django.utils import timezone as tz
@@ -817,7 +754,7 @@ def test_gm_kiosk_ping_returns_playlist_version(kiosk_kadikoy, house_ad_10s):
 
 
 @pytest.mark.django_db
-def test_gm_proof_of_play_contract(kiosk_kadikoy, house_ad_10s):
+def test_gm_proof_of_play_contract(kiosk_kadikoy):
     """Proof-of-play bulk ingest: creative_id ile 201, eksik id ile 400.
 
     Mevcut contract (golden): POST /api/kiosk/v1/proof-of-play/ {logs:[...]}.
@@ -843,7 +780,7 @@ def test_gm_proof_of_play_contract(kiosk_kadikoy, house_ad_10s):
     assert r.status_code == 201
     assert r.json()["ingested"] == 1
 
-    # creative_id ve house_ad_id ikisi de eksik → 400
+    # creative_id eksik → 400
     payload_bad = {"logs": [{
         "played_at": timezone.now().isoformat(),
         "duration_played": 15,
@@ -858,7 +795,7 @@ def test_gm_proof_of_play_contract(kiosk_kadikoy, house_ad_10s):
 
 
 @pytest.mark.django_db
-def test_gm_capacity_invariant_never_exceeded(kiosk_kadikoy, house_ad_10s):
+def test_gm_capacity_invariant_never_exceeded(kiosk_kadikoy):
     """Hiçbir koşulda bir loop'ta toplam kullanım 60s'i geçmemeli.
 
     Bu test tüm golden senaryolar için evrensel invariant kontrolüdür.

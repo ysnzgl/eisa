@@ -170,15 +170,16 @@
 - unique(kiosk, target_date, target_hour); item'lar ayri dooh_playlist_items satirlarinda
 
 **dooh_playlist_items**
-- id (UUID), playlist_id FK, creative_id FK (nullable), house_ad_id FK (nullable), playback_order, estimated_start_offset_seconds (SAAT-mutlak 0..3599)
-- API contract'ta creative/house_ad -> asset_id + asset_type + media_url + **active_media_url** + duration_seconds olarak duzlestirilir
-- **active_media_url**: creative ise creative.active_media_url (bos olabilir); house_ad ise bos string
+- id (UUID), playlist_id FK, creative_id FK (creative-only; house_ad_id FK KALDIRILDI — migration 0027; `clean()` creative zorunlu), playback_order, estimated_start_offset_seconds (SAAT-mutlak 0..3599)
+- API contract'ta creative -> asset_id + asset_type ("creative") + media_url + **active_media_url** + duration_seconds olarak duzlestirilir
+- Playlist campaign-only: uygun creative yoksa 0 item (bos playlist gecerli) -> kiosk idle ekranini gosterir
 
-**dooh_house_ads** *(Faz 0.5: object_key eklendi)*
-- id (UUID), name, media_url (kalici URL Faz 0.5+), duration_seconds (1-60), aktif (bool), priority, object_key (nullable, Faz 0.5 migration 0015)
+**dooh_idle_screen_contents** *(2026-08-16)*
+- id (BigAutoField), baslik (CharField<=100, zorunlu), metin (CharField<=300, zorunlu), aktif (bool default True), olusturulma_tarihi, guncellenme_tarihi
+- "Icerik Yonetimi" idle (bekleme) ekrani baslık/metin icerigi; medya/HTML YOK. Eski `dooh_house_ads` tablosu migration 0027 ile dusuruldu.
 
 **dooh_play_logs**
-- id (UUID), kiosk_id FK, creative_id FK (nullable, SET_NULL), house_ad_id FK (nullable, SET_NULL)
+- id (UUID), kiosk_id FK, creative_id FK (nullable, SET_NULL) [house_ad_id FK KALDIRILDI — migration 0027]
 - played_at (indexed), duration_played (saniye)
 
 **dooh_pricing_matrix**
@@ -305,7 +306,7 @@ X-Kiosk-Device-ID: <DEVICE_UUID>  # zorunlu (device_id set edildiyse)
 | Method | Path | Amaç |
 |--------|------|------|
 | GET  | `/api/kiosk/v1/ping/` | Heartbeat + bugünkü playlist versiyonu |
-| GET  | `/api/kiosk/v1/sync/` | Aktif creative + house_ad + lookup |
+| GET  | `/api/kiosk/v1/sync/` | Aktif creative + idle içerik (`idle_contents`) + lookup |
 | GET  | `/api/kiosk/v1/catalog/` | Kategori/soru/cevap/etken madde/danışma |
 | GET  | `/api/kiosk/v1/playlist/?date=YYYY-MM-DD` | Günün 24 saatlik playlist'i |
 | POST | `/api/kiosk/v1/sessions/` | Oturum outbox (idempotent) — `OturumLoguItemSerializer` |
@@ -439,6 +440,12 @@ X-Kiosk-Device-ID: <DEVICE_UUID>  # zorunlu (device_id set edildiyse)
 - Request: `{ "campaign_id": "uuid", "media_url": "...", "duration_seconds": 15, "name": "Creative 1" }`
 - Response: `{ "id": "uuid", ... }`
 
+**GET/POST/PUT/PATCH/DELETE /api/campaigns/v2/idle-contents/** *(2026-08-16)*
+- Auth: JWT (SuperAdmin); router basename `dooh-idle-content`
+- "İçerik Yönetimi" idle (bekleme) başlık/metin CRUD; eski `/api/campaigns/v2/house-ads/` KALDIRILDI
+- Serializer alanları: `id, baslik, metin, aktif, created_at, updated_at`
+- Request (POST): `{ "baslik": "...", "metin": "...", "aktif": true }`
+
 **GET /api/campaigns/v2/campaigns/{id}/rules/**
 - Auth: JWT (SuperAdmin)
 - Response: `{ "id": "uuid", "campaign": "uuid", "frequency_type": "PER_HOUR", "frequency_value": 2, "target_hours": [9, 10, 11, 12, 13] }`
@@ -560,7 +567,7 @@ X-Kiosk-Device-ID: <DEVICE_UUID>  # zorunlu (device_id set edildiyse)
     "etken_maddeler": [...],
     "danisma_kategorileri": [...],
     "creatives": [{ "id": "uuid", "media_url": "...", ... }],
-    "house_ads": [{ "id": "uuid", "media_url": "...", ... }]
+    "idle_contents": [{ "id": 1, "baslik": "...", "metin": "...", "aktif": true, "updated_at": "..." }]
   }
   ```
 - Body (optional, outbox push):
@@ -614,7 +621,7 @@ X-Kiosk-Device-ID: <DEVICE_UUID>  # zorunlu (device_id set edildiyse)
 
 **POST /api/kiosk/v1/proof-of-play/**
 - Auth: Kiosk (AppKey + MAC)
-- Request (her log'da creative_id VEYA house_ad_id):
+- Request (her log'da creative_id; house_ad_id kabul edilir ama yok sayılır):
   ```json
   {
     "logs": [
@@ -622,11 +629,6 @@ X-Kiosk-Device-ID: <DEVICE_UUID>  # zorunlu (device_id set edildiyse)
         "creative_id": "uuid",
         "played_at": "2026-06-05T10:30:00.000Z",
         "duration_played": 15
-      },
-      {
-        "house_ad_id": "uuid",
-        "played_at": "2026-06-05T10:30:15.000Z",
-        "duration_played": 10
       }
     ]
   }
@@ -717,9 +719,9 @@ X-Kiosk-Device-ID: <DEVICE_UUID>  # zorunlu (device_id set edildiyse)
   - QR içine soru/cevap/kategori/etken madde payload'ı gömülmez.
   - Response, mevcut alanları bozmadan ek detay alanlarıyla normalize edilir.
 
-5. **PlayLog creative_id vs house_ad_id:**
-   - Backend: İki ayrı FK (nullable)
-   - Kiosk UI: Sadece `creative_id` gönderiyor, house_ad impression'ları eksik olabilir (Riskli)
+5. **PlayLog creative-only:**
+   - Backend: yalnız `creative_id` FK (nullable); `house_ad_id` FK kaldırıldı (migration 0027)
+   - Kiosk UI yalnız `creative_id` gönderir; playlist creative-only, house_ad_id payload'da gelse de yok sayılır
 
 ---
 

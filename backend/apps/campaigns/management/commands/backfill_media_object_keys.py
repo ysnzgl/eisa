@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from django.conf import settings
 from django.core.management.base import BaseCommand
 
-from apps.campaigns.models import Creative, HouseAd
+from apps.campaigns.models import Creative
 
 
 _PRESIGNED_MARKERS = ("X-Amz-", "x-amz-", "AWSAccessKeyId=", "awsaccesskeyid=")
@@ -300,15 +300,6 @@ class Command(BaseCommand):
         _backfill_queryset(
             qs=Creative.objects.filter(object_key__isnull=True),
             model_label="Creative", endpoint=endpoint, bucket=bucket,
-            public_base=public_base, allowed_hosts=allowed,
-            apply=apply, skip_head_check=skip_head_check,
-            storage_service=storage_service, result=result, stdout=self.stdout,
-        )
-
-        self.stdout.write("\n--- HouseAd ---")
-        _backfill_queryset(
-            qs=HouseAd.objects.filter(object_key__isnull=True),
-            model_label="HouseAd", endpoint=endpoint, bucket=bucket,
             public_base=public_base, allowed_hosts=allowed,
             apply=apply, skip_head_check=skip_head_check,
             storage_service=storage_service, result=result, stdout=self.stdout,

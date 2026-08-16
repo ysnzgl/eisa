@@ -32,8 +32,13 @@ async function makeApp() {
   ).run();
 
   db.prepare(
-     `INSERT INTO house_ads (id, name, media_url, duration_seconds, type, aktif)
-      VALUES ('11111111-1111-4111-8111-111111111111', 'R1', '/m1.png', 10, 'house_ad', 1)`,
+     `INSERT INTO creatives (id, media_url, duration_seconds, type, aktif)
+      VALUES ('11111111-1111-4111-8111-111111111111', '/m1.png', 10, 'creative', 1)`,
+    ).run();
+
+  db.prepare(
+     `INSERT INTO idle_contents (id, baslik, metin, ikon, aktif)
+      VALUES (1, 'Bilgi', 'Dengeli beslenin.', 'fa-seedling', 1)`,
     ).run();
 
   // 1 danisma kategorisi (OZEL_DANISMANLIK testi icin)
@@ -227,7 +232,18 @@ describe('Kiosk API (Turkce sema)', () => {
     const data = r.json();
     expect(data).toHaveLength(1);
     expect(data[0].id).toBe('11111111-1111-4111-8111-111111111111');
-    expect(data[0].name).toBe('R1');
+    expect(data[0].type).toBe('creative');
+  });
+
+  it('GET /api/idle-contents aktif idle icerigi doner', async () => {
+    const r = await app.inject({ method: 'GET', url: '/api/idle-contents' });
+    expect(r.statusCode).toBe(200);
+    const data = r.json();
+    expect(data).toHaveLength(1);
+    expect(data[0].baslik).toBe('Bilgi');
+    expect(data[0].metin).toBe('Dengeli beslenin.');
+    expect(data[0].ikon).toBe('fa-seedling');
+    expect(data[0].aktif).toBe(true);
   });
 
   it('POST /api/reklam-gosterim outbox\'a yazar', async () => {
@@ -236,7 +252,7 @@ describe('Kiosk API (Turkce sema)', () => {
       url: '/api/reklam-gosterim',
       payload: {
         asset_id: '11111111-1111-4111-8111-111111111111',
-        asset_type: 'house_ad',
+        asset_type: 'creative',
         played_at: new Date().toISOString(),
         duration_played: 2,
       },
@@ -247,7 +263,7 @@ describe('Kiosk API (Turkce sema)', () => {
     expect(row).toBeTruthy();
     const payload = JSON.parse(row.payload);
     expect(payload.asset_id).toBe('11111111-1111-4111-8111-111111111111');
-    expect(payload.asset_type).toBe('house_ad');
+    expect(payload.asset_type).toBe('creative');
   });
 });
 

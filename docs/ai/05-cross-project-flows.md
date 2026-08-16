@@ -287,7 +287,7 @@ kiosk_edge/ui (AdStrip component)
         ...
       ]
     }
-  → kiosk_edge/ui: 60sn döngü oynatımı (sırayla creative/house_ad)
+  → kiosk_edge/ui: 60sn döngü oynatımı (yalnız creative; playlist boşsa kiosk idle/bekleme ekranını gösterir — filler YOK)
 ```
 
 ---
@@ -315,7 +315,7 @@ kiosk_edge/ui (AdStrip)
 ```
 kiosk_edge/api-node (scheduler: pushToCentral, her ~5dk)
   → SQLite query: SELECT * FROM reklam_gosterim_outbox WHERE gonderilme_tarihi IS NULL
-  → Batch payload (asset_type'a göre creative_id / house_ad_id):
+  → Batch payload (creative_id; house_ad_id backend'de yok sayılır):
     {
       "logs": [
         {

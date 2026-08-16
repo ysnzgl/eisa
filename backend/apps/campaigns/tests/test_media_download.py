@@ -2,17 +2,14 @@
 
 Test kapsamı:
   D01  Creative download endpoint — SuperAdmin erişebilir, içerik doğru
-  D02  HouseAd download endpoint — SuperAdmin erişebilir, içerik doğru
   D03  Download yalnız SuperAdmin — anonim 401, pharmacist 403
   D04  Eksik object_key → 404
   D05  Storage'da bulunmayan nesne → 404
   D06  Path traversal saldırısı engellenir (object_key frontend'den gelmez)
   D07  Creative upload → object_key DB'ye kaydedildi (flag=True)
-  D08  HouseAd upload → object_key DB'ye kaydedildi (flag=True)
   D09  Stabil media_url X-Amz-* içermiyor (flag=True)
   D10  active_media_url → active_object_key DB'ye türetildi
   D11  Backfill: Creative active_media_url → active_object_key dolduruldu
-  D12  Backfill: HouseAd presigned URL → object_key dolduruldu (dry-run)
   D13  Kiosk playlist/sync testleri bozulmuyor
 """
 from __future__ import annotations
@@ -26,7 +23,7 @@ from django.contrib.auth import get_user_model
 from django.test import override_settings
 from rest_framework.test import APIClient
 
-from apps.campaigns.models import Campaign, Creative, HouseAd
+from apps.campaigns.models import Campaign, Creative
 
 Kullanici = get_user_model()
 
@@ -97,28 +94,6 @@ def creative_no_key(db, campaign):
     )
 
 
-@pytest.fixture
-def house_ad_with_key(db):
-    return HouseAd.objects.create(
-        name="Test HouseAd",
-        media_url=f"{STABLE_BASE}/{OBJECT_KEY}",
-        duration_seconds=15,
-        aktif=True,
-        priority=50,
-        object_key=OBJECT_KEY,
-    )
-
-
-@pytest.fixture
-def house_ad_no_key(db):
-    return HouseAd.objects.create(
-        name="No Key HouseAd",
-        media_url=PRESIGNED_URL,
-        duration_seconds=15,
-        aktif=True,
-    )
-
-
 def _auth_client(user):
     client = APIClient()
     client.force_authenticate(user=user)
@@ -158,29 +133,6 @@ def test_d01_creative_download_superadmin(superadmin, creative_with_key):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# D02 — HouseAd download endpoint
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-@pytest.mark.django_db
-@override_settings(DOOH_PERSISTENT_MEDIA_URL=True, S3_PUBLIC_BASE_URL=STABLE_BASE)
-def test_d02_house_ad_download_superadmin(superadmin, house_ad_with_key):
-    client = _auth_client(superadmin)
-    fake_content = b"housead_image_bytes"
-
-    with patch("apps.core.services.storage_service.StorageService") as MockStorage:
-        instance = MockStorage.return_value
-        instance.bucket_name = "dev"
-        instance.client.get_object.return_value = _mock_storage_get(fake_content)
-
-        resp = client.get(f"/api/campaigns/v2/house-ads/{house_ad_with_key.pk}/download/")
-
-    assert resp.status_code == 200
-    assert resp["Content-Disposition"] == f'attachment; filename="testmedia.mp4"'
-    assert b"".join(resp.streaming_content) == fake_content
-
-
-# ─────────────────────────────────────────────────────────────────────────────
 # D03 — Sadece SuperAdmin erişebilir
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -210,13 +162,6 @@ def test_d04_missing_object_key_creative(superadmin, creative_no_key):
     resp = client.get(f"/api/campaigns/v2/creatives/{creative_no_key.pk}/download/")
     assert resp.status_code == 404
     assert "object_key" in resp.data["error"].lower()
-
-
-@pytest.mark.django_db
-def test_d04_missing_object_key_house_ad(superadmin, house_ad_no_key):
-    client = _auth_client(superadmin)
-    resp = client.get(f"/api/campaigns/v2/house-ads/{house_ad_no_key.pk}/download/")
-    assert resp.status_code == 404
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -285,53 +230,6 @@ def test_d07_creative_upload_saves_object_key(superadmin, campaign):
     creative = Creative.objects.get(pk=creative_resp.data["id"])
     assert creative.object_key == OBJECT_KEY
     assert "X-Amz-" not in creative.media_url
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# D08 — HouseAd upload → object_key DB'ye kaydedildi (flag=True)
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-@pytest.mark.django_db
-@override_settings(DOOH_PERSISTENT_MEDIA_URL=True, S3_PUBLIC_BASE_URL=STABLE_BASE)
-def test_d08_house_ad_upload_saves_object_key(superadmin):
-    client = _auth_client(superadmin)
-    image_key = "ads/testimage.png"
-
-    with patch("apps.campaigns.views.StorageService") as MockStorage:
-        inst = MockStorage.return_value
-        inst.upload_file_with_checksum.return_value = (image_key, CHECKSUM)
-        inst.public_url.return_value = f"{STABLE_BASE}/{image_key}"
-
-        file_data = io.BytesIO(b"\x89PNG\r\n\x1a\n" + b"\x00" * 100)
-        file_data.name = "test.png"
-        file_data.size = 108
-        file_data.content_type = "image/png"
-
-        upload_resp = client.post(
-            "/api/campaigns/upload-media/",
-            {"file": file_data, "media_kind": "image"},
-            format="multipart",
-        )
-
-    assert upload_resp.status_code == 201
-
-    house_ad_resp = client.post(
-        "/api/campaigns/v2/house-ads/",
-        {
-            "name": "Test HouseAd D08",
-            "media_url": upload_resp.data["media_url"],
-            "object_key": upload_resp.data["object_key"],
-            "duration_seconds": 15,
-            "aktif": True,
-            "priority": 50,
-        },
-        format="json",
-    )
-    assert house_ad_resp.status_code == 201
-    ha = HouseAd.objects.get(pk=house_ad_resp.data["id"])
-    assert ha.object_key == image_key
-    assert "X-Amz-" not in ha.media_url
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -424,38 +322,3 @@ def test_d11_backfill_active_object_key(campaign):
     # DB değişmemiş (dry-run)
     creative.refresh_from_db()
     assert creative.active_object_key is None
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# D12 — Backfill: HouseAd presigned URL dry-run
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-@pytest.mark.django_db
-@override_settings(DOOH_PERSISTENT_MEDIA_URL=True, S3_PUBLIC_BASE_URL=STABLE_BASE,
-                   S3_ENDPOINT="localhost:9000", S3_BUCKET="dev")
-def test_d12_backfill_house_ad_presigned_dryrun():
-    presigned = (
-        f"http://localhost:9000/dev/{OBJECT_KEY}"
-        "?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Expires=3600&X-Amz-Signature=fake"
-    )
-    ha = HouseAd.objects.create(
-        name="Presigned HouseAd",
-        media_url=presigned,
-        duration_seconds=15,
-        aktif=True,
-    )
-
-    from django.core.management import call_command
-    from io import StringIO
-
-    out = StringIO()
-    call_command("backfill_media_object_keys", stdout=out)
-    output = out.getvalue()
-
-    assert "DRY-RUN" in output
-    assert OBJECT_KEY in output
-
-    # DB değişmemiş
-    ha.refresh_from_db()
-    assert ha.object_key is None

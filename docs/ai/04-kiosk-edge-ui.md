@@ -64,7 +64,7 @@
 - "Eczacınıza Danışın" butonu → Danışma kategorisi seçimi → QR kod (direkt)
 
 **Reklam akışı:**
-- Tüm ekranların altında AdStrip component → saatlik slot-hizalı playlist (creative/house_ad)
+- Tüm ekranların altında AdStrip component → saatlik slot-hizalı playlist (yalnız creative; house_ad kaldırıldı)
 - Reklam YOKKEN: donen "Bu Alana Reklam Verebilirsiniz" (AdPromo); ekran koruyucuda da ayni promo
 - Impression log: `{ asset_id, asset_type, played_at, duration_played }`
 
@@ -147,7 +147,7 @@
    - Alt strip (kiosk yuksekliginin ~2/5'i)
    - Playlist çekme: `GET http://127.0.0.1:8765/api/playlist/current?hour=<0-23>`
    - Saatlik (3600sn) slot-hizali oynatim: pos = floor(epoch/1000) % 3600 (duvar saatine gore)
-   - Her item icin `<MediaView>` (asset_type: creative/house_ad), `duration_seconds`
+   - Her item icin `<MediaView>` (asset_type: creative; house_ad ogeleri atlanir), `duration_seconds`
    - Slot degisince onceki slot icin impression: `POST http://127.0.0.1:8765/api/reklam-gosterim`
      `{ asset_id, asset_type, played_at, duration_played }`
    - Medya/asset YOKKEN → `<AdPromo />` (donen "Bu Alana Reklam Verebilirsiniz")
@@ -161,6 +161,13 @@
    - Reklam yokken donen "Bu Alana Reklam Verebilirsiniz" tasarimi (konik isik halkasi + megafon + shimmer baslik + logo). `large` prop tam-ekran (attractor) varyanti
    - **Dekoratif kalp atışı animasyonu (2026-08-16):** `large` varyantinda merkezde HeartbeatAnimation component görünür
      - `HeartbeatAnimation.svelte` ayrı modüler widget olarak oluşturuldu
+   - **Idle içerik gösterimi (2026-08-16):** `large` varyantı, mevcut heartbeat/sponsor tasarımının üstüne katmanlanmış olarak `idleContentStore`'dan gelen aktif idle içeriğini gösterir:
+     - **Başlık**: heartbeat halkasının üstünde, fade + hafif yukarı giriş
+     - **Metin**: heartbeat'in altında, tek seferlik daktilo (typewriter) efekti (`requestAnimationFrame`, 3.5–4.5sn, biten yazıda kaybolan yanıp sönen kırmızı imleç; `prefers-reduced-motion` → metin anında tam görünür)
+     - **SABİT CTA** "Size özel öneriler için DOKUNUN" (DOKUNUN e-İSA kırmızısı + light-sweep, aşağı basan kırmızı işaret parmağı ikonu + iki ripple halkası; `pointer-events:none`, `aria-hidden`). CTA idle içerik olmasa da `large`'da her zaman görünür.
+     - Heartbeat içerik/typewriter değişiminde YENİDEN mount edilmez.
+     - Küçük (`small`) AdPromo varyantı DEĞİŞMEDİ (başlık/metin/CTA yok).
+   - **`lib/idleContentStore.js` (2026-08-16):** `GET /api/idle-contents`'ten aktif idle içerikleri çeker; shuffled-bag ile döndürür (Fisher–Yates; yeni torbanın ilkı ≠ önceki torbanın son'u), metin uzunluğuna göre dwell 12–20sn otomatik. 0 içerik → hiçbir şey; 1 içerik → statik (yeniden yazılmaz); >1 → otomatik rotasyon. Refresh ~5dk.
 
 11. **HeartbeatAnimation.svelte** (2026-08-16)
    - Sponsor fallback ekranı için dekoratif kalp atışı animasyonu

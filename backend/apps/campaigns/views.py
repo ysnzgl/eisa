@@ -76,7 +76,7 @@ class MediaUploadView(APIView):
 
         if uploaded.content_type not in allowed:
             return Response(
-                {"error": "Desteklenmeyen dosya türü. HouseAd yalnizca PNG/JPEG/WebP kabul eder."
+                {"error": "Desteklenmeyen dosya türü. Görsel yalnızca PNG/JPEG/WebP kabul eder."
                  if media_kind == "image" else "Desteklenmeyen dosya türü."},
                 status=status.HTTP_400_BAD_REQUEST,
             )

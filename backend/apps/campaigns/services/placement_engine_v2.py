@@ -23,7 +23,6 @@ from apps.campaigns.models import (
     Campaign,
     Creative,
     DeliveryRule,
-    HouseAd,
     CampaignTarget,
     PlanningRun,
     KioskDayQuota,
@@ -40,9 +39,8 @@ class PlacementSlot:
     end_offset: int  # exclusive
     duration_seconds: int
     creative_id: Optional[str] = None
-    house_ad_id: Optional[str] = None
     campaign_id: Optional[str] = None
-    asset_type: str = "creative"  # creative / house_ad
+    asset_type: str = "creative"  # creative
     
     def overlaps(self, other: "PlacementSlot") -> bool:
         """Check if this slot overlaps with another."""
@@ -102,7 +100,6 @@ class HourGrid:
         start_offset: int,
         duration: int,
         creative_id=None,
-        house_ad_id=None,
         campaign_id=None,
     ) -> bool:
         """Slot yerleştir (overlap check ile)."""
@@ -114,9 +111,8 @@ class HourGrid:
             end_offset=start_offset + duration,
             duration_seconds=duration,
             creative_id=creative_id,
-            house_ad_id=house_ad_id,
             campaign_id=campaign_id,
-            asset_type="house_ad" if house_ad_id else "creative",
+            asset_type="creative",
         ))
         return True
 
@@ -300,8 +296,7 @@ class PlacementEngineV2:
             if demand.guarantee_mode == "BEST_EFFORT":
                 PlacementEngineV2._place_demand(grid, demand, kiosk_id, target_date, planning_run)
         
-        # 7. Fill house ads
-        PlacementEngineV2._fill_house_ads(grid)
+        # 7. Uygun campaign creative yoksa loop bos kalir (filler yok).
         
         # 8. Materialize playlist items
         items = PlacementEngineV2._materialize(grid)
@@ -313,7 +308,6 @@ class PlacementEngineV2:
         metrics = {
             "total_items": len(items),
             "creative_items": len([i for i in items if i["asset_type"] == "creative"]),
-            "house_ad_items": len([i for i in items if i["asset_type"] == "house_ad"]),
             "total_duration": sum(i["duration_seconds"] for i in items),
             "total_campaigns": len(set(d.campaign_id for d in demands)),
         }
@@ -557,40 +551,6 @@ class PlacementEngineV2:
         return placed
     
     @staticmethod
-    def _fill_house_ads(grid: HourGrid):
-        """Grid boşluklarını house ad ile doldur."""
-        house_ads = list(HouseAd.objects.filter(aktif=True).order_by("-priority", "id"))
-        
-        if not house_ads:
-            return
-        
-        # 0..3599 arasındaki boş alanları bul
-        current_offset = 0
-        house_ad_idx = 0
-        
-        while current_offset < 3600:
-            # Bir sonraki house ad
-            house_ad = house_ads[house_ad_idx % len(house_ads)]
-            duration = house_ad.duration_seconds
-            
-            # Boş alan bul
-            free_offset = grid.find_next_free_offset(duration, current_offset)
-            
-            if free_offset is None:
-                break
-            
-            # Yerleştir
-            if not grid.place_slot(
-                start_offset=free_offset,
-                duration=duration,
-                house_ad_id=str(house_ad.id),
-            ):
-                break
-            
-            current_offset = free_offset + duration
-            house_ad_idx += 1
-    
-    @staticmethod
     def _materialize(grid: HourGrid) -> List[Dict]:
         """Grid'den playlist item'ları üret."""
         # Slot'ları offset'e göre sırala
@@ -600,7 +560,7 @@ class PlacementEngineV2:
         for i, slot in enumerate(sorted_slots):
             item = {
                 "playback_order": i,
-                "asset_id": slot.creative_id or slot.house_ad_id,
+                "asset_id": slot.creative_id,
                 "asset_type": slot.asset_type,
                 "duration_seconds": slot.duration_seconds,
                 "estimated_start_offset_seconds": slot.start_offset,

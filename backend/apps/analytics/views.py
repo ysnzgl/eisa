@@ -567,7 +567,6 @@ class CampaignImpressionView(APIView):
             .select_related(
                 "kiosk__eczane",
                 "creative__campaign",
-                "house_ad",
             )
             .order_by("-played_at")
         )

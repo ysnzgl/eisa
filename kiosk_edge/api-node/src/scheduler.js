@@ -311,21 +311,36 @@ function upsertCreative(db, c) {
   });
 }
 
-function upsertHouseAd(db, h) {
+function upsertIdleContent(db, c) {
   db.prepare(
-    `INSERT INTO house_ads (id, name, media_url, duration_seconds, type, aktif)
-     VALUES (@id, @name, @media_url, @duration_seconds, 'house_ad', 1)
+    `INSERT INTO idle_contents (id, baslik, metin, kategori_id, ikon, aktif, guncellenme_tarihi)
+     VALUES (@id, @baslik, @metin, @kategori_id, @ikon, 1, @updated_at)
      ON CONFLICT(id) DO UPDATE SET
-       name=excluded.name,
-       media_url=excluded.media_url,
-       duration_seconds=excluded.duration_seconds,
-       guncellenme_tarihi=strftime('%Y-%m-%dT%H:%M:%fZ','now')`,
+       baslik=excluded.baslik,
+       metin=excluded.metin,
+       kategori_id=excluded.kategori_id,
+       ikon=excluded.ikon,
+       aktif=1,
+       guncellenme_tarihi=excluded.guncellenme_tarihi`,
   ).run({
-    id: String(h.id),
-    name: h.name || '',
-    media_url: h.media_url || '',
-    duration_seconds: h.duration_seconds ?? 15,
+    id: Number(c.id),
+    baslik: c.baslik || '',
+    metin: c.metin || '',
+    kategori_id: Number.isFinite(Number(c.kategori_id)) ? Number(c.kategori_id) : null,
+    ikon: c.kategori_ikon || '',
+    updated_at: c.updated_at || new Date().toISOString(),
   });
+}
+
+// Merkezi listede olmayan (pasifleştirilen/silinen) idle içerikleri lokalden düşür.
+function reconcileIdleContents(db, contents) {
+  const ids = contents.map((c) => Number(c.id)).filter((n) => Number.isFinite(n));
+  if (ids.length === 0) {
+    db.prepare('DELETE FROM idle_contents').run();
+    return;
+  }
+  const placeholders = ids.map(() => '?').join(',');
+  db.prepare(`DELETE FROM idle_contents WHERE id NOT IN (${placeholders})`).run(...ids);
 }
 
 function upsertLookups(db, lookups) {
@@ -359,18 +374,21 @@ export async function pullFromCentral(db, settings, log = console) {
     log.warn?.({ err: err?.message }, 'enrollDeviceId pull sirasinda basarisiz')
   );
   try {
-    // 1) kiosk/v1/sync — { creatives: [...], house_ads: [...], lookups: {...} }
+    // 1) kiosk/v1/sync — { creatives: [...], idle_contents: [...], lookups: {...} }
     const r2 = await requestWithRetry(db, settings, 'GET', '/api/kiosk/v1/sync/', undefined, log);
     if (r2.ok) {
       const data = await r2.json();
       const tx = db.transaction((payload) => {
         upsertLookups(db, payload.lookups);
         for (const c of payload.creatives || []) upsertCreative(db, c);
-        for (const h of payload.house_ads || []) upsertHouseAd(db, h);
+        // Eski backend surumu idle_contents gondermezse bos dizi olarak isle.
+        const idleContents = payload.idle_contents || [];
+        reconcileIdleContents(db, idleContents);
+        for (const c of idleContents) upsertIdleContent(db, c);
       });
       tx(data);
       await syncMediaCache(db, settings, log);
-      log.info?.(`PULL: ${(data.creatives || []).length} creative, ${(data.house_ads || []).length} house_ad guncellendi`);
+      log.info?.(`PULL: ${(data.creatives || []).length} creative, ${(data.idle_contents || []).length} idle_content guncellendi`);
     } else if (r2.status === 401) {
       handle401Error(db, settings, log);
     } else if (r2.status === 403) {

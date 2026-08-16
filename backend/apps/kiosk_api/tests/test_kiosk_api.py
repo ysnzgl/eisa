@@ -190,7 +190,7 @@ class TestOperationalBehaviour:
         _appkey_creds(api_client, kiosk)
         body = api_client.get("/api/kiosk/v1/sync/").json()
         assert body["kiosk_id"] == kiosk.pk
-        assert "creatives" in body and "house_ads" in body and "lookups" in body
+        assert "creatives" in body and "idle_contents" in body and "lookups" in body
 
     def test_catalog_shape(self, db, api_client, kiosk):
         _appkey_creds(api_client, kiosk)

@@ -576,7 +576,7 @@ onMounted(() => {
             <div style="flex:2;min-width:200px;">
               <p style="font-weight:600;margin-bottom:0.25rem;">{{ currentItem.name || '—' }}</p>
               <p style="font-size:0.8rem;color:#94a3b8;">
-                <span class="eisa-pill eisa-pill-muted" style="font-size:0.7rem;">{{ currentItem.asset_type === 'creative' ? 'Kampanya' : 'HouseAd' }}</span>
+                <span class="eisa-pill eisa-pill-muted" style="font-size:0.7rem;">{{ currentItem.asset_type === 'creative' ? 'Kampanya' : 'İçerik' }}</span>
               </p>
               <div style="margin-top:0.75rem;display:grid;grid-template-columns:1fr 1fr;gap:0.4rem 1rem;font-size:0.8rem;">
                 <div><span style="color:#94a3b8;">Süre:</span> {{ currentItem.duration_seconds }}sn</div>
@@ -626,7 +626,7 @@ onMounted(() => {
                   <div class="broadcast-info">
                     <p class="broadcast-name">{{ item.name || '—' }}</p>
                     <p class="broadcast-meta">
-                      <span class="eisa-pill eisa-pill-muted" style="font-size:0.6rem;">{{ item.asset_type === 'creative' ? 'Kampanya' : 'HouseAd' }}</span>
+                      <span class="eisa-pill eisa-pill-muted" style="font-size:0.6rem;">{{ item.asset_type === 'creative' ? 'Kampanya' : 'İçerik' }}</span>
                       {{ String(hourPl.target_hour).padStart(2,'0') }}:{{ String(Math.floor(item.estimated_start_offset_seconds / 60)).padStart(2,'0') }}
                     </p>
                     <p class="broadcast-meta">{{ item.duration_seconds }}sn</p>

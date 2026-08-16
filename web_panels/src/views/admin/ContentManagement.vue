@@ -1,40 +1,40 @@
 <script setup>
 /**
- * İçerik Yönetimi — idle ekranı için görsel içerik CRUD.
- * Kullanıcıya görünen hiçbir yerde teknik "HouseAd" terimi kullanılmaz.
+ * İçerik Yönetimi — kiosk bekleme (idle) ekranı için başlık/metin tabanlı içerik CRUD.
+ * İçerikler AdPromo large görünümünde başlık fade + metin daktilo animasyonuyla
+ * rastgele gösterilir. Medya/HTML yoktur; yalnızca düz metin.
  */
-import { ref, reactive, onMounted } from 'vue';
-import { uploadMedia, listHouseAds, createHouseAd, updateHouseAd, deleteHouseAd } from '../../services/dooh';
+import { ref, reactive, computed, onMounted } from 'vue';
+import {
+  listIdleContents, createIdleContent, updateIdleContent, deleteIdleContent,
+} from '../../services/dooh';
 import { toast } from 'vue-sonner';
 
-const items      = ref([]);
-const loading    = ref(false);
-const saving     = ref(false);
-const formOpen   = ref(false);
-const previewOpen = ref(false);
-const editingId  = ref(null);
+const BASLIK_MAX = 100;
+const METIN_MAX = 300;
 
-const DURATIONS = [15, 30, 45, 60];
-const VIDEO_EXT = /\.(mp4|webm|ogg|mov|avi|mkv|flv|wmv)$/i;
-const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB client-side uyarı eşiği
+const items     = ref([]);
+const loading   = ref(false);
+const saving    = ref(false);
+const formOpen  = ref(false);
+const editingId = ref(null);
 
-const empty = () => ({
-  name: '',
-  media_url: '',
-  object_key: '',
-  duration_seconds: 15,
-  priority: 100,
-  aktif: true,
-});
+// Silme onay modalı
+const deleteTarget = ref(null);
+const deleting     = ref(false);
+
+const empty = () => ({ baslik: '', metin: '', aktif: true });
 const form = reactive(empty());
-const previewUrl = ref('');
+
+const baslikLen = computed(() => (form.baslik || '').length);
+const metinLen  = computed(() => (form.metin || '').length);
 
 // ── Veri yükleme ──────────────────────────────────────────────────────────────
 
 async function load() {
   loading.value = true;
   try {
-    const { data } = await listHouseAds();
+    const { data } = await listIdleContents();
     items.value = Array.isArray(data) ? data : (data?.results ?? []);
   } catch (e) {
     toast.error(e?.response?.data?.detail || 'İçerik listesi yüklenemedi.');
@@ -48,106 +48,88 @@ onMounted(load);
 function openCreate() {
   editingId.value = null;
   Object.assign(form, empty());
-  previewUrl.value = '';
   formOpen.value = true;
 }
 
 function openEdit(item) {
   editingId.value = item.id;
-  Object.assign(form, {
-    name: item.name,
-    media_url: item.media_url,
-    object_key: item.object_key || '',
-    duration_seconds: DURATIONS.includes(item.duration_seconds) ? item.duration_seconds : 15,
-    priority: item.priority ?? 100,
-    aktif: item.aktif,
-  });
-  previewUrl.value = item.media_url || '';
+  Object.assign(form, { baslik: item.baslik, metin: item.metin, aktif: item.aktif });
   formOpen.value = true;
 }
 
-function closeForm() { formOpen.value = false; }
-
-// ── Görsel yükleme ────────────────────────────────────────────────────────────
-
-async function onPickFile(ev) {
-  const file = ev.target.files?.[0];
-  if (!file) return;
-  if (VIDEO_EXT.test(file.name)) {
-    toast.error('Video dosyası yüklenemez. Yalnızca PNG, JPEG veya WebP görseller kabul edilir.');
-    ev.target.value = '';
-    return;
-  }
-  if (file.size > MAX_FILE_BYTES) {
-    toast.warning('Dosya 10 MB\'dan büyük. Yüklemeye devam ediliyor; backend limiti 100 MB\'dır.');
-  }
-  saving.value = true;
-  try {
-    const data = await uploadMedia(file, 'image');
-    form.media_url  = data.media_url ?? data.url ?? '';
-    form.object_key = data.object_key ?? '';
-    previewUrl.value = form.media_url;
-    toast.success('Görsel yüklendi.');
-  } catch (e) {
-    toast.error(e?.response?.data?.error || 'Görsel yüklenemedi.');
-  } finally { saving.value = false; ev.target.value = ''; }
-}
+function closeForm() { if (!saving.value) formOpen.value = false; }
 
 // ── Kayıt ─────────────────────────────────────────────────────────────────────
 
-async function save() {
-  if (!form.name.trim())  { toast.warning('İçerik adı zorunludur.'); return; }
-  if (!form.media_url)    { toast.warning('Görsel yükleyin.'); return; }
+function validate() {
+  const baslik = (form.baslik || '').trim();
+  const metin = (form.metin || '').trim();
+  if (!baslik) { toast.warning('Başlık zorunludur.'); return null; }
+  if (!metin)  { toast.warning('Metin zorunludur.'); return null; }
+  if (baslik.length > BASLIK_MAX) { toast.warning(`Başlık en fazla ${BASLIK_MAX} karakter olabilir.`); return null; }
+  if (metin.length > METIN_MAX)   { toast.warning(`Metin en fazla ${METIN_MAX} karakter olabilir.`); return null; }
+  return { baslik, metin, aktif: form.aktif };
+}
 
-  const payload = {
-    name: form.name.trim(),
-    media_url: form.media_url,
-    object_key: form.object_key || undefined,
-    duration_seconds: Number(form.duration_seconds),
-    priority: Number(form.priority),
-    aktif: form.aktif,
-  };
+async function save() {
+  const payload = validate();
+  if (!payload) return;
 
   saving.value = true;
   try {
     if (editingId.value) {
-      await updateHouseAd(editingId.value, payload);
+      await updateIdleContent(editingId.value, payload);
       toast.success('İçerik güncellendi.');
     } else {
-      await createHouseAd(payload);
+      await createIdleContent(payload);
       toast.success('İçerik oluşturuldu.');
     }
     formOpen.value = false;
     await load();
   } catch (e) {
     const err = e?.response?.data;
-    const msg = err?.media_url?.[0] || err?.duration_seconds?.[0] || err?.detail
-      || JSON.stringify(err || {});
-    toast.error(msg || 'Kayıt başarısız.');
+    const msg = err?.baslik?.[0] || err?.metin?.[0] || err?.detail || 'Kayıt başarısız.';
+    toast.error(msg);
   } finally { saving.value = false; }
 }
 
 async function toggleActive(item) {
+  const prev = item.aktif;
+  item.aktif = !prev;
   try {
-    await updateHouseAd(item.id, { aktif: !item.aktif });
-    item.aktif = !item.aktif;
-  } catch { toast.error('Durum güncellenemedi.'); }
+    await updateIdleContent(item.id, { aktif: item.aktif });
+  } catch {
+    item.aktif = prev;
+    toast.error('Durum güncellenemedi.');
+  }
 }
 
-async function remove(item) {
-  if (!confirm(`"${item.name}" içeriğini silmek istiyor musunuz?`)) return;
+// ── Silme ─────────────────────────────────────────────────────────────────────
+
+function askDelete(item) { deleteTarget.value = item; }
+function cancelDelete()  { if (!deleting.value) deleteTarget.value = null; }
+
+async function confirmDelete() {
+  if (!deleteTarget.value) return;
+  deleting.value = true;
   try {
-    await deleteHouseAd(item.id);
+    await deleteIdleContent(deleteTarget.value.id);
     toast.success('İçerik silindi.');
+    deleteTarget.value = null;
     await load();
-  } catch (e) { toast.error(e?.response?.data?.detail || 'Silme başarısız.'); }
+  } catch (e) {
+    toast.error(e?.response?.data?.detail || 'Silme başarısız.');
+  } finally { deleting.value = false; }
 }
 
-// ── Önizleme modal ────────────────────────────────────────────────────────────
-
-const previewItem = ref(null);
-function openPreview(item) { previewItem.value = item; previewOpen.value = true; }
-function closePreview()    { previewOpen.value = false; }
+function fmtDate(iso) {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleString('tr-TR', {
+      day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    });
+  } catch { return '—'; }
+}
 </script>
 
 <template>
@@ -164,8 +146,8 @@ function closePreview()    { previewOpen.value = false; }
 
       <div class="eisa-panel-body">
         <p class="cm-desc">
-          Kiosk bekleme ekranında arka plan olarak gösterilecek görseller.
-          Yalnızca PNG, JPEG veya WebP formatları kabul edilir.
+          Kiosk bekleme ekranında başlık ve metin olarak gösterilecek içerikler.
+          Aktif içerikler rastgele sırayla görüntülenir.
         </p>
 
         <div v-if="loading" class="cm-loading">
@@ -175,28 +157,20 @@ function closePreview()    { previewOpen.value = false; }
         <table v-else class="eisa-table">
           <thead>
             <tr>
-              <th class="cm-thumb-col">Görsel</th>
-              <th>Ad</th>
-              <th>Süre</th>
-              <th>Öncelik</th>
+              <th>Başlık</th>
+              <th>Metin</th>
               <th>Durum</th>
+              <th>Son Güncelleme</th>
               <th class="actions-col"></th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="!items.length">
-              <td colspan="6" class="empty-row">Henüz içerik yok.</td>
+              <td colspan="5" class="empty-row">Henüz içerik yok.</td>
             </tr>
             <tr v-for="item in items" :key="item.id">
-              <td>
-                <div class="cm-thumb">
-                  <img v-if="item.media_url" :src="item.media_url" :alt="item.name" />
-                  <i v-else class="fa-solid fa-image cm-thumb-placeholder"></i>
-                </div>
-              </td>
-              <td><span class="eisa-cell-name">{{ item.name }}</span></td>
-              <td class="cell-muted">{{ item.duration_seconds }} sn</td>
-              <td class="cell-muted">{{ item.priority }}</td>
+              <td><span class="eisa-cell-name">{{ item.baslik }}</span></td>
+              <td class="cell-muted cm-metin-cell">{{ item.metin }}</td>
               <td>
                 <button
                   class="eisa-pill cm-pill-toggle"
@@ -207,15 +181,13 @@ function closePreview()    { previewOpen.value = false; }
                   {{ item.aktif ? 'Aktif' : 'Pasif' }}
                 </button>
               </td>
+              <td class="cell-muted">{{ fmtDate(item.updated_at) }}</td>
               <td>
                 <div class="cell-actions">
-                  <button class="eisa-icon-btn" title="Ekran Önizleme" @click="openPreview(item)">
-                    <i class="fa-solid fa-eye"></i>
-                  </button>
                   <button class="eisa-icon-btn" title="Düzenle" @click="openEdit(item)">
                     <i class="fa-solid fa-pen"></i>
                   </button>
-                  <button class="eisa-icon-btn danger" title="Sil" @click="remove(item)">
+                  <button class="eisa-icon-btn danger" title="Sil" @click="askDelete(item)">
                     <i class="fa-solid fa-trash"></i>
                   </button>
                 </div>
@@ -237,64 +209,65 @@ function closePreview()    { previewOpen.value = false; }
             </button>
           </div>
           <div class="eisa-modal-body">
-            <div class="eisa-form-grid">
-
-              <!-- Ad -->
-              <div class="eisa-form-row eisa-form-row-full">
-                <label class="eisa-field-label">İçerik Adı *</label>
-                <input v-model="form.name" class="eisa-field" placeholder="İçerik adı" />
-              </div>
-
-              <!-- Görsel yükleme -->
-              <div class="eisa-form-row eisa-form-row-full">
-                <label class="eisa-field-label">Görsel * <span class="cm-hint">(PNG / JPEG / WebP)</span></label>
-                <div v-if="previewUrl" class="cm-preview">
-                  <img :src="previewUrl" alt="Önizleme" />
-                  <button class="eisa-icon-btn danger cm-preview-rm" @click="form.media_url=''; previewUrl=''">
-                    <i class="fa-solid fa-trash"></i>
-                  </button>
-                </div>
-                <label class="eisa-btn eisa-btn-outline cm-upload-btn" :class="{ disabled: saving }">
-                  <i class="fa-solid fa-upload"></i>
-                  {{ saving ? 'Yükleniyor…' : (previewUrl ? 'Değiştir' : 'Görsel Seç') }}
+            <div class="cm-form-layout">
+              <div class="cm-form-fields">
+                <div class="eisa-form-row eisa-form-row-full">
+                  <label class="eisa-field-label">
+                    Başlık *
+                    <span class="cm-counter" :class="{ over: baslikLen > BASLIK_MAX }">{{ baslikLen }}/{{ BASLIK_MAX }}</span>
+                  </label>
                   <input
-                    type="file"
-                    accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
-                    class="cm-file-hidden"
-                    :disabled="saving"
-                    @change="onPickFile"
+                    v-model="form.baslik"
+                    class="eisa-field"
+                    :maxlength="BASLIK_MAX"
+                    placeholder="Örn. Güne Dengeli Bir Kahvaltıyla Başlayın"
                   />
-                </label>
+                </div>
+
+                <div class="eisa-form-row eisa-form-row-full">
+                  <label class="eisa-field-label">
+                    Metin *
+                    <span class="cm-counter" :class="{ over: metinLen > METIN_MAX }">{{ metinLen }}/{{ METIN_MAX }}</span>
+                  </label>
+                  <textarea
+                    v-model="form.metin"
+                    class="eisa-field cm-textarea"
+                    :maxlength="METIN_MAX"
+                    rows="4"
+                    placeholder="Kısa, bilgilendirici bir metin girin."
+                  ></textarea>
+                </div>
+
+                <div class="eisa-form-row eisa-form-row-full">
+                  <label class="eisa-field-label eisa-checkbox-label">
+                    <input type="checkbox" v-model="form.aktif" />
+                    Aktif — kiosk bekleme ekranında gösterilsin
+                  </label>
+                </div>
+
+                <div class="cm-note">
+                  <i class="fa-solid fa-circle-info"></i>
+                  Tanı, tedavi veya kesin sağlık sonucu ifade eden içerikler kullanmayın.
+                </div>
               </div>
 
-              <!-- Süre -->
-              <div class="eisa-form-row">
-                <label class="eisa-field-label">Gösterim Süresi *</label>
-                <select v-model.number="form.duration_seconds" class="eisa-field">
-                  <option v-for="d in DURATIONS" :key="d" :value="d">{{ d }} saniye</option>
-                </select>
+              <!-- 1080×1920 oranlı kiosk önizleme -->
+              <div class="cm-preview-pane">
+                <span class="cm-preview-label">Önizleme (1080×1920)</span>
+                <div class="cm-kiosk-sim">
+                  <div class="cm-kiosk-title">{{ form.baslik || 'Başlık' }}</div>
+                  <div class="cm-kiosk-heart"><i class="fa-solid fa-heart-pulse"></i></div>
+                  <div class="cm-kiosk-text">{{ form.metin || 'Metin buraya daktilo animasyonuyla yazılır.' }}</div>
+                  <div class="cm-kiosk-cta">Size özel öneriler için <b>DOKUNUN</b></div>
+                  <div class="cm-kiosk-sponsor">Bu alana sponsor olabilirsiniz</div>
+                </div>
               </div>
-
-              <!-- Öncelik -->
-              <div class="eisa-form-row">
-                <label class="eisa-field-label">Öncelik <span class="cm-hint">(düşük = önce)</span></label>
-                <input v-model.number="form.priority" type="number" min="1" max="999" class="eisa-field" />
-              </div>
-
-              <!-- Durum -->
-              <div class="eisa-form-row eisa-form-row-full">
-                <label class="eisa-field-label eisa-checkbox-label">
-                  <input type="checkbox" v-model="form.aktif" />
-                  Aktif — kiosk bekleme ekranında gösterilsin
-                </label>
-              </div>
-
             </div>
           </div>
           <div class="eisa-modal-footer">
             <button class="eisa-btn eisa-btn-ghost" @click="closeForm">İptal</button>
             <button class="eisa-btn eisa-btn-cta" :disabled="saving" @click="save">
-              <i class="fa-solid fa-floppy-disk"></i>
+              <i class="fa-solid" :class="saving ? 'fa-spinner fa-spin' : 'fa-floppy-disk'"></i>
               {{ saving ? 'Kaydediliyor…' : 'Kaydet' }}
             </button>
           </div>
@@ -302,45 +275,28 @@ function closePreview()    { previewOpen.value = false; }
       </div>
     </Teleport>
 
-    <!-- Önizleme Modal — kiosk idle ekranı mockup -->
+    <!-- Silme Onay Modalı -->
     <Teleport to="body">
-      <div v-if="previewOpen" class="eisa-modal-backdrop" @click.self="closePreview">
-        <div class="eisa-modal cm-preview-modal">
+      <div v-if="deleteTarget" class="eisa-modal-backdrop" @click.self="cancelDelete">
+        <div class="eisa-modal cm-confirm-modal">
           <div class="eisa-modal-header">
-            <h3 class="eisa-modal-title">
-              <i class="fa-solid fa-mobile-screen"></i> Kiosk Ekranı Önizleme
-            </h3>
-            <button class="eisa-modal-close" @click="closePreview">
+            <h3 class="eisa-modal-title">İçeriği Sil</h3>
+            <button class="eisa-modal-close" @click="cancelDelete">
               <i class="fa-solid fa-xmark"></i>
             </button>
           </div>
-          <div class="eisa-modal-body cm-preview-body">
-            <!-- 9:16 oranında kiosk simülasyonu -->
-            <div class="cm-kiosk-sim">
-              <div class="cm-kiosk-bg">
-                <img v-if="previewItem?.media_url" :src="previewItem.media_url" class="cm-kiosk-bg-img" alt="arka plan" />
-                <div v-else class="cm-kiosk-safe-bg"></div>
-              </div>
-              <!-- Logo + CTA overlay -->
-              <div class="cm-kiosk-overlay">
-                <div class="cm-kiosk-logo">e-<span>İSA</span></div>
-                <div class="cm-kiosk-tap">
-                  <i class="fa-solid fa-hand-pointer"></i> Başlamak için dokunun
-                </div>
-              </div>
-              <!-- AdPromo temsili — alt overlay -->
-              <div class="cm-kiosk-adpromo">
-                <div class="cm-kiosk-adpromo-inner">
-                  <i class="fa-solid fa-bullhorn"></i>
-                  <span>Bu alana sponsor olabilirsiniz</span>
-                </div>
-              </div>
-              <!-- Güvenli alan çerçeveleri (1080x1920) -->
-              <div class="cm-safe-frame"></div>
-            </div>
-            <p class="cm-preview-caption">
-              Temsili önizleme — 9:16 (1080×1920). Gerçek boyut kiosk ekranında görünür.
+          <div class="eisa-modal-body">
+            <p class="cm-confirm-text">
+              <b>{{ deleteTarget.baslik }}</b> başlıklı içeriği silmek istediğinize emin misiniz?
+              Bu işlem geri alınamaz.
             </p>
+          </div>
+          <div class="eisa-modal-footer">
+            <button class="eisa-btn eisa-btn-ghost" @click="cancelDelete">Vazgeç</button>
+            <button class="eisa-btn eisa-btn-danger" :disabled="deleting" @click="confirmDelete">
+              <i class="fa-solid" :class="deleting ? 'fa-spinner fa-spin' : 'fa-trash'"></i>
+              {{ deleting ? 'Siliniyor…' : 'Sil' }}
+            </button>
           </div>
         </div>
       </div>
@@ -352,82 +308,54 @@ function closePreview()    { previewOpen.value = false; }
 .cm-root { padding: 1.5rem; }
 .cm-desc { color: var(--color-muted, #6b7280); font-size: 0.875rem; margin-bottom: 1.25rem; }
 .cm-loading { padding: 2rem; text-align: center; color: var(--color-muted, #6b7280); }
-.cm-hint { font-size: 0.75rem; color: var(--color-muted, #6b7280); font-weight: 400; }
 
-.cm-thumb-col { width: 72px; }
-.cm-thumb {
-  width: 56px; height: 72px;
-  border-radius: 4px; overflow: hidden;
-  background: #f3f4f6;
-  display: flex; align-items: center; justify-content: center;
-}
-.cm-thumb img { width: 100%; height: 100%; object-fit: cover; }
-.cm-thumb-placeholder { color: #9ca3af; font-size: 1.25rem; }
-
+.cm-metin-cell { max-width: 420px; white-space: normal; }
 .cm-pill-toggle { cursor: pointer; border: none; font-size: 0.75rem; }
 
-.cm-form-modal { width: min(560px, 95vw); }
+.cm-form-modal { width: min(820px, 96vw); }
+.cm-form-layout { display: flex; gap: 1.5rem; }
+.cm-form-fields { flex: 1 1 auto; min-width: 0; }
+.cm-preview-pane { flex: none; width: 160px; display: flex; flex-direction: column; align-items: center; gap: 0.5rem; }
+.cm-preview-label { font-size: 0.7rem; color: var(--color-muted, #6b7280); }
 
-.cm-preview {
-  position: relative; display: inline-block;
-  max-width: 100%; margin-bottom: 0.5rem;
+.cm-counter { float: right; font-size: 0.7rem; color: var(--color-muted, #9ca3af); font-weight: 400; }
+.cm-counter.over { color: #dc2626; font-weight: 700; }
+
+.cm-textarea { resize: vertical; min-height: 90px; font-family: inherit; }
+
+.cm-note {
+  margin-top: 0.75rem;
+  padding: 0.6rem 0.85rem;
+  border-radius: 8px;
+  background: rgba(234, 179, 8, 0.12);
+  border: 1px solid rgba(234, 179, 8, 0.35);
+  color: #92620a;
+  font-size: 0.8rem;
+  display: flex; align-items: flex-start; gap: 0.5rem;
 }
-.cm-preview img { max-height: 180px; border-radius: 6px; object-fit: contain; }
-.cm-preview-rm { position: absolute; top: 4px; right: 4px; }
 
-.cm-upload-btn { display: inline-flex; align-items: center; gap: 0.5rem; cursor: pointer; }
-.cm-upload-btn.disabled { opacity: 0.6; pointer-events: none; }
-.cm-file-hidden { display: none; }
-
-/* Kiosk önizleme */
-.cm-preview-modal { width: min(400px, 92vw); }
-.cm-preview-body  { display: flex; flex-direction: column; align-items: center; gap: 1rem; }
-
+/* 1080×1920 kiosk simülasyonu */
 .cm-kiosk-sim {
-  position: relative;
-  width: 200px;
-  aspect-ratio: 9/16;
+  width: 160px;
+  aspect-ratio: 9 / 16;
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 8px 24px rgba(0,0,0,.35);
-  background: #0f1622;
-}
-.cm-kiosk-bg { position: absolute; inset: 0; }
-.cm-kiosk-bg-img { width: 100%; height: 100%; object-fit: cover; }
-.cm-kiosk-safe-bg {
-  width: 100%; height: 100%;
   background: radial-gradient(120% 140% at 50% 0%, #1b2436 0%, #0f1622 55%, #0b1019 100%);
+  display: flex; flex-direction: column; align-items: center;
+  padding: 12px 8px; gap: 6px; text-align: center;
 }
-.cm-kiosk-overlay {
-  position: absolute; inset: 0;
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  gap: 8px; padding: 16px;
-}
-.cm-kiosk-logo {
-  font-size: 1.4rem; font-weight: 800; color: #fff; letter-spacing: -0.5px;
-}
-.cm-kiosk-logo span { color: #B1121B; }
-.cm-kiosk-tap { font-size: 0.6rem; color: rgba(255,255,255,.75); }
-
-.cm-kiosk-adpromo {
-  position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
-  width: 85%; z-index: 10;
-}
-.cm-kiosk-adpromo-inner {
-  display: flex; align-items: center; gap: 6px;
-  padding: 6px 10px; border-radius: 8px;
-  background: rgba(17,24,39,.7); border: 1px solid rgba(255,255,255,.1);
-  color: #fff; font-size: 0.55rem; white-space: nowrap; overflow: hidden;
-}
-.cm-kiosk-adpromo-inner i { color: #B1121B; flex-shrink: 0; }
-
-/* Güvenli alan çerçevesi */
-.cm-safe-frame {
-  position: absolute; inset: 5%;
-  border: 1px dashed rgba(255,255,255,.2);
-  border-radius: 4px; pointer-events: none;
+.cm-kiosk-title { color: #fff; font-weight: 800; font-size: 0.6rem; line-height: 1.15; margin-top: 6px; }
+.cm-kiosk-heart { color: #B1121B; font-size: 1.4rem; margin: 4px 0; }
+.cm-kiosk-text { color: #cfd6e4; font-size: 0.5rem; line-height: 1.2; flex: 1; }
+.cm-kiosk-cta { color: #fff; font-size: 0.5rem; }
+.cm-kiosk-cta b { color: #e0444c; }
+.cm-kiosk-sponsor {
+  color: #9aa3b2; font-size: 0.45rem; padding: 4px 8px;
+  border: 1px solid rgba(255,255,255,.12); border-radius: 6px;
+  background: rgba(17,24,39,.6); width: 100%;
 }
 
-.cm-preview-caption { font-size: 0.75rem; color: #6b7280; text-align: center; }
+.cm-confirm-modal { width: min(440px, 92vw); }
+.cm-confirm-text { color: var(--color-text, #374151); font-size: 0.9rem; line-height: 1.5; }
 </style>

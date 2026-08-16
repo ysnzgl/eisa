@@ -13,6 +13,7 @@
   import { playlistItems, playlistVersion, playlistHour, playlistIsFallback, activeCampaignIndex } from '../stores/kiosk.js';
   import { fetchCurrentPlaylist, logAdImpression } from '../lib/api.js';
   import { resolveActiveItem, currentHourPosition, secondsUntilBoundary } from '../lib/playlistSlot.js';
+  import { startIdleContent, stopIdleContent } from '../lib/idleContentStore.js';
   import AdPromo from './AdPromo.svelte';
   import MediaView from './MediaView.svelte';
 
@@ -100,6 +101,7 @@
   }
 
   onMount(async () => {
+    startIdleContent();
     await loadPlaylist();
     // Playlist degisince (yeni version/yukleme) hemen yeniden cozumle; subscribe
     // abone olunca mevcut degerle de bir kez calisir.
@@ -113,6 +115,7 @@
     _unsub?.();
     clearTimeout(tickTimer);
     clearInterval(hourTick);
+    stopIdleContent();
     _closeImpression('INTERRUPTED');
   });
 

@@ -7,6 +7,26 @@
 
 ## 2026-08-16
 
+### [Backend+WebPanel+KioskEdge+KioskUI] HouseAd kaldırıldı; İçerik Yönetimi başlık/metin idle içeriğine geçti
+
+**Değişiklik:** DOOH filler (HouseAd) sistemi uçtan uca kaldırıldı; playlist campaign-only oldu (boş playlist geçerli → kiosk idle ekranı). "İçerik Yönetimi" yeni başlık/metin tabanlı idle içeriğine dönüştürüldü.
+
+**Backend:**
+- `HouseAd` modeli/tablosu (`dooh_house_ads`), serializer, viewset (`/api/campaigns/v2/house-ads/`), scheduler Pass-4 filler, PlacementEngineV2 `_fill_house_ads`, kiosk sync `house_ads` KALDIRILDI (migration 0027).
+- `PlaylistItem.house_ad` + `PlayLog.house_ad` FK'leri kaldırıldı; `PlaylistItem.clean()` creative zorunlu (creative-only).
+- YENİ `IdleScreenContent` modeli (app: campaigns, tablo `dooh_idle_screen_contents`: `baslik`≤100, `metin`≤300, `aktif`) + CRUD API `GET/POST/PUT/PATCH/DELETE /api/campaigns/v2/idle-contents/` (JWT SuperAdmin, basename `dooh-idle-content`).
+- Kiosk sync artık `house_ads` yerine `idle_contents` (aktif; `KioskIdleContentSyncSerializer`) döner. Proof-of-play `house_ad_id` gelse de yok sayılır.
+
+**Kiosk Edge (api-node):** YENİ SQLite `idle_contents` tablosu; pull sync transaction içinde upsert + reconcile (offline'da son cache korunur); v15 idempotent migration `house_ads` tablosunu düşürür + `media_cache` house_ad satırlarını siler; YENİ salt okunur `GET /api/idle-contents` lokal endpoint.
+
+**Web panel:** "İçerik Yönetimi" (`/admin/content-management`) korundu ama yeni IdleScreenContent CRUD'unu açar (`ContentManagement.vue`; liste, ekle/düzenle/aktif-pasif/silme, 0/100 & 0/300 sayaç, sağlık uyarı notu, 1080×1920 önizleme). Eski `HouseAdManagement.vue` + `dooh.js` house-ad metotları kaldırıldı; yeni `listIdleContents/createIdleContent/updateIdleContent/deleteIdleContent`.
+
+**Kiosk UI:** YENİ `lib/idleContentStore.js` (shuffled-bag rotasyon, dwell 12–20s); `AdPromo` `large` varyantı → başlık (fade) + heartbeat (değişmedi) + metin (tek-seferlik typewriter) + SABİT CTA "Size özel öneriler için DOKUNUN". `small` varyant değişmedi. AdStrip/resolver/edge house_ad öğelerini defansif atlar.
+
+**Migration:** campaigns/0027 (HouseAd drop + IdleScreenContent), edge SQLite v15.
+
+---
+
 ### [Kiosk UI] Kalp Atışı Animasyonu Güncelleme — Beyaz 3-Pikli + Smile Curve + Modüler Widget
 
 **Değişiklik:** Sponsor fallback ekranındaki animasyon özelleştirilerek yeni modüler widget olarak ayrıldı.

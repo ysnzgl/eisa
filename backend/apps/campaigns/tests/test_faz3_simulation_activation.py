@@ -36,7 +36,6 @@ from apps.campaigns.models import (
     Creative,
     DeliveryRule,
     GenerationJob,
-    HouseAd,
     KioskDayQuota,
     Playlist,
     PlaylistItem,
@@ -85,17 +84,6 @@ def kiosk2(db, eczane):
     )
 
 
-@pytest.fixture
-def house_ad(db):
-    return HouseAd.objects.create(
-        name="Faz3 HouseAd",
-        media_url="http://localhost:9000/dev/ads/faz3-filler.mp4",
-        duration_seconds=15,
-        priority=1,
-        aktif=True,
-    )
-
-
 def _make_campaign(name="Faz3Campaign", start_offset=-1, end_offset=3, target_scope="ALL"):
     base = _make_aware(TODAY, hour=0)
     return Campaign.objects.create(
@@ -132,7 +120,7 @@ def _make_rule(campaign, delivery_type="PER_HOUR", count=1, guarantee="BEST_EFFO
 
 @pytest.mark.django_db
 @override_settings(DOOH_ENGINE_V2="shadow")
-def test_fa01_simulation_no_db_mutations(kiosk, house_ad):
+def test_fa01_simulation_no_db_mutations(kiosk):
     """simulate() hiçbir tabloya yazmamalı."""
     camp = _make_campaign()
     _make_creative(camp)
@@ -160,7 +148,7 @@ def test_fa01_simulation_no_db_mutations(kiosk, house_ad):
 
 @pytest.mark.django_db
 @override_settings(DOOH_ENGINE_V2="shadow")
-def test_fa02_simulation_deterministic(kiosk, house_ad):
+def test_fa02_simulation_deterministic(kiosk):
     """simulate() deterministik olmalı — aynı input aynı fingerprint."""
     camp = _make_campaign()
     _make_creative(camp)
@@ -179,7 +167,7 @@ def test_fa02_simulation_deterministic(kiosk, house_ad):
 
 @pytest.mark.django_db
 @override_settings(DOOH_ENGINE_V2="active")
-def test_fa03_simulation_equals_activation(kiosk, house_ad):
+def test_fa03_simulation_equals_activation(kiosk):
     """Simulation fingerprint == activation fingerprint == PlacementEngineV2 fingerprint."""
     camp = _make_campaign()
     _make_creative(camp)
@@ -223,7 +211,7 @@ def test_fa03_simulation_equals_activation(kiosk, house_ad):
 
 @pytest.mark.django_db
 @override_settings(DOOH_ENGINE_V2="active")
-def test_fa04_guaranteed_activation_atomic(kiosk, house_ad):
+def test_fa04_guaranteed_activation_atomic(kiosk):
     """GUARANTEED kampanya: tüm kiosk+dateler için Playlist oluşturulmalı."""
     camp = _make_campaign(start_offset=-1, end_offset=1)  # yesterday to tomorrow
     _make_creative(camp)
@@ -247,7 +235,7 @@ def test_fa04_guaranteed_activation_atomic(kiosk, house_ad):
 
 @pytest.mark.django_db
 @override_settings(DOOH_ENGINE_V2="active")
-def test_fa05_guaranteed_rollback_on_capacity_failure(kiosk, house_ad):
+def test_fa05_guaranteed_rollback_on_capacity_failure(kiosk):
     """GUARANTEED: bir hedefte kapasite yoksa tüm aktivasyon rollback."""
     camp = _make_campaign(start_offset=-1, end_offset=1)
     _make_creative(camp, duration=15)
@@ -272,7 +260,7 @@ def test_fa05_guaranteed_rollback_on_capacity_failure(kiosk, house_ad):
 
 @pytest.mark.django_db
 @override_settings(DOOH_ENGINE_V2="active")
-def test_fa06_rollback_leaves_tables_unchanged(kiosk, house_ad):
+def test_fa06_rollback_leaves_tables_unchanged(kiosk):
     """GUARANTEED rollback: Playlist, PlaylistItem, KioskDayQuota, CTA değerleri önceki haliyle."""
     camp = _make_campaign(start_offset=-1, end_offset=1)
     _make_creative(camp, duration=15)
@@ -302,7 +290,7 @@ def test_fa06_rollback_leaves_tables_unchanged(kiosk, house_ad):
 
 @pytest.mark.django_db
 @override_settings(DOOH_ENGINE_V2="active")
-def test_fa07_best_effort_respects_global_quota(kiosk, house_ad):
+def test_fa07_best_effort_respects_global_quota(kiosk):
     """BEST_EFFORT + CAMPAIGN_TOTAL: yerleşen toplam total_target'ı aşmamalı."""
     camp = _make_campaign(start_offset=-1, end_offset=1)
     _make_creative(camp, duration=15)
@@ -324,7 +312,7 @@ def test_fa07_best_effort_respects_global_quota(kiosk, house_ad):
 
 @pytest.mark.django_db
 @override_settings(DOOH_ENGINE_V2="active")
-def test_fa08_campaign_total_multi_kiosk_global_invariant(kiosk, kiosk2, house_ad):
+def test_fa08_campaign_total_multi_kiosk_global_invariant(kiosk, kiosk2):
     """CAMPAIGN_TOTAL: birden fazla kiosk'a dağıtılmış toplam total_target'ı aşmamalı."""
     camp = _make_campaign(start_offset=-1, end_offset=1)
     _make_creative(camp, duration=15)
@@ -351,7 +339,7 @@ def test_fa08_campaign_total_multi_kiosk_global_invariant(kiosk, kiosk2, house_a
 
 @pytest.mark.django_db
 @override_settings(DOOH_ENGINE_V2="active")
-def test_fa09_idempotent_reactivation(kiosk, house_ad):
+def test_fa09_idempotent_reactivation(kiosk):
     """İki kez activate: Playlist sayısı katlanmamalı (replace)."""
     camp = _make_campaign(start_offset=-1, end_offset=1)
     _make_creative(camp, duration=15)
@@ -377,7 +365,7 @@ def test_fa09_idempotent_reactivation(kiosk, house_ad):
 # ─────────────────────────────────────────────────────────────────────────────
 
 @pytest.mark.django_db
-def test_fa12_off_mode_simulate_disabled(kiosk, house_ad, admin_client):
+def test_fa12_off_mode_simulate_disabled(kiosk, admin_client):
     """Faz 7: DOOH_ENGINE_V2 flag kaldırıldı; simulate her zaman erişilebilir."""
     camp = _make_campaign()
     _make_creative(camp)
@@ -401,7 +389,7 @@ def test_fa12b_off_mode_v2_not_enabled():
 # ─────────────────────────────────────────────────────────────────────────────
 
 @pytest.mark.django_db
-def test_fa13_shadow_mode_simulate_no_mutation(kiosk, house_ad, admin_client):
+def test_fa13_shadow_mode_simulate_no_mutation(kiosk, admin_client):
     """Faz 7: shadow mode yok; simulate çalışır (DB değişmez — read-only)."""
     camp = _make_campaign()
     _make_creative(camp)
@@ -433,7 +421,7 @@ def test_fa13b_shadow_v1_authoritative():
 
 @pytest.mark.django_db
 @override_settings(DOOH_ENGINE_V2="active")
-def test_fa14_active_mode_publish(kiosk, house_ad, admin_client):
+def test_fa14_active_mode_publish(kiosk, admin_client):
     """activate endpoint hızlı döner ve yalnız queue job oluşturur."""
     from apps.campaigns.services.invalidation_service import get_horizon_dates
 
@@ -474,7 +462,7 @@ def test_fa14_active_mode_publish(kiosk, house_ad, admin_client):
 
 
 @pytest.mark.django_db
-def test_fa14c_repeat_activate_coalesces_jobs(kiosk, house_ad, admin_client):
+def test_fa14c_repeat_activate_coalesces_jobs(kiosk, admin_client):
     """Tekrarlı activate çağrısı duplicate pending job oluşturmamalı."""
     from apps.campaigns.services.invalidation_service import get_horizon_dates
 
@@ -521,7 +509,7 @@ def test_fa14b_active_mode_flags():
 # ─────────────────────────────────────────────────────────────────────────────
 
 @pytest.mark.django_db
-def test_fa14d_guaranteed_activate_creates_job_not_playlists(kiosk, house_ad, admin_client):
+def test_fa14d_guaranteed_activate_creates_job_not_playlists(kiosk, admin_client):
     """GUARANTEED activate: endpoint playlist üretmeden GenerationJob oluşturur, 200 döner."""
     now = timezone.now()
     camp = Campaign.objects.create(
@@ -551,7 +539,7 @@ def test_fa14d_guaranteed_activate_creates_job_not_playlists(kiosk, house_ad, ad
 
 
 @pytest.mark.django_db
-def test_fa14d_guaranteed_repeat_activate_dedupes_job(kiosk, house_ad, admin_client):
+def test_fa14d_guaranteed_repeat_activate_dedupes_job(kiosk, admin_client):
     """GUARANTEED tekrarlanan activate tek PENDING job oluşturur (dedupe_key ile)."""
     now = timezone.now()
     camp = Campaign.objects.create(
@@ -591,7 +579,7 @@ def test_fa15_missing_campaign_404(admin_client):
 
 @pytest.mark.django_db
 @override_settings(DOOH_ENGINE_V2="active")
-def test_fa15_missing_delivery_rule_400(kiosk, house_ad, admin_client):
+def test_fa15_missing_delivery_rule_400(kiosk, admin_client):
     """DeliveryRule tanımlanmamış campaign → ActivationValidationError → 400."""
     camp = Campaign.objects.create(
         name="NoDR",
@@ -613,7 +601,7 @@ def test_fa15_missing_delivery_rule_400(kiosk, house_ad, admin_client):
 
 @pytest.mark.django_db
 @override_settings(DOOH_ENGINE_V2="active")
-def test_fa15_capacity_409(kiosk, house_ad, admin_client):
+def test_fa15_capacity_409(kiosk, admin_client):
     """GUARANTEED kampanya: endpoint hızlı döner ve GUARANTEED job oluşturur; kapasite kontrolü worker'da."""
     now = timezone.now()
     camp = Campaign.objects.create(
@@ -638,7 +626,7 @@ def test_fa15_capacity_409(kiosk, house_ad, admin_client):
 
 
 @pytest.mark.django_db
-def test_fa15b_activate_has_no_naive_datetime_warning(kiosk, house_ad, admin_client):
+def test_fa15b_activate_has_no_naive_datetime_warning(kiosk, admin_client):
     """activate sırasında start/end date filtreleri naive datetime warning üretmemeli."""
     now = timezone.now()
     camp = Campaign.objects.create(
@@ -667,7 +655,7 @@ def test_fa15b_activate_has_no_naive_datetime_warning(kiosk, house_ad, admin_cli
 
 @pytest.mark.django_db
 @override_settings(DOOH_ENGINE_V2="active")
-def test_fa15_unauthenticated_403(kiosk, house_ad, api_client):
+def test_fa15_unauthenticated_403(kiosk, api_client):
     """Kimlik doğrulaması olmaksızın activate → 401 veya 403."""
     camp = _make_campaign()
     _make_creative(camp)
@@ -683,7 +671,7 @@ def test_fa15_unauthenticated_403(kiosk, house_ad, api_client):
 
 @pytest.mark.django_db
 @override_settings(DOOH_ENGINE_V2="active")
-def test_fa16_follows_target_intersection_preserved(kiosk, house_ad):
+def test_fa16_follows_target_intersection_preserved(kiosk):
     """follows kampanyası activate edildiğinde validation fails if follows cancelled."""
     # B follows A
     camp_a = _make_campaign(name="FollowsA")
@@ -705,7 +693,7 @@ def test_fa16_follows_target_intersection_preserved(kiosk, house_ad):
 
 @pytest.mark.django_db
 @override_settings(DOOH_ENGINE_V2="active")
-def test_fa16b_target_scope_rules_empty_returns_error(house_ad):
+def test_fa16b_target_scope_rules_empty_returns_error():
     """RULES scope kampanya sıfır kiosk döndürürse validate_for_activation hata verir."""
     camp = Campaign.objects.create(
         name="EmptyRules",
@@ -737,7 +725,7 @@ def test_fa16b_target_scope_rules_empty_returns_error(house_ad):
 # ─────────────────────────────────────────────────────────────────────────────
 
 @pytest.mark.django_db
-def test_fa17_guaranteed_worker_failure_no_partial_publish(kiosk, house_ad):
+def test_fa17_guaranteed_worker_failure_no_partial_publish(kiosk):
     """GUARANTEED job: ikinci generate_for_kiosk çağrısı patlatılırsa hiçbir tarih publish edilmemeli."""
     from apps.campaigns.services.scheduler import generate_for_kiosk as real_generate
     from apps.campaigns.services.invalidation_service import get_horizon_dates
@@ -801,7 +789,7 @@ def test_fa17_guaranteed_worker_failure_no_partial_publish(kiosk, house_ad):
 # ─────────────────────────────────────────────────────────────────────────────
 
 @pytest.mark.django_db
-def test_fa18_active_status_preserved_and_included_in_placement_engine(kiosk, house_ad):
+def test_fa18_active_status_preserved_and_included_in_placement_engine(kiosk):
     """activate_rolling_horizon kampanya.status'u değiştirmez; PlacementEngine ACTIVE kampanyayı dahil eder."""
     from apps.campaigns.services.placement_engine_v2 import PlacementEngineV2
     from apps.campaigns.services.invalidation_service import get_horizon_dates
@@ -839,7 +827,7 @@ def test_fa18_active_status_preserved_and_included_in_placement_engine(kiosk, ho
 # ─────────────────────────────────────────────────────────────────────────────
 
 @pytest.mark.django_db
-def test_fa19_guaranteed_response_is_queued(kiosk, house_ad, admin_client):
+def test_fa19_guaranteed_response_is_queued(kiosk, admin_client):
     """GUARANTEED activate response: is_complete=False ve job_id mevcut job ile eşleşmeli."""
     now = timezone.now()
     camp = Campaign.objects.create(
@@ -866,7 +854,7 @@ def test_fa19_guaranteed_response_is_queued(kiosk, house_ad, admin_client):
 
 
 @pytest.mark.django_db
-def test_fa19_best_effort_response_is_complete(kiosk, house_ad, admin_client):
+def test_fa19_best_effort_response_is_complete(kiosk, admin_client):
     """BEST_EFFORT activate response: is_complete=True ve job_id=null (granular jobs, tek ID yok)."""
     now = timezone.now()
     camp = Campaign.objects.create(
@@ -893,7 +881,7 @@ def test_fa19_best_effort_response_is_complete(kiosk, house_ad, admin_client):
 # ─────────────────────────────────────────────────────────────────────────────
 
 @pytest.mark.django_db
-def test_fa20_guaranteed_permanent_failure_pauses_campaign(kiosk, house_ad):
+def test_fa20_guaranteed_permanent_failure_pauses_campaign(kiosk):
     """GUARANTEED job max_attempts tüketirse kampanya PAUSED olmalı; BEST_EFFORT etkilenmemeli."""
     from apps.campaigns.services.invalidation_service import get_horizon_dates
 
@@ -944,7 +932,7 @@ def test_fa20_guaranteed_permanent_failure_pauses_campaign(kiosk, house_ad):
 
 
 @pytest.mark.django_db
-def test_fa20_guaranteed_retry_does_not_pause_campaign(kiosk, house_ad):
+def test_fa20_guaranteed_retry_does_not_pause_campaign(kiosk):
     """GUARANTEED job ilk hatada RETRY'a geçer; kampanya PAUSED olmamalı."""
     from apps.campaigns.services.invalidation_service import get_horizon_dates
 

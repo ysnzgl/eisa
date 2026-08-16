@@ -67,18 +67,18 @@ describe('resolveActiveItem — degisken sureler (config-bagimsiz)', () => {
   });
 });
 
-describe('resolveActiveItem — HouseAd bosluk icinde', () => {
-  it('#3 HouseAd yalniz kendi offset/duration araliginda', () => {
-    // creative [0,15), house_ad [20,35), creative [60,75)
+describe('resolveActiveItem — house_ad item defensive skip', () => {
+  it('#3 house_ad item atlanir (HouseAd kaldirildi), yalniz creative aktif olur', () => {
+    // creative [0,15), house_ad [20,35) (legacy — atlanir), creative [60,75)
     const items = [
       item('c1', 0, 15, 'creative'),
       item('h1', 20, 15, 'house_ad'),
       item('c2', 60, 15, 'creative'),
     ];
     expect(resolveActiveItem(items, 10)?.id).toBe('c1');
-    expect(resolveActiveItem(items, 17)).toBeNull();     // c1 bitti, h1 baslamadi
-    expect(resolveActiveItem(items, 25)?.id).toBe('h1'); // house_ad aktif
-    expect(resolveActiveItem(items, 40)).toBeNull();     // h1 bitti, c2 baslamadi
+    expect(resolveActiveItem(items, 17)).toBeNull();     // c1 bitti, c2 baslamadi
+    expect(resolveActiveItem(items, 25)).toBeNull();     // house_ad atlanir → bosluk (idle)
+    expect(resolveActiveItem(items, 40)).toBeNull();     // bosluk
     expect(resolveActiveItem(items, 65)?.id).toBe('c2');
   });
 });
