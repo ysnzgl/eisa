@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed } from 'vue';
+import { toast } from 'vue-sonner';
 import { completeSession } from '../services/analytics';
 
 const props = defineProps({
@@ -42,8 +43,28 @@ function toggleIngredient(key) {
   else selectedIngredients.value.splice(idx, 1);
 }
 
+function selectAllIngredients() {
+  selectedIngredients.value = ingredientList.value.map(ing => ing.id ?? ing.ad);
+}
+
+function clearAllIngredients() {
+  selectedIngredients.value = [];
+}
+
 async function handleComplete(saleResult) {
   if (!props.session?.id || completionLoading.value) return;
+  
+  // Satış yaptım dendiğinde validasyon (sadece şikayet türünde)
+  if (saleResult === 'sold' && props.session.oturum_tipi !== 'OZEL_DANISMANLIK') {
+    const hasSelection = selectedIngredients.value.length > 0;
+    const hasNote = completionNote.value.trim().length > 0;
+    
+    if (!hasSelection && !hasNote) {
+      toast.warning('Lütfen en az bir etken madde seçin veya danışma notu girin.');
+      return;
+    }
+  }
+  
   completionLoading.value = true;
   completionError.value   = '';
   try {
@@ -94,8 +115,8 @@ async function handleComplete(saleResult) {
       <span>Hassas Konu — Hasta bu konuyu kalabalık içinde söylemek istemedi.</span>
     </div>
 
-    <!-- Demografik + kiosk grid -->
-    <div class="qr-result-section qr-grid-2">
+    <!-- Demografik + kiosk grid - 3 kolon -->
+    <div class="qr-result-section qr-grid-3">
       <div>
         <p class="qr-detail-label">Yaş Aralığı</p>
         <p class="qr-detail-value">{{ session.yas_araligi_detay?.ad || session.yas_araligi_ad || session.yas_araligi_kod || '—' }}</p>
@@ -105,10 +126,18 @@ async function handleComplete(saleResult) {
         <p class="qr-detail-value">{{ session.cinsiyet_detay?.ad || GENDER_LABEL[session.cinsiyet_kod || session.cinsiyet_ad] || session.cinsiyet_ad || '—' }}</p>
       </div>
       <div>
-        <p class="qr-detail-label">Oturum Tipi</p>
+        <p class="qr-detail-label">Şikayet Tipi</p>
         <p class="qr-detail-value">{{ session.oturum_tipi === 'OZEL_DANISMANLIK' ? 'Özel Danışmanlık' : 'Şikayet' }}</p>
       </div>
-      <div style="grid-column:1/span 2;">
+      <div>
+        <p class="qr-detail-label">Eczane</p>
+        <p class="qr-detail-value">{{ session.eczane?.ad || session.eczane_adi || '—' }}</p>
+      </div>
+      <div>
+        <p class="qr-detail-label">Kiosk</p>
+        <p class="qr-detail-value">{{ session.kiosk_detay?.ad || session.kiosk_ad || session.kiosk_mac || '—' }}</p>
+      </div>
+      <div>
         <p class="qr-detail-label">Kategori</p>
         <p class="qr-detail-value">
           <template v-if="session.oturum_tipi === 'OZEL_DANISMANLIK'">
@@ -118,14 +147,6 @@ async function handleComplete(saleResult) {
             {{ session.kategori_detay?.ad ?? session.kategori_adi ?? session.category?.name ?? '—' }}
           </template>
         </p>
-      </div>
-      <div>
-        <p class="qr-detail-label">Kiosk</p>
-        <p class="qr-detail-value">{{ session.kiosk_detay?.ad || session.kiosk_ad || session.kiosk_mac || '—' }}</p>
-      </div>
-      <div>
-        <p class="qr-detail-label">Eczane</p>
-        <p class="qr-detail-value">{{ session.eczane?.ad || session.eczane_adi || '—' }}</p>
       </div>
     </div>
 
@@ -139,14 +160,46 @@ async function handleComplete(saleResult) {
           style="font-size:0.85rem;color:#111827;"
         >
           <strong>{{ item.soru_metni }}</strong>
-          <div style="color:#4B5563;">Yanıt: {{ item.cevap_metni }}</div>
+          <div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.25rem;">
+            <span>Yanıt:</span>
+            <span
+              class="eisa-pill"
+              :class="{
+                'eisa-pill-success': item.cevap_metni?.toLowerCase() === 'evet',
+                'eisa-pill-danger': item.cevap_metni?.toLowerCase() === 'hayır' || item.cevap_metni?.toLowerCase() === 'hayir'
+              }"
+              style="font-size:0.75rem;"
+            >{{ item.cevap_metni }}</span>
+          </div>
         </li>
       </ol>
     </div>
 
     <!-- Önerilen Etken Maddeler -->
     <div v-if="ingredientList.length" class="qr-result-section">
-      <p class="qr-detail-label" style="margin-bottom:0.5rem;">Önerilen Etken Maddeler</p>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;">
+        <p class="qr-detail-label" style="margin:0;">Önerilen Etken Maddeler</p>
+        <div v-if="!session.danisma_tamamlandi && !readonly" style="display:flex;gap:0.5rem;">
+          <button
+            type="button"
+            class="qsc-batch-btn qsc-batch-btn--success"
+            @click="selectAllIngredients"
+            :disabled="selectedIngredients.length === ingredientList.length"
+          >
+            <i class="fa-solid fa-check-double" style="font-size:0.7rem;"></i>
+            Tümünü Seç
+          </button>
+          <button
+            type="button"
+            class="qsc-batch-btn qsc-batch-btn--danger"
+            @click="clearAllIngredients"
+            :disabled="selectedIngredients.length === 0"
+          >
+            <i class="fa-solid fa-xmark" style="font-size:0.7rem;"></i>
+            Temizle
+          </button>
+        </div>
+      </div>
       <div style="display:flex;flex-wrap:wrap;gap:0.5rem;">
         <button
           v-for="ing in ingredientList"
@@ -314,5 +367,36 @@ async function handleComplete(saleResult) {
   border-color: #0D9488;
   background: #CCFBF1;
   color: #065F46;
+}
+
+.qsc-batch-btn {
+  display: flex; align-items: center; gap: 0.3rem;
+  font-size: 0.72rem; font-weight: 500;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.375rem; border: 1px solid;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.qsc-batch-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.qsc-batch-btn--success {
+  color: #065F46;
+  background: #D1FAE5;
+  border-color: #6EE7B7;
+}
+.qsc-batch-btn--success:hover:not(:disabled) {
+  background: #A7F3D0;
+  border-color: #34D399;
+}
+.qsc-batch-btn--danger {
+  color: #991B1B;
+  background: #FEE2E2;
+  border-color: #FCA5A5;
+}
+.qsc-batch-btn--danger:hover:not(:disabled) {
+  background: #FECACA;
+  border-color: #F87171;
 }
 </style>

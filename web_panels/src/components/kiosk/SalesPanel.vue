@@ -22,6 +22,15 @@ const props = defineProps({
   showEczane: Boolean,
 });
 const emit = defineEmits(['change-page', 'open-detail']);
+
+function getSoldCount(row) {
+  if (!row.etken_madde_detaylari?.length) return 0;
+  return row.etken_madde_detaylari.filter(ing => ing.satildi).length;
+}
+
+function getTotalCount(row) {
+  return row.etken_madde_detaylari?.length || 0;
+}
 </script>
 
 <template>
@@ -41,22 +50,59 @@ const emit = defineEmits(['change-page', 'open-detail']);
         <table class="eisa-table">
           <thead>
             <tr>
-              <th>Tarih / Saat</th>
-              <th>QR</th>
-              <th v-if="showEczane">Eczane</th>
-              <th v-if="!showEczane">Kiosk</th>
-              <th>Etken Maddeler</th>
-              <th></th>
+              <th style="min-width:110px;">Tarih / Saat</th>
+              <th v-if="showEczane" style="min-width:140px;">Eczane</th>
+              <th style="min-width:120px;">Kiosk</th>
+              <th style="min-width:100px;">Tür</th>
+              <th style="min-width:100px;">Önerilen / Satılan</th>
+              <th style="min-width:200px;">Etken Maddeler</th>
+              <th style="min-width:220px;">Danışma Notu</th>
+              <th style="width:80px;"></th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="row in rows" :key="row.id">
               <td style="white-space:nowrap;font-size:0.78rem;color:#9CA3AF;">{{ fmtDT(row.olusturulma_tarihi) }}</td>
-              <td style="font-family:'DM Mono',monospace;font-size:0.82rem;font-weight:700;">{{ row.qr_kodu || '—' }}</td>
-              <td v-if="showEczane" style="font-size:0.82rem;">{{ row.eczane_adi || '—' }}</td>
-              <td v-if="!showEczane" style="font-size:0.82rem;">{{ row.kiosk_ad || '—' }}</td>
-              <td style="font-size:0.8rem;max-width:220px;">
-                <span v-if="row.etken_madde_adlari?.length">{{ row.etken_madde_adlari.join(', ') }}</span>
+              <td v-if="showEczane" style="font-size:0.82rem;">
+                <div style="font-weight:600;">{{ row.eczane_adi || '—' }}</div>
+              </td>
+              <td style="font-size:0.82rem;">
+                <div style="font-weight:600;">{{ row.kiosk_ad || '—' }}</div>
+              </td>
+              <td>
+                <span
+                  class="eisa-pill"
+                  :class="row.oturum_tipi === 'OZEL_DANISMANLIK' ? 'eisa-pill-info' : 'eisa-pill-muted'"
+                  style="font-size:0.7rem;"
+                >
+                  {{ row.oturum_tipi === 'OZEL_DANISMANLIK' ? 'Danışmanlık' : 'Şikayet' }}
+                </span>
+              </td>
+              <td style="font-size:0.82rem;">
+                <div style="display:flex;align-items:center;gap:0.5rem;">
+                  <span style="font-weight:700;color:#111827;">{{ getTotalCount(row) }} / {{ getSoldCount(row) }}</span>
+                  <i v-if="getSoldCount(row) > 0" class="fa-solid fa-check-circle" style="color:#059669;font-size:0.85rem;"></i>
+                </div>
+              </td>
+              <td style="font-size:0.8rem;max-width:300px;">
+                <div v-if="row.etken_madde_detaylari?.length" style="display:flex;flex-wrap:wrap;gap:0.35rem;">
+                  <span
+                    v-for="(ing, idx) in row.etken_madde_detaylari"
+                    :key="idx"
+                    class="eisa-pill"
+                    :class="ing.satildi ? 'eisa-pill-success' : 'eisa-pill-muted'"
+                    style="font-size:0.72rem;"
+                  >
+                    <i v-if="ing.satildi" class="fa-solid fa-check" style="font-size:0.65rem;margin-right:0.2rem;"></i>
+                    {{ ing.ad }}
+                  </span>
+                </div>
+                <span v-else style="color:#6B7280;">—</span>
+              </td>
+              <td style="font-size:0.82rem;max-width:250px;color:#374151;">
+                <span v-if="row.danisma_notu" :title="row.danisma_notu" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                  {{ row.danisma_notu }}
+                </span>
                 <span v-else style="color:#6B7280;">—</span>
               </td>
               <td>

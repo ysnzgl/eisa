@@ -356,12 +356,26 @@ class KioskActivityListSerializer(serializers.ModelSerializer):
     )
     # Satış görünümünde prefetch_related ile doldurulur; aksi hâlde boş liste döner.
     etken_madde_adlari = serializers.SerializerMethodField()
+    etken_madde_detaylari = serializers.SerializerMethodField()
 
     def get_etken_madde_adlari(self, obj):
         if not self.context.get("include_ingredients"):
             return []
         return [
             (r.etken_madde.ad if r.etken_madde else r.etken_madde_adi_snapshot)
+            for r in obj.onerilen_etken_madde_detaylari.all()
+            if r.etken_madde or r.etken_madde_adi_snapshot
+        ]
+
+    def get_etken_madde_detaylari(self, obj):
+        """Satış görünümü için etken madde detayları (ad + satildi flag)."""
+        if not self.context.get("include_ingredients"):
+            return []
+        return [
+            {
+                "ad": r.etken_madde.ad if r.etken_madde else r.etken_madde_adi_snapshot,
+                "satildi": r.satildi,
+            }
             for r in obj.onerilen_etken_madde_detaylari.all()
             if r.etken_madde or r.etken_madde_adi_snapshot
         ]
@@ -386,8 +400,10 @@ class KioskActivityListSerializer(serializers.ModelSerializer):
             "tamamlandi",
             "danisma_tamamlandi",
             "danisma_tamamlanma_tarihi",
+            "danisma_notu",
             "sold",
             "etken_madde_adlari",
+            "etken_madde_detaylari",
             "olusturulma_tarihi",
             "cihaz_zamani",
             "sunucu_zamani",

@@ -60,7 +60,7 @@ function close() { emit('close'); }
 <template>
   <Teleport to="body">
     <div v-if="session" class="eisa-modal-backdrop" @click.self="close">
-      <div class="sdm-modal eisa-modal" style="max-width:560px;overflow-y:auto;">
+      <div class="sdm-modal eisa-modal" >
 
         <!-- Header -->
         <div class="eisa-modal-header">
@@ -84,7 +84,7 @@ function close() { emit('close'); }
             <i class="fa-solid fa-triangle-exclamation"></i> {{ loadError }}
           </div>
           <!-- Fallback: list row verisiyle temel bilgi göster -->
-          <div style="margin-top:1rem;display:grid;grid-template-columns:1fr 1fr;gap:0.75rem 1.25rem;">
+          <div id="temelBilgiler" style="margin-top:1rem;display:grid;grid-template-columns:1fr 1fr;gap:0.75rem 1.25rem;">
             <div>
               <p style="font-size:0.7rem;color:#9CA3AF;">QR Kodu</p>
               <p style="font-family:'DM Mono',monospace;font-weight:700;">{{ session.qr_kodu }}</p>
@@ -123,5 +123,5 @@ function close() { emit('close'); }
 </template>
 
 <style scoped>
-.sdm-modal { display:flex; flex-direction:column; }
+.sdm-modal { display:flex; flex-direction:column; max-width:760px; width:100%; max-height:90vh; background-color:#fff; border-radius:0.5rem; box-shadow:0 0 1rem rgba(0,0,0,0.2); }
 </style>

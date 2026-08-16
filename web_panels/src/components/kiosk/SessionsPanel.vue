@@ -82,7 +82,10 @@ const emit = defineEmits(['change-page', 'open-detail']);
                 <span v-else style="color:#6B7280;">—</span>
               </td>
               <td>
-                <i v-if="row.danisma_tamamlandi" class="fa-solid fa-check-circle" style="color:#10B981;"></i>
+                <template v-if="row.danisma_tamamlandi">
+                  <i v-if="row.sold" class="fa-solid fa-check-circle" style="color:#10B981;" title="Satış yapıldı"></i>
+                  <i v-else class="fa-solid fa-check-circle" style="color:#DC2626;" title="Satış yapılmadı"></i>
+                </template>
                 <span v-else style="color:#6B7280;">Bekliyor</span>
               </td>
               <td style="white-space:nowrap;font-size:0.78rem;color:#9CA3AF;">{{ fmtDT(row.olusturulma_tarihi) }}</td>

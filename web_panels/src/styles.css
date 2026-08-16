@@ -1127,6 +1127,7 @@ body {
 .qr-result-section:last-child { border-bottom: none; }
 .qr-sensitive-bar { padding: 0.65rem 1.25rem; background: #FEF2F2; border-bottom: 1px solid #FECACA; display: flex; align-items: center; gap: 0.5rem; }
 .qr-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.qr-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; }
 .qr-detail-label { font-size: 0.68rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #6B7280; margin-bottom: 0.2rem; }
 .qr-detail-value { font-weight: 600; color: #111827; }
 

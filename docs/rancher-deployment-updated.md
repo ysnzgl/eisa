@@ -119,23 +119,29 @@ Write-Host "Yeni tag: $TAG"
 REGISTRY="10.200.202.20:30500"
 TAG="1.0.8"
 
-kubectl -n eisa-app set image deploy/eisa-api api=${REGISTRY}/eisa-api:${TAG}
-kubectl -n eisa-app rollout status deploy/eisa-api --timeout=180s
+# API
+kubectl -n eisa-app set image deployment/eisa-api api="${REGISTRY}/eisa-api:${TAG}"
+kubectl -n eisa-app rollout status deployment/eisa-api --timeout=180s
 
-kubectl -n eisa-app set image deploy/eisa-scheduler scheduler=${REGISTRY}/eisa-api:${TAG}
-kubectl -n eisa-app rollout status deploy/eisa-scheduler --timeout=180s
+# Migration
+kubectl -n eisa-app exec deployment/eisa-api -c api -- python manage.py migrate --noinput
+kubectl -n eisa-app exec deployment/eisa-api -c api -- python manage.py showmigrations --plan
 
+# Scheduler
+kubectl -n eisa-app set image deployment/eisa-scheduler scheduler="${REGISTRY}/eisa-api:${TAG}"
+kubectl -n eisa-app rollout status deployment/eisa-scheduler --timeout=180s
+
+# Web Panel
 kubectl -n eisa-app set image deploy/eisa-portal portal=${REGISTRY}/eisa-portal:${TAG}
 kubectl -n eisa-app rollout status deploy/eisa-portal --timeout=180s
 
+# demo.eisa.com.tr
 kubectl -n eisa-app set image deploy/eisa-kiosk-demo kiosk=${REGISTRY}/eisa-kiosk:${TAG}
 kubectl -n eisa-app rollout status deploy/eisa-kiosk-demo --timeout=180s
 
-#migration için:
+kubectl -n eisa-app get pods
 
-kubectl -n eisa-app exec deployment/eisa-api -- python manage.py migrate
-kubectl -n eisa-app rollout restart deployment/eisa-api
-kubectl -n eisa-app rollout status deployment/eisa-api
+
 
 #Manifest içindeki image alanları buna göre güncellenir:
 
