@@ -176,6 +176,15 @@ export async function fetchIdleContents() {
   return Array.isArray(list) ? list : [];
 }
 
+/** Eczane adını kiosk_meta'dan döner. Offline'da boş string. */
+export async function fetchKioskInfo() {
+  try {
+    return await _request(`${API_BASE}/api/kiosk-info`, { timeoutMs: 3000 });
+  } catch {
+    return { eczane_adi: '' };
+  }
+}
+
 /**
  * Bugünün belirtilen saatine ait playlist'i döner.
  * @param {number} [hour]  — verilmezse api-node kendi saatini kullanır

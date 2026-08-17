@@ -12,24 +12,30 @@
 //    torba bitince yeniden karıştırılır ve yeni torbanın ilki önceki torbanın
 //    son gösterilenıyla aynıysa değiştirilir (arka arkaya tekrar önlenir).
 //  - Dwell süresi metin uzunluğuna göre 12–20 sn arasında hesaplanır.
+//  - Her 6 içerikten sonra 1 kez eczane hoşgeldiniz slaytı gösterilir (8 sn).
 //  - Offline: son başarılı içerik korunur (fetch hatası yut).
 
 import { writable, get } from 'svelte/store';
-import { fetchIdleContents } from './api.js';
+import { fetchIdleContents, fetchKioskInfo } from './api.js';
 
-const REFRESH_MS = 5 * 60 * 1000; // ~5 dk yenileme
-const DWELL_MIN = 12000;
-const DWELL_MAX = 20000;
+const REFRESH_MS = 5 * 60 * 1000;
+const DWELL_MIN = 10000;
+const DWELL_MAX = 12000;
+const WELCOME_DWELL = 12000;
+const WELCOME_EVERY = 5; // TEST: hemen welcome göster
 
-/** @type {import('svelte/store').Writable<{id:number,baslik:string,metin:string}|null>} */
+/** Normal içerik veya `{_type:'welcome', eczane_adi:string}` */
 export const currentIdleContent = writable(null);
+export const eczaneAdi = writable('');
+export const kioskId   = writable(''); // kiosk_adi (display name) tutar
 
-let contents = [];        // aktif içerik listesi
-let bag = [];             // karıştırılmış kalan sıra
-let lastShownId = null;   // torbalar arası tekrar önleme
+let contents = [];
+let bag = [];
+let lastShownId = null;
 let rotateTimer = null;
 let refreshTimer = null;
 let started = false;
+let shownSinceWelcome = 0; // welcome'a kadar gösterilen içerik sayacı
 
 function shuffle(arr) {
   const a = arr.slice();
@@ -50,6 +56,7 @@ function refillBag() {
 }
 
 function dwellFor(item) {
+  if (item?._type === 'welcome') return WELCOME_DWELL;
   const len = (item?.metin || '').length;
   return Math.min(DWELL_MAX, Math.max(DWELL_MIN, DWELL_MIN + len * 27));
 }
@@ -61,15 +68,27 @@ function clearRotate() {
 function advance() {
   clearRotate();
   if (contents.length === 0) { currentIdleContent.set(null); return; }
+
+  // Her WELCOME_EVERY normal içerikten sonra welcome slaytı göster
+  if (shownSinceWelcome >= WELCOME_EVERY) {
+    shownSinceWelcome = 0;
+    const adi = get(eczaneAdi);
+    currentIdleContent.set({ _type: 'welcome', eczane_adi: adi });
+    rotateTimer = setTimeout(advance, WELCOME_DWELL);
+    return;
+  }
+
   if (contents.length === 1) {
     const only = contents[0];
     if (get(currentIdleContent)?.id !== only.id) currentIdleContent.set(only);
     lastShownId = only.id;
-    return; // tek içerik: timer yok, yeniden daktilo yok
+    shownSinceWelcome += 1;
+    return;
   }
   if (bag.length === 0) refillBag();
   const next = bag.shift();
   lastShownId = next.id;
+  shownSinceWelcome += 1;
   currentIdleContent.set(next);
   rotateTimer = setTimeout(advance, dwellFor(next));
 }
@@ -89,7 +108,7 @@ function applyContents(list) {
     return;
   }
   const cur = get(currentIdleContent);
-  const stillValid = cur && contents.some((c) => c.id === cur.id);
+  const stillValid = cur && !cur._type && contents.some((c) => c.id === cur.id);
   if (!stillValid) {
     advance();
   } else if (!rotateTimer) {
@@ -109,6 +128,11 @@ async function refresh() {
 export function startIdleContent() {
   if (started) return;
   started = true;
+  // Eczane adını bir kez çek, sessizce güncelle
+  fetchKioskInfo().then((info) => {
+    if (info?.eczane_adi) eczaneAdi.set(info.eczane_adi);
+    if (info?.kiosk_adi)  kioskId.set(info.kiosk_adi);
+  });
   refresh();
   refreshTimer = setInterval(refresh, REFRESH_MS);
 }

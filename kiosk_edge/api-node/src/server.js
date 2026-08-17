@@ -602,6 +602,13 @@ export async function buildServer({ db, settings, logger }) {
     }));
   });
 
+  // ── kiosk bilgisi (eczane adı vb.) ──────────────────────────────────────────
+  app.get('/api/kiosk-info', async () => {
+    const eczaneRow = db.prepare("SELECT value FROM kiosk_meta WHERE key = 'eczane_adi'").get();
+    const kioskRow  = db.prepare("SELECT value FROM kiosk_meta WHERE key = 'kiosk_adi'").get();
+    return { eczane_adi: eczaneRow?.value || '', kiosk_adi: kioskRow?.value || '' };
+  });
+
   // ── idle içerikleri (İçerik Yönetimi — başlık/metin) read-only ──────────────
   // Kiosk UI merkezi backend'e bağlanmaz; yalnız lokal aktif idle içeriklerini alır.
   app.get('/api/idle-contents', async () => {

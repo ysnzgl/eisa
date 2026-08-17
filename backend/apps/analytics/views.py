@@ -10,7 +10,7 @@ Yazma yolu UoW uzerindendir; ancak kiosk push akisinda kullanici yoktur
 from datetime import timedelta
 import re
 
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.db.models.functions import Coalesce, TruncDate
 from django.utils import timezone
 from rest_framework import status
@@ -530,12 +530,21 @@ class KioskActivityView(APIView):
         is_sold_view = request.query_params.get("sold") in ("true", "1")
         if is_sold_view:
             qs = qs.prefetch_related("onerilen_etken_madde_detaylari__etken_madde")
+        summary = qs.aggregate(
+            recommended=Count("onerilen_etken_madde_detaylari"),
+            sold=Count(
+                "onerilen_etken_madde_detaylari",
+                filter=Q(onerilen_etken_madde_detaylari__satildi=True),
+            ),
+        )
         paginator = KioskActivityPagination()
         page = paginator.paginate_queryset(qs, request)
         serializer = KioskActivityListSerializer(
             page, many=True, context={"include_ingredients": is_sold_view}
         )
-        return paginator.get_paginated_response(serializer.data)
+        response = paginator.get_paginated_response(serializer.data)
+        response.data["summary"] = summary
+        return response
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -3,7 +3,7 @@
  * SalesPanel — satış listesi (loading / error / empty / table / sayfalama).
  *
  * Props:
- *   rows, loading, error, total, page, totalPages
+ *   rows, loading, error, total, summary, page, totalPages
  *   showEczane — Admin: Eczane sütunu; false → Kiosk sütunu
  *
  * Emits:
@@ -17,6 +17,7 @@ const props = defineProps({
   loading:    Boolean,
   error:      { type: String, default: '' },
   total:      { type: Number, default: 0 },
+  summary:    { type: Object, default: () => ({ recommended: 0, sold: 0 }) },
   page:       { type: Number, default: 1 },
   totalPages: { type: Number, default: 1 },
   showEczane: Boolean,
@@ -61,6 +62,22 @@ function getTotalCount(row) {
             </tr>
           </thead>
           <tbody>
+            <tr style="background:rgba(13,148,136,0.08);">
+              <td
+                :colspan="showEczane ? 4 : 3"
+                style="font-size:0.82rem;font-weight:700;color:#0F766E;"
+              >
+                Toplam
+              </td>
+              <td style="font-size:0.82rem;">
+                <span style="font-weight:700;color:#111827;">{{ summary.recommended }} / {{ summary.sold }}</span>
+              </td>
+              <td style="font-size:0.78rem;color:#0F766E;">
+                {{ summary.sold }} satılan etken madde
+              </td>
+              <td></td>
+              <td></td>
+            </tr>
             <tr v-for="row in rows" :key="row.id">
               <td style="white-space:nowrap;font-size:0.78rem;color:#9CA3AF;">{{ fmtDT(row.olusturulma_tarihi) }}</td>
               <td v-if="showEczane" style="font-size:0.82rem;">

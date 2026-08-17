@@ -66,9 +66,7 @@ async function submit() {
       <!-- Brand content -->
       <div class="brand-body" :class="{ 'is-visible': isVisible }">
         <img :src="logoUrl" alt="E-ISA logo" />
-        <div class="brand-wordmark">
-          <span class="wm-e">e</span><span class="wm-dash">-</span><span class="wm-isa">İSA</span>
-        </div>
+ 
 
         <h1 class="brand-headline">
           Akıllı Eczane<br />
@@ -197,10 +195,6 @@ async function submit() {
             </span>
           </button>
         </form>
-
-        <footer class="fc-footer">
-          E-İSA Yönetim Sistemi &nbsp;·&nbsp; Yetkili erişim
-        </footer>
       </div>
     </div>
 

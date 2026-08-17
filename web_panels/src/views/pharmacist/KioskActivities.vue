@@ -71,6 +71,7 @@ const sessionsError = ref('');
 // Satışlar sekmesi
 const sales      = ref([]);
 const salesTotal = ref(0);
+const salesSummary = ref({ recommended: 0, sold: 0 });
 const salesPage  = ref(1);
 const salesLoad  = ref(false);
 const salesError = ref('');
@@ -102,6 +103,7 @@ async function loadSales() {
     const { data } = await getKioskActivities(params);
     sales.value      = data.results ?? data;
     salesTotal.value = data.count ?? 0;
+    salesSummary.value = data.summary ?? { recommended: 0, sold: 0 };
   } catch {
     salesError.value = 'Satışlar yüklenemedi.';
   } finally {
@@ -341,7 +343,7 @@ onMounted(() => {
     <template v-if="activeTab === 'sales'">
       <SalesPanel
         :rows="sales" :loading="salesLoad" :error="salesError"
-        :total="salesTotal" :page="salesPage" :total-pages="salesTotalPages"
+        :total="salesTotal" :summary="salesSummary" :page="salesPage" :total-pages="salesTotalPages"
         @change-page="(p) => { salesPage = p; loadSales(); }"
         @open-detail="openDetail"
       />

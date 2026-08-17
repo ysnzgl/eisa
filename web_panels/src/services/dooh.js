@@ -103,6 +103,12 @@ export const updateIdleContent = (id, data) =>
 export const deleteIdleContent = (id) =>
   http.delete(`/api/campaigns/v2/idle-contents/${id}/`);
 
+export const bulkDeleteIdleContents = (ids) =>
+  Promise.all(ids.map(id => http.delete(`/api/campaigns/v2/idle-contents/${id}/`)));
+
+export const listKategoriler = () =>
+  http.get('/api/products/categories/');
+
 // ── Inventory ──
 export const getInventoryAvailability = (params) =>
   http.get('/api/inventory/availability/', { params });

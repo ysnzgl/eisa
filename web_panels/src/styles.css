@@ -258,7 +258,8 @@ body {
     border-color: var(--border);
   }
   .eisa-btn-ghost:hover:not(:disabled) { color: var(--text); border-color: #C7C4BD; }
-
+  .eisa-btn-success { color: #065f46;  background: #d1fae5; border-color: #6ee7b7 }
+  .eisa-btn-success:hover:not(:disabled) { background: #A7F3D0; border-color: #34D399; }
   /* Form fields */
   .eisa-field-label {
     display: block;
@@ -346,7 +347,6 @@ body {
     border-radius: 18px;
     box-shadow: 0 32px 64px -12px rgba(17,24,39,0.25);
     width: 100%;
-    max-width: 480px;
     max-height: 90vh;
     display: flex;
     flex-direction: column;

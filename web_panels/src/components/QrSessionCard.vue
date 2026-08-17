@@ -65,6 +65,12 @@ async function handleComplete(saleResult) {
     }
   }
   
+  // Satış yapmadım dendiğinde etken madde seçili olamaz
+  if (saleResult === 'not_sold' && selectedIngredients.value.length > 0) {
+    toast.warning('Etken madde seçili iken "Satış Yapmadım" diyemezsiniz. Lütfen seçimleri temizleyin.');
+    return;
+  }
+  
   completionLoading.value = true;
   completionError.value   = '';
   try {
@@ -266,15 +272,17 @@ async function handleComplete(saleResult) {
           class="eisa-btn eisa-btn-success"
           :disabled="completionLoading"
           @click="handleComplete('sold')"
+          style="font-weight:600;"
         >
           <i v-if="completionLoading" class="fa-solid fa-circle-notch fa-spin"></i>
           <i v-else class="fa-solid fa-check"></i>
           Satış Yaptım
         </button>
         <button
-          class="eisa-btn eisa-btn-ghost"
+          class="eisa-btn eisa-btn-danger"
           :disabled="completionLoading"
           @click="handleComplete('not_sold')"
+          style="font-weight:600;"
         >
           <i v-if="completionLoading" class="fa-solid fa-circle-notch fa-spin"></i>
           <i v-else class="fa-solid fa-xmark"></i>

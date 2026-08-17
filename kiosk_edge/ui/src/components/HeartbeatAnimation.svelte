@@ -54,11 +54,11 @@
 <style>
   .heartbeat-animation {
     position: absolute;
-    top: 50%;
+    top: 35%;
     left: 50%;
     transform: translate(-50%, -50%);
-    width: clamp(460px, 28vw, 540px);
-    height: clamp(460px, 28vw, 540px);
+    width: clamp(580px, 35vw, 680px);
+    height: clamp(580px, 35vw, 680px);
     display: flex;
     align-items: center;
     justify-content: center;

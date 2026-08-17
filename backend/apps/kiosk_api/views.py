@@ -73,6 +73,8 @@ def _approved_response(kiosk: Kiosk) -> dict:
         "pharmacy_id": kiosk.eczane_id,
         "app_key": kiosk.uygulama_anahtari,
         "eczane_kiosk_no": kiosk.eczane_kiosk_no,
+        "kiosk_adi": kiosk.ad,
+        "eczane_adi": kiosk.eczane.ad if kiosk.eczane else "",
     }
 
 
@@ -352,7 +354,11 @@ class KioskCatalogView(KioskAPIView):
             .order_by("olusturulma_tarihi", "id")
         )
 
-        kiosk_meta = {"eczane_kiosk_no": kiosk.eczane_kiosk_no}
+        kiosk_meta = {
+            "eczane_kiosk_no": kiosk.eczane_kiosk_no,
+            "eczane_adi": kiosk.eczane.ad if kiosk.eczane else "",
+            "kiosk_adi": kiosk.ad,
+        }
         ctx = {"request": request}
         return Response({
             **data,

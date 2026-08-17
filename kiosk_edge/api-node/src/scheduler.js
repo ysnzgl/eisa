@@ -446,6 +446,16 @@ export async function pullFromCentral(db, settings, log = console) {
           ).run(String(kNo));
           log.info?.({ eczane_kiosk_no: kNo }, 'PULL: eczane_kiosk_no kiosk_meta\'ya kaydedildi');
         }
+        if (kioskMetaPayload.eczane_adi && typeof kioskMetaPayload.eczane_adi === 'string') {
+          db.prepare(
+            "INSERT INTO kiosk_meta (key, value) VALUES ('eczane_adi', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value"
+          ).run(kioskMetaPayload.eczane_adi);
+        }
+        if (kioskMetaPayload.kiosk_adi && typeof kioskMetaPayload.kiosk_adi === 'string') {
+          db.prepare(
+            "INSERT INTO kiosk_meta (key, value) VALUES ('kiosk_adi', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value"
+          ).run(kioskMetaPayload.kiosk_adi);
+        }
       }
 
       // Barkod logo cache sync (snapshot reconciliation)

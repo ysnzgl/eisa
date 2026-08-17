@@ -258,6 +258,25 @@ class TestKioskActivitiesSoldFilter:
         row = next(r for r in res.data["results"] if r["qr_kodu"] == "EMDL0001")
         assert "Kodein" in row["etken_madde_adlari"]
 
+    def test_sold_genel_toplami_tum_sayfalari_kapsar(self, db):
+        eczane = _make_eczane()
+        kiosk = _make_kiosk(eczane)
+        etken_madde = _make_etken_madde("Magnezyum")
+
+        for index in range(51):
+            oturum = _make_session(kiosk, sold=True, qr=f"TOTAL{index:04d}")
+            kayit = _add_ingredient(oturum, etken_madde)
+            if index < 2:
+                kayit.satildi = True
+                kayit.save(update_fields=["satildi"])
+
+        client, _ = _admin_client()
+        res = client.get(ACTIVITIES_URL, {"sold": "true"})
+
+        assert res.status_code == 200
+        assert len(res.data["results"]) == 50
+        assert res.data["summary"] == {"recommended": 51, "sold": 2}
+
 
 # ─── AutoComplete: Eczane ve Kiosk listelerinde il/ilçe bilgisi ─────────────
 
