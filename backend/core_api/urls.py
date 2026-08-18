@@ -1,7 +1,7 @@
 """Merkezi URL yönlendirmesi."""
 from django.conf import settings
 from django.contrib import admin
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.urls import include, path
 from django.views import View
 
@@ -22,7 +22,7 @@ class _SilentEmpty(View):
 
 
 class _Healthz(View):
-    """K8s liveness/readiness probe — DB'ye dokunmaz, hızlı 200 döner."""
+    """K8s liveness probe — DB'ye dokunmaz, hızlı 200 döner."""
 
     authentication_classes: list = []
     permission_classes: list = []
@@ -31,11 +31,36 @@ class _Healthz(View):
         return HttpResponse("ok", content_type="text/plain", status=200)
 
 
+class _Readyz(View):
+    """K8s readiness probe — DB bağlantısını denetler, JSON döner."""
+
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def get(self, request, *args, **kwargs):
+        from django.db import connections
+
+        checks: dict = {}
+        http_status = 200
+        try:
+            conn = connections["default"]
+            conn.ensure_connection()
+            checks["db"] = "ok"
+        except Exception:
+            checks["db"] = "error"
+            http_status = 503
+
+        overall = "ok" if all(v == "ok" for v in checks.values()) else "degraded"
+        return JsonResponse({"status": overall, "components": checks}, status=http_status)
+
+
 urlpatterns = [
     path("", _SilentEmpty.as_view()),
     path("favicon.ico", _SilentEmpty.as_view()),
     path("healthz", _Healthz.as_view()),
     path("healthz/", _Healthz.as_view()),
+    path("readyz", _Readyz.as_view()),
+    path("readyz/", _Readyz.as_view()),
     path("admin/", admin.site.urls),
     # Panel kimlik doğrulama (httpOnly çerez tabanlı JWT) — rate-limited
     path("api/auth/token/", CookieTokenObtainPairView.as_view(), name="token_obtain_pair"),
@@ -50,6 +75,8 @@ urlpatterns = [
     path("api/campaigns/", include("apps.campaigns.urls")),
     path("api/inventory/", include((inventory_urlpatterns, "inventory"))),
     path("api/kiosk/v1/", include("apps.kiosk_api.urls")),
+    path("api/barkod-logo/", include("apps.barkod_logo.urls")),
+    path("api/destek/", include("apps.destek.urls")),
     path("api/announcements/", include("apps.announcements.urls")),
 ]
 

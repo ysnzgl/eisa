@@ -24,6 +24,7 @@
 - `web_panels/src/views/admin/CampaignWizard.vue` â€” Kampanya yÃ¶netimi (6 adÄ±mlÄ± wizard)
 - `web_panels/src/views/admin/DoohControlCenter.vue` â€” DOOH izleme merkezi
 - `web_panels/src/views/admin/PlaylistEditor.vue` â€” Playlist dÃ¼zenleme
+- `web_panels/src/views/admin/ContentManagement.vue` — "İçerik Yönetimi" (route `/admin/content-management`): IdleScreenContent CRUD; başlık/metin idle içerik (2026-08-16). Eski `HouseAdManagement.vue` (`/admin/house-ads`) KALDIRILDI.
 - `web_panels/src/composables/useKioskRolloutStatus.js` â€” Kiosk rollout durum hesabÄ± (tek merkezi kaynak)
 - `web_panels/src/views/pharmacist/QrScan.vue` â€” QR tarama
 - `web_panels/src/views/admin/Dashboard.vue` â€” Admin dashboard
@@ -58,6 +59,8 @@
 6. KullanÄ±cÄ± yÃ¶netimi (UserManagement)
 7. QR kodu tarama ve session detayÄ± (QrScan)
 8. Dashboard analytics (kampanya performansÄ±, session Ã¶zeti)
+9. **Barkod Logo Yönetimi** *(2026-08-11)* — `/admin/barkod-logolar`, `BarkodLogoYonetimi.vue`. DOOH'dan bağımsız. Logo oluştur/düzenle/pasifleştir; PNG yükle (336×336, ≤1MB); kiosk hedefleme; günlük limit. DELETE yok.
+10. **Görüş ve Destek** *(2026-08-15)* — Admin: `/admin/destek` → `DestekYonetimi.vue`; Eczacı: `/pharmacist/destek` → `DestekTalepleri.vue`. Admin menüsünde Yeni sayısı badge'i.
 
 ---
 
@@ -75,16 +78,23 @@
 - `/admin/devices/pending` â†’ `PendingDevices.vue` (Onay Bekleyen Cihazlar â€” 2026-07-14)
 - `/admin/medical-logic` â†’ `MedicalLogic.vue` (Kategori/Soru/EtkenMadde CRUD)
 - `/admin/danisma` â†’ `DanismaYonetimi.vue` (DanÄ±ÅŸma kategorileri CRUD)
-- `/admin/campaigns` â†’ `CampaignWizard.vue` (DOOH v2 Kampanya â€” 6 adÄ±mlÄ± wizard)
-- `/admin/dooh/control-center` â†’ `DoohControlCenter.vue` (DOOH izleme â€” kampanya/job/kiosk) â€” **Faz 6**
+- `/admin/campaigns` → `CampaignWizard.vue` (Kiosk Kampanyaları — 6 adımlı wizard; Step 2: iki medya alanı hem image hem video: Bekleme/İşlem ekranı. **2026-08-09:** active_media_url video desteği eklendi; video thumbnail video kartı gösteriyor.)
+- `/admin/kiosk-activities` → `KioskActivities.vue` (Kiosk Hareketleri: QR/Oturum, Kampanya Gösterimleri, Kiosk Olayları, **Yayın Akışı** — 2026-08-09)
+- `/admin/pharmacy-campaigns` → `PharmacyCampaigns.vue` *(2026-07-31)* (Eczacı Paneli Kampanyaları — bağımsız CRUD)
+- `/admin/dooh/control-center` → `DoohControlCenter.vue` (DOOH izleme — kampanya/job/kiosk) — **Faz 6**
 - `/admin/playlists` â†’ `PlaylistEditor.vue` (Playlist ÅŸablon/manuel dÃ¼zenleme)
 - `/admin/pricing` â†’ `PricingMatrixConfigurator.vue` (FiyatlandÄ±rma matrisi)
-- `/admin/users` â†’ `UserManagement.vue` (KullanÄ±cÄ± CRUD)
+- `/admin/users` → `UserManagement.vue` (Kullanıcı CRUD)
+- `/admin/destek` → `DestekYonetimi.vue` *(2026-08-15)* (Görüş ve Destek Yönetimi)
 
 **Pharmacist routes (`/pharmacist/*`):**
-- `/pharmacist` â†’ `Dashboard.vue`
-- `/pharmacist/inbox` â†’ `Inbox.vue` (Eczane session'larÄ± listesi)
-- `/pharmacist/qr` â†’ `QrScan.vue` (QR tarama)
+- `/pharmacist` → `Dashboard.vue`
+- `/pharmacist/inbox` → `Inbox.vue` (Eczane session'ları listesi)
+- `/pharmacist/qr` → `QrScan.vue` (QR tarama)
+- `/pharmacist/destek` → `DestekTalepleri.vue` *(2026-08-15)* (Görüş ve Destek)
+- *(Layout seviyesinde)* `PharmacistCampaignDisplay.vue` *(2026-07-31, 2026-08-01 doğrulandı)* — alt şerit + 90s idle overlay; AdminLayout'ta `v-if="isPharmacist"` ile mount edilir; route geçişinde yeniden başlamaz. Eczane eczacı kullanıcının `request.user.eczane_id`'si üzerinden il/ilçe/eczane OR eşleşmesiyle belirlenir.
+
+**EisaLookup Entegrasyon Notu:** `EisaLookup.vue` `options: [{id, label, sub?}]` ve `v-model` ile çalışır; `endpoint` veya `@select` prop'ları YOKTUR. Eczaneler `GET /api/pharmacies/` (list), iller `GET /api/lookups/iller/`, ilçeler `GET /api/lookups/ilceler/?il={id}` ile yüklenir ve `options` formatına dönüştürülür.
 
 **RBAC guard:** `router.beforeEach` â€” `useAuthStore().role` kontrolÃ¼
 
@@ -115,7 +125,8 @@ TÃ¼m componentler tek dosyalÄ± Vue 3 Composition API (`.vue` dosyalarÄ±). 
   - **Lookups:** `getProvinces()`, `getDistricts(provinceId)`, `getGenders()`, `getAgeRanges()`
   - **Pharmacies:** `listPharmacies()`, `createPharmacy(data)`, `updatePharmacy(id, data)`, `deletePharmacy(id)`, `listKiosks()`, `createKiosk(data)`, `updateKiosk(id, data)`, `deleteKiosk(id)`, `getSessionsByQr(qr)`
   - **Products:** `listCategories()`, `createCategory(data)`, `listQuestions(categoryId)`, `createQuestion(data)`, `listDanisma()`, `createDanisma(data)`
-  - **Campaigns:** `listCampaignsV2()`, `createCampaignV2(data)`, `updateCampaignV2(id, data)`, `deleteCampaignV2(id)`, `getCampaignRules(campaignId)`, `setCampaignRules(campaignId, data)`, `createCreative(data)`, `uploadMedia(file)`, `listHouseAds()`, `createHouseAd(data)`
+  - **Campaigns:** `listCampaignsV2()`, `createCampaignV2(data)`, `updateCampaignV2(id, data)`, `deleteCampaignV2(id)`, `getCampaignRules(campaignId)`, `setCampaignRules(campaignId, data)`, `createCreative(data)`, `uploadMedia(file)`
+  - **Idle içerik (İçerik Yönetimi, 2026-08-16):** `listIdleContents()`, `createIdleContent(data)`, `updateIdleContent(id, data)`, `deleteIdleContent(id)` — eski `listHouseAds/createHouseAd/updateHouseAd/deleteHouseAd/downloadHouseAdMedia` KALDIRILDI
   - **Playlists:** `listPlaylistTemplates()`, `createPlaylistTemplate(data)`, `listDayPlans(kioskId, date)`, `generatePlaylists(kioskId, dateRange)`
   - **Pricing:** `getPricingMatrix()`, `updatePricingMatrix(data)`
   - **Analytics:** `getSessionLogs(filters)`, `getPlayLogs(filters)`, `getCampaignStats(campaignId)`
@@ -173,8 +184,8 @@ TÃ¼m API Ã§aÄŸrÄ±larÄ± `axios` Ã¼zerinden `/api/*` endpoint'lerine y
 - `POST /api/campaigns/v2/campaigns/{id}/rules/`
 - `POST /api/campaigns/upload-media/` (file upload, multipart/form-data)
 - `POST /api/campaigns/v2/creatives/`
-- `GET /api/campaigns/v2/house-ads/`
-- `POST /api/campaigns/v2/house-ads/`
+- `GET /api/campaigns/v2/idle-contents/`
+- `POST /api/campaigns/v2/idle-contents/`
 
 **Playlists API:**
 - `GET /api/campaigns/v2/playlist-templates/`
@@ -446,7 +457,7 @@ window.EISA_API_BASE_URL = 'http://localhost:8000';
 2. **CampaignWizard medya akÄ±ÅŸÄ± (Faz 0.5):** Upload response canonical: `{object_key, media_url, checksum, url[alias]}`. `media_url ?? url` fallback Ã§alÄ±ÅŸÄ±yor. Component testi: `dooh_media_flow.test.js` âœ“.
 3. **Campaign.target_pharmacies (Ã‡Ã–ZÃœLDÃœ):** CampaignWizard bu legacy alanÄ± KULLANMAMAKTADIR. Hedefleme yalnÄ±z `CampaignTarget` (IL/ILCE/ECZANE) Ã¼zerinden yapÄ±lÄ±r.
 4. **Playlist generation job polling (Ã‡Ã–ZÃœLDÃœ):** PlaylistEditor ve DoohControlCenter polling yalnÄ±z PENDING/RUNNING durumunda Ã§alÄ±ÅŸÄ±r; terminal durumda (DONE/FAILED) durur. `onUnmounted` ile timer temizlenir.
-5. **HouseAd yÃ¶netim ekranÄ± eksik:** AyrÄ± HouseAd management vue ekranÄ± yok. Backend canonical akÄ±ÅŸÄ± serializer dÃ¼zeyinde test edildi. UI kapsam aÃ§Ä±ÄŸÄ± Faz 6'da KAPATILMADI (Faz 7 kapsamÄ±).
+5. **İçerik Yönetimi (2026-08-16):** Sol menü + sayfa başlığı "İçerik Yönetimi" (route `/admin/content-management`) KORUNDU ama artık yeni `IdleScreenContent` CRUD'unu açar (`ContentManagement.vue`): Başlık/Metin/Durum/Son Güncelleme listesi, ekle/düzenle/aktif-pasif/onaylı silme, karakter sayacı 0/100 & 0/300, "Tanı, tedavi veya kesin sağlık sonucu ifade eden içerikler kullanmayın." notu, küçük 1080×1920 kiosk önizlemesi. Ayrı "HouseAd Yönetimi" ekranı (`/admin/house-ads`, `HouseAdManagement.vue`) ve `dooh.js` house-ad metotları KALDIRILDI.
 6. **follows API write point:** `Campaign.follows` CampaignSerializer'da read-only. YalnÄ±z `set_campaign_follows()` servisi Ã¼zerinden.
 7. **Vue test pre-existing failure:** `api.test.js login()` testi Ã¶nceden yanlÄ±ÅŸ contract bekliyordu (access/refresh yerine rol/userId). 2026-07-22'de dÃ¼zeltildi.
 8. **Token refresh interceptor:** Axios interceptor'da retry logic dÃ¼zgÃ¼n Ã§alÄ±ÅŸÄ±yor mu, sonsuz dÃ¶ngÃ¼ riski? (DoÄŸrulanmalÄ±)

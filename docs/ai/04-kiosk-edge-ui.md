@@ -38,8 +38,9 @@
 - `kiosk_edge/ui/src/components/MediaView.svelte` — URL uzantisina gore `<video>`/`<img>` render eden ortak bilesen; AdStrip + IdleScreen kullanir
 - `kiosk_edge/ui/src/components/AdPromo.svelte` — Reklam YOKKEN gosterilen donen "Bu Alana Reklam Verebilirsiniz" tasarimi (her yerde ortak); `large` prop tam-ekran (attractor) varyanti
 - `kiosk_edge/ui/src/components/IdleScreen.svelte` — Cekici (attractor) ekrani; acilista DOGRUDAN gosterilir (normal idle YOK). Reklam varsa MediaView ile doner, yoksa AdPromo
-- `kiosk_edge/ui/src/components/AdStrip.svelte` — Reklam oynatim:
-  - `logCurrentImpression()` — `asset_type` + `asset_id` ile impression payload olusturur
+- `kiosk_edge/ui/src/components/AdStrip.svelte` — Reklam oynatim *(2026-07-31 güncellendi)*:
+  - `active_media_url` varsa → `cover`; yoksa `media_url` + `object-fit: contain` (letterbox fallback)
+  - `logCurrentImpression()` — aynı `asset_type` + `asset_id` ile impression; iki URL'e iki impression YOK
   - Medya yoksa `<AdPromo />`, medya varsa `<MediaView />` gosterir
 - `kiosk_edge/ui/src/components/ResultScreen.svelte` — QR gösterimi
 - `kiosk_edge/ui/src/components/CategoryScreen.svelte` — Kategori seçimi
@@ -63,7 +64,7 @@
 - "Eczacınıza Danışın" butonu → Danışma kategorisi seçimi → QR kod (direkt)
 
 **Reklam akışı:**
-- Tüm ekranların altında AdStrip component → saatlik slot-hizalı playlist (creative/house_ad)
+- Tüm ekranların altında AdStrip component → saatlik slot-hizalı playlist (yalnız creative; house_ad kaldırıldı)
 - Reklam YOKKEN: donen "Bu Alana Reklam Verebilirsiniz" (AdPromo); ekran koruyucuda da ayni promo
 - Impression log: `{ asset_id, asset_type, played_at, duration_played }`
 
@@ -146,7 +147,7 @@
    - Alt strip (kiosk yuksekliginin ~2/5'i)
    - Playlist çekme: `GET http://127.0.0.1:8765/api/playlist/current?hour=<0-23>`
    - Saatlik (3600sn) slot-hizali oynatim: pos = floor(epoch/1000) % 3600 (duvar saatine gore)
-   - Her item icin `<MediaView>` (asset_type: creative/house_ad), `duration_seconds`
+   - Her item icin `<MediaView>` (asset_type: creative; house_ad ogeleri atlanir), `duration_seconds`
    - Slot degisince onceki slot icin impression: `POST http://127.0.0.1:8765/api/reklam-gosterim`
      `{ asset_id, asset_type, played_at, duration_played }`
    - Medya/asset YOKKEN → `<AdPromo />` (donen "Bu Alana Reklam Verebilirsiniz")
@@ -158,14 +159,35 @@
 
 10. **AdPromo.svelte**
    - Reklam yokken donen "Bu Alana Reklam Verebilirsiniz" tasarimi (konik isik halkasi + megafon + shimmer baslik + logo). `large` prop tam-ekran (attractor) varyanti
+   - **Dekoratif kalp atışı animasyonu (2026-08-16):** `large` varyantinda merkezde HeartbeatAnimation component görünür
+     - `HeartbeatAnimation.svelte` ayrı modüler widget olarak oluşturuldu
+   - **Idle içerik gösterimi (2026-08-16):** `large` varyantı, mevcut heartbeat/sponsor tasarımının üstüne katmanlanmış olarak `idleContentStore`'dan gelen aktif idle içeriğini gösterir:
+     - **Başlık**: heartbeat halkasının üstünde, fade + hafif yukarı giriş
+     - **Metin**: heartbeat'in altında, tek seferlik daktilo (typewriter) efekti (`requestAnimationFrame`, 3.5–4.5sn, biten yazıda kaybolan yanıp sönen kırmızı imleç; `prefers-reduced-motion` → metin anında tam görünür)
+     - **SABİT CTA** "Size özel öneriler için DOKUNUN" (DOKUNUN e-İSA kırmızısı + light-sweep, aşağı basan kırmızı işaret parmağı ikonu + iki ripple halkası; `pointer-events:none`, `aria-hidden`). CTA idle içerik olmasa da `large`'da her zaman görünür.
+     - Heartbeat içerik/typewriter değişiminde YENİDEN mount edilmez.
+     - Küçük (`small`) AdPromo varyantı DEĞİŞMEDİ (başlık/metin/CTA yok).
+   - **`lib/idleContentStore.js` (2026-08-16):** `GET /api/idle-contents`'ten aktif idle içerikleri çeker; shuffled-bag ile döndürür (Fisher–Yates; yeni torbanın ilkı ≠ önceki torbanın son'u), metin uzunluğuna göre dwell 12–20sn otomatik. 0 içerik → hiçbir şey; 1 içerik → statik (yeniden yazılmaz); >1 → otomatik rotasyon. Refresh ~5dk.
 
-11. **MediaView.svelte**
+11. **HeartbeatAnimation.svelte** (2026-08-16)
+   - Sponsor fallback ekranı için dekoratif kalp atışı animasyonu
+   - **3 pikli kalp atışı:** Küçük-BÜYÜK-küçük (ortadaki diğerlerinin 2 katı büyüklükte)
+   - **Beyaz renk:** Tüm animasyon beyaz (#fff), gradient ve halkalar
+   - **Gülen yüz (smile curve):** Kalp atışının hemen altında bezier eğrisi (Q220,130 Q260,150 Q300,130)
+   - Eş merkezli beyaz halkalar (merkezden dışa yayılıp saydamlaşma, 2.8sn döngü)
+   - Merkez beyaz glow + pulse
+   - `clamp(460px, 28vw, 540px)` responsive boyut, ekran ortasında (~%48 yükseklik)
+   - `pointer-events: none`, `aria-hidden="true"` — erişilebilirlik
+   - `prefers-reduced-motion: reduce` → animasyonlar durur, statik görünüm
+   - Yalnızca **sponsor fallback ekranında** görünür (gerçek kampanya medyası gösterilirken GÖRÜNMEZ)
+
+12. **MediaView.svelte**
    - URL uzantisina gore `<video>` veya `<img>` render eder. Props: `src`, `alt`, `loop`, `class`. AdStrip + IdleScreen tarafindan ortak kullanilir
 
-12. **ScreenHeader.svelte**
+13. **ScreenHeader.svelte**
    - Ortak ekran basligi: `Logo` + opsiyonel `subtitle`. Props: `height`, `subtitle`. Welcome/Demographics/Category/Consult/Question ekranlarinda kullanilir
 
-13. **WifiSetupScreen.svelte**
+14. **WifiSetupScreen.svelte**
    - WiFi ağ listesi (`GET http://localhost:5234/wifi-status`)
    - Ağ seçimi + şifre girişi
    - "Bağlan" butonu → `POST http://localhost:5234/wifi-connect` (nmcli)

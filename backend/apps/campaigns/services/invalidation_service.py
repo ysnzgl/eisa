@@ -10,7 +10,7 @@ Temel prensipler:
   - RUNNING varken yeni değişiklik kaybolmaz: yeni PENDING job eklenir.
   - Campaign.start/end dışına kalan tarihler için job üretilmez.
   - Geçmiş günler için job üretilmez (Europe/Istanbul bugününden itibaren).
-  - Bu servis campaign sinyallerinden, Creative, DeliveryRule, HouseAd ve Kiosk
+  - Bu servis campaign sinyallerinden, Creative, DeliveryRule ve Kiosk
     sinyallerinden çağrılır.
 """
 from __future__ import annotations
@@ -80,10 +80,10 @@ def enqueue_for_kiosk_dates(
             _create_or_coalesce_job(kiosk_id, d, trigger_reason)
 
 
-def enqueue_for_all_kiosks(trigger_reason: str = "house_ad_change") -> None:
+def enqueue_for_all_kiosks(trigger_reason: str = "global_change") -> None:
     """Tüm aktif kiosklar × horizon tarihleri için job oluştur.
 
-    HouseAd değişikliği gibi global etkili değişiklikler için kullanılır.
+    Global etkili değişiklikler için kullanılır.
     """
     from apps.pharmacies.models import Kiosk
 

@@ -1,23 +1,16 @@
 <script>
-  import { createEventDispatcher } from 'svelte';
+  import { createEventDispatcher, onMount, onDestroy } from 'svelte';
   import { allCategories, visibleCategories, catsLoading } from '../stores/kiosk.js';
   import ScreenHeader from './ScreenHeader.svelte';
 
   const dispatch = createEventDispatcher();
 
-  // Hiyerarsik gezinme: ust kategori -> alt kategori. `bagli_kategori_id`
-  // null olanlar en ust seviyedir; cocugu olan kart bir klasor gibi acilir,
-  // yaprak (cocuksuz) kart secilince anket baslar.
-  let parentId = null;   // su an gosterilen seviyenin ust kategori id'si
-  let stack = [];        // geri donus icin ust id yigini
-  let titleStack = [];   // baslikta gosterilecek ust kategori adlari
+  let parentId = null;
+  let stack = [];
+  let titleStack = [];
 
-  // allCategories yoksa (eski akis) visibleCategories'e geri dus.
   $: source = $allCategories.length ? $allCategories : $visibleCategories;
-
-  $: levelCategories = source.filter(
-    (c) => (c.bagli_kategori_id ?? null) === parentId,
-  );
+  $: levelCategories = source.filter((c) => (c.bagli_kategori_id ?? null) === parentId);
 
   function hasChildren(cat) {
     return source.some((c) => (c.bagli_kategori_id ?? null) === cat.id);
@@ -28,6 +21,8 @@
       stack = [...stack, parentId];
       titleStack = [...titleStack, cat.ad];
       parentId = cat.id;
+      scrollEl?.scrollTo({ top: 0 });
+      measureOverflow();
     } else {
       dispatch('select', cat);
     }
@@ -38,12 +33,54 @@
       parentId = stack[stack.length - 1];
       stack = stack.slice(0, -1);
       titleStack = titleStack.slice(0, -1);
+      scrollEl?.scrollTo({ top: 0 });
+      measureOverflow();
     } else {
       dispatch('back');
     }
   }
 
   $: currentTitle = titleStack.length ? titleStack[titleStack.length - 1] : null;
+
+  // ── Overflow göstergesi ──────────────────────────────────────────────
+  let scrollEl = null;
+  let hasOverflow = false;
+  let isAtBottom  = false;
+  let scrollRatio = 0;
+  let hintOnce    = false;
+  let ro = null;
+
+  function measureOverflow() {
+    if (!scrollEl) return;
+    const { scrollHeight, clientHeight, scrollTop } = scrollEl;
+    hasOverflow = scrollHeight > clientHeight + 2;
+    const maxScroll = scrollHeight - clientHeight;
+    isAtBottom  = maxScroll <= 0 || scrollTop >= maxScroll - 4;
+    scrollRatio = maxScroll > 0 ? Math.min(1, scrollTop / maxScroll) : 0;
+  }
+
+  function onScroll() { measureOverflow(); }
+
+  onMount(() => {
+    if (!scrollEl) return;
+    scrollEl.addEventListener('scroll', onScroll, { passive: true });
+    ro = new ResizeObserver(measureOverflow);
+    ro.observe(scrollEl);
+    measureOverflow();
+    // Bir kez hafif scroll hint animasyonu
+    if (!hintOnce && hasOverflow) {
+      hintOnce = true;
+      setTimeout(() => {
+        scrollEl?.scrollTo({ top: 22, behavior: 'smooth' });
+        setTimeout(() => scrollEl?.scrollTo({ top: 0, behavior: 'smooth' }), 380);
+      }, 600);
+    }
+  });
+
+  onDestroy(() => {
+    scrollEl?.removeEventListener('scroll', onScroll);
+    ro?.disconnect();
+  });
 </script>
 
 <div class="screen">
@@ -63,15 +100,25 @@
       <span>Bu başlık altında kategori bulunamadı.</span>
     </div>
   {:else}
-    <div class="cat-grid-scroll">
-      <div class="cat-grid">
-        {#each levelCategories as cat (cat.id)}
-          <button class="cat-card" on:click={() => onCardClick(cat)}>
-            <i class="fa-solid {cat.ikon}"></i>
-            <h3>{cat.ad}</h3>
-          </button>
-        {/each}
+    <div class="scroll-wrap">
+      <div class="cat-grid-scroll" bind:this={scrollEl}>
+        <div class="cat-grid">
+          {#each levelCategories as cat (cat.id)}
+            <button class="cat-card" on:click={() => onCardClick(cat)}>
+              <i class="fa-solid {cat.ikon}"></i>
+              <h3>{cat.ad}</h3>
+            </button>
+          {/each}
+        </div>
       </div>
+      {#if hasOverflow && !isAtBottom}
+        <div class="scroll-fade"></div>
+        <div class="scroll-hint-badge">
+          <i class="fa-solid fa-angles-down scroll-hint-icon"></i>
+          Daha fazla seçenek
+        </div>
+        <div class="scroll-pos-bar" style="height:{scrollRatio*100}%"></div>
+      {/if}
     </div>
   {/if}
 
@@ -83,12 +130,41 @@
 </div>
 
 <style>
-  .cat-subbadge {
-    margin-top: 6px;
-    font-size: 0.8rem;
-    color: #B1121B;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
+  .scroll-wrap {
+    flex: 1; min-height: 0;
+    position: relative;
+    display: flex; flex-direction: column;
+  }
+  .cat-grid-scroll {
+    flex: 1; min-height: 0;
+    overflow-y: auto;
+    padding-right: 6px;
+    scrollbar-width: none;
+  }
+  .cat-grid-scroll::-webkit-scrollbar { display: none; }
+  .scroll-fade {
+    position: absolute; bottom: 0; left: 0; right: 0; height: 56px;
+    background: linear-gradient(to bottom, transparent, rgba(249,250,251,0.95));
+    pointer-events: none;
+  }
+  .scroll-hint-badge {
+    position: absolute; bottom: 6px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 5px;
+    padding: 4px 12px; border-radius: 20px;
+    background: #111827cc; color: #fff; font-size: 11px; white-space: nowrap;
+    pointer-events: none;
+  }
+  .scroll-hint-icon { animation: bounce-down 1.2s ease-in-out infinite; }
+  @keyframes bounce-down {
+    0%,100% { transform: translateY(0); }
+    50%      { transform: translateY(3px); }
+  }
+  .scroll-pos-bar {
+    position: absolute; top: 0; right: 0; width: 3px;
+    background: #B1121B; border-radius: 2px; min-height: 16px;
+    pointer-events: none; transition: height 0.15s;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .scroll-hint-icon { animation: none; }
   }
 </style>

@@ -40,6 +40,58 @@
 - kiosk FK (nullable, SET_NULL — OneToOne), olusturulma_tarihi, guncellenme_tarihi, surum
 - **Güvenlik:** Raw fleet_key veya provision_secret bu tabloda saklanmaz. device_id bootstrap HMAC'e dahil edilir.
 
+### Destek (Görüş ve Destek) *(new 2026-08-15)*
+
+**destek_parametreler**
+- id, grup (TALEP_TURU|ALAN|ALT_KONU|DURUM), kod (unique), ad, ust_parametre_id FK self (nullable, PROTECT), sira, aktif
+- BaseModel alanları (olusturulma_tarihi, guncellenme_tarihi, surum, vb.)
+- Başlangıç seed: TALEP_TURU (ONERI, SIKAYET), ALAN (KIOSK, PORTAL), DURUM (YENI, INCELENIYOR, YANITLANDI, KAPATILDI) + 10 ALT_KONU
+
+**destek_talep_sayac**
+- yil (PK, SmallInt), son_sayi (PositiveInt) — `select_for_update` ile concurrency-safe talep no üretimi
+
+**destek_talepler**
+- id, talep_no (unique, `EISA-YYYY-NNNNNN`), eczane_id FK (PROTECT), olusturan_kullanici_id FK (PROTECT)
+- talep_turu_id FK destek_parametreler (PROTECT), alan_id FK (PROTECT), alt_konu_id FK (PROTECT), durum_id FK (PROTECT)
+- kiosk_id FK kiosklar (PROTECT, nullable), aciklama (max 1000), son_hareket_tarihi
+- BaseModel alanları
+
+**destek_yorumlar**
+- id, talep_id FK destek_talepler (CASCADE), yorum_metni (max 1000)
+- BaseModel alanları (olusturan = yorum yazarı)
+
+### Destek API Sözleşmesi *(2026-08-15)*
+
+**GET `/api/destek/parametreler/`** — Auth: JWT (any)
+- Response: `[{id, grup, kod, ad, ust_parametre_id, sira}]`
+
+**GET `/api/destek/talepler/`** — Auth: JWT (any); sayfalı
+- Admin: tüm talepler
+- Eczacı: yalnız kendi eczanesinin talepleri
+- Query params: `eczane_id, talep_turu_kod, alan_kod, alt_konu_kod, durum_kod, durum_kategori (acik|kapali), baslangic_tarihi, bitis_tarihi, talep_no, page, page_size`
+- Response: `{count, next, previous, results: [{id, talep_no, eczane_adi, olusturan_adi, talep_turu_ad, talep_turu_kod, alan_ad, alan_kod, alt_konu_ad, alt_konu_kod, durum_ad, durum_kod, kiosk_ad, olusturulma_tarihi, son_hareket_tarihi}]}`
+
+**POST `/api/destek/talepler/`** — Auth: JWT (IsEczaci only)
+- Request: `{talep_turu_id, alan_id, alt_konu_id, kiosk_id?, aciklama}`
+- Validasyon: grup kontrolü, aktiflik, alan↔alt_konu eşleşmesi, Portal→kiosk boş, kiosk eczane sahipliği, KIOSK_CIHAZ tek kiosk otomatik atama
+- Response 201: DestekTalebiDetailSerializer
+
+**GET `/api/destek/talepler/{id}/`** — Auth: JWT (any)
+- Response: list alanları + `{eczane_id, kiosk_id, aciklama, yorumlar: [{id, yorum_metni, olusturulma_tarihi, yazar_adi, yazar_rol}]}`
+
+**POST `/api/destek/talepler/{id}/yorum-ekle/`** — Auth: JWT (any)
+- Request: `{yorum_metni}` (max 1000 karakter)
+- 400: KAPATILDI ticket
+- Admin yorum → durum YANITLANDI; Eczacı YANITLANDI'da cevap → INCELENIYOR
+- Response 201: `{id, yorum_metni, olusturulma_tarihi, yazar_adi, yazar_rol}`
+
+**PATCH `/api/destek/talepler/{id}/durum-degistir/`** — Auth: JWT (IsSuperAdmin)
+- Request: `{durum_kod}` — YENI|INCELENIYOR|YANITLANDI|KAPATILDI
+- Response 200: DestekTalebiListSerializer
+
+**GET `/api/destek/talepler/yeni-sayisi/`** — Auth: JWT (IsSuperAdmin)
+- Response: `{sayi: <int>}`
+
 ### Announcements and Duty *(2026-08-18)*
 
 **announcements**
@@ -122,8 +174,17 @@
 **dooh_planning_runs** / **dooh_campaign_total_allocations** / **dooh_kiosk_day_quotas** *(Faz 1 yeni)*
 - KioskDayQuota: placed>=0, quota>=0, placed<=quota DB constraint; unique(run,campaign,kiosk,date)
 
-**dooh_creatives** *(Faz 0.5: object_key, Faz 1: weight)*
-- id (UUID), campaign_id FK, media_url (kalici URL Faz 0.5+), duration_seconds (grid:{15,30,45,60} yeni kayıt), name, checksum ('sha256:<hex>'), object_key (nullable, 0015), weight (default 1)
+**dooh_creatives** *(Faz 0.5: object_key, Faz 1: weight, 2026-07-31: active_media_url)*
+- id (UUID), campaign_id FK, media_url (kalici URL Faz 0.5+), active_media_url (blank=True, islem ekrani alt alan gorseli ~1080x768), duration_seconds (grid:{15,30,45,60} yeni kayit), name, checksum ('sha256:<hex>'), object_key (nullable, 0015), weight (default 1)
+- Migration 0021: active_media_url eklendi (additive, nullable)
+
+**pharmacy_campaigns** *(2026-07-31, 2026-08-01)*
+- id (UUID), name, media_url, object_key (nullable), start_at, end_at, duration_seconds (default 15; izin verilen: 15, 30, 60), is_active (bool)
+- M2M: pharmacy_campaigns_target_pharmacies (campaign_id, eczane_id)
+- M2M: pharmacy_campaigns_target_iller (campaign_id, il_id)
+- M2M: pharmacy_campaigns_target_ilceler (campaign_id, ilce_id)
+- Migration 0022: tablo ve M2M olusturuldu; Migration 0024: target_iller + target_ilceler eklendi
+- Feed eşleşme: target_pharmacies OR target_iller OR target_ilceler (OR mantığı); hiç hedefi olmayan → feed'e girmez
 
 **dooh_schedule_rules** *(Legacy, ScheduleRule → DeliveryRule geçiş)*
 - id (UUID), campaign_id FK (1to1), frequency_type (PER_LOOP/PER_HOUR/PER_DAY), frequency_value, target_hours (JSON)
@@ -133,14 +194,16 @@
 - unique(kiosk, target_date, target_hour); item'lar ayri dooh_playlist_items satirlarinda
 
 **dooh_playlist_items**
-- id (UUID), playlist_id FK, creative_id FK (nullable), house_ad_id FK (nullable), playback_order, estimated_start_offset_seconds (SAAT-mutlak 0..3599)
-- API contract'ta creative/house_ad -> asset_id + asset_type + media_url + duration_seconds olarak duzlestirilir
+- id (UUID), playlist_id FK, creative_id FK (creative-only; house_ad_id FK KALDIRILDI — migration 0027; `clean()` creative zorunlu), playback_order, estimated_start_offset_seconds (SAAT-mutlak 0..3599)
+- API contract'ta creative -> asset_id + asset_type ("creative") + media_url + **active_media_url** + duration_seconds olarak duzlestirilir
+- Playlist campaign-only: uygun creative yoksa 0 item (bos playlist gecerli) -> kiosk idle ekranini gosterir
 
-**dooh_house_ads** *(Faz 0.5: object_key eklendi)*
-- id (UUID), name, media_url (kalici URL Faz 0.5+), duration_seconds (1-60), aktif (bool), priority, object_key (nullable, Faz 0.5 migration 0015)
+**dooh_idle_screen_contents** *(2026-08-16)*
+- id (BigAutoField), baslik (CharField<=100, zorunlu), metin (CharField<=300, zorunlu), aktif (bool default True), olusturulma_tarihi, guncellenme_tarihi
+- "Icerik Yonetimi" idle (bekleme) ekrani baslık/metin icerigi; medya/HTML YOK. Eski `dooh_house_ads` tablosu migration 0027 ile dusuruldu.
 
 **dooh_play_logs**
-- id (UUID), kiosk_id FK, creative_id FK (nullable, SET_NULL), house_ad_id FK (nullable, SET_NULL)
+- id (UUID), kiosk_id FK, creative_id FK (nullable, SET_NULL) [house_ad_id FK KALDIRILDI — migration 0027]
 - played_at (indexed), duration_played (saniye)
 
 **dooh_pricing_matrix**
@@ -148,7 +211,7 @@
 
 ### Analytics
 
-**oturum_loglari** *(updated 2026-07-20)*
+**oturum_loglari** *(updated 2026-08-11)*
 - id, idempotency_anahtari (UUID, unique), kiosk_id FK
 - yas_araligi_id FK, cinsiyet_id FK
 - kategori_id FK (nullable), danisma_kategorisi_id FK (nullable)
@@ -160,6 +223,19 @@
 - danisma_tamamlanma_tarihi (datetime, nullable)
 - danisma_notu (text, blank)
 - danisma_tamamlayan_eczaci_id FK (users_eisauser, nullable)
+- **barkod_logo_id FK (barkod_logolar, PROTECT, nullable)** — fişte basılan logo; null = e-ISA fallback *(2026-08-11)*. PROTECT: geçmiş ölçüm kaybolmaz; logo fiziksel silinemez.
+
+### Barkod Logo *(new 2026-08-11)*
+
+**barkod_logolar**
+- id (UUID PK), ad (max 255)
+- media_url (kalıcı public URL), object_key (RustFS key), checksum (sha256:\<hex>)
+- baslangic_zamani, bitis_zamani (UTC DateTimeField)
+- aktif (bool, indexed), gunluk_baski_limiti (nullable PositiveInt, ≥1)
+- olusturulma_tarihi, hedef_kiosklar (M2M → kiosklar)
+- Endpoint: `/api/barkod-logo/logolar/` (ModelViewSet, SuperAdmin JWT)
+- Upload: `POST /api/barkod-logo/upload-gorsel/` — PNG, 336×336, ≤1MB, alfa yok
+- Catalog (kiosk): `GET /api/kiosk/v1/catalog/` artık `barkod_logolar` listesini içerir (aktif + bitis > now + hedef kiosk filtreli)
 
 **oturum_cevaplar** *(new 2026-07-20)*
 - id, oturum_id FK (CASCADE), soru_id FK (PROTECT, nullable), cevap_id FK (PROTECT, nullable)
@@ -254,7 +330,7 @@ X-Kiosk-Device-ID: <DEVICE_UUID>  # zorunlu (device_id set edildiyse)
 | Method | Path | Amaç |
 |--------|------|------|
 | GET  | `/api/kiosk/v1/ping/` | Heartbeat + bugünkü playlist versiyonu |
-| GET  | `/api/kiosk/v1/sync/` | Aktif creative + house_ad + lookup |
+| GET  | `/api/kiosk/v1/sync/` | Aktif creative + idle içerik (`idle_contents`) + lookup |
 | GET  | `/api/kiosk/v1/catalog/` | Kategori/soru/cevap/etken madde/danışma |
 | GET  | `/api/kiosk/v1/playlist/?date=YYYY-MM-DD` | Günün 24 saatlik playlist'i |
 | POST | `/api/kiosk/v1/sessions/` | Oturum outbox (idempotent) — `OturumLoguItemSerializer` |
@@ -453,6 +529,12 @@ X-Kiosk-Device-ID: <DEVICE_UUID>  # zorunlu (device_id set edildiyse)
 - Request: `{ "campaign_id": "uuid", "media_url": "...", "duration_seconds": 15, "name": "Creative 1" }`
 - Response: `{ "id": "uuid", ... }`
 
+**GET/POST/PUT/PATCH/DELETE /api/campaigns/v2/idle-contents/** *(2026-08-16)*
+- Auth: JWT (SuperAdmin); router basename `dooh-idle-content`
+- "İçerik Yönetimi" idle (bekleme) başlık/metin CRUD; eski `/api/campaigns/v2/house-ads/` KALDIRILDI
+- Serializer alanları: `id, baslik, metin, aktif, created_at, updated_at`
+- Request (POST): `{ "baslik": "...", "metin": "...", "aktif": true }`
+
 **GET /api/campaigns/v2/campaigns/{id}/rules/**
 - Auth: JWT (SuperAdmin)
 - Response: `{ "id": "uuid", "campaign": "uuid", "frequency_type": "PER_HOUR", "frequency_value": 2, "target_hours": [9, 10, 11, 12, 13] }`
@@ -522,16 +604,16 @@ X-Kiosk-Device-ID: <DEVICE_UUID>  # zorunlu (device_id set edildiyse)
 
 **POST /api/campaigns/v2/campaigns/{id}/activate/**
 - Auth: JWT (SuperAdmin)
-- DOOH_ENGINE_V2: `active` gerektirir. `off`/`shadow` ise 403.
+- Faz 7+: Feature flag yok, endpoint her zaman açık.
 - Request: body yok
 - Response 200:
   ```json
   {
     "campaign_id": "uuid",
-    "planning_run_id": "uuid",
+    "planning_run_id": null,
     "activated_kiosks": 2,
     "activated_dates": 3,
-    "total_placements": 24,
+    "total_placements": 0,
     "fingerprint": "hex16",
     "is_complete": true,
     "blocking_reasons": []
@@ -541,17 +623,18 @@ X-Kiosk-Device-ID: <DEVICE_UUID>  # zorunlu (device_id set edildiyse)
   ```json
   { "error": "...", "validation_errors": { "delivery_rule": "...", "creatives": "..." } }
   ```
-- Response 403: `DOOH_ENGINE_V2 != active`
 - Response 404: campaign bulunamadı
 - Response 409: `CapacityError` (GUARANTEED kapasite yetersiz)
   ```json
   { "error": "...", "blocking_reasons": ["kiosk=1 date=2026-07-22: ..."] }
   ```
-- **Transaction davranışı:**
-  - GUARANTEED: `transaction.atomic()` wrapper; herhangi bir kiosk/date'te kapasite yetersizse → `CapacityError` fırlatılır → tüm değişiklikler rollback edilir
-  - BEST_EFFORT: kısmi başarı kabul edilir; başarısız kiosk/date'ler `blocking_reasons`'da raporlanır
-  - CAMPAIGN_TOTAL: `GlobalQuotaService.reserve_for_kiosk_day` → `select_for_update(nowait=False)` ile global invariant sağlanır
-- **Idempotency:** `_persist_plan` mevcut Playlist satırlarını siler ve yeniden oluşturur → re-activation aynı içeriği yazar, çift kayıt üretmez
+- **Çalışma akışı (2026-08):**
+  - Endpoint artık kampanya tarih aralığının tamamı için senkron playlist üretmez.
+  - `activate` yalnız doğrulama + (GUARANTEED ise) rolling horizon kapasite kontrolü yapar.
+  - Ağır üretim `GenerationJob` kuyruğuna bırakılır (`triggered_by=campaign_activate`).
+  - Üretim kapsamı yalnız rolling horizon'dur (varsayılan: bugün + 2 gün).
+- **Dedupe/coalesce:** Aynı kiosk+tarih için mevcut `dedupe_key=kd:{kiosk_id}:{date}` mekanizması duplicate `PENDING` job üretimini engeller.
+- **GUARANTEED all-or-nothing:** GUARANTEED pre-check başarısızsa 409 döner, `campaign_activate` job enqueue edilmez; kısmi publish başlamaz.
 - **Serializer**: `ActivationResultSerializer` (apps/campaigns/serializers.py)
 
 ---
@@ -573,7 +656,7 @@ X-Kiosk-Device-ID: <DEVICE_UUID>  # zorunlu (device_id set edildiyse)
     "etken_maddeler": [...],
     "danisma_kategorileri": [...],
     "creatives": [{ "id": "uuid", "media_url": "...", ... }],
-    "house_ads": [{ "id": "uuid", "media_url": "...", ... }]
+    "idle_contents": [{ "id": 1, "baslik": "...", "metin": "...", "aktif": true, "updated_at": "..." }]
   }
   ```
 - Body (optional, outbox push):
@@ -627,7 +710,7 @@ X-Kiosk-Device-ID: <DEVICE_UUID>  # zorunlu (device_id set edildiyse)
 
 **POST /api/kiosk/v1/proof-of-play/**
 - Auth: Kiosk (AppKey + MAC)
-- Request (her log'da creative_id VEYA house_ad_id):
+- Request (her log'da creative_id; house_ad_id kabul edilir ama yok sayılır):
   ```json
   {
     "logs": [
@@ -635,11 +718,6 @@ X-Kiosk-Device-ID: <DEVICE_UUID>  # zorunlu (device_id set edildiyse)
         "creative_id": "uuid",
         "played_at": "2026-06-05T10:30:00.000Z",
         "duration_played": 15
-      },
-      {
-        "house_ad_id": "uuid",
-        "played_at": "2026-06-05T10:30:15.000Z",
-        "duration_played": 10
       }
     ]
   }
@@ -736,9 +814,9 @@ X-Kiosk-Device-ID: <DEVICE_UUID>  # zorunlu (device_id set edildiyse)
   - QR içine soru/cevap/kategori/etken madde payload'ı gömülmez.
   - Response, mevcut alanları bozmadan ek detay alanlarıyla normalize edilir.
 
-5. **PlayLog creative_id vs house_ad_id:**
-   - Backend: İki ayrı FK (nullable)
-   - Kiosk UI: Sadece `creative_id` gönderiyor, house_ad impression'ları eksik olabilir (Riskli)
+5. **PlayLog creative-only:**
+   - Backend: yalnız `creative_id` FK (nullable); `house_ad_id` FK kaldırıldı (migration 0027)
+   - Kiosk UI yalnız `creative_id` gönderir; playlist creative-only, house_ad_id payload'da gelse de yok sayılır
 
 ---
 

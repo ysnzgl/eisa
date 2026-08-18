@@ -1,7 +1,7 @@
 <script>
   import { tick, onMount, onDestroy } from 'svelte';
   import { getRecommendations, recsToIngredientList } from './lib/ingredients.js';
-  import { fetchCategories, fetchQuestions, fetchDanismaCategories, submitSession, fetchWifiStatus } from './lib/api.js';
+  import { fetchCategories, fetchQuestions, fetchDanismaCategories, submitSession, fetchWifiStatus, fetchSessionSyncStatus } from './lib/api.js';
   import {
     screen,
     selectedAge, selectedSex,
@@ -12,6 +12,8 @@
     danismaCategories, danismaLoading,
   } from './stores/kiosk.js';
 
+  import { version } from '../package.json';
+
   import IdleScreen         from './components/IdleScreen.svelte';
   import DemographicsScreen from './components/DemographicsScreen.svelte';
   import WelcomeScreen      from './components/WelcomeScreen.svelte';
@@ -19,7 +21,7 @@
   import ConsultScreen      from './components/ConsultScreen.svelte';
   import QuestionScreen     from './components/QuestionScreen.svelte';
   import ResultScreen       from './components/ResultScreen.svelte';
-  import AdStrip            from './components/AdStrip.svelte';
+  import PlaylistPlayer     from './components/PlaylistPlayer.svelte';
   import WifiSetupScreen    from './components/WifiSetupScreen.svelte';
 
   let resultScreenRef = null;
@@ -171,8 +173,17 @@
     currentQuestions.update(v => { qs = v; return v; });
     currentQIndex.update(v => { idx = v; return v; });
     currentAnswers.update(v => {
-      // id = seed_id (getRecommendations için), questionId = numeric ID (backend payload için)
-      answers = [...v, { id: qs[idx].seed_id, questionId: qs[idx].id, answer }];
+      const prev = v[idx]?.answer;
+      if (prev === answer) {
+        // Ayni cevap — cevaplar korunur, sadece ileri git.
+        answers = v;
+      } else {
+        // Farkli cevap — bu indeksten sonrasini temizle.
+        answers = [
+          ...v.slice(0, idx),
+          { id: qs[idx].seed_id, questionId: qs[idx].id, answer },
+        ];
+      }
       return answers;
     });
     const newIdx = idx + 1;
@@ -182,6 +193,13 @@
       currentCategory.update(v => { cat = v; return v; });
       await showFlowAResult(cat);
     }
+  }
+
+  function goBackQuestion() {
+    armInactivity();
+    currentQIndex.update(v => Math.max(0, v - 1));
+    // Cevaplar korunur — geri donuste silme yok.
+    sessionFinalized = false;
   }
 
   async function showFlowAResult(cat, completed = true) {
@@ -197,21 +215,41 @@
 
     const recs = getRecommendations(qs, answers, age ?? '18-25', sex ?? 'M');
     const ingredientList = recsToIngredientList(recs);
-    const { qrCode, qrPayload } = await doSubmitSession(cat?.slug ?? '', false, ingredientList, completed);
+    const { qrCode, qrPayload, syncDurum, baskiLogoUrl, devPreview } = await doSubmitSession(cat?.slug ?? '', false, ingredientList, completed);
+    // QR olmasa bile sonuç ekranına geç; ResultScreen kendi mesajını gösterir.
+    // syncDurum='hata' ise ResultScreen sarı ünlem gösterir.
     const firstRec = recs[0];
-
     result.set({
-      label:       `Önerilen Etken Maddeler — ${cat?.ad ?? ''}`,
+      label:          `Önerilen Etken Maddeler — ${cat?.ad ?? ''}`,
       recs,
-      ana:         firstRec?.primary    ?? '—',
-      destek:      firstRec?.supportive ?? '',
-      isSensitive: false,
-      qrCode,
-      qrPayload,
+      ana:            firstRec?.primary    ?? '—',
+      destek:         firstRec?.supportive ?? '',
+      isSensitive:    false,
+      qrCode:         qrCode ?? null,
+      qrPayload:      qrPayload ?? null,
+      syncDurum:      syncDurum ?? 'hata',
+      idempotencyKey: sessionId,
+      baskiLogoUrl:   baskiLogoUrl ?? null,
+      devPreview:     devPreview ?? false,
     });
     goTo('result');
     await tick();
-    resultScreenRef?.drawQR(qrPayload);
+    if (qrCode) resultScreenRef?.drawQR(qrPayload);
+  }
+
+  function startNewComplaint() {
+    // Yas/cinsiyet korunur; kategori + cevap + oneri + QR temizlenir.
+    currentCategory.set(null);
+    currentQIndex.set(0);
+    currentQuestions.set([]);
+    currentAnswers.set([]);
+    result.set(null);
+    danismaCategories.set([]);
+    sessionId = (crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    sessionFinalized = false;
+    sessionSubmitting = false;
+    armInactivity();
+    goTo('category');
   }
 
   async function loadDanismaCategories() {
@@ -235,20 +273,24 @@
     sessionId = (crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`);
     sessionFinalized = false;
     sessionSubmitting = true;
-    let qrCode, qrPayload;
+    let qrCode, qrPayload, syncDurum, baskiLogoUrl, devPreview;
     try {
-      ({ qrCode, qrPayload } = await doSubmitConsult(cat?.slug ?? cat?.ad ?? ''));
+      ({ qrCode, qrPayload, syncDurum, baskiLogoUrl, devPreview } = await doSubmitConsult(cat?.slug ?? cat?.ad ?? ''));
     } finally {
       sessionSubmitting = false;
     }
     sessionFinalized = true; // Danışma hemen tamamlanır
     result.set({
-      label:       'Danışma talebi gönderildi',
-      ana:         cat?.ad ?? cat,
-      destek:      'Eczacınız sizi bekliyor — QR kodu okutunuz.',
-      isSensitive: true,
-      qrCode,
-      qrPayload,
+      label:          'Danışma talebi gönderildi',
+      ana:            cat?.ad ?? cat,
+      destek:         'Eczacınız sizi bekliyor — QR kodu okutunuz.',
+      isSensitive:    true,
+      qrCode:         qrCode ?? null,
+      qrPayload:      qrPayload ?? null,
+      syncDurum:      syncDurum ?? 'hata',
+      idempotencyKey: sessionId,
+      baskiLogoUrl:   baskiLogoUrl ?? null,
+      devPreview:     devPreview ?? false,
     });
     goTo('result');
     await tick();
@@ -259,19 +301,23 @@
     let age, sex;
     selectedAge.update(v => { age = v; return v; });
     selectedSex.update(v => { sex = v; return v; });
-    // No try/catch: backend QR is authoritative. Caller handles error.
-    return await submitSession({
-      ageRange:       age,
-      gender:         sex,
-      oturumTipi:     'OZEL_DANISMANLIK',
-      categorySlug:   null,
-      danismaKategorisiSlug: categorySlug,
-      isSensitiveFlow: true,
-      answersPayload:  {},
-      ingredientList:  [],
-      completed:       true,
-      sessionId,
-    });
+    try {
+      return await submitSession({
+        ageRange:       age,
+        gender:         sex,
+        oturumTipi:     'OZEL_DANISMANLIK',
+        categorySlug:   null,
+        danismaKategorisiSlug: categorySlug,
+        isSensitiveFlow: true,
+        answersPayload:  {},
+        ingredientList:  [],
+        completed:       true,
+        sessionId,
+      });
+    } catch (err) {
+      console.error('Danisma oturumu gonderme hatasi:', err);
+      return { qrCode: null, qrPayload: null, syncDurum: 'hata' };
+    }
   }
 
   async function doSubmitSession(categorySlug, isSensitiveFlow, ingredientList, completed = true) {
@@ -280,8 +326,7 @@
     selectedSex.update(v => { sex = v; return v; });
     currentAnswers.update(v => { answers = v; return v; });
 
-    // No try/catch for completed sessions: backend QR is authoritative.
-    // For abandoned sessions, errors are silently ignored.
+    // Abandoned sessions silently ignore errors.
     if (!completed) {
       try {
         return await submitSession({
@@ -300,18 +345,24 @@
         return { qrCode: null }; // Abandoned sessions silently fail
       }
     }
-    return await submitSession({
-      ageRange:       age,
-      gender:         sex,
-      oturumTipi:     'SIKAYET',
-      categorySlug,
-      danismaKategorisiSlug: null,
-      isSensitiveFlow,
-      answersPayload: Object.fromEntries(answers.map(a => [String(a.questionId ?? a.id), a.answer])),
-      ingredientList,
-      completed,
-      sessionId,
-    });
+    // For completed sessions: errors are caught; flow continues with null QR.
+    try {
+      return await submitSession({
+        ageRange:       age,
+        gender:         sex,
+        oturumTipi:     'SIKAYET',
+        categorySlug,
+        danismaKategorisiSlug: null,
+        isSensitiveFlow,
+        answersPayload: Object.fromEntries(answers.map(a => [String(a.questionId ?? a.id), a.answer])),
+        ingredientList,
+        completed,
+        sessionId,
+      });
+    } catch (err) {
+      console.error('Oturum gonderme hatasi:', err);
+      return { qrCode: null, qrPayload: null, syncDurum: 'hata' };
+    }
   }
 </script>
 
@@ -346,15 +397,39 @@
           on:back={() => goTo('welcome')}
         />
       {:else if $screen === 'question'}
-        <QuestionScreen on:answer={(e) => handleAnswer(e.detail)} />
+        <QuestionScreen
+          on:answer={(e) => handleAnswer(e.detail)}
+          on:back={goBackQuestion}
+        />
       {:else if $screen === 'result'}
-        <ResultScreen bind:this={resultScreenRef} on:done={resetToIdle} />
+        <ResultScreen bind:this={resultScreenRef} on:done={resetToIdle} on:newComplaint={startNewComplaint} />
       {/if}
     </div>
   {/if}
 
-  <!-- Reklam bandı: her zaman mount, idle ve wifi_setup ekranlarında gizli -->
-  <div class="ad-strip-host" class:ad-strip-host--hidden={$screen === 'idle' || $screen === 'wifi_setup'}>
-    <AdStrip />
+  <!-- Kalici medya oynaticisi: idle'da fullscreen, oturumda strip. Ekranlar
+       arasi gecerken ayni <video> DOM instance'i KORUNUR (remount/reload yok);
+       yalniz mode/CSS degisir. -->
+  <span class="v-badge">v{version}</span>
+  <div class="ad-strip-host"
+       class:ad-strip-host--fullscreen={$screen === 'idle'}
+       class:ad-strip-host--hidden={$screen === 'wifi_setup'}>
+    {#if $screen !== 'wifi_setup'}
+      <PlaylistPlayer mode={$screen === 'idle' ? 'fullscreen' : 'strip'} />
+    {/if}
   </div>
 </div>
+
+<style>
+  .v-badge {
+    position: absolute;
+    bottom: 6px;
+    right: 10px;
+    z-index: 9999;
+    font-size: 10px;
+    line-height: 1;
+    color: rgba(255, 255, 255, 0.45);
+    pointer-events: none;
+    letter-spacing: 0.03em;
+  }
+</style>

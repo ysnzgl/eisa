@@ -5,6 +5,826 @@
 
 ---
 
+## 2026-08-16
+
+### [Backend+WebPanel+KioskEdge+KioskUI] HouseAd kaldırıldı; İçerik Yönetimi başlık/metin idle içeriğine geçti
+
+**Değişiklik:** DOOH filler (HouseAd) sistemi uçtan uca kaldırıldı; playlist campaign-only oldu (boş playlist geçerli → kiosk idle ekranı). "İçerik Yönetimi" yeni başlık/metin tabanlı idle içeriğine dönüştürüldü.
+
+**Backend:**
+- `HouseAd` modeli/tablosu (`dooh_house_ads`), serializer, viewset (`/api/campaigns/v2/house-ads/`), scheduler Pass-4 filler, PlacementEngineV2 `_fill_house_ads`, kiosk sync `house_ads` KALDIRILDI (migration 0027).
+- `PlaylistItem.house_ad` + `PlayLog.house_ad` FK'leri kaldırıldı; `PlaylistItem.clean()` creative zorunlu (creative-only).
+- YENİ `IdleScreenContent` modeli (app: campaigns, tablo `dooh_idle_screen_contents`: `baslik`≤100, `metin`≤300, `aktif`) + CRUD API `GET/POST/PUT/PATCH/DELETE /api/campaigns/v2/idle-contents/` (JWT SuperAdmin, basename `dooh-idle-content`).
+- Kiosk sync artık `house_ads` yerine `idle_contents` (aktif; `KioskIdleContentSyncSerializer`) döner. Proof-of-play `house_ad_id` gelse de yok sayılır.
+
+**Kiosk Edge (api-node):** YENİ SQLite `idle_contents` tablosu; pull sync transaction içinde upsert + reconcile (offline'da son cache korunur); v15 idempotent migration `house_ads` tablosunu düşürür + `media_cache` house_ad satırlarını siler; YENİ salt okunur `GET /api/idle-contents` lokal endpoint.
+
+**Web panel:** "İçerik Yönetimi" (`/admin/content-management`) korundu ama yeni IdleScreenContent CRUD'unu açar (`ContentManagement.vue`; liste, ekle/düzenle/aktif-pasif/silme, 0/100 & 0/300 sayaç, sağlık uyarı notu, 1080×1920 önizleme). Eski `HouseAdManagement.vue` + `dooh.js` house-ad metotları kaldırıldı; yeni `listIdleContents/createIdleContent/updateIdleContent/deleteIdleContent`.
+
+**Kiosk UI:** YENİ `lib/idleContentStore.js` (shuffled-bag rotasyon, dwell 12–20s); `AdPromo` `large` varyantı → başlık (fade) + heartbeat (değişmedi) + metin (tek-seferlik typewriter) + SABİT CTA "Size özel öneriler için DOKUNUN". `small` varyant değişmedi. AdStrip/resolver/edge house_ad öğelerini defansif atlar.
+
+**Migration:** campaigns/0027 (HouseAd drop + IdleScreenContent), edge SQLite v15.
+
+---
+
+### [Kiosk UI] Kalp Atışı Animasyonu Güncelleme — Beyaz 3-Pikli + Smile Curve + Modüler Widget
+
+**Değişiklik:** Sponsor fallback ekranındaki animasyon özelleştirilerek yeni modüler widget olarak ayrıldı.
+
+**Yeni özellikler:**
+- **3 pikli kalp atışı:** Küçük-BÜYÜK-küçük ritim (ortadaki 2 kat büyük pik: y:40-160 vs y:80-100)
+- **Beyaz renk şeması:** Tüm animasyon beyaz (#fff) - gradient, çizgiler, halkalar, glow
+- **Gülen yüz (smile curve):** Kalp atışının altında bezier eğrisi `M220,130 Q260,150 Q300,130`
+- **Modüler yapı:** `HeartbeatAnimation.svelte` ayrı component (yeniden kullanılabilir)
+- **Daha büyük halkalar:** 140px başlangıç → 460px bitiş (önceki 120-420px)
+- **Döngü:** 2.8sn (önceki 2.6sn), yumuşak ve sakin
+- Animasyon `prefers-reduced-motion: reduce` durumunda durur
+
+**Dosyalar:**
+- `kiosk_edge/ui/src/components/HeartbeatAnimation.svelte` (YENİ - 250 satır)
+- `kiosk_edge/ui/src/components/AdPromo.svelte` (eski EKG kodu kaldırıldı, HeartbeatAnimation import)
+- `docs/ai/04-kiosk-edge-ui.md` (component #11 eklendi, numaralandırma güncellendi)
+
+**Test:** Build başarılı (93KB bundle), http://127.0.0.1:5173/ → animasyon görünür, dokunma çalışıyor, demographics geçişi OK.
+
+---
+
+## 2026-08-15
+
+### [Kiosk UI] İdeal/Attractor Ekranına Dekoratif EKG Animasyonu
+
+**Değişiklik:** Reklam olmadığında gösterilen sponsor fallback ekranına (AdPromo.svelte large varyant) sağlık teknolojisi temalı dekoratif animasyon eklendi.
+
+**Animasyon özellikleri:**
+- Yatay EKG çizgisi (soldan sağa ilerleyen parlak enerji izi, SVG `stroke-dasharray` + `stroke-dashoffset` animasyon)
+- İki pikli kalp atışı ritmi (gerçekçi EKG dalga formu, 2.6sn döngü)
+- Eş merkezli kırmızı halkalar (merkezden dışa yayılıp saydamlaşma, 3 halka 0s/0.15s/0.3s gecikme)
+- Merkez kırmızı glow efekti (`radial-gradient` + pulse)
+- E-İSA kırmızı (#B1121B), beyaz, koyu lacivert renk paleti
+- `clamp(460px, 28vw, 540px)` responsive boyut, ekran ortasında (~%48-52 yükseklik)
+- `pointer-events: none`, `aria-hidden="true"` — dokunma engellenmez
+- `prefers-reduced-motion: reduce` → animasyonlar durur, statik EKG + halkalar görünür
+
+**Korunan öğeler (DEĞIŞMEDI):**
+- Mevcut arka plan, renkler ve gradient
+- Üst logo, "Başlamak için dokunun" metni ve el ikonu
+- Alt "Bu alana sponsor olabilirsiniz" kartı (megafon + shimmer başlık)
+- Tüm öğelerin konumları, ölçüleri, stilleri
+- Mevcut dokunma/click davranışı (demographics geçişi)
+- Kampanya/house ad medya gösterimi (animasyon YOK, medya tam ekran gösterilir)
+- Playlist, MediaView, impression akışları
+- Responsive davranış
+- `AdPromo` küçük varyantında animasyon YOKTUR (yalnız `large` modda)
+
+**Teknik:** Inline SVG + CSS animasyonlar, harici dependency veya görsel dosya YOK. Chromium kiosk uyumlu, performans optimizasyonlu (küçük öğeler üzerinde glow, ağır filtre yok).
+
+**Dosyalar:** `kiosk_edge/ui/src/components/AdPromo.svelte` (HTML + CSS), `docs/ai/04-kiosk-edge-ui.md` (AdPromo açıklaması güncellendi)
+
+**Test:** Manuel doğrulama (http://127.0.0.1:5173/, idle ekran → sponsor fallback → animasyon görünür, dokunma → demographics ekran). Gerçek kampanya gösterilirken animasyon görünmez.
+
+---
+
+## 2026-08-15
+
+### [Backend/Frontend] Medya Kalıcı URL, Creative/HouseAd İndirme, HouseAd Yönetim Ekranı
+
+**Root cause:** `DOOH_PERSISTENT_MEDIA_URL=False` (default) nedeniyle upload sırasında süreli presigned URL veritabanına yazılıyordu. Süre dolunca medya admin panelde görünmez oluyordu.
+
+**Değişiklikler özeti:**
+1. `DOOH_PERSISTENT_MEDIA_URL` default=True yapıldı; yeni yüklemelerde presigned URL DB'ye yazılmıyor.
+2. `Creative.active_object_key` modeli ve migration 0026 eklendi.
+3. `CreativeSerializer` + `active_object_key`; HouseAd video kısıtlaması kaldırıldı.
+4. `CreativeViewSet` ve `HouseAdViewSet`'e `/download/` streaming action eklendi (SuperAdmin, Content-Disposition:attachment).
+5. `backfill_media_object_keys` komutu `active_media_url` backfill'ini de destekliyor.
+6. `CampaignWizard.vue`: HTML5 video player + görsel thumbnail, Bekleme/İşlem medya ayrımı, `active_object_key` takibi.
+7. `HouseAdManagement.vue` yeni sayfa (CRUD + medya önizleme + indirme).
+8. Router + AdminLayout güncellendi.
+
+**API (additive):** `GET /api/campaigns/v2/creatives/{id}/download/`, `GET /api/campaigns/v2/house-ads/{id}/download/`
+**Test:** 13 yeni test, test_closure C01 + test_house_ad_validation HA08 güncellendi (305 passed).
+
+---
+
+## 2026-08-15
+
+### [Backend/Frontend] Görüş ve Destek (Ticket) Sistemi
+
+**Değişiklik:** Pharmacy ve Admin panellerinde kullanılacak tam kapsamlı destek talebi sistemi eklendi.
+
+**Backend (`apps.destek`):**
+- `DestekParametresi` — TALEP_TURU/ALAN/ALT_KONU/DURUM gruplarını yöneten tek parametrik tablo.
+- `TalepSayac` — Concurrency-safe yıllık sayaç (`select_for_update`). `count+1` kullanılmadı.
+- `DestekTalebi` — Ticket modeli (talep_no: `EISA-YYYY-NNNNNN`, PROTECT FK'lar).
+- `DestekYorumu` — Append-only yorum geçmişi; durum otomatik geçişleri (admin→YANITLANDI, eczacı cevabı→INCELENIYOR).
+- API: `/api/destek/parametreler/`, `/api/destek/talepler/` (list/create/retrieve + yorum-ekle/durum-degistir/yeni-sayisi).
+- Queryset izolasyonu: eczacı yalnız kendi eczanesinin taleplerini görür.
+- 40 backend testi; tamamı geçiyor.
+
+**Frontend:**
+- `DestekTalepleri.vue` (pharmacist) — Karşılama banner, yeni talep formu, liste, detay modal + konuşma.
+- `DestekYonetimi.vue` (admin) — Filtreli liste, detay modal, yorum ekleme, durum değiştirme.
+- `AdminLayout.vue` — "Görüş ve Destek Yönetimi" ve "Görüş ve Destek" nav öğeleri; Yeni sayısı badge.
+- Router: `/admin/destek`, `/pharmacist/destek`.
+
+**Dosyalar:**
+- `backend/apps/destek/` (yeni app — models, serializers, views, urls, migrations, seed, tests)
+- `backend/core_api/settings.py`, `core_api/urls.py`
+- `web_panels/src/views/admin/DestekYonetimi.vue` (yeni)
+- `web_panels/src/views/pharmacist/DestekTalepleri.vue` (yeni)
+- `web_panels/src/router/index.js`, `AdminLayout.vue`, `services/api.js`, `styles.css`
+
+---
+
+### [Backend/Frontend] Dashboard Satış İstatistikleri, Kiosk Hareketleri Satış Sekmesi, AutoComplete
+
+**Değişiklik:** Üç özellik birlikte uygulandı:
+
+1. **Dashboard Satış İstatistikleri:**  
+   - `AdminDashboardView` ve `EczaciDashboardView` API'lerine `satis_sayisi` ve `en_cok_satilan_etken_madde` eklendi.  
+   - Opsiyonel `start_date` / `end_date` query parametreleriyle tarih filtresi.  
+   - Eczacı yalnız kendi eczanesine ait veriye erişir (backend queryset scope).  
+   - Admin/Eczacı Dashboard UI'larına iki yeni KPI kartı ve tarih filtreli "Satış Özeti" paneli eklendi.
+
+2. **Kiosk Hareketleri Satış Sekmesi:**  
+   - `_build_oturum_queryset`'e `?sold=true|false` filtresi eklendi.  
+   - `KioskActivityView`, `sold=true` isteklerinde `prefetch_related` uyguluyor (N+1 yok).  
+   - `KioskActivityListSerializer`'a `sold` ve `etken_madde_adlari` alanları eklendi.  
+   - Admin ve Eczacı KioskActivities panellerine "Satışlar" sekmesi eklendi.
+
+3. **Kiosk/Eczane AutoComplete:**  
+   - Admin KioskActivities: il/ilçe/eczane/kiosk 4'lü cascading `<select>` kaldırıldı; yerine "İl/İlçe/Eczane" ve "İl/İlçe/Eczane/Kiosk" birleşik etiketli 2 EisaLookup eklendi.  
+   - Eczacı KioskActivities: kiosk `<select>` → EisaLookup (dashboard'dan kiosk listesi).  
+   - Tüm seçim sonuçları mevcut kiosk/eczane ID değerini API'ye iletmeye devam eder.
+
+**Yetkilendirme:** Tüm sold filtreleri ve istatistikler backend queryset seviyesinde eczane scope ile korunmaktadır. Frontend seçimlerine güvenilmiyor.
+
+**Dosyalar:**  
+- `backend/apps/analytics/views.py` — sold filtresi, AdminDashboard sold stats, KioskActivityView prefetch  
+- `backend/apps/analytics/serializers.py` — KioskActivityListSerializer sold + etken_madde_adlari  
+- `backend/apps/pharmacies/dashboard.py` — EczaciDashboard sold stats  
+- `backend/apps/analytics/tests/test_sold_stats.py` — 13 yeni test (hepsi geçiyor)  
+- `web_panels/src/views/admin/Dashboard.vue` — sold KPI kartları, tarih filtresi  
+- `web_panels/src/views/pharmacist/Dashboard.vue` — sold KPI kartları, tarih filtresi  
+- `web_panels/src/views/admin/KioskActivities.vue` — Satışlar sekmesi, EisaLookup AutoComplete  
+- `web_panels/src/views/pharmacist/KioskActivities.vue` — Satışlar sekmesi, EisaLookup kiosk  
+- `web_panels/src/services/analytics.js` — getAdminDashboard() eklendi
+
+**API eklenti:** `GET /api/analytics/admin-dashboard/` → `satis_sayisi`, `en_cok_satilan_etken_madde` (mevcut alanlar korundu); `GET /api/pharmacies/me/dashboard/` → aynı. `GET /api/analytics/kiosk-activities/?sold=true|false` yeni filtre.
+
+---
+
+## 2026-08-12
+
+### [Backend/DOOH] Aktivasyon timeout düzeltmesi — queue tabanlı horizon aktivasyon
+
+**Değişiklik:** `POST /api/campaigns/v2/campaigns/{id}/activate/` artık kampanyanın tüm tarih aralığı için senkron playlist üretmiyor. Endpoint doğrulama yapıp üretimi mevcut DB-backed queue'ya (`GenerationJob`) bırakıyor; kapsam yalnız rolling horizon (varsayılan 3 gün).
+
+**Kritik davranışlar:**
+- GUARANTEED için horizon pre-check başarısızsa 409 dönüyor ve `campaign_activate` job enqueue edilmiyor (kısmi publish başlamaz).
+- Tekrarlı aktivasyonlar mevcut dedupe/coalesce (`kd:{kiosk_id}:{date}`) ile duplicate `PENDING` job üretmiyor.
+- `PlacementEngineV2` date filtreleri timezone-aware gün sınırlarıyla düzeltildi; naive datetime RuntimeWarning giderildi.
+- `PlaylistItem` persistlerinde `bulk_create(batch_size=500)` kullanıldı.
+
+**Dosyalar:** `backend/apps/campaigns/services/activation_service.py`, `backend/apps/campaigns/views_v2.py`, `backend/apps/campaigns/services/placement_engine_v2.py`, `backend/apps/campaigns/services/scheduler.py`, `backend/apps/campaigns/tests/test_faz3_simulation_activation.py`, `docs/ai/06-db-and-api-contracts.md`, `docs/ai/08-dooh-advertising.md`
+
+---
+
+### [Kiosk Edge UI] WifiSetupScreen — Wi-Fi yanlış-negatif reconciliation düzeltmesi
+
+**Değişiklik:** `/wifi-connect` HTTP isteği hata verdiğinde OS gerçekte bağlanmış olsa bile ekran koşulsuz başarısız sayıyordu. Saha bulgusu: `wlp5s0 wifi bağlandı MedinceAP` iken "Beklenmedik bir hata oluştu" gösterilmesi ve `connected` eventi üretilmemesi.
+
+**Root cause:** `connect()` içinde `catch(err)` → koşulsuz `connectError = ...` ataması. Wi-Fi bağlantı durumu hiç sorgulanmıyordu.
+
+**Çözüm:** `/wifi-connect` hata verirse, `fetchWifiStatus()` ile `/wifi-status` üzerinden kısa ve sınırlı poll (3 deneme × 2 sn). Seçilen SSID aktif bağlı ağ olarak doğrulanırsa `connected` eventi gönderilir, hata gösterilmez. Gerçek başarısızlıklarda orijinal hata gösterilmeye devam eder. `_reconcileId` guard ile duplicate event ve stale poll koruması. `onDestroy` ile pending timer/resolver temizliği.
+
+**Dosyalar:** `kiosk_edge/ui/src/components/WifiSetupScreen.svelte` (tek üretim dosyası), `kiosk_edge/ui/src/__tests__/WifiSetupScreen.test.js` (yeni test dosyası — 7 test, tümü geçti)
+
+**Etki:** Wi-Fi bağlantısı başarılı ancak HTTP yanıtı başarısız olduğunda kullanıcı doğru şekilde ana/idle ekrana yönlendirilir. Yanlış şifre gibi gerçek başarısızlıklar hata olarak gösterilmeye devam eder.
+
+---
+
+## 2026-08-11
+
+### [Backend + Kiosk Edge + Web Panels] Barkod Logo Yönetimi — düzeltmeler (r2)
+
+**Değişiklik:** İlk uygulamadaki 8 açık kapatıldı.
+
+1. **PROTECT FK**: `OturumLogu.barkod_logo` SET_NULL→PROTECT. `0014` migration rollback+fix. Fiziksel logo silme 405.
+2. **PNG doğrulama yeniden yazıldı**: stdlib (struct+zlib, Pillow yok). Piksel decode: RGBA opak kabul; alfa<255 red; RGB renkliyse red; tRNS red; palette gri kontrolü. `0002_alter_*` migration eklendi.
+3. **Atomik commit**: `commitBasariliBaski(db, logoId, idempotencyKey)` — counter+cursor+outbox tek transaction. Süreç çökmesi dokümante edildi.
+4. **Bozuk aday atla**: `buildReceiptBuffer({logoCandidates})` tüm adayları bellekte dener; `sendToTransport` tek seferlik. `getOrderedLogoCandidates(db)` eklendi.
+5. **Yetki testleri**: Anonim/eczacı red, superadmin kabul.
+6. **Panel**: `npm test` (57 test, 5 dosya) + `npm run build` (✓) çalıştırıldı.
+7. **Dokümantasyon**: 01, 02, 03, 05, 06, 07 güncellendi.
+8. **Son kontroller**: `manage.py check` ✓, `makemigrations --check` ✓, backend 566 test ✓, edge 170 test ✓.
+
+**Dosyalar:** `apps/barkod_logo/serializers.py`, `apps/barkod_logo/migrations/0002_*`, `apps/analytics/models.py`, `apps/analytics/migrations/0014_*`, `apps/barkod_logo/tests/test_barkod_logo.py`, `kiosk_edge/api-node/src/{barkodLogoService,printer,server}.js`, `kiosk_edge/api-node/tests/{barkodLogo,printerBuffer,offline_handler}.test.js`, `docs/ai/{01,02,03,05,06,07,99}-*.md`
+
+---
+
+### [Backend + Kiosk Edge + Web Panels] Barkod Logo Yönetimi — yeni özellik
+
+**Değişiklik:** Kiosk fiş baskısında sabit `e-ISA` başlığının yerini alacak bağımsız logo rotasyon sistemi.
+
+**Backend:**
+- Yeni `apps.barkod_logo` uygulaması: `BarkodLogo` modeli (UUID PK, ad, media_url, object_key, checksum, baslangic/bitis_zamani, aktif, gunluk_baski_limiti, hedef_kiosklar M2M), migration `0001_initial`.
+- `/api/barkod-logo/logolar/` (ModelViewSet, SuperAdmin), `/api/barkod-logo/upload-gorsel/` (PNG doğrulama: format, 336×336, ≤1 MB, alfa kanalı).
+- `OturumLogu.barkod_logo` FK (SET_NULL), migration `analytics/0014`.
+- `KioskCatalogView`: `barkod_logolar` snapshot (aktif + bitis_zamani > now + hedef kiosk).
+- Session ingest: opsiyonel `barkod_logo_id` alanı; gecikmiş outbox logo pasifleşmiş olsa bile kabul edilir.
+
+**Kiosk Edge:**
+- SQLite: `barkod_logolar`, `barkod_logo_baski_sayaclari` tabloları (SCHEMA_VERSION değişmedi; `CREATE TABLE IF NOT EXISTS`).
+- `barkodLogoService.js`: round-robin (`last_barkod_logo_id`), günlük sayaç, cache download.
+- `printer.js`: `pngToEscposRaster()` — built-in `node:zlib` ile PNG → ESC/POS GS v 0 raster.
+- `server.js`: logo adayı seç → yazdır → başarılıysa sayaç/cursor/outbox_payload güncelle.
+- `scheduler.js`: `pullFromCentral`'da `barkod_logolar` snapshot sync.
+
+**Web Panels:** `BarkodLogoYonetimi.vue`, router `/admin/barkod-logolar`, AdminLayout menüsü.
+
+**Testler:** 20 backend + 162 edge (tümü pass). Fiziksel yazıcı testi yapılmadı.
+
+**Dosyalar:** `apps/barkod_logo/**`, `apps/analytics/migrations/0014*`, `apps/analytics/models.py`, `apps/analytics/serializers.py`, `apps/analytics/services.py`, `apps/kiosk_api/views.py`, `core_api/settings.py`, `core_api/urls.py`, `kiosk_edge/api-node/src/{barkodLogoService,printer,server,scheduler,db}.js`, `kiosk_edge/api-node/tests/{barkodLogo,helpers,offline_handler}.js`, `web_panels/src/views/admin/BarkodLogoYonetimi.vue`, `web_panels/src/router/index.js`, `web_panels/src/views/admin/AdminLayout.vue`
+
+---
+
+### [Kiosk Edge] 5 Issue Fix — QR offline, HAYIR butonu, etken madde kutuları, logo, AdPromo konumu
+
+**QR Gerçek Kök Neden:** `server.js`'de `!hasSlot` bloğu senkron backend çağrısı yapıyordu; backend kapalıyken 503 döndürüyor, App.svelte'de `completed=true` için try/catch yoktu → UI çöküyordu.
+
+**Değişiklikler:**
+1. **QR offline-first**: `server.js` `!hasSlot` → anında `503 kiosk_no_missing` (eski senkron backend fallback kaldırıldı). Sync-durum polling endpoint `GET /api/oturum/sync-durum/:key` eklendi. `api.js` `submitSession` artık `syncDurum` döner; `fetchSessionSyncStatus` eklendi. App.svelte `doSubmitSession`/`doSubmitConsult` hata yakalamaya alındı; result store'a `syncDurum` ve `idempotencyKey` eklendi. ResultScreen 3s/+8s sonra durum polllar; gönderilmemişse köşede koyu sarı ünlem ikonu gösterir.
+2. **HAYIR butonu koyu gri**: QuestionScreen.svelte `.btn-hayir` scoped class → `#4B5563/#374151` gradient.
+3. **Etken madde kutuları**: ResultScreen ana/destek/ek ayrımı kaldırıldı; tüm `recs` eşit beyaz kutu (`ingredient-box`) koyu kırmızı (`#7f1d1d`) zemin üzerinde gösterilir.
+4. **Logo**: ResultScreen'deki `e-İSA` metin logosu kaldırıldı; `<Logo height="40px" />` kullanıldı.
+5. **AdPromo konumu**: `.ad-promo` `align-items: center → flex-end`, normal: `padding-bottom:20px`, large: `padding-bottom:48px`.
+
+**Dosyalar:** `kiosk_edge/api-node/src/server.js`, `kiosk_edge/ui/src/lib/api.js`, `kiosk_edge/ui/src/App.svelte`, `kiosk_edge/ui/src/components/ResultScreen.svelte`, `kiosk_edge/ui/src/components/QuestionScreen.svelte`, `kiosk_edge/ui/src/components/AdPromo.svelte`
+**Build:** `vite build` ✓ 142 modül, 0 hata.
+
+---
+
+## 2026-08-09
+
+
+### [Web Panels + Backend] 4 Issue Fix — video aktif medya, job worker, video thumbnail, yayın akışı
+
+**Değişiklik:**
+1. **CampaignWizard — active_media_url video desteği**: İşlem ekranı alt alan upload `accept="image/*"` → `accept="image/*,video/mp4,video/webm"`; preview `<img>` → `isVideoUrl()` yardımcısı ile koşullu video/image gösterimi. Backend `Creative.active_media_url` kısıtsız URLField olduğundan değişiklik gerekmedi.
+2. **run_scheduler.py — drain_queue job eklendi**: `drain_queue` APScheduler'a `IntervalTrigger(seconds=30)` ile eklendi. Bu eksiklik nedeniyle `invalidation_service` tarafından üretilen PENDING GenerationJob'lar hiç işlenmiyordu; kampanyalar kioskına ulaşmıyordu. Tek gerçek kod kaynağı: scheduler servisi `drain_queue`'yu kaydetmiyordu.
+3. **CampaignWizard — video thumbnail**: Kampanya listesinde `<img :src="thumbOf(c)">` → `isVideoUrl()` kontrolüyle video kartı (ikon+etiket) gösterimi; video için `<img>` render edilmez.
+4. **KioskActivities — Yayın Akışı sekmesi**: Yeni "Yayın Akışı" tab; kiosk+tarih seçimi; saat-mutlak offset ile "şu an yayında" hesabı; kiosk online/geride/offline uyarısı; MediaView-uyumlu video/image preview; tüm günün saatlik playlist kartları. Backend: `GET /api/campaigns/v2/playlists/day-stream/` (read-only, N+1 yok, `select_related/prefetch_related`).
+
+**Dosyalar:**
+- `web_panels/src/views/admin/CampaignWizard.vue` — video accept, isVideoUrl helper, video-thumb-placeholder CSS
+- `web_panels/src/views/admin/KioskActivities.vue` — Yayın Akışı tab + state + template + scoped CSS
+- `web_panels/src/services/dooh.js` — `getKioskDayStream()` eklendi
+- `backend/apps/campaigns/management/commands/run_scheduler.py` — drain_queue job kaydı
+- `backend/apps/campaigns/views_v2.py` — `KioskDayStreamView` eklendi (read-only)
+- `backend/apps/campaigns/urls.py` — day-stream URL kaydı
+- `backend/apps/campaigns/tests/test_issue_fixes_2026_08.py` — 12 yeni test (T01–T10)
+
+**DB migration/schema:** YOK — tüm değişiklikler mevcut şema üzerinde.
+**Testler:** 285 passed, 7 skipped (backend); web_panels build ✓ (7.30s).
+**Deployment notu:** `scheduler` servisi yeniden başlatılmalıdır: `python manage.py run_scheduler`. Yeni `drain_queue` job kayıtlandıktan sonra PENDING job'lar 30 saniye içinde işlenir.
+
+### [Backend + Web Panels] Yayın Akışı desired/applied düzeltmesi (E2E doğrulama sonrası)
+
+**Değişiklik:** Gerçek E2E + browser doğrulaması sırasında day-stream endpoint'in `desired_version`'ı `KioskDesiredBundle`'dan okuduğu (her zaman boş — Faz 5 stub) tespit edildi. Sistemin canonical alanlarına çevrildi: `desired_version = Kiosk.last_playlist_version`, `applied_version = Kiosk.applied_playlist_version` (+ `applied_horizon_end`, `playlist_applied_at`). Frontend `kioskSyncStatus` custom mantık yerine ortak `calcKioskRolloutStatus` composable'ını kullanır (offline/behind/ack_pending/no_publish/synced). Böylece Control Center ile Yayın Akışı aynı rollout sözleşmesini paylaşır.
+
+**Dosyalar:**
+- `backend/apps/campaigns/views_v2.py` — `KioskDayStreamView` canonical desired/applied (KioskDesiredBundle kaldırıldı)
+- `web_panels/src/views/admin/KioskActivities.vue` — `calcKioskRolloutStatus` reuse + desired/applied gösterim
+- `backend/apps/campaigns/tests/test_issue_fixes_2026_08.py` — 16 test (T01–T10 + T06b param-required, T06c canonical desired/applied, T06d N+1 max-query, T06e offset 0..3599)
+
+**Gerçek E2E doğrulaması (local SQLite + run_scheduler):** Campaign create → 6 PENDING job → drain_queue (30sn interval) → RUNNING → DONE → 144 Playlist / 1440 PlaylistItem → `last_playlist_version` (desired) 6→9. attempt_count=1 (çift işleme yok), 0 FAILED. Browser: 13 senaryo screenshot (`docs/qa/screenshots-2026-08-09/`), console'da kırık image/taşma yok, video hiçbir yerde `<img src="*.mp4">` değil, liste kartlarında autoplay yok.
+
+**DB migration/schema:** YOK.
+
+---
+
+## 2026-08-06
+
+### [Backend+Kiosk+WebPanel] İçerik Yönetimi paneli, Danışma sıralama, Overflow göstergeleri
+
+**Değişiklik:**
+- `ContentManagement.vue` (yeni): İçerik Yönetimi admin sayfası; HouseAd CRUD, kiosk overlay önizleme, image-only upload (`media_kind=image`). Menü/başlık/form/bildirimde "HouseAd" terimi yok.
+- `dooh.js`: `updateHouseAd`, `deleteHouseAd` eklendi; `uploadMedia(file, mediaKind)` imzası genişletildi.
+- `router/index.js` + `AdminLayout.vue`: `/admin/content-management` route + menü kaydı "İçerik Yönetimi".
+- `Danisma.sira`: `PositiveSmallIntegerField(default=100)` eklendi; `ordering = ("sira","ad")`; migration `0012_add_danisma_sira`.
+- `DanismaSerializer` + `DanismaSyncSerializer`: `sira` alanı eklendi.
+- `db.js`: idempotent `ALTER TABLE danisma_kategorileri ADD COLUMN sira` (SCHEMA_VERSION=14 sabit — DB reset yok).
+- `scheduler.js` `upsertDanismaKategori()`: `sira ?? 100` eklendi.
+- `ConsultScreen.svelte`: `_bySira` sıralaması; alt kategoriler de sıralı; overflow göstergeleri (gradient, rozet, pozisyon çubuğu, ResizeObserver, onDestroy cleanup).
+- `DanismaYonetimi.vue`: `sira` form alanı eklendi.
+- `CategoryScreen.svelte`: overflow göstergeleri (aynı mantık); `onMount`/`onDestroy` cleanup; alt-kategori gezinmesinde scroll sıfırlama.
+
+**Dosyalar:** `web_panels/src/views/admin/ContentManagement.vue` (yeni), `dooh.js`, `router/index.js`, `AdminLayout.vue`, `DanismaYonetimi.vue`; `backend/apps/products/models.py`, `serializers.py`, `migrations/0012`; `kiosk_edge/api-node/src/{db,scheduler}.js`; `kiosk_edge/ui/src/components/{ConsultScreen,CategoryScreen}.svelte`
+**Testler:** Backend 513 passed; kiosk UI build ✓ (854ms); web_panels build ✓ (5.78s)
+
+---
+
+### [Backend+Kiosk UI] HouseAd image-only, IdleScreen paid/HouseAd ayrımı, Soru geri dönüşü, Başka Şikayet Seç
+
+**Değişiklik:**
+- `MediaUploadView`: `media_kind=image` parametresiyle image-only mod; `IMAGE_ONLY_TYPES={jpeg,png,webp}`; magic-byte sniff (JPEG/PNG/WebP imza doğrulaması); creative upload'u bozulmadı.
+- `HouseAdSerializer.validate_media_url`: video uzantılarını reddeden ikinci savunma katmanı.
+- `AdStrip.svelte`: `asset_type === 'creative'` filtresi — house_ad öğeleri işlem ekranında artık gösterilmiyor.
+- `IdleScreen.svelte`: `$playlistItems.asset_type` metadata korunarak paid/house_ad/fallback üç mod. Recursive `setTimeout` + genToken video yarış kilidi. `ROTATE_MS` sabit kaldırıldı; per-item `duration_seconds` kullanılıyor. AdPromo hiçbir modda tam ekran arka plan değil.
+- `AdPromo.svelte`: `floatCard` prop — `position:relative; background:transparent` ile container konumlandırması.
+- `QuestionScreen.svelte`: geri butonu (`currentQIndex > 0`), seçili cevap vurgusu (`btn-answer-selected`), `currentAnswers` store import.
+- `App.svelte`: `goBackQuestion()` — cevaplar korunur, sadece farklı cevap verilince sonrakiler temizlenir. `startNewComplaint()` — yaş/cinsiyet korur, kategori+QR temizler, yeni sessionId.
+- `ResultScreen.svelte`: "Başka Bir Şikayet Seç" butonu → `dispatch('newComplaint')`.
+- Yeni test: `apps/campaigns/tests/test_house_ad_validation.py` (13 test, hepsi geçti).
+
+**Dosyalar:** `backend/apps/campaigns/views.py`, `serializers.py`, `tests/test_house_ad_validation.py`; `kiosk_edge/ui/src/components/{AdStrip,IdleScreen,AdPromo,QuestionScreen,ResultScreen}.svelte`; `kiosk_edge/ui/src/App.svelte`
+**Testler:** Backend 513 passed; kiosk UI build ✓ (843ms)
+
+---
+
+### [Backend+Edge+WebPanel] QR/Session akışı offline-first hale getirildi
+
+**Değişiklik:**
+- `Kiosk.eczane_kiosk_no` (1-31, eczane-unique) eklendi; bootstrap response'a dahil edildi; mevcut kiosklar backfill edildi (pharmacies migration 0010).
+- `OturumLogu.eczane` FK (nullable, SET_NULL) eklendi; `qr_kodu` nullable + max_length=9 yapıldı; global unique kaldırılıp eczane-scoped conditional unique eklendi (analytics migration 0012).
+- `ingest_session_items()`: kiosk'tan gelen 9-char Crockford QR doğrulanıp kabul edilir; eski kiosklarda 8-char backend üretimi fallback olarak korunur; tamamlandi=False → qr_kodu=null.
+- Eczacı QR sorgusu: önce `eczane_id` scope'lanır, başka eczane kodu 403 yerine 404 döner.
+- Edge `qrGen.js`: Crockford Base32 QR üretimi, mantıksal sayaç (monoton), checksum.
+- Edge `db.js` v14: `qr_counter` singleton tablosu eklendi.
+- Edge `server.js`: tamamlanan oturum QR'ı yerelde üretilir (atomik txn), hemen döner; backend push `setImmediate` ile arka planda çalışır.
+- Edge `provisioning.js`: `eczane_kiosk_no` bootstrap response'tan SQLite'a kaydedilir; `settings.eczaneKioskNo` olarak yayılır.
+- `QrScan.vue`: 8 ve 9 karakter formatları kabul edilir; Crockford checksum doğrulama; başka eczane mesajı kaldırıldı.
+- Hedefli testler: backend 155 passed, edge qrGen 43 passed; server.test.js pre-existing failure (scheduler.js encoding issue, bizim değil).
+
+**Dosyalar:** backend/apps/pharmacies/models.py, migrations/0010; backend/apps/analytics/models.py, services.py, views.py, migrations/0012; backend/apps/kiosk_api/views.py; backend/apps/analytics/tests/test_qr_flow.py, test_session_normalization.py; kiosk_edge/api-node/src/{qrGen.js,db.js,server.js,provisioning.js}; kiosk_edge/api-node/tests/qrGen.test.js; web_panels/src/views/pharmacist/QrScan.vue
+**Migration:** pharmacies/0010 (eczane_kiosk_no + backfill), analytics/0012 (eczane FK + qr nullable + constraint)
+
+---
+
+## 2026-08-01
+
+### [Backend+Frontend] Eczacı kampanyası: il/ilçe hedefleme + duration validation + UI düzeltmeleri
+
+**Değişiklik:**
+- `PharmacyCampaign.target_iller` + `target_ilceler` M2M eklendi (migration 0024).
+- `duration_seconds` default 15; serializer'da yalnız 15/30/60 kabul edilir (eski kayıt aynı değerle güncellenebilir).
+- Feed OR mantığı: eczane, il veya ilçe eşleşmesi; hiç hedefi olmayan kampanya feed'e girmez.
+- EisaLookup entegrasyonu düzeltildi: eczaneler `/api/pharmacies/` endpoint'inden yüklenir; il/ilçe/eczane seçimi v-model + watch ile çalışır.
+- Grid thumbnail: 120×68px, `object-fit: contain`, sabit yükseklik.
+- Duration: serbest input → 15/30/60 seçenekli select.
+- Backend test sayısı: 19 geçti.
+
+**Dosyalar:** backend/apps/campaigns/{models,serializers,views_v2}.py; migrations/0024; tests/test_pharmacy_campaign.py; web_panels/src/views/admin/PharmacyCampaigns.vue
+**Build:** web_panels ✅ (2.45s)
+
+---
+
+## 2026-07-31
+
+### [Backend+Kiosk+Frontend] Kiosk çift medya varyantı + Eczacı paneli kampanyaları
+
+**Değişiklik:**
+- `Creative.active_media_url` nullable alan eklendi (migration 0021); bekleme (portrait) ve alt alan (~7:5) ayrı görseller.
+- `PharmacyCampaign` modeli eklendi (migration 0022); kiosk sisteminden bağımsız eczacı paneli kampanyaları.
+- `KioskCreativeSyncSerializer`, `KioskPlaylistItemSerializer` — `active_media_url` additive eklendi.
+- api-node: `db.js` SCHEMA_VERSION 12; creatives kolonu; `scheduler.js` upsert; `mediaCache.js` `_active` suffix cache; `server.js` playlist/current LEFT JOIN ile `active_media_url`.
+- `AdStrip.svelte`: `active_media_url` varsa cover, yoksa `media_url` + `object-fit: contain` (letterbox).
+- Admin: CampaignWizard step 2 → iki upload alanı (Bekleme/İşlem ekranı); AdminLayout yeni menü.
+- Yeni: `PharmacyCampaigns.vue` (admin), `PharmacistCampaignDisplay.vue` (eczacı şerit + 90s idle overlay).
+- Feed endpoint: `GET /api/campaigns/v2/pharmacy-campaigns/feed/` — `request.user.eczane_id` ile güvenli filtreleme.
+
+**Dosyalar:** backend/apps/campaigns/{models,serializers,views_v2,urls,migrations/0021-0022}.py; kiosk_edge/api-node/src/{db,scheduler,mediaCache,server}.js; kiosk_edge/ui/src/{components/AdStrip.svelte,app.css}; web_panels/src/{views/admin/{CampaignWizard,PharmacyCampaigns}.vue,components/pharmacist/PharmacistCampaignDisplay.vue,views/admin/AdminLayout.vue,router/index.js,styles.css}
+**Testler:** 246 passed, 7 skipped (5 yeni PC-01..05 testi dahil)
+
+---
+
+## 2026-07-24
+
+### [kiosk_edge] Tam ekran portré CSS — 100vw × 100vh
+
+**Değişiklik:** `app.css` — `body` padding/centering kaldırıldı; `.kiosk` `width: 100vw; height: 100vh` yapıldı (`border-radius`, `box-shadow`, sabit 794×1123 px kaldırıldı). 1080×1920 ve 1440×2560 her ikisi de 9:16 oran olduğundan aynı kural ikisini de tam doldurur. Önceki media query (min-width: 1100px) supersede edildiği için kaldırıldı.
+**Dosyalar:** `kiosk_edge/ui/src/app.css`
+**Etki:** UI build ✅ (765ms). Scrollbar yok, taşma yok.
+
+**Değişiklik:**
+- `printer.js`: Fiş içeriği yenilendi — "e-ISA" (bold) + "Saglikli gunler diler." + QR + QR metin değeri. Kategori/kod/açıklama satırları kaldırıldı. ESC/POS QR modül boyutu 6 → 16 (~42 mm @ 203 DPI, ESC/POS maks.).
+- `app.css`: `@media (min-width: 1100px) and (orientation: portrait)` kuralı eklendi. 1440 × 2560 ekranda `.kiosk` viewport genişliğini doldurur (794/1123 en-boy oranını koruyarak); 1080 × 1920 görünümü değişmez.
+
+**Dosyalar:** `kiosk_edge/api-node/src/printer.js`, `kiosk_edge/ui/src/app.css`
+**Etki:** Kiosk UI build ✅ (1.25s), printer.js syntax ✅. QR formatı/session akışı dokunulmadı.
+
+---
+
+## 2026-08-16
+
+### [Backend+WebPanel+KioskEdge+KioskUI] HouseAd kaldırıldı; İçerik Yönetimi başlık/metin idle içeriğine geçti
+
+**Değişiklik:** DOOH filler (HouseAd) sistemi uçtan uca kaldırıldı; playlist campaign-only oldu (boş playlist geçerli → kiosk idle ekranı). "İçerik Yönetimi" yeni başlık/metin tabanlı idle içeriğine dönüştürüldü.
+
+**Backend:**
+- `HouseAd` modeli/tablosu (`dooh_house_ads`), serializer, viewset (`/api/campaigns/v2/house-ads/`), scheduler Pass-4 filler, PlacementEngineV2 `_fill_house_ads`, kiosk sync `house_ads` KALDIRILDI (migration 0027).
+- `PlaylistItem.house_ad` + `PlayLog.house_ad` FK'leri kaldırıldı; `PlaylistItem.clean()` creative zorunlu (creative-only).
+- YENİ `IdleScreenContent` modeli (app: campaigns, tablo `dooh_idle_screen_contents`: `baslik`≤100, `metin`≤300, `aktif`) + CRUD API `GET/POST/PUT/PATCH/DELETE /api/campaigns/v2/idle-contents/` (JWT SuperAdmin, basename `dooh-idle-content`).
+- Kiosk sync artık `house_ads` yerine `idle_contents` (aktif; `KioskIdleContentSyncSerializer`) döner. Proof-of-play `house_ad_id` gelse de yok sayılır.
+
+**Kiosk Edge (api-node):** YENİ SQLite `idle_contents` tablosu; pull sync transaction içinde upsert + reconcile (offline'da son cache korunur); v15 idempotent migration `house_ads` tablosunu düşürür + `media_cache` house_ad satırlarını siler; YENİ salt okunur `GET /api/idle-contents` lokal endpoint.
+
+**Web panel:** "İçerik Yönetimi" (`/admin/content-management`) korundu ama yeni IdleScreenContent CRUD'unu açar (`ContentManagement.vue`; liste, ekle/düzenle/aktif-pasif/silme, 0/100 & 0/300 sayaç, sağlık uyarı notu, 1080×1920 önizleme). Eski `HouseAdManagement.vue` + `dooh.js` house-ad metotları kaldırıldı; yeni `listIdleContents/createIdleContent/updateIdleContent/deleteIdleContent`.
+
+**Kiosk UI:** YENİ `lib/idleContentStore.js` (shuffled-bag rotasyon, dwell 12–20s); `AdPromo` `large` varyantı → başlık (fade) + heartbeat (değişmedi) + metin (tek-seferlik typewriter) + SABİT CTA "Size özel öneriler için DOKUNUN". `small` varyant değişmedi. AdStrip/resolver/edge house_ad öğelerini defansif atlar.
+
+**Migration:** campaigns/0027 (HouseAd drop + IdleScreenContent), edge SQLite v15.
+
+---
+
+### [Kiosk UI] Kalp Atışı Animasyonu Güncelleme — Beyaz 3-Pikli + Smile Curve + Modüler Widget
+
+**Değişiklik:** Sponsor fallback ekranındaki animasyon özelleştirilerek yeni modüler widget olarak ayrıldı.
+
+**Yeni özellikler:**
+- **3 pikli kalp atışı:** Küçük-BÜYÜK-küçük ritim (ortadaki 2 kat büyük pik: y:40-160 vs y:80-100)
+- **Beyaz renk şeması:** Tüm animasyon beyaz (#fff) - gradient, çizgiler, halkalar, glow
+- **Gülen yüz (smile curve):** Kalp atışının altında bezier eğrisi `M220,130 Q260,150 Q300,130`
+- **Modüler yapı:** `HeartbeatAnimation.svelte` ayrı component (yeniden kullanılabilir)
+- **Daha büyük halkalar:** 140px başlangıç → 460px bitiş (önceki 120-420px)
+- **Döngü:** 2.8sn (önceki 2.6sn), yumuşak ve sakin
+- Animasyon `prefers-reduced-motion: reduce` durumunda durur
+
+**Dosyalar:**
+- `kiosk_edge/ui/src/components/HeartbeatAnimation.svelte` (YENİ - 250 satır)
+- `kiosk_edge/ui/src/components/AdPromo.svelte` (eski EKG kodu kaldırıldı, HeartbeatAnimation import)
+- `docs/ai/04-kiosk-edge-ui.md` (component #11 eklendi, numaralandırma güncellendi)
+
+**Test:** Build başarılı (93KB bundle), http://127.0.0.1:5173/ → animasyon görünür, dokunma çalışıyor, demographics geçişi OK.
+
+---
+
+## 2026-08-15
+
+### [Kiosk UI] İdeal/Attractor Ekranına Dekoratif EKG Animasyonu
+
+**Değişiklik:** Reklam olmadığında gösterilen sponsor fallback ekranına (AdPromo.svelte large varyant) sağlık teknolojisi temalı dekoratif animasyon eklendi.
+
+**Animasyon özellikleri:**
+- Yatay EKG çizgisi (soldan sağa ilerleyen parlak enerji izi, SVG `stroke-dasharray` + `stroke-dashoffset` animasyon)
+- İki pikli kalp atışı ritmi (gerçekçi EKG dalga formu, 2.6sn döngü)
+- Eş merkezli kırmızı halkalar (merkezden dışa yayılıp saydamlaşma, 3 halka 0s/0.15s/0.3s gecikme)
+- Merkez kırmızı glow efekti (`radial-gradient` + pulse)
+- E-İSA kırmızı (#B1121B), beyaz, koyu lacivert renk paleti
+- `clamp(460px, 28vw, 540px)` responsive boyut, ekran ortasında (~%48-52 yükseklik)
+- `pointer-events: none`, `aria-hidden="true"` — dokunma engellenmez
+- `prefers-reduced-motion: reduce` → animasyonlar durur, statik EKG + halkalar görünür
+
+**Korunan öğeler (DEĞIŞMEDI):**
+- Mevcut arka plan, renkler ve gradient
+- Üst logo, "Başlamak için dokunun" metni ve el ikonu
+- Alt "Bu alana sponsor olabilirsiniz" kartı (megafon + shimmer başlık)
+- Tüm öğelerin konumları, ölçüleri, stilleri
+- Mevcut dokunma/click davranışı (demographics geçişi)
+- Kampanya/house ad medya gösterimi (animasyon YOK, medya tam ekran gösterilir)
+- Playlist, MediaView, impression akışları
+- Responsive davranış
+- `AdPromo` küçük varyantında animasyon YOKTUR (yalnız `large` modda)
+
+**Teknik:** Inline SVG + CSS animasyonlar, harici dependency veya görsel dosya YOK. Chromium kiosk uyumlu, performans optimizasyonlu (küçük öğeler üzerinde glow, ağır filtre yok).
+
+**Dosyalar:** `kiosk_edge/ui/src/components/AdPromo.svelte` (HTML + CSS), `docs/ai/04-kiosk-edge-ui.md` (AdPromo açıklaması güncellendi)
+
+**Test:** Manuel doğrulama (http://127.0.0.1:5173/, idle ekran → sponsor fallback → animasyon görünür, dokunma → demographics ekran). Gerçek kampanya gösterilirken animasyon görünmez.
+
+---
+
+## 2026-08-15
+
+### [Backend/Frontend] Medya Kalıcı URL, Creative/HouseAd İndirme, HouseAd Yönetim Ekranı
+
+**Root cause:** `DOOH_PERSISTENT_MEDIA_URL=False` (default) nedeniyle upload sırasında süreli presigned URL veritabanına yazılıyordu. Süre dolunca medya admin panelde görünmez oluyordu.
+
+**Değişiklikler özeti:**
+1. `DOOH_PERSISTENT_MEDIA_URL` default=True yapıldı; yeni yüklemelerde presigned URL DB'ye yazılmıyor.
+2. `Creative.active_object_key` modeli ve migration 0026 eklendi.
+3. `CreativeSerializer` + `active_object_key`; HouseAd video kısıtlaması kaldırıldı.
+4. `CreativeViewSet` ve `HouseAdViewSet`'e `/download/` streaming action eklendi (SuperAdmin, Content-Disposition:attachment).
+5. `backfill_media_object_keys` komutu `active_media_url` backfill'ini de destekliyor.
+6. `CampaignWizard.vue`: HTML5 video player + görsel thumbnail, Bekleme/İşlem medya ayrımı, `active_object_key` takibi.
+7. `HouseAdManagement.vue` yeni sayfa (CRUD + medya önizleme + indirme).
+8. Router + AdminLayout güncellendi.
+
+**API (additive):** `GET /api/campaigns/v2/creatives/{id}/download/`, `GET /api/campaigns/v2/house-ads/{id}/download/`
+**Test:** 13 yeni test, test_closure C01 + test_house_ad_validation HA08 güncellendi (305 passed).
+
+---
+
+## 2026-08-15
+
+### [Backend/Frontend] Görüş ve Destek (Ticket) Sistemi
+
+**Değişiklik:** Pharmacy ve Admin panellerinde kullanılacak tam kapsamlı destek talebi sistemi eklendi.
+
+**Backend (`apps.destek`):**
+- `DestekParametresi` — TALEP_TURU/ALAN/ALT_KONU/DURUM gruplarını yöneten tek parametrik tablo.
+- `TalepSayac` — Concurrency-safe yıllık sayaç (`select_for_update`). `count+1` kullanılmadı.
+- `DestekTalebi` — Ticket modeli (talep_no: `EISA-YYYY-NNNNNN`, PROTECT FK'lar).
+- `DestekYorumu` — Append-only yorum geçmişi; durum otomatik geçişleri (admin→YANITLANDI, eczacı cevabı→INCELENIYOR).
+- API: `/api/destek/parametreler/`, `/api/destek/talepler/` (list/create/retrieve + yorum-ekle/durum-degistir/yeni-sayisi).
+- Queryset izolasyonu: eczacı yalnız kendi eczanesinin taleplerini görür.
+- 40 backend testi; tamamı geçiyor.
+
+**Frontend:**
+- `DestekTalepleri.vue` (pharmacist) — Karşılama banner, yeni talep formu, liste, detay modal + konuşma.
+- `DestekYonetimi.vue` (admin) — Filtreli liste, detay modal, yorum ekleme, durum değiştirme.
+- `AdminLayout.vue` — "Görüş ve Destek Yönetimi" ve "Görüş ve Destek" nav öğeleri; Yeni sayısı badge.
+- Router: `/admin/destek`, `/pharmacist/destek`.
+
+**Dosyalar:**
+- `backend/apps/destek/` (yeni app — models, serializers, views, urls, migrations, seed, tests)
+- `backend/core_api/settings.py`, `core_api/urls.py`
+- `web_panels/src/views/admin/DestekYonetimi.vue` (yeni)
+- `web_panels/src/views/pharmacist/DestekTalepleri.vue` (yeni)
+- `web_panels/src/router/index.js`, `AdminLayout.vue`, `services/api.js`, `styles.css`
+
+---
+
+### [Backend/Frontend] Dashboard Satış İstatistikleri, Kiosk Hareketleri Satış Sekmesi, AutoComplete
+
+**Değişiklik:** Üç özellik birlikte uygulandı:
+
+1. **Dashboard Satış İstatistikleri:**  
+   - `AdminDashboardView` ve `EczaciDashboardView` API'lerine `satis_sayisi` ve `en_cok_satilan_etken_madde` eklendi.  
+   - Opsiyonel `start_date` / `end_date` query parametreleriyle tarih filtresi.  
+   - Eczacı yalnız kendi eczanesine ait veriye erişir (backend queryset scope).  
+   - Admin/Eczacı Dashboard UI'larına iki yeni KPI kartı ve tarih filtreli "Satış Özeti" paneli eklendi.
+
+2. **Kiosk Hareketleri Satış Sekmesi:**  
+   - `_build_oturum_queryset`'e `?sold=true|false` filtresi eklendi.  
+   - `KioskActivityView`, `sold=true` isteklerinde `prefetch_related` uyguluyor (N+1 yok).  
+   - `KioskActivityListSerializer`'a `sold` ve `etken_madde_adlari` alanları eklendi.  
+   - Admin ve Eczacı KioskActivities panellerine "Satışlar" sekmesi eklendi.
+
+3. **Kiosk/Eczane AutoComplete:**  
+   - Admin KioskActivities: il/ilçe/eczane/kiosk 4'lü cascading `<select>` kaldırıldı; yerine "İl/İlçe/Eczane" ve "İl/İlçe/Eczane/Kiosk" birleşik etiketli 2 EisaLookup eklendi.  
+   - Eczacı KioskActivities: kiosk `<select>` → EisaLookup (dashboard'dan kiosk listesi).  
+   - Tüm seçim sonuçları mevcut kiosk/eczane ID değerini API'ye iletmeye devam eder.
+
+**Yetkilendirme:** Tüm sold filtreleri ve istatistikler backend queryset seviyesinde eczane scope ile korunmaktadır. Frontend seçimlerine güvenilmiyor.
+
+**Dosyalar:**  
+- `backend/apps/analytics/views.py` — sold filtresi, AdminDashboard sold stats, KioskActivityView prefetch  
+- `backend/apps/analytics/serializers.py` — KioskActivityListSerializer sold + etken_madde_adlari  
+- `backend/apps/pharmacies/dashboard.py` — EczaciDashboard sold stats  
+- `backend/apps/analytics/tests/test_sold_stats.py` — 13 yeni test (hepsi geçiyor)  
+- `web_panels/src/views/admin/Dashboard.vue` — sold KPI kartları, tarih filtresi  
+- `web_panels/src/views/pharmacist/Dashboard.vue` — sold KPI kartları, tarih filtresi  
+- `web_panels/src/views/admin/KioskActivities.vue` — Satışlar sekmesi, EisaLookup AutoComplete  
+- `web_panels/src/views/pharmacist/KioskActivities.vue` — Satışlar sekmesi, EisaLookup kiosk  
+- `web_panels/src/services/analytics.js` — getAdminDashboard() eklendi
+
+**API eklenti:** `GET /api/analytics/admin-dashboard/` → `satis_sayisi`, `en_cok_satilan_etken_madde` (mevcut alanlar korundu); `GET /api/pharmacies/me/dashboard/` → aynı. `GET /api/analytics/kiosk-activities/?sold=true|false` yeni filtre.
+
+---
+
+## 2026-08-12
+
+### [Backend/DOOH] Aktivasyon timeout düzeltmesi — queue tabanlı horizon aktivasyon
+
+**Değişiklik:** `POST /api/campaigns/v2/campaigns/{id}/activate/` artık kampanyanın tüm tarih aralığı için senkron playlist üretmiyor. Endpoint doğrulama yapıp üretimi mevcut DB-backed queue'ya (`GenerationJob`) bırakıyor; kapsam yalnız rolling horizon (varsayılan 3 gün).
+
+**Kritik davranışlar:**
+- GUARANTEED için horizon pre-check başarısızsa 409 dönüyor ve `campaign_activate` job enqueue edilmiyor (kısmi publish başlamaz).
+- Tekrarlı aktivasyonlar mevcut dedupe/coalesce (`kd:{kiosk_id}:{date}`) ile duplicate `PENDING` job üretmiyor.
+- `PlacementEngineV2` date filtreleri timezone-aware gün sınırlarıyla düzeltildi; naive datetime RuntimeWarning giderildi.
+- `PlaylistItem` persistlerinde `bulk_create(batch_size=500)` kullanıldı.
+
+**Dosyalar:** `backend/apps/campaigns/services/activation_service.py`, `backend/apps/campaigns/views_v2.py`, `backend/apps/campaigns/services/placement_engine_v2.py`, `backend/apps/campaigns/services/scheduler.py`, `backend/apps/campaigns/tests/test_faz3_simulation_activation.py`, `docs/ai/06-db-and-api-contracts.md`, `docs/ai/08-dooh-advertising.md`
+
+---
+
+### [Kiosk Edge UI] WifiSetupScreen — Wi-Fi yanlış-negatif reconciliation düzeltmesi
+
+**Değişiklik:** `/wifi-connect` HTTP isteği hata verdiğinde OS gerçekte bağlanmış olsa bile ekran koşulsuz başarısız sayıyordu. Saha bulgusu: `wlp5s0 wifi bağlandı MedinceAP` iken "Beklenmedik bir hata oluştu" gösterilmesi ve `connected` eventi üretilmemesi.
+
+**Root cause:** `connect()` içinde `catch(err)` → koşulsuz `connectError = ...` ataması. Wi-Fi bağlantı durumu hiç sorgulanmıyordu.
+
+**Çözüm:** `/wifi-connect` hata verirse, `fetchWifiStatus()` ile `/wifi-status` üzerinden kısa ve sınırlı poll (3 deneme × 2 sn). Seçilen SSID aktif bağlı ağ olarak doğrulanırsa `connected` eventi gönderilir, hata gösterilmez. Gerçek başarısızlıklarda orijinal hata gösterilmeye devam eder. `_reconcileId` guard ile duplicate event ve stale poll koruması. `onDestroy` ile pending timer/resolver temizliği.
+
+**Dosyalar:** `kiosk_edge/ui/src/components/WifiSetupScreen.svelte` (tek üretim dosyası), `kiosk_edge/ui/src/__tests__/WifiSetupScreen.test.js` (yeni test dosyası — 7 test, tümü geçti)
+
+**Etki:** Wi-Fi bağlantısı başarılı ancak HTTP yanıtı başarısız olduğunda kullanıcı doğru şekilde ana/idle ekrana yönlendirilir. Yanlış şifre gibi gerçek başarısızlıklar hata olarak gösterilmeye devam eder.
+
+---
+
+## 2026-08-11
+
+### [Backend + Kiosk Edge + Web Panels] Barkod Logo Yönetimi — düzeltmeler (r2)
+
+**Değişiklik:** İlk uygulamadaki 8 açık kapatıldı.
+
+1. **PROTECT FK**: `OturumLogu.barkod_logo` SET_NULL→PROTECT. `0014` migration rollback+fix. Fiziksel logo silme 405.
+2. **PNG doğrulama yeniden yazıldı**: stdlib (struct+zlib, Pillow yok). Piksel decode: RGBA opak kabul; alfa<255 red; RGB renkliyse red; tRNS red; palette gri kontrolü. `0002_alter_*` migration eklendi.
+3. **Atomik commit**: `commitBasariliBaski(db, logoId, idempotencyKey)` — counter+cursor+outbox tek transaction. Süreç çökmesi dokümante edildi.
+4. **Bozuk aday atla**: `buildReceiptBuffer({logoCandidates})` tüm adayları bellekte dener; `sendToTransport` tek seferlik. `getOrderedLogoCandidates(db)` eklendi.
+5. **Yetki testleri**: Anonim/eczacı red, superadmin kabul.
+6. **Panel**: `npm test` (57 test, 5 dosya) + `npm run build` (✓) çalıştırıldı.
+7. **Dokümantasyon**: 01, 02, 03, 05, 06, 07 güncellendi.
+8. **Son kontroller**: `manage.py check` ✓, `makemigrations --check` ✓, backend 566 test ✓, edge 170 test ✓.
+
+**Dosyalar:** `apps/barkod_logo/serializers.py`, `apps/barkod_logo/migrations/0002_*`, `apps/analytics/models.py`, `apps/analytics/migrations/0014_*`, `apps/barkod_logo/tests/test_barkod_logo.py`, `kiosk_edge/api-node/src/{barkodLogoService,printer,server}.js`, `kiosk_edge/api-node/tests/{barkodLogo,printerBuffer,offline_handler}.test.js`, `docs/ai/{01,02,03,05,06,07,99}-*.md`
+
+---
+
+### [Backend + Kiosk Edge + Web Panels] Barkod Logo Yönetimi — yeni özellik
+
+**Değişiklik:** Kiosk fiş baskısında sabit `e-ISA` başlığının yerini alacak bağımsız logo rotasyon sistemi.
+
+**Backend:**
+- Yeni `apps.barkod_logo` uygulaması: `BarkodLogo` modeli (UUID PK, ad, media_url, object_key, checksum, baslangic/bitis_zamani, aktif, gunluk_baski_limiti, hedef_kiosklar M2M), migration `0001_initial`.
+- `/api/barkod-logo/logolar/` (ModelViewSet, SuperAdmin), `/api/barkod-logo/upload-gorsel/` (PNG doğrulama: format, 336×336, ≤1 MB, alfa kanalı).
+- `OturumLogu.barkod_logo` FK (SET_NULL), migration `analytics/0014`.
+- `KioskCatalogView`: `barkod_logolar` snapshot (aktif + bitis_zamani > now + hedef kiosk).
+- Session ingest: opsiyonel `barkod_logo_id` alanı; gecikmiş outbox logo pasifleşmiş olsa bile kabul edilir.
+
+**Kiosk Edge:**
+- SQLite: `barkod_logolar`, `barkod_logo_baski_sayaclari` tabloları (SCHEMA_VERSION değişmedi; `CREATE TABLE IF NOT EXISTS`).
+- `barkodLogoService.js`: round-robin (`last_barkod_logo_id`), günlük sayaç, cache download.
+- `printer.js`: `pngToEscposRaster()` — built-in `node:zlib` ile PNG → ESC/POS GS v 0 raster.
+- `server.js`: logo adayı seç → yazdır → başarılıysa sayaç/cursor/outbox_payload güncelle.
+- `scheduler.js`: `pullFromCentral`'da `barkod_logolar` snapshot sync.
+
+**Web Panels:** `BarkodLogoYonetimi.vue`, router `/admin/barkod-logolar`, AdminLayout menüsü.
+
+**Testler:** 20 backend + 162 edge (tümü pass). Fiziksel yazıcı testi yapılmadı.
+
+**Dosyalar:** `apps/barkod_logo/**`, `apps/analytics/migrations/0014*`, `apps/analytics/models.py`, `apps/analytics/serializers.py`, `apps/analytics/services.py`, `apps/kiosk_api/views.py`, `core_api/settings.py`, `core_api/urls.py`, `kiosk_edge/api-node/src/{barkodLogoService,printer,server,scheduler,db}.js`, `kiosk_edge/api-node/tests/{barkodLogo,helpers,offline_handler}.js`, `web_panels/src/views/admin/BarkodLogoYonetimi.vue`, `web_panels/src/router/index.js`, `web_panels/src/views/admin/AdminLayout.vue`
+
+---
+
+### [Kiosk Edge] 5 Issue Fix — QR offline, HAYIR butonu, etken madde kutuları, logo, AdPromo konumu
+
+**QR Gerçek Kök Neden:** `server.js`'de `!hasSlot` bloğu senkron backend çağrısı yapıyordu; backend kapalıyken 503 döndürüyor, App.svelte'de `completed=true` için try/catch yoktu → UI çöküyordu.
+
+**Değişiklikler:**
+1. **QR offline-first**: `server.js` `!hasSlot` → anında `503 kiosk_no_missing` (eski senkron backend fallback kaldırıldı). Sync-durum polling endpoint `GET /api/oturum/sync-durum/:key` eklendi. `api.js` `submitSession` artık `syncDurum` döner; `fetchSessionSyncStatus` eklendi. App.svelte `doSubmitSession`/`doSubmitConsult` hata yakalamaya alındı; result store'a `syncDurum` ve `idempotencyKey` eklendi. ResultScreen 3s/+8s sonra durum polllar; gönderilmemişse köşede koyu sarı ünlem ikonu gösterir.
+2. **HAYIR butonu koyu gri**: QuestionScreen.svelte `.btn-hayir` scoped class → `#4B5563/#374151` gradient.
+3. **Etken madde kutuları**: ResultScreen ana/destek/ek ayrımı kaldırıldı; tüm `recs` eşit beyaz kutu (`ingredient-box`) koyu kırmızı (`#7f1d1d`) zemin üzerinde gösterilir.
+4. **Logo**: ResultScreen'deki `e-İSA` metin logosu kaldırıldı; `<Logo height="40px" />` kullanıldı.
+5. **AdPromo konumu**: `.ad-promo` `align-items: center → flex-end`, normal: `padding-bottom:20px`, large: `padding-bottom:48px`.
+
+**Dosyalar:** `kiosk_edge/api-node/src/server.js`, `kiosk_edge/ui/src/lib/api.js`, `kiosk_edge/ui/src/App.svelte`, `kiosk_edge/ui/src/components/ResultScreen.svelte`, `kiosk_edge/ui/src/components/QuestionScreen.svelte`, `kiosk_edge/ui/src/components/AdPromo.svelte`
+**Build:** `vite build` ✓ 142 modül, 0 hata.
+
+---
+
+## 2026-08-09
+
+
+### [Web Panels + Backend] 4 Issue Fix — video aktif medya, job worker, video thumbnail, yayın akışı
+
+**Değişiklik:**
+1. **CampaignWizard — active_media_url video desteği**: İşlem ekranı alt alan upload `accept="image/*"` → `accept="image/*,video/mp4,video/webm"`; preview `<img>` → `isVideoUrl()` yardımcısı ile koşullu video/image gösterimi. Backend `Creative.active_media_url` kısıtsız URLField olduğundan değişiklik gerekmedi.
+2. **run_scheduler.py — drain_queue job eklendi**: `drain_queue` APScheduler'a `IntervalTrigger(seconds=30)` ile eklendi. Bu eksiklik nedeniyle `invalidation_service` tarafından üretilen PENDING GenerationJob'lar hiç işlenmiyordu; kampanyalar kioskına ulaşmıyordu. Tek gerçek kod kaynağı: scheduler servisi `drain_queue`'yu kaydetmiyordu.
+3. **CampaignWizard — video thumbnail**: Kampanya listesinde `<img :src="thumbOf(c)">` → `isVideoUrl()` kontrolüyle video kartı (ikon+etiket) gösterimi; video için `<img>` render edilmez.
+4. **KioskActivities — Yayın Akışı sekmesi**: Yeni "Yayın Akışı" tab; kiosk+tarih seçimi; saat-mutlak offset ile "şu an yayında" hesabı; kiosk online/geride/offline uyarısı; MediaView-uyumlu video/image preview; tüm günün saatlik playlist kartları. Backend: `GET /api/campaigns/v2/playlists/day-stream/` (read-only, N+1 yok, `select_related/prefetch_related`).
+
+**Dosyalar:**
+- `web_panels/src/views/admin/CampaignWizard.vue` — video accept, isVideoUrl helper, video-thumb-placeholder CSS
+- `web_panels/src/views/admin/KioskActivities.vue` — Yayın Akışı tab + state + template + scoped CSS
+- `web_panels/src/services/dooh.js` — `getKioskDayStream()` eklendi
+- `backend/apps/campaigns/management/commands/run_scheduler.py` — drain_queue job kaydı
+- `backend/apps/campaigns/views_v2.py` — `KioskDayStreamView` eklendi (read-only)
+- `backend/apps/campaigns/urls.py` — day-stream URL kaydı
+- `backend/apps/campaigns/tests/test_issue_fixes_2026_08.py` — 12 yeni test (T01–T10)
+
+**DB migration/schema:** YOK — tüm değişiklikler mevcut şema üzerinde.
+**Testler:** 285 passed, 7 skipped (backend); web_panels build ✓ (7.30s).
+**Deployment notu:** `scheduler` servisi yeniden başlatılmalıdır: `python manage.py run_scheduler`. Yeni `drain_queue` job kayıtlandıktan sonra PENDING job'lar 30 saniye içinde işlenir.
+
+### [Backend + Web Panels] Yayın Akışı desired/applied düzeltmesi (E2E doğrulama sonrası)
+
+**Değişiklik:** Gerçek E2E + browser doğrulaması sırasında day-stream endpoint'in `desired_version`'ı `KioskDesiredBundle`'dan okuduğu (her zaman boş — Faz 5 stub) tespit edildi. Sistemin canonical alanlarına çevrildi: `desired_version = Kiosk.last_playlist_version`, `applied_version = Kiosk.applied_playlist_version` (+ `applied_horizon_end`, `playlist_applied_at`). Frontend `kioskSyncStatus` custom mantık yerine ortak `calcKioskRolloutStatus` composable'ını kullanır (offline/behind/ack_pending/no_publish/synced). Böylece Control Center ile Yayın Akışı aynı rollout sözleşmesini paylaşır.
+
+**Dosyalar:**
+- `backend/apps/campaigns/views_v2.py` — `KioskDayStreamView` canonical desired/applied (KioskDesiredBundle kaldırıldı)
+- `web_panels/src/views/admin/KioskActivities.vue` — `calcKioskRolloutStatus` reuse + desired/applied gösterim
+- `backend/apps/campaigns/tests/test_issue_fixes_2026_08.py` — 16 test (T01–T10 + T06b param-required, T06c canonical desired/applied, T06d N+1 max-query, T06e offset 0..3599)
+
+**Gerçek E2E doğrulaması (local SQLite + run_scheduler):** Campaign create → 6 PENDING job → drain_queue (30sn interval) → RUNNING → DONE → 144 Playlist / 1440 PlaylistItem → `last_playlist_version` (desired) 6→9. attempt_count=1 (çift işleme yok), 0 FAILED. Browser: 13 senaryo screenshot (`docs/qa/screenshots-2026-08-09/`), console'da kırık image/taşma yok, video hiçbir yerde `<img src="*.mp4">` değil, liste kartlarında autoplay yok.
+
+**DB migration/schema:** YOK.
+
+---
+
+## 2026-08-06
+
+### [Backend+Kiosk+WebPanel] İçerik Yönetimi paneli, Danışma sıralama, Overflow göstergeleri
+
+**Değişiklik:**
+- `ContentManagement.vue` (yeni): İçerik Yönetimi admin sayfası; HouseAd CRUD, kiosk overlay önizleme, image-only upload (`media_kind=image`). Menü/başlık/form/bildirimde "HouseAd" terimi yok.
+- `dooh.js`: `updateHouseAd`, `deleteHouseAd` eklendi; `uploadMedia(file, mediaKind)` imzası genişletildi.
+- `router/index.js` + `AdminLayout.vue`: `/admin/content-management` route + menü kaydı "İçerik Yönetimi".
+- `Danisma.sira`: `PositiveSmallIntegerField(default=100)` eklendi; `ordering = ("sira","ad")`; migration `0012_add_danisma_sira`.
+- `DanismaSerializer` + `DanismaSyncSerializer`: `sira` alanı eklendi.
+- `db.js`: idempotent `ALTER TABLE danisma_kategorileri ADD COLUMN sira` (SCHEMA_VERSION=14 sabit — DB reset yok).
+- `scheduler.js` `upsertDanismaKategori()`: `sira ?? 100` eklendi.
+- `ConsultScreen.svelte`: `_bySira` sıralaması; alt kategoriler de sıralı; overflow göstergeleri (gradient, rozet, pozisyon çubuğu, ResizeObserver, onDestroy cleanup).
+- `DanismaYonetimi.vue`: `sira` form alanı eklendi.
+- `CategoryScreen.svelte`: overflow göstergeleri (aynı mantık); `onMount`/`onDestroy` cleanup; alt-kategori gezinmesinde scroll sıfırlama.
+
+**Dosyalar:** `web_panels/src/views/admin/ContentManagement.vue` (yeni), `dooh.js`, `router/index.js`, `AdminLayout.vue`, `DanismaYonetimi.vue`; `backend/apps/products/models.py`, `serializers.py`, `migrations/0012`; `kiosk_edge/api-node/src/{db,scheduler}.js`; `kiosk_edge/ui/src/components/{ConsultScreen,CategoryScreen}.svelte`
+**Testler:** Backend 513 passed; kiosk UI build ✓ (854ms); web_panels build ✓ (5.78s)
+
+---
+
+### [Backend+Kiosk UI] HouseAd image-only, IdleScreen paid/HouseAd ayrımı, Soru geri dönüşü, Başka Şikayet Seç
+
+**Değişiklik:**
+- `MediaUploadView`: `media_kind=image` parametresiyle image-only mod; `IMAGE_ONLY_TYPES={jpeg,png,webp}`; magic-byte sniff (JPEG/PNG/WebP imza doğrulaması); creative upload'u bozulmadı.
+- `HouseAdSerializer.validate_media_url`: video uzantılarını reddeden ikinci savunma katmanı.
+- `AdStrip.svelte`: `asset_type === 'creative'` filtresi — house_ad öğeleri işlem ekranında artık gösterilmiyor.
+- `IdleScreen.svelte`: `$playlistItems.asset_type` metadata korunarak paid/house_ad/fallback üç mod. Recursive `setTimeout` + genToken video yarış kilidi. `ROTATE_MS` sabit kaldırıldı; per-item `duration_seconds` kullanılıyor. AdPromo hiçbir modda tam ekran arka plan değil.
+- `AdPromo.svelte`: `floatCard` prop — `position:relative; background:transparent` ile container konumlandırması.
+- `QuestionScreen.svelte`: geri butonu (`currentQIndex > 0`), seçili cevap vurgusu (`btn-answer-selected`), `currentAnswers` store import.
+- `App.svelte`: `goBackQuestion()` — cevaplar korunur, sadece farklı cevap verilince sonrakiler temizlenir. `startNewComplaint()` — yaş/cinsiyet korur, kategori+QR temizler, yeni sessionId.
+- `ResultScreen.svelte`: "Başka Bir Şikayet Seç" butonu → `dispatch('newComplaint')`.
+- Yeni test: `apps/campaigns/tests/test_house_ad_validation.py` (13 test, hepsi geçti).
+
+**Dosyalar:** `backend/apps/campaigns/views.py`, `serializers.py`, `tests/test_house_ad_validation.py`; `kiosk_edge/ui/src/components/{AdStrip,IdleScreen,AdPromo,QuestionScreen,ResultScreen}.svelte`; `kiosk_edge/ui/src/App.svelte`
+**Testler:** Backend 513 passed; kiosk UI build ✓ (843ms)
+
+---
+
+### [Backend+Edge+WebPanel] QR/Session akışı offline-first hale getirildi
+
+**Değişiklik:**
+- `Kiosk.eczane_kiosk_no` (1-31, eczane-unique) eklendi; bootstrap response'a dahil edildi; mevcut kiosklar backfill edildi (pharmacies migration 0010).
+- `OturumLogu.eczane` FK (nullable, SET_NULL) eklendi; `qr_kodu` nullable + max_length=9 yapıldı; global unique kaldırılıp eczane-scoped conditional unique eklendi (analytics migration 0012).
+- `ingest_session_items()`: kiosk'tan gelen 9-char Crockford QR doğrulanıp kabul edilir; eski kiosklarda 8-char backend üretimi fallback olarak korunur; tamamlandi=False → qr_kodu=null.
+- Eczacı QR sorgusu: önce `eczane_id` scope'lanır, başka eczane kodu 403 yerine 404 döner.
+- Edge `qrGen.js`: Crockford Base32 QR üretimi, mantıksal sayaç (monoton), checksum.
+- Edge `db.js` v14: `qr_counter` singleton tablosu eklendi.
+- Edge `server.js`: tamamlanan oturum QR'ı yerelde üretilir (atomik txn), hemen döner; backend push `setImmediate` ile arka planda çalışır.
+- Edge `provisioning.js`: `eczane_kiosk_no` bootstrap response'tan SQLite'a kaydedilir; `settings.eczaneKioskNo` olarak yayılır.
+- `QrScan.vue`: 8 ve 9 karakter formatları kabul edilir; Crockford checksum doğrulama; başka eczane mesajı kaldırıldı.
+- Hedefli testler: backend 155 passed, edge qrGen 43 passed; server.test.js pre-existing failure (scheduler.js encoding issue, bizim değil).
+
+**Dosyalar:** backend/apps/pharmacies/models.py, migrations/0010; backend/apps/analytics/models.py, services.py, views.py, migrations/0012; backend/apps/kiosk_api/views.py; backend/apps/analytics/tests/test_qr_flow.py, test_session_normalization.py; kiosk_edge/api-node/src/{qrGen.js,db.js,server.js,provisioning.js}; kiosk_edge/api-node/tests/qrGen.test.js; web_panels/src/views/pharmacist/QrScan.vue
+**Migration:** pharmacies/0010 (eczane_kiosk_no + backfill), analytics/0012 (eczane FK + qr nullable + constraint)
+
+---
+
+## 2026-08-01
+
+### [Backend+Frontend] Eczacı kampanyası: il/ilçe hedefleme + duration validation + UI düzeltmeleri
+
+**Değişiklik:**
+- `PharmacyCampaign.target_iller` + `target_ilceler` M2M eklendi (migration 0024).
+- `duration_seconds` default 15; serializer'da yalnız 15/30/60 kabul edilir (eski kayıt aynı değerle güncellenebilir).
+- Feed OR mantığı: eczane, il veya ilçe eşleşmesi; hiç hedefi olmayan kampanya feed'e girmez.
+- EisaLookup entegrasyonu düzeltildi: eczaneler `/api/pharmacies/` endpoint'inden yüklenir; il/ilçe/eczane seçimi v-model + watch ile çalışır.
+- Grid thumbnail: 120×68px, `object-fit: contain`, sabit yükseklik.
+- Duration: serbest input → 15/30/60 seçenekli select.
+- Backend test sayısı: 19 geçti.
+
+**Dosyalar:** backend/apps/campaigns/{models,serializers,views_v2}.py; migrations/0024; tests/test_pharmacy_campaign.py; web_panels/src/views/admin/PharmacyCampaigns.vue
+**Build:** web_panels ✅ (2.45s)
+
+---
+
+## 2026-07-31
+
+### [Backend+Kiosk+Frontend] Kiosk çift medya varyantı + Eczacı paneli kampanyaları
+
+**Değişiklik:**
+- `Creative.active_media_url` nullable alan eklendi (migration 0021); bekleme (portrait) ve alt alan (~7:5) ayrı görseller.
+- `PharmacyCampaign` modeli eklendi (migration 0022); kiosk sisteminden bağımsız eczacı paneli kampanyaları.
+- `KioskCreativeSyncSerializer`, `KioskPlaylistItemSerializer` — `active_media_url` additive eklendi.
+- api-node: `db.js` SCHEMA_VERSION 12; creatives kolonu; `scheduler.js` upsert; `mediaCache.js` `_active` suffix cache; `server.js` playlist/current LEFT JOIN ile `active_media_url`.
+- `AdStrip.svelte`: `active_media_url` varsa cover, yoksa `media_url` + `object-fit: contain` (letterbox).
+- Admin: CampaignWizard step 2 → iki upload alanı (Bekleme/İşlem ekranı); AdminLayout yeni menü.
+- Yeni: `PharmacyCampaigns.vue` (admin), `PharmacistCampaignDisplay.vue` (eczacı şerit + 90s idle overlay).
+- Feed endpoint: `GET /api/campaigns/v2/pharmacy-campaigns/feed/` — `request.user.eczane_id` ile güvenli filtreleme.
+
+**Dosyalar:** backend/apps/campaigns/{models,serializers,views_v2,urls,migrations/0021-0022}.py; kiosk_edge/api-node/src/{db,scheduler,mediaCache,server}.js; kiosk_edge/ui/src/{components/AdStrip.svelte,app.css}; web_panels/src/{views/admin/{CampaignWizard,PharmacyCampaigns}.vue,components/pharmacist/PharmacistCampaignDisplay.vue,views/admin/AdminLayout.vue,router/index.js,styles.css}
+**Testler:** 246 passed, 7 skipped (5 yeni PC-01..05 testi dahil)
+
+---
+
+## 2026-07-24
+
+### [kiosk_edge] Tam ekran portré CSS — 100vw × 100vh
+
+**Değişiklik:** `app.css` — `body` padding/centering kaldırıldı; `.kiosk` `width: 100vw; height: 100vh` yapıldı (`border-radius`, `box-shadow`, sabit 794×1123 px kaldırıldı). 1080×1920 ve 1440×2560 her ikisi de 9:16 oran olduğundan aynı kural ikisini de tam doldurur. Önceki media query (min-width: 1100px) supersede edildiği için kaldırıldı.
+**Dosyalar:** `kiosk_edge/ui/src/app.css`
+**Etki:** UI build ✅ (765ms). Scrollbar yok, taşma yok.
+
+**Değişiklik:**
+- `printer.js`: Fiş içeriği yenilendi — "e-ISA" (bold) + "Saglikli gunler diler." + QR + QR metin değeri. Kategori/kod/açıklama satırları kaldırıldı. ESC/POS QR modül boyutu 6 → 16 (~42 mm @ 203 DPI, ESC/POS maks.).
+- `app.css`: `@media (min-width: 1100px) and (orientation: portrait)` kuralı eklendi. 1440 × 2560 ekranda `.kiosk` viewport genişliğini doldurur (794/1123 en-boy oranını koruyarak); 1080 × 1920 görünümü değişmez.
+
+**Dosyalar:** `kiosk_edge/api-node/src/printer.js`, `kiosk_edge/ui/src/app.css`
+**Etki:** Kiosk UI build ✅ (1.25s), printer.js syntax ✅. QR formatı/session akışı dokunulmadı.
+
+---
+
 ## 2026-08-18
 
 ### [Frontend+Backend+Docs] Genel Duyuru ve Sabit Nöbet Uyarıları

@@ -33,7 +33,6 @@ from apps.campaigns.models import (
     CampaignTarget,
     Creative,
     DeliveryRule,
-    HouseAd,
     KioskDayQuota,
     KioskDesiredBundle,
     PlayLog,
@@ -319,20 +318,7 @@ def test_f108_creative_is_grid_compliant(db, base_campaign, duration, expected):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# F1-09  HouseAd is_grid_compliant property
-# ─────────────────────────────────────────────────────────────────────────────
 
-
-@pytest.mark.parametrize("duration,expected", [
-    (15, True), (30, True), (10, False), (7, False), (60, True),
-])
-def test_f109_housead_is_grid_compliant(duration, expected):
-    """HouseAd.is_grid_compliant 15/30/45/60 için True, diğerleri False."""
-    ha = HouseAd(duration_seconds=duration)
-    assert ha.is_grid_compliant == expected
-
-
-# ─────────────────────────────────────────────────────────────────────────────
 # F1-10  DeliveryRule — temel oluşturma
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -510,16 +496,11 @@ def test_f115_report_grid_noncompliant_media_no_issues(db):
 
 @pytest.mark.django_db
 def test_f115_report_grid_noncompliant_media_detects_bad(db, base_campaign):
-    """Grid dışı Creative ve HouseAd raporda görünmeli."""
+    """Grid dışı Creative raporda görünmeli."""
     Creative.objects.create(
         campaign=base_campaign,
         media_url="https://cdn.example.com/bad.mp4",
         duration_seconds=7,  # grid dışı
-    )
-    HouseAd.objects.create(
-        name="Bad HouseAd",
-        media_url="https://cdn.example.com/bad_ha.mp4",
-        duration_seconds=3,  # grid dışı
     )
 
     out = StringIO()

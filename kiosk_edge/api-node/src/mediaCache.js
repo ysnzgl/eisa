@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Agent, fetch } from 'undici';
 
+import { getAuthHeaders } from './provisioning.js';
+
 let _running = false;
 let _agent = null;
 
@@ -43,35 +45,48 @@ function mimeFromExt(ext) {
   return 'application/octet-stream';
 }
 
-function normalizeAssets(db) {
-  const creatives = db
-    .prepare('SELECT id, media_url, checksum FROM creatives WHERE aktif = 1')
-    .all()
-    .filter((x) => !!x.media_url)
-    .map((x) => ({
-      asset_id: String(x.id),
-      asset_type: 'creative',
-      media_url: x.media_url,
-      source_checksum: x.checksum || '',
-    }));
-
-  const houseAds = db
-    .prepare('SELECT id, media_url FROM house_ads WHERE aktif = 1')
-    .all()
-    .filter((x) => !!x.media_url)
-    .map((x) => ({
-      asset_id: String(x.id),
-      asset_type: 'house_ad',
-      media_url: x.media_url,
-      source_checksum: '',
-    }));
-
-  return [...creatives, ...houseAds];
+// MIME'dan otoriter render tipi ('video' | 'image' | ''). UI uzantidan tahmin
+// yerine bu degeri kullanir.
+export function mediaKindFromMime(mime) {
+  const m = String(mime || '').toLowerCase();
+  if (m.startsWith('video/')) return 'video';
+  if (m.startsWith('image/')) return 'image';
+  return '';
 }
 
-async function downloadToFile(url, filePath, verifyTls) {
+function normalizeAssets(db) {
+  const creatives = db
+    .prepare('SELECT id, media_url, active_media_url, checksum FROM creatives WHERE aktif = 1')
+    .all()
+    .filter((x) => !!x.media_url)
+    .flatMap((x) => {
+      const entries = [
+        {
+          asset_id: String(x.id),
+          asset_type: 'creative',
+          media_url: x.media_url,
+          source_checksum: x.checksum || '',
+        },
+      ];
+      // active_media_url varsa ayrı cache girişi ekle (asset_id + '_active', asset_type 'creative')
+      if (x.active_media_url) {
+        entries.push({
+          asset_id: String(x.id) + '_active',
+          asset_type: 'creative',
+          media_url: x.active_media_url,
+          source_checksum: '',
+        });
+      }
+      return entries;
+    });
+
+  return creatives;
+}
+
+async function downloadToFile(url, filePath, verifyTls, authHeaders = {}) {
   const res = await fetch(url, {
     method: 'GET',
+    headers: authHeaders,
     dispatcher: getAgent(verifyTls),
     signal: AbortSignal.timeout(30000),
   });
@@ -139,9 +154,13 @@ export async function syncMediaCache(db, settings, log = console) {
 
       if (localReady) continue;
 
+      const isBackendUrl = settings.centralApiBase
+        && asset.media_url.startsWith(settings.centralApiBase.replace(/\/+$/, ''));
+      const authHdrs = isBackendUrl ? getAuthHeaders(db) : {};
+
       try {
         const tmpPath = `${localPath}.tmp`;
-        const downloaded = await downloadToFile(asset.media_url, tmpPath, settings.verifyTls);
+        const downloaded = await downloadToFile(asset.media_url, tmpPath, settings.verifyTls, authHdrs);
         fs.renameSync(tmpPath, localPath);
 
         upsert.run({
@@ -197,10 +216,30 @@ export function getLocalMediaMeta(db, assetType, assetId) {
   ).get(assetType, String(assetId));
 }
 
+// UI (MediaView/CampaignOverlay) video/gorsel ayrimini URL uzantisindan yapar.
+// Proxy URL uzantisiz oldugundan videolar <img> olarak render edilip bozuluyordu.
+const _MIME_EXT = {
+  'video/mp4': '.mp4',
+  'video/webm': '.webm',
+  'video/ogg': '.ogv',
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/gif': '.gif',
+  'image/webp': '.webp',
+};
+
+function _extFromSource(sourceUrl) {
+  if (typeof sourceUrl !== 'string') return '';
+  const path = sourceUrl.split('?')[0];
+  const m = path.match(/\.(mp4|webm|ogv|ogg|jpg|jpeg|png|gif|webp)$/i);
+  return m ? `.${m[1].toLowerCase()}` : '';
+}
+
 export function buildMediaUrl(db, assetType, assetId, sourceUrl) {
   const row = getLocalMediaMeta(db, assetType, assetId);
   if (row && row.status === 'ready' && row.local_path && fs.existsSync(row.local_path)) {
-    return `/api/media/${assetType}/${assetId}`;
+    const ext = _MIME_EXT[row.mime_type] || _extFromSource(sourceUrl);
+    return `/api/media/${assetType}/${assetId}${ext}`;
   }
   return sourceUrl;
 }

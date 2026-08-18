@@ -14,6 +14,7 @@ import {
 import { requireLocalSecret } from './auth.js';
 import { encodeQrCode } from './qrBitpack.js';
 import { printReceipt } from './printer.js';
+import { buildReceiptBuffer, sendToTransport } from './printer.js';
 import { buildLoggerOptions } from './logger.js';
 import {
   CORRELATION_HEADER,
@@ -24,10 +25,18 @@ import {
 } from './correlationId.js';
 import { recordDiagnostic } from './diagnosticOutbox.js';
 import { getWifiStatus, scanWifi, connectWifi } from './wifi.js';
-import { buildMediaUrl, getLocalMediaMeta } from './mediaCache.js';
+import { buildMediaUrl, getLocalMediaMeta, mediaKindFromMime } from './mediaCache.js';
 import { istanbulNow } from './timezone.js';
 import { requestWithRetry } from './scheduler.js';
 import { handle401Error, handle403Error, hasAppKeyCredentials } from './provisioning.js';
+import { generateNextQr, CROCKFORD_QR_RE } from './qrGen.js';
+import {
+  seciSonrakiLogo,
+  artirGunlukSayi,
+  setLastLogoId,
+  getOrderedLogoCandidates,
+  commitBasariliBaski,
+} from './barkodLogoService.js';
 
 /**
  * @param {object} opts
@@ -144,9 +153,24 @@ export async function buildServer({ db, settings, logger }) {
   // â”€â”€ health â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   app.get('/health', async () => ({ status: 'ok' }));
 
+  // Dev ortamı: barkod logo PNG dosyasını doğrudan sun (yazıcı simülasyonu için)
+  app.get('/api/barkod-logo-gorsel/:id', async (req, reply) => {
+    const row = db.prepare('SELECT local_path, cache_status FROM barkod_logolar WHERE id = ?').get(req.params.id);
+    if (!row || row.cache_status !== 'ready' || !row.local_path || !fs.existsSync(row.local_path)) {
+      return fail(reply, 404, 'Logo bulunamadi');
+    }
+    reply.header('Content-Type', 'image/png');
+    reply.header('Cache-Control', 'public, max-age=3600');
+    return reply.send(fs.createReadStream(row.local_path));
+  });
+
   app.get('/api/media/:assetType/:assetId', async (req, reply) => {
-    const { assetType, assetId } = req.params;
-    if (!['creative', 'house_ad'].includes(assetType)) {
+    const { assetType } = req.params;
+    // URL'e video tespiti icin eklenen uzantiyi ayikla (asset_id UUID/_active'tir).
+    const assetId = req.params.assetId.replace(
+      /\.(mp4|webm|ogv|ogg|jpg|jpeg|png|gif|webp)$/i, '',
+    );
+    if (!['creative'].includes(assetType)) {
       return fail(reply, 400, 'Gecersiz asset_tipi');
     }
     const media = getLocalMediaMeta(db, assetType, assetId);
@@ -202,8 +226,8 @@ export async function buildServer({ db, settings, logger }) {
   app.get('/api/danisma-kategorileri', async () => {
     const rows = db
       .prepare(
-        `SELECT id, slug, ad, ikon, ust_kategori_id, aktif
-           FROM danisma_kategorileri WHERE aktif = 1 ORDER BY id`,
+        `SELECT id, slug, ad, ikon, ust_kategori_id, aktif, sira
+           FROM danisma_kategorileri WHERE aktif = 1 ORDER BY COALESCE(sira, 100), id`,
       )
       .all();
     const toplevel = rows.filter((r) => r.ust_kategori_id === null);
@@ -212,9 +236,10 @@ export async function buildServer({ db, settings, logger }) {
       slug: parent.slug,
       ad: parent.ad,
       ikon: parent.ikon,
+      sira: parent.sira ?? 100,
       alt_kategoriler: rows
         .filter((r) => r.ust_kategori_id === parent.id)
-        .map((c) => ({ id: c.id, slug: c.slug, ad: c.ad, ikon: c.ikon })),
+        .map((c) => ({ id: c.id, slug: c.slug, ad: c.ad, ikon: c.ikon, sira: c.sira ?? 100 })),
     }));
   });
 
@@ -250,7 +275,9 @@ export async function buildServer({ db, settings, logger }) {
     });
   });
 
-  // â”€â”€ oturum gonder â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // -- oturum gonder (offline-first) ──────────────────────────────────────────
+  // Tamamlanan oturumlar icin QR yerel uretilir, SQLite'a atomik kaydedilir,
+  // hemen donulur; backend push arka planda tetiklenir (HTTP cevabi beklenmez).
   app.post('/api/oturum/gonder', async (req, reply) => {
     const body = parseBody(oturumGonderSchema, req.body, reply);
     if (!body) return;
@@ -279,7 +306,6 @@ export async function buildServer({ db, settings, logger }) {
       if (body.onerilen_etken_maddeler && body.onerilen_etken_maddeler.length > 0) {
         return fail(reply, 422, 'Ozel danismanlik oturumunda etken madde onerisi bulunmamali');
       }
-      // Danisma kategorisi ID'sini lokal katalogdan coz (slug → id)
       if (body.danisma_kategorisi_id) {
         danismaKategoriId = body.danisma_kategorisi_id;
       } else {
@@ -291,32 +317,59 @@ export async function buildServer({ db, settings, logger }) {
       }
     }
 
-    // 41-bit bitpack QR payload â€” yerel offline-scan meta verisi (opsiyonel).
-    // Authoritative QR kodu backend'den gelir; bu deger yalnizca yazici veya
-    // QR gorsel encode icin ek bilgi tasir.
-    let qrPayload = null;
-    try {
-      const yCount = Object.values(body.cevaplar ?? {}).filter((v) => v === 'Y').length;
-      qrPayload = encodeQrCode({
-        pharmacyId: Math.min(settings.pharmacyId || 0, 32767),
-        kioskId:    Math.min(settings.kioskId    || 0,    15),
-        categoryId: Math.min(cat?.id             ?? 0,   127),
-        qaCombo:    Math.min(yCount,                       63),
-        productId:  0,
-      });
-    } catch (err) {
-      app.log.warn({ err: err.message }, 'QR bitpack encode basarisiz, sadece backend QR kullanilacak');
-    }
-
     const olusturulmaTarihi = new Date().toISOString();
-    // UI'dan gelen kararlı sessionId varsa kullan; yoksa yeni UUID üret.
-    // Bu sayede aynı request tekrar geldiğinde aynı idempotency key kullanılır.
     const idempotencyAnahtari = body.idempotency_anahtari
       ? String(body.idempotency_anahtari)
       : crypto.randomUUID();
 
-    // Backend payload — qr_kodu GONDERILMEZ; backend uretir ve response'ta doner.
-    // danisma_kategorisi_id: lokal katalogdan cozulmus gercek ID (slug yerine ID tercih edilir).
+    // Idempotency: ayni key daha once yerel QR ile kaydedilmis mi?
+    const existingRow = db.prepare(
+      'SELECT payload, gonderilme_tarihi FROM oturum_outbox WHERE idempotency_anahtari = ? LIMIT 1'
+    ).get(idempotencyAnahtari);
+    if (existingRow) {
+      const existingPayload = safeJson(existingRow.payload, {});
+      if (existingPayload.qr_kodu) {
+        app.log.info({ event: 'session_idempotent_redelivery' }, 'Idempotent yeniden teslim; mevcut QR donuluyor');
+        let printerOk = true;
+        let printerError = null;
+        // Aynı logo yeniden basılır (yeni seçim yapılmaz, sayaç artırılmaz, cursor ilerletilmez)
+        const existingLogoId = existingPayload.barkod_logo_id || null;
+        let rePrintLogoPath = null;
+        if (existingLogoId) {
+          const logoRow = db.prepare('SELECT local_path, cache_status FROM barkod_logolar WHERE id = ?').get(existingLogoId);
+          if (logoRow && logoRow.cache_status === 'ready' && logoRow.local_path) {
+            rePrintLogoPath = logoRow.local_path;
+          }
+        }
+        try {
+          printReceipt({
+            qrCode: existingPayload.qr_kodu,
+            qrPayload: existingPayload.qr_kodu,
+            categoryName: body.kategori_slug || body.danisma_kategorisi_slug,
+            ingredients: body.onerilen_etken_maddeler,
+            isSensitive: body.hassas_akis,
+            barkodLogoPath: rePrintLogoPath,
+            host: settings.thermalPrinterHost,
+            port: settings.thermalPrinterPort,
+            logger: app.log,
+          });
+        } catch (err) {
+          printerOk = false;
+          printerError = err?.message || 'Yazici hatasi';
+        }
+        return reply.status(201).send({
+          qr_kodu: existingPayload.qr_kodu,
+          durum: 'kaydedildi',
+          yazici_ok: printerOk,
+          sync_durum: existingRow.gonderilme_tarihi ? 'gonderildi' : 'bekliyor',
+          ...(printerError ? { yazici_hatasi: printerError } : {}),
+        });
+      }
+      if (!body.tamamlandi) {
+        return reply.status(201).send({ qr_kodu: null, durum: 'kaydedildi', yazici_ok: true });
+      }
+    }
+
     const payload = {
       idempotency_anahtari: idempotencyAnahtari,
       kiosk_mac: settings.kioskMac,
@@ -333,232 +386,173 @@ export async function buildServer({ db, settings, logger }) {
       olusturulma_tarihi: olusturulmaTarihi,
     };
 
-    // Tamamlanan oturumlar (QR gosterilecek) backend'e aninda iletilmeli.
-    // Backend QR uretir ve doner; UI yalniz backend'den gelen QR'i gosterir.
-    // Eger backend erisilemazsa UI'a hata doner (sahte QR gosterilmez).
-    if (body.tamamlandi) {
-      if (!settings.centralApiBase || !hasAppKeyCredentials(db)) {
-        return reply.status(503).send({
-          error: 'Merkez API yapilandirilmamis veya kimlik bilgisi eksik.',
-          code: 'backend_unavailable',
-        });
-      }
-
-      // 1. Outbox'a ONCE kaydet — bu garantidir; merkez çağrısı başarısız olsa bile kayıt kaybolmaz.
+    if (!body.tamamlandi) {
+      // Terk edilmis oturum: QR yok, outbox'a kaydet, arka planda gonder
       db.prepare(
         'INSERT OR IGNORE INTO oturum_outbox (idempotency_anahtari, payload) VALUES (?, ?)',
       ).run(idempotencyAnahtari, JSON.stringify(payload));
-
-      // 2. Idempotent yeniden teslim: aynı key daha önce başarıyla gönderilmiş mi?
-      const existingRow = db.prepare(
-        'SELECT payload, gonderilme_tarihi FROM oturum_outbox WHERE idempotency_anahtari = ?',
-      ).get(idempotencyAnahtari);
-      if (existingRow?.gonderilme_tarihi) {
-        const existingPayload = safeJson(existingRow.payload, {});
-        if (existingPayload.qr_kodu) {
-          app.log.info({ event: 'session_idempotent_redelivery' }, 'Idempotent yeniden teslim; mevcut QR donuluyor');
-          let printerOk = true;
-          let printerError = null;
+      if (settings.centralApiBase && hasAppKeyCredentials(db)) {
+        setImmediate(async () => {
           try {
-            printReceipt({
-              qrCode: existingPayload.qr_kodu,
-              qrPayload: existingPayload.qr_payload || existingPayload.qr_kodu,
-              categoryName: body.kategori_slug || body.danisma_kategorisi_slug,
-              ingredients: body.onerilen_etken_maddeler,
-              isSensitive: body.hassas_akis,
-              host: settings.thermalPrinterHost,
-              port: settings.thermalPrinterPort,
-              logger: app.log,
-            });
-          } catch (err) {
-            printerOk = false;
-            printerError = err?.message || 'Yazici hatasi';
-          }
-          return reply.status(201).send({
-            qr_kodu: existingPayload.qr_kodu,
-            qr_payload: existingPayload.qr_payload || existingPayload.qr_kodu,
-            durum: 'kaydedildi',
-            yazici_ok: printerOk,
-            sync_durum: 'onceden_gonderildi',
-            ...(printerError ? { yazici_hatasi: printerError } : {}),
-          });
-        }
-      }
-
-      // 3. Backend'e QR için gönder
-      let backendQr = null;
-      let isValidationRejection = false;
-
-      try {
-        const res = await requestWithRetry(
-          db, settings, 'POST', '/api/kiosk/v1/sessions/',
-          { items: [payload] }, app.log
-        );
-
-        if (res.status === 200 || res.status === 207) {
-          let resBody = {};
-          try { resBody = await res.json(); } catch { resBody = {}; }
-
-          const resultItem = (resBody?.results || []).find(
-            (r) => String(r.idempotency_key) === String(idempotencyAnahtari)
-          );
-          const errorItem = (resBody?.errors || []).find(
-            (e) => String(e.idempotency_anahtari) === String(idempotencyAnahtari)
-          );
-
-          // Yapısal log — güvenli: secret/QR/kişisel veri içermez
-          app.log.info({
-            event: 'central_sessions_response',
-            upstream_path: '/api/kiosk/v1/sessions/',
-            upstream_status: res.status,
-            kiosk_id: settings.kioskId || null,
-            batch_size: 1,
-            accepted_count: resultItem ? 1 : 0,
-            duplicate_count: resultItem?.status === 'existing' ? 1 : 0,
-            rejected_count: errorItem ? 1 : 0,
-          }, 'central_sessions_response');
-
-          if (resultItem?.qr_kodu) {
-            backendQr = resultItem.qr_kodu;
-          } else if (errorItem) {
-            // Kalıcı doğrulama hatası — scheduler'ın sonsuz tekrar denemesini engelle
-            isValidationRejection = true;
-            const errorKeys = errorItem.errors ? Object.keys(errorItem.errors) : [];
-            db.prepare(
-              'UPDATE oturum_outbox SET retry_count = 99, error_reason = ? WHERE idempotency_anahtari = ?',
-            ).run(
-              JSON.stringify({ type: 'backend_validation', keys: errorKeys }),
-              String(idempotencyAnahtari),
+            const res = await requestWithRetry(
+              db, settings, 'POST', '/api/kiosk/v1/sessions/', { items: [payload] }, app.log
             );
-            recordDiagnostic(db, {
-              level: 'WARNING',
-              event: 'session_backend_rejected',
-              message: 'Backend oturumu dogrulama hatasi ile reddetti',
-              context: {
-                upstream_status: res.status,
-                error_field_count: errorKeys.length,
-                error_keys: errorKeys,  // alan adları güvenli; değerler loglanmaz
-                // devMode'da hata mesajları da loglanır (prod'da kapalı)
-                ...(settings.devMode ? { error_messages: errorItem.errors } : {}),
-              },
-              correlationId: req.id,
-            });
+            if (res.status === 200 || res.status === 207) {
+              let resBody = {};
+              try { resBody = await res.json(); } catch { resBody = {}; }
+              const accepted = (resBody?.results || []).some(
+                (r) => String(r.idempotency_key) === String(idempotencyAnahtari)
+              );
+              if (accepted) {
+                db.prepare(
+                  'UPDATE oturum_outbox SET gonderilme_tarihi = ? WHERE idempotency_anahtari = ?',
+                ).run(new Date().toISOString(), idempotencyAnahtari);
+              }
+            } else if (res.status === 401) {
+              handle401Error(db, settings, app.log);
+            } else if (res.status === 403) {
+              handle403Error(db, settings, app.log);
+            }
+          } catch (err) {
+            app.log.warn({ err: err.message }, 'Terk edilmis oturum backend iletilemedi, scheduler deneyecek');
           }
-        } else if (res.status === 401) {
-          handle401Error(db, settings, app.log);
-          return reply.status(401).send({ error: 'Kimlik dogrulamasi basarisiz.', code: 'auth_failed' });
-        } else if (res.status === 403) {
-          handle403Error(db, settings, app.log);
-          return reply.status(403).send({ error: 'Yetki hatasi.', code: 'forbidden' });
-        } else {
-          app.log.warn({
-            event: 'central_sessions_unexpected',
-            upstream_status: res.status,
-          }, 'Merkez beklenmeyen yanit; kayit outbox\'ta bekliyor');
-          return reply.status(503).send({
-            error: 'Merkez sunucu hatasi. Oturum lokal olarak kaydedildi, daha sonra gonderilecek.',
-            code: 'backend_error',
-            sync_durum: 'bekliyor',
-          });
-        }
-      } catch (err) {
-        app.log.warn({ event: 'backend_unreachable', err: err.message }, 'Backend erisimi basarisiz; kayit outbox\'ta bekliyor');
-        return reply.status(503).send({
-          error: 'Merkez sunucusuna ulasilamiyor. Oturum lokal olarak kaydedildi, daha sonra gonderilecek.',
-          code: 'backend_unreachable',
-          sync_durum: 'bekliyor',
         });
       }
+      return reply.status(201).send({ qr_kodu: null, durum: 'kaydedildi', yazici_ok: true });
+    }
 
-      if (isValidationRejection) {
-        return reply.status(422).send({
-          error: 'Oturum merkez tarafindan reddedildi. Veri dogrulama hatasi.',
-          code: 'backend_rejected',
-        });
-      }
+    // Tamamlanan oturum: offline-first QR uretimi (eczane_kiosk_no varsa)
+    // Settings'e değil, doğrudan kiosk_meta'ya bakılır (provisioning.js bağımsız).
+    const kioskNoRow = db.prepare("SELECT value FROM kiosk_meta WHERE key='eczane_kiosk_no'").get();
+    const eczaneKioskNo = kioskNoRow ? parseInt(kioskNoRow.value, 10) : null;
+    const hasSlot = Number.isInteger(eczaneKioskNo) && eczaneKioskNo >= 1 && eczaneKioskNo <= 31;
 
-      if (!backendQr) {
-        return reply.status(502).send({
-          error: 'Merkez QR kodu dondurmedi.',
-          code: 'backend_no_qr',
-        });
-      }
+    if (!hasSlot) {
+      // eczane_kiosk_no atanmamış → provisioning tamamlanmadan QR üretilemez.
+      return reply.status(503).send({ error: 'Kiosk numarasi atanmamis; QR uretilemedi.', code: 'kiosk_no_missing' });
+    }
 
-      // 4. QR alındı — outbox kaydını güncelle (QR + gönderilme zamanı)
-      const payloadWithQr = { ...payload, qr_kodu: backendQr };
-      db.prepare(
-        'UPDATE oturum_outbox SET payload = ?, gonderilme_tarihi = ?, error_reason = NULL WHERE idempotency_anahtari = ?',
-      ).run(JSON.stringify(payloadWithQr), new Date().toISOString(), String(idempotencyAnahtari));
+    // Atomik transaction: QR uret + sayac guncelle + outbox insert
+    let qrKodu;
+    try {
+      const txn = db.transaction(() => {
+        qrKodu = generateNextQr(db, eczaneKioskNo);
+        // barkod_logo_id başlangıçta null; başarılı baskı sonrası güncellenir.
+        const payloadWithQr = { ...payload, qr_kodu: qrKodu, barkod_logo_id: null };
+        db.prepare(
+          'INSERT OR IGNORE INTO oturum_outbox (idempotency_anahtari, payload) VALUES (?, ?)',
+        ).run(idempotencyAnahtari, JSON.stringify(payloadWithQr));
+        return qrKodu;
+      });
+      qrKodu = txn();
+    } catch (err) {
+      app.log.error({ event: 'qr_local_generate_failed', err: err.message }, 'Yerel QR uretimi basarisiz');
+      return reply.status(500).send({
+        error: 'QR kodu uretilemedi. Lutfen tekrar deneyin.',
+        code: 'qr_generate_error',
+      });
+    }
 
-      // Termal yazici (opsiyonel)
-      let printerOk = true;
-      let printerError = null;
+    // Barkod logo adayları (rotation sırasında)
+    const logoCandidates = getOrderedLogoCandidates(db);
+
+    // Fiş byte'larını bellekte oluştur (tüm adaylar denenir, başarısızlar atlanır)
+    const { buffer: receipBuffer, logoId: basilanLogoId } = buildReceiptBuffer({
+      qrPayload: qrKodu,
+      logoCandidates,
+      logger: app.log,
+    });
+
+    // Termal yazici: tek tamamlanmış buffer transport'a verilir
+    let printerOk = true;
+    let printerError = null;
+    if (settings.thermalPrinterHost) {
       try {
-        printReceipt({
-          qrCode: backendQr,
-          qrPayload: qrPayload || backendQr,
-          categoryName: body.kategori_slug || body.danisma_kategorisi_slug,
-          ingredients: body.onerilen_etken_maddeler,
-          isSensitive: body.hassas_akis,
+        sendToTransport({
+          buffer: receipBuffer,
           host: settings.thermalPrinterHost,
           port: settings.thermalPrinterPort,
           logger: app.log,
         });
+        // Transport başarısı (no throw): counter+cursor+outbox_payload tek transaction
+        if (basilanLogoId) {
+          commitBasariliBaski(db, basilanLogoId, idempotencyAnahtari);
+        }
       } catch (err) {
         printerOk = false;
         printerError = err?.message || 'Yazici hatasi';
-        app.log.warn({ err: printerError }, 'Termal yazici tetiklenemedi');
+        app.log.warn({ err: printerError }, 'Termal yazici gonderilemedi — sayac/cursor ilerlemez');
+        // Yazıcı hatasında: sayaç artmaz, cursor ilerlemiyor, barkod_logo_id null kalır
       }
+    } else if (settings.devMode && basilanLogoId) {
+      // Dev modda yazıcı yok; buffer başarıyla oluşturuldu — logo id'yi outbox'a yaz
+      commitBasariliBaski(db, basilanLogoId, idempotencyAnahtari);
+    }
 
-      return reply.status(201).send({
-        qr_kodu: backendQr,
-        qr_payload: qrPayload || backendQr,
-        durum: 'kaydedildi',
-        yazici_ok: printerOk,
-        sync_durum: 'gonderildi',
-        ...(printerError ? { yazici_hatasi: printerError } : {}),
+    // Backend push: arka planda, HTTP cevabini bekletmez
+    if (settings.centralApiBase && hasAppKeyCredentials(db)) {
+      setImmediate(async () => {
+        try {
+          // Outbox'tan nihai payload'ı oku (commitBasariliBaski'de güncellenmiş olabilir)
+          const finalOutboxRow = db.prepare('SELECT payload FROM oturum_outbox WHERE idempotency_anahtari = ?').get(idempotencyAnahtari);
+          const finalPayload = finalOutboxRow ? safeJson(finalOutboxRow.payload, {}) : { ...payload, qr_kodu: qrKodu };
+          const res = await requestWithRetry(
+            db, settings, 'POST', '/api/kiosk/v1/sessions/', { items: [finalPayload] }, app.log
+          );
+          if (res.status === 200 || res.status === 207) {
+            let resBody = {};
+            try { resBody = await res.json(); } catch { resBody = {}; }
+            const resultItem = (resBody?.results || []).find(
+              (r) => String(r.idempotency_key) === String(idempotencyAnahtari)
+            );
+            const errorItem = (resBody?.errors || []).find(
+              (e) => String(e.idempotency_anahtari) === String(idempotencyAnahtari)
+            );
+            app.log.info({
+              event: 'central_sessions_response',
+              upstream_status: res.status,
+              kiosk_id: settings.kioskId || null,
+              accepted_count: resultItem ? 1 : 0,
+              rejected_count: errorItem ? 1 : 0,
+            }, 'central_sessions_response');
+            if (resultItem) {
+              db.prepare(
+                'UPDATE oturum_outbox SET gonderilme_tarihi = ?, error_reason = NULL WHERE idempotency_anahtari = ?',
+              ).run(new Date().toISOString(), idempotencyAnahtari);
+            } else if (errorItem) {
+              const errorKeys = errorItem.errors ? Object.keys(errorItem.errors) : [];
+              db.prepare(
+                'UPDATE oturum_outbox SET retry_count = 99, error_reason = ? WHERE idempotency_anahtari = ?',
+              ).run(JSON.stringify({ type: 'backend_validation', keys: errorKeys }), idempotencyAnahtari);
+            }
+          } else if (res.status === 401) {
+            handle401Error(db, settings, app.log);
+          } else if (res.status === 403) {
+            handle403Error(db, settings, app.log);
+          } else {
+            app.log.warn({ event: 'central_sessions_unexpected', upstream_status: res.status },
+              'Merkez beklenmeyen yanit; kayit PENDING olarak bekleyecek');
+          }
+        } catch (err) {
+          app.log.warn({ event: 'backend_unreachable', err: err.message },
+            'Backend push basarisiz; scheduler tekrar deneyecek');
+        }
       });
     }
 
-    // Tamamlanmamis (terk edilmis) oturum â€” QR gerekmez, outbox'a kaydet.
-    db.prepare(
-      'INSERT OR IGNORE INTO oturum_outbox (idempotency_anahtari, payload) VALUES (?, ?)',
-    ).run(idempotencyAnahtari, JSON.stringify(payload));
-
-    // Bağlantı varsa arka planda gönder (hata olursa scheduler tekrar dener)
-    if (settings.centralApiBase && hasAppKeyCredentials(db)) {
-      try {
-        const res = await requestWithRetry(
-          db, settings, 'POST', '/api/kiosk/v1/sessions/',
-          { items: [payload] }, app.log
-        );
-        if (res.status === 200 || res.status === 207) {
-          let resBody2 = {};
-          try { resBody2 = await res.json(); } catch { resBody2 = {}; }
-          // Yalniz results[] listesinde olan kayitlari gonderildi olarak isaretle
-          const accepted = (resBody2?.results || []).some(
-            (r) => String(r.idempotency_key) === String(idempotencyAnahtari)
-          );
-          if (accepted) {
-            db.prepare(
-              'UPDATE oturum_outbox SET gonderilme_tarihi = ? WHERE idempotency_anahtari = ?',
-            ).run(new Date().toISOString(), idempotencyAnahtari);
-          }
-          // errors[] icindekiler outbox'ta bekler; scheduler tekrar dener
-        } else if (res.status === 401) {
-          handle401Error(db, settings, app.log);
-        } else if (res.status === 403) {
-          handle403Error(db, settings, app.log);
-        }
-      } catch (err) {
-        app.log.warn({ err: err.message }, 'Terk edilmis oturum backend iletilemedi, scheduler deneyecek');
-      }
-    }
+    // Dev önizlemesi: yalnız EISA_DEV_MODE=true ortamında göster
+    const devMode = settings.devMode;
+    const devLogoUrl = devMode && basilanLogoId
+      ? `/api/barkod-logo-gorsel/${basilanLogoId}`
+      : null;
 
     return reply.status(201).send({
-      qr_kodu: null,
+      qr_kodu: qrKodu,
       durum: 'kaydedildi',
-      yazici_ok: true,
+      yazici_ok: printerOk,
+      sync_durum: 'bekliyor',
+      ...(devMode ? { dev_preview: true, barkod_logo_gorsel_url: devLogoUrl } : {}),
+      ...(printerError ? { yazici_hatasi: printerError } : {}),
     });
   });
 
@@ -584,32 +578,57 @@ export async function buildServer({ db, settings, logger }) {
       return { bulundu: true, oturum: JSON.parse(row.payload) };
     },
   );
-
+  // ── oturum sync-durum sorgusu (UI polling için) ──────────────────────────
+  app.get('/api/oturum/sync-durum/:key', async (req, reply) => {
+    const key = String(req.params.key ?? '');
+    if (!key || key.length > 128) return fail(reply, 400, 'Gecersiz anahtar');
+    const row = db.prepare(
+      'SELECT gonderilme_tarihi FROM oturum_outbox WHERE idempotency_anahtari = ? LIMIT 1'
+    ).get(key);
+    if (!row) return fail(reply, 404, 'Kayit bulunamadi');
+    return { sync_durum: row.gonderilme_tarihi ? 'gonderildi' : 'bekliyor' };
+  });
   // â”€â”€ reklamlar / DOOH assets (geriye dÃ¶nÃ¼k uyumluluk) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   app.get('/api/reklamlar/aktif', async () => {
     const creatives = db
       .prepare('SELECT id, media_url, duration_seconds, type FROM creatives WHERE aktif = 1')
       .all();
-    const houseAds = db
-      .prepare('SELECT id, name, media_url, duration_seconds, type FROM house_ads WHERE aktif = 1')
+    return creatives.map((c) => ({
+      id: c.id,
+      media_url: buildMediaUrl(db, 'creative', c.id, c.media_url),
+      remote_media_url: c.media_url,
+      duration_seconds: c.duration_seconds,
+      type: c.type,
+    }));
+  });
+
+  // ── kiosk bilgisi (eczane adı vb.) ──────────────────────────────────────────
+  app.get('/api/kiosk-info', async () => {
+    const eczaneRow = db.prepare("SELECT value FROM kiosk_meta WHERE key = 'eczane_adi'").get();
+    const kioskRow  = db.prepare("SELECT value FROM kiosk_meta WHERE key = 'kiosk_adi'").get();
+    return { eczane_adi: eczaneRow?.value || '', kiosk_adi: kioskRow?.value || '' };
+  });
+
+  // ── idle içerikleri (İçerik Yönetimi — başlık/metin) read-only ──────────────
+  // Kiosk UI merkezi backend'e bağlanmaz; yalnız lokal aktif idle içeriklerini alır.
+  app.get('/api/idle-contents', async () => {
+    const rows = db
+      .prepare(
+        `SELECT id, baslik, metin, kategori_id, ikon, aktif, guncellenme_tarihi
+           FROM idle_contents
+          WHERE aktif = 1
+          ORDER BY guncellenme_tarihi DESC`,
+      )
       .all();
-    return [
-      ...creatives.map((c) => ({
-        id: c.id,
-        media_url: buildMediaUrl(db, 'creative', c.id, c.media_url),
-        remote_media_url: c.media_url,
-        duration_seconds: c.duration_seconds,
-        type: c.type,
-      })),
-      ...houseAds.map((h) => ({
-        id: h.id,
-        name: h.name,
-        media_url: buildMediaUrl(db, 'house_ad', h.id, h.media_url),
-        remote_media_url: h.media_url,
-        duration_seconds: h.duration_seconds,
-        type: h.type,
-      })),
-    ];
+    return rows.map((r) => ({
+      id: r.id,
+      baslik: r.baslik,
+      metin: r.metin,
+      kategori_id: r.kategori_id ?? null,
+      ikon: r.ikon || '',
+      aktif: !!r.aktif,
+      updated_at: r.guncellenme_tarihi,
+    }));
   });
 
   // â”€â”€ playlist â€” bugÃ¼nÃ¼n aktif saati iÃ§in sÄ±ralÄ± oynatma listesi â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -635,35 +654,24 @@ export async function buildServer({ db, settings, logger }) {
       .get(today, hour);
 
     if (!playlist) {
-      // Fallback: yapÄ±landÄ±rÄ±lmamÄ±ÅŸ tÃ¼m asset'ler
+      // Fallback: yapÄ±landÄ±rÄ±lmamÄ±ÅŸ tÃ¼m creative asset'ler (house_ad kaldirildi)
       const creatives = db
-        .prepare('SELECT id, media_url, duration_seconds, type FROM creatives WHERE aktif = 1')
+        .prepare('SELECT id, media_url, active_media_url, duration_seconds, type FROM creatives WHERE aktif = 1')
         .all();
-      const houseAds  = db
-        .prepare('SELECT id, name, media_url, duration_seconds, type FROM house_ads WHERE aktif = 1')
-        .all();
-      const fallbackItems = [
-        ...creatives.map((c, i) => ({
-          id: `fallback-c-${c.id}`,
-          playback_order: i,
-          asset_id: c.id,
-          asset_type: 'creative',
-          media_url: buildMediaUrl(db, 'creative', c.id, c.media_url),
-          remote_media_url: c.media_url,
-          duration_seconds: c.duration_seconds,
-          estimated_start_offset_seconds: 0,
-        })),
-        ...houseAds.map((h, i) => ({
-          id: `fallback-h-${h.id}`,
-          playback_order: creatives.length + i,
-          asset_id: h.id,
-          asset_type: 'house_ad',
-          media_url: buildMediaUrl(db, 'house_ad', h.id, h.media_url),
-          remote_media_url: h.media_url,
-          duration_seconds: h.duration_seconds,
-          estimated_start_offset_seconds: 0,
-        })),
-      ];
+      const fallbackItems = creatives.map((c, i) => ({
+        id: `fallback-c-${c.id}`,
+        playback_order: i,
+        asset_id: c.id,
+        asset_type: 'creative',
+        media_url: buildMediaUrl(db, 'creative', c.id, c.media_url),
+        remote_media_url: c.media_url,
+        active_media_url: c.active_media_url
+          ? buildMediaUrl(db, 'creative', c.id + '_active', c.active_media_url)
+          : '',
+        media_type: mediaKindFromMime(getLocalMediaMeta(db, 'creative', c.id)?.mime_type),
+        duration_seconds: c.duration_seconds,
+        estimated_start_offset_seconds: 0,
+      }));
       return {
         version: 0,
         target_date: today,
@@ -676,17 +684,23 @@ export async function buildServer({ db, settings, logger }) {
 
     const items = db
       .prepare(
-        `SELECT id, playback_order, asset_id, asset_type,
-                media_url, duration_seconds, estimated_start_offset_seconds
-           FROM playlist_items
-          WHERE playlist_id = ?
-          ORDER BY playback_order`,
+        `SELECT pi.id, pi.playback_order, pi.asset_id, pi.asset_type,
+                pi.media_url, pi.duration_seconds, pi.estimated_start_offset_seconds,
+                CASE WHEN pi.asset_type = 'creative' THEN COALESCE(c.active_media_url, '') ELSE '' END AS active_media_url
+           FROM playlist_items pi
+           LEFT JOIN creatives c ON pi.asset_type = 'creative' AND c.id = pi.asset_id
+          WHERE pi.playlist_id = ? AND pi.asset_type = 'creative'
+          ORDER BY pi.playback_order`,
       )
       .all(playlist.id)
       .map((item) => ({
         ...item,
         media_url: buildMediaUrl(db, item.asset_type, item.asset_id, item.media_url),
         remote_media_url: item.media_url,
+        active_media_url: item.active_media_url
+          ? buildMediaUrl(db, 'creative', item.asset_id + '_active', item.active_media_url)
+          : '',
+        media_type: mediaKindFromMime(getLocalMediaMeta(db, item.asset_type, item.asset_id)?.mime_type),
       }));
 
     return {
@@ -702,18 +716,69 @@ export async function buildServer({ db, settings, logger }) {
   app.post('/api/reklam-gosterim', async (req, reply) => {
     const body = parseBody(reklamGosterimSchema, req.body, reply);
     if (!body) return;
+
+    // play_event_id idempotency: aynı olay iki kez kaydedilmesin
+    const playEventId = body.play_event_id || null;
+    if (playEventId) {
+      const exists = db.prepare(
+        'SELECT 1 FROM reklam_gosterim_outbox WHERE play_event_id = ? LIMIT 1',
+      ).get(playEventId);
+      if (exists) {
+        reply.code(200);
+        return { durum: 'zaten_kayitli' };
+      }
+    }
+
+    // idempotency_anahtari = play_event_id (varsa) yoksa NULL (INSERT OR IGNORE çalışır)
     db.prepare(
-      'INSERT INTO reklam_gosterim_outbox (payload) VALUES (?)',
+      `INSERT OR IGNORE INTO reklam_gosterim_outbox
+         (idempotency_anahtari, payload, play_event_id, status, error_code, occurred_at, expected_duration)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
     ).run(
+      playEventId,
       JSON.stringify({
         asset_id: body.asset_id,
         asset_type: body.asset_type,
         played_at: body.played_at,
         duration_played: body.duration_played,
+        play_event_id: playEventId,
+        status: body.status || 'COMPLETED',
+        error_code: body.error_code || '',
+        occurred_at: body.occurred_at || null,
+        expected_duration: body.expected_duration ?? null,
       }),
+      playEventId,
+      body.status || 'COMPLETED',
+      body.error_code || '',
+      body.occurred_at || null,
+      body.expected_duration ?? null,
     );
     reply.code(201);
     return { durum: 'kaydedildi' };
+  });
+
+  // Faz 4: kiosk teknik olayları (hata, restart, bağlantı vb.)
+  app.post('/api/kiosk-event', async (req, reply) => {
+    const { kioskEventBatchSchema } = await import('./validators.js');
+    const parsed = kioskEventBatchSchema.safeParse(req.body);
+    if (!parsed.success) {
+      reply.code(400);
+      return { error: 'Gecersiz payload', details: parsed.error.issues.slice(0, 5) };
+    }
+    const { items } = parsed.data;
+    const insertStmt = db.prepare(
+      `INSERT OR IGNORE INTO kiosk_event_outbox
+         (event_id, event_type, severity, message, occurred_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    );
+    const tx = db.transaction((evts) => {
+      for (const evt of evts) {
+        insertStmt.run(evt.event_id, evt.event_type, evt.severity, evt.message, evt.occurred_at || null);
+      }
+    });
+    tx(items);
+    reply.code(201);
+    return { queued: items.length };
   });
 
 const wifiMockEnabled =

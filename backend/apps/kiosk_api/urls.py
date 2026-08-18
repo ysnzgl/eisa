@@ -10,8 +10,10 @@ from .views import (
     KioskBootstrapView,
     KioskCatalogView,
     KioskDiagnosticsView,
+    KioskEventIngestView,
     KioskIdentityEnrollView,
     KioskManifestView,
+    KioskMediaProxyView,
     KioskPingView,
     KioskPlaylistView,
     KioskProofOfPlayView,
@@ -27,6 +29,7 @@ urlpatterns = [
     # Identity enrollment (AppKey + MAC, one-time device_id binding)
     path("identity/enroll/", KioskIdentityEnrollView.as_view(), name="kiosk-identity-enroll"),
     # Operasyonel (AppKey + MAC)
+    path("media/<path:object_key>", KioskMediaProxyView.as_view(), name="kiosk-media"),
     path("ping/", KioskPingView.as_view(), name="kiosk-ping"),
     path("sync/", KioskSyncView.as_view(), name="kiosk-sync"),
     path("catalog/", KioskCatalogView.as_view(), name="kiosk-catalog"),
@@ -34,7 +37,9 @@ urlpatterns = [
     path("sessions/", KioskSessionsView.as_view(), name="kiosk-sessions"),
     path("proof-of-play/", KioskProofOfPlayView.as_view(), name="kiosk-proof-of-play"),
     path("diagnostics/", KioskDiagnosticsView.as_view(), name="kiosk-diagnostics"),
-    # Faz 5: Manifest + ACK (DOOH_KIOSK_ACK=True ile aktif)
+    # Faz 4: kiosk teknik olay ingesti (hata, restart, baglanti)
+    path("kiosk-events/", KioskEventIngestView.as_view(), name="kiosk-events"),
+    # Faz 5: Manifest + ACK
     path("manifest/", KioskManifestView.as_view(), name="kiosk-manifest"),
     path("ack/", KioskAckView.as_view(), name="kiosk-ack"),
 ]

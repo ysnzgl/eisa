@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import { Agent, fetch } from 'undici';
 import { checkOutboxPressure } from './db.js';
 import { syncMediaCache } from './mediaCache.js';
+import { syncBarkodLogoCache, temizleEskiSayaclar, syncBarkodLogoFiles } from './barkodLogoService.js';
 import { getAuthHeaders, getProvisioningState, handle401Error, handle403Error, hasAppKeyCredentials, enrollDeviceId, resolveRuntimeSettings } from './provisioning.js';
 import { istanbulNow } from './timezone.js';
 import {
@@ -18,6 +19,7 @@ import {
   recordDiagnostic,
   reschedulePendingDiagnostics,
 } from './diagnosticOutbox.js';
+import { recordKioskEvent } from './kioskEventOutbox.js';
 
 // Outbox'taki bir kaydın en fazla kaç kez scheduler tarafından deneneceği.
 // Bu sayıya ulaşan kayıtlar kalıcı hata olarak kabul edilir ve atlanır.
@@ -135,11 +137,11 @@ function upsertKategori(db, c) {
 
 function upsertDanismaKategori(db, d) {
   db.prepare(
-    `INSERT INTO danisma_kategorileri (id, slug, ad, ikon, ust_kategori_id, aktif)
-     VALUES (@id, @slug, @ad, @ikon, @ust_kategori_id, @aktif)
+    `INSERT INTO danisma_kategorileri (id, slug, ad, ikon, ust_kategori_id, aktif, sira)
+     VALUES (@id, @slug, @ad, @ikon, @ust_kategori_id, @aktif, @sira)
      ON CONFLICT(id) DO UPDATE SET
        slug=excluded.slug, ad=excluded.ad, ikon=excluded.ikon,
-       ust_kategori_id=excluded.ust_kategori_id, aktif=excluded.aktif,
+       ust_kategori_id=excluded.ust_kategori_id, aktif=excluded.aktif, sira=excluded.sira,
        guncellenme_tarihi=strftime('%Y-%m-%dT%H:%M:%fZ','now')`,
   ).run({
     id: d.id,
@@ -148,6 +150,7 @@ function upsertDanismaKategori(db, d) {
     ikon: d.ikon || 'fa-comments',
     ust_kategori_id: d.ust_kategori ?? null,
     aktif: d.aktif === false ? 0 : 1,
+    sira: d.sira ?? 100,
   });
 }
 
@@ -291,36 +294,53 @@ function replaceSoruEtkenMaddeler(db, soruId, hedefEtkenMaddeler) {
 
 function upsertCreative(db, c) {
   db.prepare(
-    `INSERT INTO creatives (id, media_url, duration_seconds, checksum, type, aktif)
-     VALUES (@id, @media_url, @duration_seconds, @checksum, 'creative', 1)
+    `INSERT INTO creatives (id, media_url, active_media_url, duration_seconds, checksum, type, aktif)
+     VALUES (@id, @media_url, @active_media_url, @duration_seconds, @checksum, 'creative', 1)
      ON CONFLICT(id) DO UPDATE SET
        media_url=excluded.media_url,
+       active_media_url=excluded.active_media_url,
        duration_seconds=excluded.duration_seconds,
        checksum=excluded.checksum,
        guncellenme_tarihi=strftime('%Y-%m-%dT%H:%M:%fZ','now')`,
   ).run({
     id: String(c.id),
     media_url: c.media_url || '',
+    active_media_url: c.active_media_url || '',
     duration_seconds: c.duration_seconds ?? 15,
     checksum: c.checksum || '',
   });
 }
 
-function upsertHouseAd(db, h) {
+function upsertIdleContent(db, c) {
   db.prepare(
-    `INSERT INTO house_ads (id, name, media_url, duration_seconds, type, aktif)
-     VALUES (@id, @name, @media_url, @duration_seconds, 'house_ad', 1)
+    `INSERT INTO idle_contents (id, baslik, metin, kategori_id, ikon, aktif, guncellenme_tarihi)
+     VALUES (@id, @baslik, @metin, @kategori_id, @ikon, 1, @updated_at)
      ON CONFLICT(id) DO UPDATE SET
-       name=excluded.name,
-       media_url=excluded.media_url,
-       duration_seconds=excluded.duration_seconds,
-       guncellenme_tarihi=strftime('%Y-%m-%dT%H:%M:%fZ','now')`,
+       baslik=excluded.baslik,
+       metin=excluded.metin,
+       kategori_id=excluded.kategori_id,
+       ikon=excluded.ikon,
+       aktif=1,
+       guncellenme_tarihi=excluded.guncellenme_tarihi`,
   ).run({
-    id: String(h.id),
-    name: h.name || '',
-    media_url: h.media_url || '',
-    duration_seconds: h.duration_seconds ?? 15,
+    id: Number(c.id),
+    baslik: c.baslik || '',
+    metin: c.metin || '',
+    kategori_id: Number.isFinite(Number(c.kategori_id)) ? Number(c.kategori_id) : null,
+    ikon: c.kategori_ikon || '',
+    updated_at: c.updated_at || new Date().toISOString(),
   });
+}
+
+// Merkezi listede olmayan (pasifleştirilen/silinen) idle içerikleri lokalden düşür.
+function reconcileIdleContents(db, contents) {
+  const ids = contents.map((c) => Number(c.id)).filter((n) => Number.isFinite(n));
+  if (ids.length === 0) {
+    db.prepare('DELETE FROM idle_contents').run();
+    return;
+  }
+  const placeholders = ids.map(() => '?').join(',');
+  db.prepare(`DELETE FROM idle_contents WHERE id NOT IN (${placeholders})`).run(...ids);
 }
 
 function upsertLookups(db, lookups) {
@@ -354,18 +374,21 @@ export async function pullFromCentral(db, settings, log = console) {
     log.warn?.({ err: err?.message }, 'enrollDeviceId pull sirasinda basarisiz')
   );
   try {
-    // 1) kiosk/v1/sync — { creatives: [...], house_ads: [...], lookups: {...} }
+    // 1) kiosk/v1/sync — { creatives: [...], idle_contents: [...], lookups: {...} }
     const r2 = await requestWithRetry(db, settings, 'GET', '/api/kiosk/v1/sync/', undefined, log);
     if (r2.ok) {
       const data = await r2.json();
       const tx = db.transaction((payload) => {
         upsertLookups(db, payload.lookups);
         for (const c of payload.creatives || []) upsertCreative(db, c);
-        for (const h of payload.house_ads || []) upsertHouseAd(db, h);
+        // Eski backend surumu idle_contents gondermezse bos dizi olarak isle.
+        const idleContents = payload.idle_contents || [];
+        reconcileIdleContents(db, idleContents);
+        for (const c of idleContents) upsertIdleContent(db, c);
       });
       tx(data);
       await syncMediaCache(db, settings, log);
-      log.info?.(`PULL: ${(data.creatives || []).length} creative, ${(data.house_ads || []).length} house_ad guncellendi`);
+      log.info?.(`PULL: ${(data.creatives || []).length} creative, ${(data.idle_contents || []).length} idle_content guncellendi`);
     } else if (r2.status === 401) {
       handle401Error(db, settings, log);
     } else if (r2.status === 403) {
@@ -412,6 +435,41 @@ export async function pullFromCentral(db, settings, log = console) {
       db.exec('PRAGMA foreign_keys = ON');
       tx(data);
       log.info?.(`PULL: ${(data.kategoriler || []).length} kategori, ${(data.etken_maddeler || []).length} etken madde, ${(data.danisma_kategorileri || []).length} danisma guncellendi`);
+
+      // kiosk_meta alanlarını kaydet (provisioning dışı slot bilgisi burada dağıtılır)
+      const kioskMetaPayload = data.kiosk_meta;
+      if (kioskMetaPayload && typeof kioskMetaPayload === 'object') {
+        const kNo = Number.parseInt(kioskMetaPayload.eczane_kiosk_no, 10);
+        if (Number.isInteger(kNo) && kNo >= 1 && kNo <= 31) {
+          db.prepare(
+            "INSERT INTO kiosk_meta (key, value) VALUES ('eczane_kiosk_no', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value"
+          ).run(String(kNo));
+          log.info?.({ eczane_kiosk_no: kNo }, 'PULL: eczane_kiosk_no kiosk_meta\'ya kaydedildi');
+        }
+        if (kioskMetaPayload.eczane_adi && typeof kioskMetaPayload.eczane_adi === 'string') {
+          db.prepare(
+            "INSERT INTO kiosk_meta (key, value) VALUES ('eczane_adi', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value"
+          ).run(kioskMetaPayload.eczane_adi);
+        }
+        if (kioskMetaPayload.kiosk_adi && typeof kioskMetaPayload.kiosk_adi === 'string') {
+          db.prepare(
+            "INSERT INTO kiosk_meta (key, value) VALUES ('kiosk_adi', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value"
+          ).run(kioskMetaPayload.kiosk_adi);
+        }
+      }
+
+      // Barkod logo cache sync (snapshot reconciliation)
+      const barkodLogolar = data.barkod_logolar;
+      if (Array.isArray(barkodLogolar)) {
+        try {
+          await syncBarkodLogoCache(db, barkodLogolar, settings.mediaDir, settings.verifyTls, log, settings);
+          log.info?.(`PULL: ${barkodLogolar.length} barkod logo senkronize edildi`);
+        } catch (err) {
+          log.warn?.({ err: err?.message }, 'Barkod logo cache sync hatası');
+        }
+      }
+      // Eski sayaç kayıtlarını temizle (7 günden eski)
+      try { temizleEskiSayaclar(db); } catch { /* temizlik opsiyonel */ }
     } else if (r1.status === 401) {
       handle401Error(db, settings, log);
     } else if (r1.status === 403) {
@@ -425,6 +483,12 @@ export async function pullFromCentral(db, settings, log = console) {
       level: 'ERROR',
       event: 'pull_scheduler_error',
       message: err?.message || 'pull scheduler error',
+    });
+    // Faz 4: panel-görünür sync hatası (throttle: 2dk)
+    recordKioskEvent(db, {
+      event_type: 'SYNC_FAILED',
+      severity: 'ERROR',
+      message: (err?.message || 'pull sync failed').slice(0, 512),
     });
   }
 }
@@ -720,6 +784,7 @@ export async function pingAndSyncManifest(db, settings, log = console) {
 
     log.info?.(`MANIFEST sync tamam: 3 gün uygulandı (v${manifestVersion ?? serverVersion})`);
     await syncMediaCache(db, settings, log);
+    await syncBarkodLogoFiles(db, settings.mediaDir, settings.verifyTls, log, settings);
 
     // 7. ACK gönder
     const ackPayload = {
@@ -880,7 +945,16 @@ export async function pushToCentral(db, settings, log = console) {
       try {
         const logs = gosterimler.map((i) => {
           const p = JSON.parse(i.payload);
-          const entry = { played_at: p.played_at, duration_played: p.duration_played ?? 0 };
+          const entry = {
+            played_at: p.played_at,
+            duration_played: p.duration_played ?? 0,
+            // Faz 3: yeni alanlar (eski kiosk sürümleri göndermemiş olabilir — undefined güvenli)
+            ...(p.play_event_id ? { play_event_id: p.play_event_id } : {}),
+            status: p.status || 'COMPLETED',
+            ...(p.expected_duration != null ? { expected_duration: p.expected_duration } : {}),
+            ...(p.error_code ? { error_code: p.error_code } : {}),
+            ...(p.occurred_at ? { occurred_at: p.occurred_at } : {}),
+          };
           if (p.asset_type === 'house_ad') entry.house_ad_id = p.asset_id;
           else entry.creative_id = p.asset_id;
           return entry;
@@ -919,12 +993,58 @@ export async function pushToCentral(db, settings, log = console) {
         });
       }
     }
+
+    // 3) kiosk_event_outbox → /api/kiosk/v1/kiosk-events/ (Faz 4)
+    const kioskEvents = db
+      .prepare(
+        `SELECT id, event_id, event_type, severity, message, occurred_at
+           FROM kiosk_event_outbox
+          WHERE sent_at IS NULL AND retry_count < 10 LIMIT 50`,
+      )
+      .all();
+    if (kioskEvents.length) {
+      try {
+        const items = kioskEvents.map((e) => ({
+          event_id: e.event_id,
+          event_type: e.event_type,
+          severity: e.severity,
+          message: e.message || '',
+          occurred_at: e.occurred_at || null,
+        }));
+        const r = await requestWithRetry(
+          db, settings, 'POST', '/api/kiosk/v1/kiosk-events/',
+          { items }, log,
+        );
+        if (r.status === 201) {
+          const now = new Date().toISOString();
+          const del = db.prepare('UPDATE kiosk_event_outbox SET sent_at = ? WHERE id = ?');
+          const tx = db.transaction((rows) => { for (const row of rows) del.run(now, row.id); });
+          tx(kioskEvents);
+          log.info?.({ event: 'kiosk_events_pushed', count: kioskEvents.length }, 'PUSH kiosk-events basarili');
+        } else if (r.status === 401) {
+          handle401Error(db, settings, log);
+        } else if (r.status === 403) {
+          handle403Error(db, settings, log);
+        } else {
+          db.prepare('UPDATE kiosk_event_outbox SET retry_count = retry_count + 1 WHERE id IN (' +
+            kioskEvents.map(() => '?').join(',') + ')').run(...kioskEvents.map((e) => e.id));
+        }
+      } catch (err) {
+        log.warn?.({ event: 'kiosk_events_push_error', err: err.message }, 'PUSH kiosk-events kalici hata');
+      }
+    }
   } catch (err) {
     log.error?.({ event: 'push_scheduler_error', err: err?.message }, 'PUSH basarisiz (offline mod)');
     recordDiagnostic(db, {
       level: 'ERROR',
       event: 'push_scheduler_error',
       message: err?.message || 'push scheduler error',
+    });
+    // Faz 4: panel-görünür bağlantı hatası (throttle: 2dk)
+    recordKioskEvent(db, {
+      event_type: 'CONNECTION_LOST',
+      severity: 'ERROR',
+      message: (err?.message || 'push scheduler offline').slice(0, 512),
     });
   }
 }
@@ -1093,6 +1213,7 @@ export function startScheduler(db, settings, log = console) {
   syncMediaCache(db, settings, log).catch((err) =>
     log.warn?.({ event: 'media_cache_bootstrap_failed', err: err?.message }, 'Baslangicta medya cache senkronizasyonu basarisiz'),
   );
+  syncBarkodLogoFiles(db, settings.mediaDir, settings.verifyTls, log, settings).catch(() => {});
 
   log.info?.({
     event: 'scheduler_started',

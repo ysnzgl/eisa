@@ -53,7 +53,6 @@ from apps.campaigns.models import (
     Creative,
     DeliveryRule,
     GenerationJob,
-    HouseAd,
     Playlist,
     PlaylistItem,
 )
@@ -85,17 +84,6 @@ TODAY = _dt.datetime.now(_TZ).date()
 YESTERDAY = TODAY - _dt.timedelta(days=1)
 TOMORROW = TODAY + _dt.timedelta(days=1)
 DAY_AFTER = TODAY + _dt.timedelta(days=2)
-
-
-@pytest.fixture
-def house_ad(db):
-    return HouseAd.objects.create(
-        name="Faz4 HouseAd",
-        media_url="http://localhost:9000/dev/ads/faz4-filler.mp4",
-        duration_seconds=15,
-        priority=1,
-        aktif=True,
-    )
 
 
 def _make_campaign(kiosk=None, start_offset=-1, end_offset=5, target_scope="ALL", name="FBCamp"):
@@ -209,7 +197,7 @@ def test_fb04_running_new_invalidation_not_lost(kiosk):
 
 @pytest.mark.django_db
 @override_settings(DOOH_HORIZON_DAYS=3)
-def test_fb05_campaign_change_correct_scope(kiosk, house_ad):
+def test_fb05_campaign_change_correct_scope(kiosk):
     """Campaign değişikliği → kiosk ve horizon tarihler için job oluşturulur."""
     camp = _make_campaign()
 
@@ -234,7 +222,7 @@ def test_fb05_campaign_change_correct_scope(kiosk, house_ad):
 # ─────────────────────────────────────────────────────────────────────────────
 
 @pytest.mark.django_db
-def test_fb06_creative_change_scope(kiosk, house_ad):
+def test_fb06_creative_change_scope(kiosk):
     """Creative kaydedilince kampanyanın kiosk kapsamı invalidate edilir."""
     camp = _make_campaign()
     creative = _make_creative(camp)
@@ -253,7 +241,7 @@ def test_fb06_creative_change_scope(kiosk, house_ad):
 # ─────────────────────────────────────────────────────────────────────────────
 
 @pytest.mark.django_db
-def test_fb07_delivery_rule_scope(kiosk, house_ad):
+def test_fb07_delivery_rule_scope(kiosk):
     """DeliveryRule değişikliği → campaign kiosk kapsamı."""
     camp = _make_campaign()
     _make_rule(camp)
@@ -271,7 +259,7 @@ def test_fb07_delivery_rule_scope(kiosk, house_ad):
 # ─────────────────────────────────────────────────────────────────────────────
 
 @pytest.mark.django_db
-def test_fb08_target_change_scope(kiosk, house_ad):
+def test_fb08_target_change_scope(kiosk):
     """CampaignTarget/follows değişikliği → kampanya kapsamı yeniden hesaplanır."""
     camp = _make_campaign()
 
@@ -286,23 +274,7 @@ def test_fb08_target_change_scope(kiosk, house_ad):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# FB-09  HouseAd değişikliği tüm aktif kiosk kapsamını invalidate eder
-# ─────────────────────────────────────────────────────────────────────────────
 
-@pytest.mark.django_db
-def test_fb09_house_ad_invalidates_all_kiosks(kiosk, house_ad):
-    """HouseAd değişikliği → tüm aktif kiosklar × horizon invalidation."""
-    pre = GenerationJob.objects.count()
-    enqueue_for_all_kiosks("house_ad_change")
-
-    new_jobs = GenerationJob.objects.filter(
-        kiosk=kiosk,
-        status=GenerationJob.JobStatus.PENDING,
-    )
-    assert new_jobs.count() >= 1
-
-
-# ─────────────────────────────────────────────────────────────────────────────
 # FB-10  Yeni kiosk ALL hedeften plan alır
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -327,7 +299,7 @@ def test_fb10_new_kiosk_gets_invalidation(kiosk):
 
 @pytest.mark.django_db
 @override_settings(DOOH_ENGINE_V2="active")
-def test_fb11_cancelled_campaign_not_in_playlist(kiosk, house_ad):
+def test_fb11_cancelled_campaign_not_in_playlist(kiosk):
     """CANCELLED kampanya V2 planında görünmemeli."""
     from apps.campaigns.services.placement_engine_v2 import PlacementEngineV2
     from apps.campaigns.services.activation_service import ActivationService
@@ -490,7 +462,7 @@ def test_fb18_retry_limit_leads_to_failed(kiosk):
 
 @pytest.mark.django_db
 @override_settings(DOOH_ENGINE_V2="active")
-def test_fb19_planning_error_no_playlist_change(kiosk, house_ad):
+def test_fb19_planning_error_no_playlist_change(kiosk):
     """process_job planlama hatası → mevcut playlist dokunulmaz."""
     # Önceden mevcut playlist oluştur
     existing = Playlist.objects.create(
@@ -514,9 +486,9 @@ def test_fb19_planning_error_no_playlist_change(kiosk, house_ad):
         lock_expires_at=timezone.now() + _dt.timedelta(minutes=5),
     )
 
-    # PlacementEngineV2'yi raise edecek şekilde patch et
+    # V1 üreticiyi raise edecek şekilde patch et
     with patch(
-        "apps.campaigns.services.placement_engine_v2.PlacementEngineV2.plan_kiosk_day",
+        "apps.campaigns.services.scheduler.generate_for_kiosk",
         side_effect=RuntimeError("simulated planning error"),
     ):
         process_job(job)
@@ -536,8 +508,16 @@ def test_fb19_planning_error_no_playlist_change(kiosk, house_ad):
 
 @pytest.mark.django_db
 @override_settings(DOOH_ENGINE_V2="active")
-def test_fb20_publish_error_rollback(kiosk, house_ad):
+def test_fb20_publish_error_rollback(kiosk):
     """_persist_plan hatası → atomik rollback, eski playlist kalır."""
+    from apps.campaigns.models import ScheduleRule
+    camp = _make_campaign()
+    _make_creative(camp)
+    ScheduleRule.objects.create(
+        campaign=camp,
+        frequency_type=ScheduleRule.FrequencyType.PER_HOUR,
+        frequency_value=1,
+    )
     existing = Playlist.objects.create(
         kiosk=kiosk,
         target_date=TODAY,
@@ -560,8 +540,10 @@ def test_fb20_publish_error_rollback(kiosk, house_ad):
         lock_expires_at=timezone.now() + _dt.timedelta(minutes=5),
     )
 
+    # V1 persist sırasında (silme sonrası) hata → regenerate_kiosk_day atomik
+    # olduğundan rollback ile eski playlist geri gelir.
     with patch(
-        "apps.campaigns.services.activation_service.ActivationService._persist_plan",
+        "apps.campaigns.services.scheduler.PlaylistItem.objects.bulk_create",
         side_effect=RuntimeError("simulated publish error"),
     ):
         process_job(job)
@@ -576,26 +558,27 @@ def test_fb20_publish_error_rollback(kiosk, house_ad):
 
 @pytest.mark.django_db
 @override_settings(DOOH_ENGINE_V2="active")
-def test_fb21_same_fingerprint_no_version_bump(kiosk, house_ad):
+def test_fb21_same_fingerprint_no_version_bump(kiosk):
     """process_job: aynı plan fingerprint → lock altında DB'den hesaplanan fingerprint aynı → skip.
 
     Faz 5 correctness fix: fingerprint gerçek PlaylistItem kayıtlarından hesaplanır.
     Önce bir publish yapılır (PlaylistItems oluşturulur), sonra aynı plan tekrar
     işlenirse DB fingerprint == plan fingerprint → publish atlanır.
     """
-    from apps.campaigns.services.placement_engine_v2 import PlacementEngineV2
-    from apps.campaigns.services.activation_service import ActivationService
-    from django.db import transaction as _tx
+    from apps.campaigns.services.queue_worker import regenerate_kiosk_day
 
     camp = _make_campaign()
     _make_creative(camp)
     _make_rule(camp)
+    from apps.campaigns.models import ScheduleRule
+    ScheduleRule.objects.create(
+        campaign=camp,
+        frequency_type=ScheduleRule.FrequencyType.PER_HOUR,
+        frequency_value=1,
+    )
 
-    plan = PlacementEngineV2.plan_kiosk_day(kiosk_id=kiosk.id, target_date=TODAY, planning_run=None)
-
-    # Önce publish et: gerçek PlaylistItems oluştur
-    with _tx.atomic():
-        ActivationService._persist_plan(kiosk.id, TODAY, plan)
+    # Önce V1 ile publish et: gerçek PlaylistItems oluştur (deterministik seed)
+    regenerate_kiosk_day(kiosk.id, TODAY)
 
     assert Playlist.objects.filter(kiosk=kiosk, target_date=TODAY).count() == 24
 
@@ -639,7 +622,7 @@ def test_fb21_same_fingerprint_no_version_bump(kiosk, house_ad):
 
 @pytest.mark.django_db
 @override_settings(DOOH_ENGINE_V2="active")
-def test_fb22_changed_fingerprint_bumps_version_once(kiosk, house_ad):
+def test_fb22_changed_fingerprint_bumps_version_once(kiosk):
     """process_job: fingerprint değişmişse playlist yeniden oluşturulur, version artar."""
     camp = _make_campaign()
     _make_creative(camp)
@@ -679,7 +662,7 @@ def test_fb22_changed_fingerprint_bumps_version_once(kiosk, house_ad):
 
 @pytest.mark.django_db
 @override_settings(DOOH_ASYNC_QUEUE=False)
-def test_fb25_async_queue_false_old_flow(kiosk, house_ad):
+def test_fb25_async_queue_false_old_flow(kiosk):
     """DOOH_ASYNC_QUEUE=False → enqueue_for_campaign çağrıldığında GenerationJob oluşmaz.
 
     Eski akış: signal → thread → regenerate_for_campaign (GenerationJob tablosuna yazmaz
@@ -707,7 +690,7 @@ def test_fb25_async_queue_false_old_flow(kiosk, house_ad):
 # ─────────────────────────────────────────────────────────────────────────────
 
 @pytest.mark.django_db
-def test_fb26_v2_off_no_publish(kiosk, house_ad):
+def test_fb26_v2_off_no_publish(kiosk):
     """Faz 7: DOOH_ENGINE_V2 flag kaldırıldı; process_job V2 publish yapar (multi_kiosk job atlanır)."""
     # kiosk_id=None olan multi-kiosk job atlanır (eski akış uyumu)
     job = GenerationJob.objects.create(
@@ -736,7 +719,7 @@ def test_fb26_v2_off_no_publish(kiosk, house_ad):
 # ─────────────────────────────────────────────────────────────────────────────
 
 @pytest.mark.django_db
-def test_fb27_shadow_no_mutation(kiosk, house_ad):
+def test_fb27_shadow_no_mutation(kiosk):
     """Faz 7: shadow mode kaldırıldı; process_job Playlist oluşturur (V2 active canonical)."""
     camp = _make_campaign()
     _make_creative(camp)
@@ -769,7 +752,7 @@ def test_fb27_shadow_no_mutation(kiosk, house_ad):
 
 @pytest.mark.django_db
 @override_settings(DOOH_ENGINE_V2="active")
-def test_fb28_active_staged_publish(kiosk, house_ad):
+def test_fb28_active_staged_publish(kiosk):
     """process_job V2=active → Playlist oluşturulur."""
     camp = _make_campaign()
     _make_creative(camp)
@@ -803,8 +786,8 @@ def test_fb28_active_staged_publish(kiosk, house_ad):
 
 @pytest.mark.django_db
 @override_settings(DOOH_ASYNC_QUEUE=True)
-def test_fb29_generate_endpoint_returns_pending(kiosk, house_ad, admin_client):
-    """POST /api/campaigns/v2/playlists/generate/ → PENDING job döndürür."""
+def test_fb29_generate_endpoint_returns_pending(kiosk, admin_client):
+    """POST /api/campaigns/v2/playlists/generate/ → senkron işler, job DONE."""
     resp = admin_client.post(
         "/api/campaigns/v2/playlists/generate/",
         {"date": str(TODAY), "scope": "kiosks", "kiosk_ids": [kiosk.id]},
@@ -817,12 +800,15 @@ def test_fb29_generate_endpoint_returns_pending(kiosk, house_ad, admin_client):
         job_id = data.get("job_id")
         assert job_id is not None
         job = GenerationJob.objects.get(pk=job_id)
-        assert job.status == GenerationJob.JobStatus.PENDING
+        # Buton artık senkron drenaj yapar → job terminal durumda olmalı.
+        assert job.status == GenerationJob.JobStatus.DONE
+    # Playlist üretildi
+    assert Playlist.objects.filter(kiosk=kiosk, target_date=TODAY).count() == 24
 
 
 @pytest.mark.django_db
 @override_settings(DOOH_ASYNC_QUEUE=False)
-def test_fb29b_generate_endpoint_async_off(kiosk, house_ad, admin_client):
+def test_fb29b_generate_endpoint_async_off(kiosk, admin_client):
     """ASYNC_QUEUE=False: generate endpoint thread tabanlı çalışır, status PENDING/DONE."""
     resp = admin_client.post(
         "/api/campaigns/v2/playlists/generate/",
@@ -890,7 +876,7 @@ def test_fb31_job_status_requires_auth(api_client, kiosk):
 
 @pytest.mark.django_db
 @override_settings(DOOH_ENGINE_V2="active")
-def test_fb32_faz3_contracts_intact(kiosk, house_ad, admin_client):
+def test_fb32_faz3_contracts_intact(kiosk, admin_client):
     """Faz 3 simulate ve activate contractları Faz 4 sonrası çalışmalı."""
     camp = _make_campaign()
     _make_creative(camp)
@@ -921,7 +907,7 @@ def test_fb32_faz3_contracts_intact(kiosk, house_ad, admin_client):
 
 @pytest.mark.django_db
 @override_settings(DOOH_ENGINE_V2="active")
-def test_fb34_retry_after_failure_safe(kiosk, house_ad):
+def test_fb34_retry_after_failure_safe(kiosk):
     """RETRY durumundaki job işlenince güvenle tamamlanır."""
     camp = _make_campaign()
     _make_creative(camp)

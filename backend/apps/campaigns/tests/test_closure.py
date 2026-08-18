@@ -39,7 +39,6 @@ from apps.campaigns.models import (
     Campaign,
     Creative,
     DeliveryRule,
-    HouseAd,
     KioskDayQuota,
     PlanningRun,
     PlayLog,
@@ -89,13 +88,13 @@ def camp3(db):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# C01  DOOH_PERSISTENT_MEDIA_URL varsayılan False
+# C01  DOOH_PERSISTENT_MEDIA_URL varsayılan True (2026-08-15 değiştirildi)
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def test_c01_persistent_media_flag_default_false():
-    """DOOH_PERSISTENT_MEDIA_URL varsayılan olarak False olmalı."""
-    assert getattr(settings, "DOOH_PERSISTENT_MEDIA_URL", False) is False
+def test_c01_persistent_media_flag_default_true():
+    """DOOH_PERSISTENT_MEDIA_URL varsayılan olarak True olmalı (presigned URL sorunu çözümü)."""
+    assert getattr(settings, "DOOH_PERSISTENT_MEDIA_URL", False) is True
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -342,23 +341,7 @@ def test_c11_legacy_creative_unchanged_duration_preserved(admin_client, camp):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# C12  Yeni HouseAd API'de grid dışı süre reddedilir
-# ─────────────────────────────────────────────────────────────────────────────
 
-
-@pytest.mark.django_db
-def test_c12_new_housead_grid_invalid_via_api(admin_client):
-    """API üzerinden yeni HouseAd'de grid dışı süre (örn. 3s) reddedilmeli."""
-    stable = f"{settings.S3_PUBLIC_BASE_URL}/ads/housead.mp4"
-    r = admin_client.post(
-        "/api/campaigns/v2/house-ads/",
-        {"name": "Bad HouseAd", "media_url": stable, "duration_seconds": 3},
-        format="json",
-    )
-    assert r.status_code == 400, f"3s grid-dışı housead kabul edilmemeli. Status={r.status_code}"
-
-
-# ─────────────────────────────────────────────────────────────────────────────
 # C13–C16  A→B follows_service
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -484,14 +467,8 @@ def test_c19_golden_master_m08_target_unchanged(kiosk, camp):
     from apps.campaigns.services.scheduler import PlaylistGenerator
     import datetime
 
-    from apps.campaigns.models import ScheduleRule, HouseAd
+    from apps.campaigns.models import ScheduleRule
 
-    HouseAd.objects.create(
-        name="filler",
-        media_url="https://cdn.example.com/f.mp4",
-        duration_seconds=15,
-        aktif=True,
-    )
     Creative.objects.create(
         campaign=camp,
         media_url="https://cdn.example.com/ad.mp4",

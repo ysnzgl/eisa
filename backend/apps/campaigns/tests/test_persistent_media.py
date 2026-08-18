@@ -42,7 +42,7 @@ from django.conf import settings
 from django.test import override_settings
 from django.utils import timezone
 
-from apps.campaigns.models import Campaign, Creative, HouseAd, PlayLog
+from apps.campaigns.models import Campaign, Creative, PlayLog
 from apps.campaigns.services.scheduler import generate_for_kiosk
 
 
@@ -107,17 +107,6 @@ def active_campaign(db):
         start_date=base - _dt.timedelta(days=1),
         end_date=base + _dt.timedelta(days=30),
         status=Campaign.Status.ACTIVE,
-    )
-
-
-@pytest.fixture
-def house_ad_10s(db):
-    return HouseAd.objects.create(
-        name="Filler 10s",
-        media_url=_stable_url("ads/filler10.mp4"),
-        duration_seconds=10,
-        priority=100,
-        aktif=True,
     )
 
 
@@ -196,7 +185,7 @@ def test_m02_object_key_saved_in_db(admin_client, active_campaign):
 
 
 @pytest.mark.django_db
-def test_m03_same_creative_same_media_url_across_playlists(kiosk, house_ad_10s):
+def test_m03_same_creative_same_media_url_across_playlists(kiosk):
     """Creative.media_url playlist yeniden üretimlerinde değişmemeli."""
     from apps.campaigns.models import ScheduleRule, Playlist
 
@@ -410,7 +399,7 @@ def test_m08c_creative_with_playlog_delete_behavior(admin_client, active_campaig
 
 
 @pytest.mark.django_db
-def test_m09_kiosk_gets_stable_media_url(kiosk_client, kiosk, house_ad_10s):
+def test_m09_kiosk_gets_stable_media_url(kiosk_client, kiosk):
     """Kiosk playlist endpoint'i presigned olmayan media_url döndürmeli."""
     from apps.campaigns.models import ScheduleRule
 
@@ -643,15 +632,6 @@ def test_m15_panel_upload_then_create_creative(admin_client, mock_storage_cls, a
 # ─────────────────────────────────────────────────────────────────────────────
 # Serializer alanları
 # ─────────────────────────────────────────────────────────────────────────────
-
-
-@pytest.mark.django_db
-def test_housead_object_key_in_response(admin_client, house_ad_10s):
-    r = admin_client.get("/api/campaigns/v2/house-ads/")
-    assert r.status_code == 200, r.content
-    data = r.json()
-    results = data if isinstance(data, list) else data.get("results", data)
-    assert "object_key" in results[0], f"object_key eksik: {list(results[0].keys())}"
 
 
 @pytest.mark.django_db

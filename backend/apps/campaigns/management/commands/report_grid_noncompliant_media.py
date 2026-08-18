@@ -1,7 +1,7 @@
 """Faz 1 — Grid uyumsuz medya raporu.
 
 15sn planning grid (izin verilen: 15/30/45/60sn) ile uyumsuz
-Creative ve HouseAd kayitlarini listeler. Hicbir degisiklik yapmaz.
+Creative kayitlarini listeler. Hicbir degisiklik yapmaz.
 
 Kullanim:
     python manage.py report_grid_noncompliant_media
@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from django.core.management.base import BaseCommand
 
-from apps.campaigns.models import Creative, HouseAd
+from apps.campaigns.models import Creative
 
 
 GRID_DURATIONS = frozenset({15, 30, 45, 60})
@@ -19,7 +19,7 @@ GRID_DURATIONS = frozenset({15, 30, 45, 60})
 
 class Command(BaseCommand):
     help = (
-        "Faz 1: 15sn grid ile uyumsuz Creative ve HouseAd kayitlarini raporlar. "
+        "Faz 1: 15sn grid ile uyumsuz Creative kayitlarini raporlar. "
         "Hicbir degisiklik yapmaz."
     )
 
@@ -38,22 +38,14 @@ class Command(BaseCommand):
             c for c in Creative.objects.select_related("campaign").order_by("campaign__name", "id")
             if int(c.duration_seconds) not in GRID_DURATIONS
         ]
-        bad_house_ads = [
-            h for h in HouseAd.objects.order_by("name", "id")
-            if int(h.duration_seconds) not in GRID_DURATIONS
-        ]
 
-        total = len(bad_creatives) + len(bad_house_ads)
+        total = len(bad_creatives)
 
         if fmt == "csv":
             self.stdout.write("type,id,name,campaign,duration_seconds")
             for c in bad_creatives:
                 self.stdout.write(
                     f"creative,{c.pk},{c.name},{c.campaign.name},{c.duration_seconds}"
-                )
-            for h in bad_house_ads:
-                self.stdout.write(
-                    f"house_ad,{h.pk},{h.name},,{h.duration_seconds}"
                 )
         else:
             self.stdout.write(self.style.WARNING(
@@ -75,19 +67,6 @@ class Command(BaseCommand):
             else:
                 self.stdout.write(self.style.SUCCESS(
                     "\n--- Creative: tum kayitlar grid uyumlu ---"
-                ))
-
-            if bad_house_ads:
-                self.stdout.write(self.style.WARNING(
-                    f"\n--- Uyumsuz HouseAd'ler ({len(bad_house_ads)}) ---"
-                ))
-                for h in bad_house_ads:
-                    self.stdout.write(
-                        f"  HouseAd pk={h.pk} | {h.duration_seconds}s | {h.name}"
-                    )
-            else:
-                self.stdout.write(self.style.SUCCESS(
-                    "\n--- HouseAd: tum kayitlar grid uyumlu ---"
                 ))
 
             self.stdout.write(

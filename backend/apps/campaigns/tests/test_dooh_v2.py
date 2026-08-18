@@ -11,7 +11,6 @@ from django.utils import timezone
 from apps.campaigns.models import (
     Campaign,
     Creative,
-    HouseAd,
     PlayLog,
     Playlist,
     PlaylistItem,
@@ -55,15 +54,6 @@ def creative_5s(db, active_campaign):
         campaign=active_campaign,
         media_url="https://cdn.example.com/ad5.mp4",
         duration_seconds=5,
-    )
-
-
-@pytest.fixture
-def house_ad_10s(db):
-    return HouseAd.objects.create(
-        name="Health Tip",
-        media_url="https://cdn.example.com/health.mp4",
-        duration_seconds=10,
     )
 
 
@@ -134,24 +124,7 @@ def test_per_hour_targets_only_listed_hours(kiosk, active_campaign, creative_15s
 
 
 @pytest.mark.django_db
-def test_filler_fills_remaining_seconds(kiosk, house_ad_10s):
-    """Kural yoksa Pass 4 house ad ile her loop'u 60sn'e tam doldurmali."""
-    target_date = timezone.now().date()
-    playlists = generate_for_kiosk(kiosk, target_date)
-    pl = next(p for p in playlists if p.target_hour == 0)
-    items = list(pl.items.all())
-    assert items, "playlist bos olmamali"
-    assert all(i.house_ad_id == house_ad_10s.pk for i in items)
-    # Her loop 60sn'e dolu olmali
-    per_loop: dict[int, int] = {}
-    for it in items:
-        idx = int(it.estimated_start_offset_seconds) // pl.loop_duration_seconds
-        per_loop[idx] = per_loop.get(idx, 0) + int(it.house_ad.duration_seconds)
-    assert all(v == 60 for v in per_loop.values())
-
-
-@pytest.mark.django_db
-def test_capacity_invariant_never_exceeded(kiosk, active_campaign, creative_15s, house_ad_10s):
+def test_capacity_invariant_never_exceeded(kiosk, active_campaign, creative_15s):
     """Hicbir loop'ta toplam kullanim 60sn'i gecmemeli."""
     ScheduleRule.objects.create(
         campaign=active_campaign,
@@ -164,9 +137,7 @@ def test_capacity_invariant_never_exceeded(kiosk, active_campaign, creative_15s,
         per_loop: dict[int, int] = {}
         for item in pl.items.all():
             idx = int(item.estimated_start_offset_seconds) // pl.loop_duration_seconds
-            dur = (item.creative.duration_seconds if item.creative_id
-                   else item.house_ad.duration_seconds)
-            per_loop[idx] = per_loop.get(idx, 0) + int(dur)
+            per_loop[idx] = per_loop.get(idx, 0) + int(item.creative.duration_seconds)
         assert per_loop, f"empty playlist h={pl.target_hour}"
         assert max(per_loop.values()) <= pl.loop_duration_seconds
 
@@ -188,7 +159,7 @@ def test_inactive_campaign_skipped(kiosk, creative_15s):
 
 
 @pytest.mark.django_db
-def test_idempotent_regeneration(kiosk, house_ad_10s):
+def test_idempotent_regeneration(kiosk):
     """Aynı gun icin tekrar uretmek mevcut playlist'leri silip yenisini uretir."""
     target_date = timezone.now().date()
     generate_for_kiosk(kiosk, target_date)
@@ -275,18 +246,23 @@ def test_inventory_availability_after_generation(admin_client, kiosk, active_cam
 
 
 @pytest.mark.django_db
-def test_kiosk_sync_returns_creatives(kiosk_client, kiosk, active_campaign, creative_15s, house_ad_10s):
+def test_kiosk_sync_returns_creatives(kiosk_client, kiosk, active_campaign, creative_15s):
     r = kiosk_client.get("/api/kiosk/v1/sync/")
     assert r.status_code == 200, r.content
     body = r.json()
     assert body["kiosk_id"] == kiosk.pk
     creative_ids = {c["id"] for c in body["creatives"]}
     assert str(creative_15s.pk) in creative_ids
-    assert len(body["house_ads"]) == 1
+    assert "idle_contents" in body
 
 
 @pytest.mark.django_db
-def test_kiosk_playlist_endpoint(kiosk_client, kiosk, house_ad_10s):
+def test_kiosk_playlist_endpoint(kiosk_client, kiosk, active_campaign, creative_15s):
+    ScheduleRule.objects.create(
+        campaign=active_campaign,
+        frequency_type=ScheduleRule.FrequencyType.PER_LOOP,
+        frequency_value=2,
+    )
     target_date = timezone.now().date()
     generate_for_kiosk(kiosk, target_date)
     r = kiosk_client.get(f"/api/kiosk/v1/playlist/?date={target_date}")
@@ -324,7 +300,7 @@ def test_kiosk_proof_of_play_bulk_ingest(kiosk_client, kiosk, creative_15s):
 
 @pytest.mark.django_db
 def test_kiosk_proof_of_play_validation(kiosk_client, kiosk):
-    """Hem creative_id hem house_ad_id eksikse 400."""
+    """creative_id eksikse 400."""
     payload = {"logs": [
         {"played_at": timezone.now().isoformat(), "duration_played": 15},
     ]}
@@ -332,6 +308,25 @@ def test_kiosk_proof_of_play_validation(kiosk_client, kiosk):
         "/api/kiosk/v1/proof-of-play/", payload, format="json",
     )
     assert r.status_code == 400
+
+
+@pytest.mark.django_db
+def test_kiosk_proof_of_play_unknown_creative_is_skipped(kiosk_client, kiosk):
+    """Silinmis/gecersiz creative referansi ingest'i 500'e dusurmez."""
+    payload = {"logs": [
+        {
+            "creative_id": str(uuid.uuid4()),
+            "played_at": timezone.now().isoformat(),
+            "duration_played": 15,
+        },
+    ]}
+    r = kiosk_client.post(
+        "/api/kiosk/v1/proof-of-play/", payload, format="json",
+    )
+    assert r.status_code == 201, r.content
+    body = r.json()
+    assert body["ingested"] == 0
+    assert body["invalid_refs"] == 1
 
 
 @pytest.mark.django_db

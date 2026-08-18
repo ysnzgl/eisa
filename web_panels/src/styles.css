@@ -258,7 +258,8 @@ body {
     border-color: var(--border);
   }
   .eisa-btn-ghost:hover:not(:disabled) { color: var(--text); border-color: #C7C4BD; }
-
+  .eisa-btn-success { color: #065f46;  background: #d1fae5; border-color: #6ee7b7 }
+  .eisa-btn-success:hover:not(:disabled) { background: #A7F3D0; border-color: #34D399; }
   /* Form fields */
   .eisa-field-label {
     display: block;
@@ -346,7 +347,6 @@ body {
     border-radius: 18px;
     box-shadow: 0 32px 64px -12px rgba(17,24,39,0.25);
     width: 100%;
-    max-width: 480px;
     max-height: 90vh;
     display: flex;
     flex-direction: column;
@@ -939,6 +939,13 @@ body {
 .admin-sidebar .nav-link i { width: 18px; text-align: center; font-size: 0.95rem; color: #6B7280; }
 .admin-sidebar .nav-link:hover { background: #F3F4F6; color: #111827; }
 .admin-sidebar .nav-link:hover i { color: #B1121B; }
+.admin-sidebar .nav-badge {
+  margin-left: auto;
+  background: #B1121B; color: #fff;
+  font-size: 0.65rem; font-weight: 700; line-height: 1;
+  padding: 0.18rem 0.42rem; border-radius: 10px; min-width: 18px; text-align: center;
+  flex-shrink: 0;
+}
 .admin-sidebar .nav-link.is-active,
 .admin-sidebar .nav-link.router-link-exact-active {
   background: linear-gradient(135deg, rgba(177,18,27,0.12), rgba(177,18,27,0.05));
@@ -969,6 +976,17 @@ body {
 }
 .admin-sidebar .logout:hover { background: #FEF2F2; color: #991B1B; border-color: #FECACA; }
 .admin-main { flex: 1; overflow: auto; min-width: 0; }
+/* Eczacı modunda RouterView + kampanya şeridini dikey flex ile düzenle */
+.admin-main--pharmacist {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.admin-main--pharmacist > :first-child {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+}
 
 /* ── Pharmacist role overrides (teal accent) ──────────────────── */
 [data-role="pharmacist"] .admin-sidebar .brand-accent { color: #B1121B; }
@@ -1109,6 +1127,7 @@ body {
 .qr-result-section:last-child { border-bottom: none; }
 .qr-sensitive-bar { padding: 0.65rem 1.25rem; background: #FEF2F2; border-bottom: 1px solid #FECACA; display: flex; align-items: center; gap: 0.5rem; }
 .qr-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.qr-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; }
 .qr-detail-label { font-size: 0.68rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #6B7280; margin-bottom: 0.2rem; }
 .qr-detail-value { font-weight: 600; color: #111827; }
 

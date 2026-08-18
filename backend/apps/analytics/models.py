@@ -17,6 +17,16 @@ class OturumLogu(BaseModel):
     kiosk = models.ForeignKey(
         "pharmacies.Kiosk", on_delete=models.CASCADE, related_name="oturumlar"
     )
+    # Doğrudan eczane snapshot ilişkisi — ingest sırasında kiosk.eczane üzerinden atanır.
+    # Kiosk payload'ından alınmaz. Eski kayıtlar migration backfill ile doldurulur.
+    eczane = models.ForeignKey(
+        "pharmacies.Eczane",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="oturumlar",
+        help_text="Oturumun kaydedildiği eczane. Kiosk payload'ından alınmaz; auth context'ten atanır.",
+    )
     yas_araligi = models.ForeignKey(
         "lookups.YasAraligi", on_delete=models.PROTECT, related_name="oturumlar"
     )
@@ -39,6 +49,24 @@ class OturumLogu(BaseModel):
         db_index=True,
         help_text="Akis turu: sikayet (etken madde onerisi) veya ozel danismanlik."
     )
+
+    # Oturum durum (lifecycle)
+    class Durum(models.TextChoices):
+        COMPLETED = "COMPLETED", "Tamamlandi"
+        ABANDONED = "ABANDONED", "Terk Edildi"
+        EXPIRED = "EXPIRED", "Suresi Doldu"  # Sunucu turetimi (read-time veya backfill)
+
+    durum = models.CharField(
+        max_length=16,
+        choices=Durum.choices,
+        default=Durum.COMPLETED,
+        db_index=True,
+        help_text=(
+            "Oturum durumu: COMPLETED (kullanici bitirdi), "
+            "ABANDONED (inaktivite/terk), "
+            "EXPIRED (danisma gerceklesmeyen, sunucu turetimi)."
+        ),
+    )
     danisma_kategorisi = models.ForeignKey(
         "products.Danisma", on_delete=models.PROTECT, related_name="oturumlar",
         null=True, blank=True,
@@ -46,7 +74,9 @@ class OturumLogu(BaseModel):
     )
 
     hassas_akis = models.BooleanField(default=False)
-    qr_kodu = models.CharField(max_length=8, unique=True, db_index=True)
+    # 9 karakter Crockford (yeni kiosk) veya 8 karakter legacy [A-Z0-9].
+    # Null: terk edilmiş oturum (tamamlandi=False).
+    qr_kodu = models.CharField(max_length=9, null=True, blank=True, db_index=True)
     cevaplar = models.JSONField(default=dict, blank=True)
     onerilen_etken_maddeler = models.JSONField(default=list, blank=True)
     tamamlandi = models.BooleanField(
@@ -57,10 +87,21 @@ class OturumLogu(BaseModel):
         ),
     )
 
-    # EczacÄ± danÄ±ÅŸma tamamlama akÄ±ÅŸÄ±
+    # Zaman damgasi ayırımı (kiosk vs sunucu saati)
+    cihaz_zamani = models.DateTimeField(
+        null=True, blank=True, db_index=True,
+        help_text="Kiosk tarafindan bildirilen oturum zamani (cihaz saati).",
+    )
+    sunucu_zamani = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Oturumun sunucuya ulastigi an (server clock). cihaz saati yanlis oldugunda referans alinir.",
+    )
+
+    # Eczaci danisma tamamlama akisi
     danisma_tamamlandi = models.BooleanField(default=False, db_index=True)
     danisma_tamamlanma_tarihi = models.DateTimeField(null=True, blank=True)
     danisma_notu = models.TextField(blank=True)
+    sold = models.BooleanField(null=True, blank=True)
     danisma_tamamlayan_eczaci = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -69,10 +110,35 @@ class OturumLogu(BaseModel):
         related_name="tamamlanan_danismalar",
     )
 
+    # Fişte basılan barkod logosu. PROTECT: geçmiş ölçüm kaybolmamasın.
+    # Admin API'de fiziksel silme kapalıdır; DELETE → 405.
+    barkod_logo = models.ForeignKey(
+        "barkod_logo.BarkodLogo",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="oturumlar",
+        help_text="Fişte başarıyla basılan barkod logosu. Null = fallback e-ISA başlığı kullanıldı.",
+    )
+
     class Meta:
         db_table = "oturum_loglari"
         ordering = ("-olusturulma_tarihi",)
-        indexes = [models.Index(fields=["olusturulma_tarihi", "kiosk"])]
+        indexes = [
+            models.Index(fields=["olusturulma_tarihi", "kiosk"]),
+            models.Index(fields=["durum", "olusturulma_tarihi"]),
+            models.Index(fields=["kiosk", "durum"]),
+            models.Index(fields=["cihaz_zamani"]),
+        ]
+        constraints = [
+            # Aynı eczanede aynı QR iki farklı oturuma ait olamaz.
+            # NULL qr_kodu (terk edilmiş) constraint dışında tutulur.
+            models.UniqueConstraint(
+                fields=["eczane", "qr_kodu"],
+                condition=models.Q(qr_kodu__isnull=False),
+                name="uniq_oturum_eczane_qr",
+            ),
+        ]
         verbose_name = "Oturum Logu"
         verbose_name_plural = "Oturum Loglari"
 
@@ -131,10 +197,87 @@ class OturumOnerilenEtkenMadde(BaseModel):
 
     # Snapshot
     etken_madde_adi_snapshot = models.CharField(max_length=250, blank=True)
+    satildi = models.BooleanField(default=False)
 
     class Meta:
         db_table = "oturum_onerilen_etken_maddeler"
         unique_together = (("oturum", "etken_madde"),)
+        constraints = [
+            # FK null olduğunda (eski/çözümlenemeyen madde) snapshot adı üzerinden tekillik.
+            models.UniqueConstraint(
+                fields=["oturum", "etken_madde_adi_snapshot"],
+                condition=models.Q(etken_madde__isnull=True),
+                name="uniq_oturum_snapshot_null_fk",
+            ),
+        ]
         ordering = ("oturum_id", "id")
         verbose_name = "Oturum Onerilen Etken Madde"
         verbose_name_plural = "Oturum Onerilen Etken Maddeler"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Faz 4 — KioskEvent: kiosk teknik olayları (hata / bağlantı / sync)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class KioskEvent(BaseModel):
+    """Kiosktaki teknik olayların kalıcı kaydı (Faz 4).
+
+    Playlist dağıtımı veya oturum logları değil; hata, bağlantı kesilmesi,
+    restart, senkronizasyon hatası gibi operasyonel olaylar için.
+    İdempotency: event_id (kiosk üretir, UUID) — aynı olay tekrar gönderilse
+    mükerrer kayıt oluşmaz.
+    """
+
+    class EventType(models.TextChoices):
+        CONNECTION_LOST = "CONNECTION_LOST", "Baglanti Kesildi"
+        CONNECTION_RESTORED = "CONNECTION_RESTORED", "Baglanti Yenilendi"
+        SYNC_FAILED = "SYNC_FAILED", "Senkronizasyon Hatasi"
+        PLAYBACK_ERROR = "PLAYBACK_ERROR", "Oynatma Hatasi"
+        APP_RESTART = "APP_RESTART", "Uygulama Yeniden Basladi"
+        OUTBOX_PRESSURE = "OUTBOX_PRESSURE", "Outbox Doluluk Uyarisi"
+        GENERAL_ERROR = "GENERAL_ERROR", "Genel Hata"
+
+    class Severity(models.TextChoices):
+        INFO = "INFO", "Bilgi"
+        WARNING = "WARNING", "Uyari"
+        ERROR = "ERROR", "Hata"
+        CRITICAL = "CRITICAL", "Kritik"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    kiosk = models.ForeignKey(
+        "pharmacies.Kiosk", on_delete=models.CASCADE, related_name="kiosk_events"
+    )
+    event_id = models.UUIDField(
+        unique=True, db_index=True,
+        help_text="Kiosk tarafindan uretilen idempotency anahtari.",
+    )
+    event_type = models.CharField(
+        max_length=32, choices=EventType.choices,
+        default=EventType.GENERAL_ERROR, db_index=True,
+    )
+    severity = models.CharField(
+        max_length=16, choices=Severity.choices,
+        default=Severity.WARNING, db_index=True,
+    )
+    message = models.CharField(max_length=512, blank=True, default="")
+    occurred_at = models.DateTimeField(
+        null=True, blank=True, db_index=True,
+        help_text="Kiosk cihaz zamani.",
+    )
+    received_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Sunucu zamani.",
+    )
+
+    class Meta:
+        db_table = "kiosk_events"
+        ordering = ("-olusturulma_tarihi",)
+        verbose_name = "Kiosk Event"
+        verbose_name_plural = "Kiosk Events"
+        indexes = [
+            models.Index(fields=["kiosk", "event_type", "olusturulma_tarihi"]),
+            models.Index(fields=["severity", "olusturulma_tarihi"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"[{self.kiosk_id}] {self.event_type} ({self.severity})"

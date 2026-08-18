@@ -65,18 +65,19 @@ export function makeMemoryDb() {
     CREATE TABLE creatives (
       id TEXT PRIMARY KEY,
       media_url TEXT NOT NULL DEFAULT '',
+      active_media_url TEXT,
       duration_seconds INTEGER NOT NULL DEFAULT 15,
       checksum TEXT NOT NULL DEFAULT '',
       type TEXT NOT NULL DEFAULT 'creative',
       aktif INTEGER NOT NULL DEFAULT 1,
       guncellenme_tarihi TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')));
 
-    CREATE TABLE house_ads (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL DEFAULT '',
-      media_url TEXT NOT NULL DEFAULT '',
-      duration_seconds INTEGER NOT NULL DEFAULT 15,
-      type TEXT NOT NULL DEFAULT 'house_ad',
+    CREATE TABLE idle_contents (
+      id INTEGER PRIMARY KEY,
+      baslik TEXT NOT NULL DEFAULT '',
+      metin TEXT NOT NULL DEFAULT '',
+      kategori_id INTEGER,
+      ikon TEXT NOT NULL DEFAULT '',
       aktif INTEGER NOT NULL DEFAULT 1,
       guncellenme_tarihi TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')));
 
@@ -107,6 +108,11 @@ export function makeMemoryDb() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       idempotency_anahtari TEXT UNIQUE,
       payload TEXT NOT NULL,
+      play_event_id TEXT,
+      status TEXT NOT NULL DEFAULT 'COMPLETED',
+      error_code TEXT NOT NULL DEFAULT '',
+      occurred_at TEXT,
+      expected_duration INTEGER,
       olusturulma_tarihi TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
       gonderilme_tarihi TEXT);
 
@@ -123,6 +129,31 @@ export function makeMemoryDb() {
     CREATE TABLE kiosk_meta (
       key   TEXT PRIMARY KEY,
       value TEXT NOT NULL DEFAULT '');
+
+    CREATE TABLE qr_counter (
+      id INTEGER PRIMARY KEY CHECK(id = 1),
+      last_value INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')));
+    INSERT INTO qr_counter (id, last_value) VALUES (1, 0);
+
+    CREATE TABLE barkod_logolar (
+      id TEXT PRIMARY KEY,
+      ad TEXT NOT NULL DEFAULT '',
+      media_url TEXT NOT NULL DEFAULT '',
+      checksum TEXT NOT NULL DEFAULT '',
+      baslangic_zamani TEXT NOT NULL,
+      bitis_zamani TEXT NOT NULL,
+      aktif INTEGER NOT NULL DEFAULT 1,
+      gunluk_limit INTEGER,
+      local_path TEXT NOT NULL DEFAULT '',
+      cache_status TEXT NOT NULL DEFAULT 'pending',
+      synced_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')));
+
+    CREATE TABLE barkod_logo_baski_sayaclari (
+      logo_id TEXT NOT NULL,
+      tarih_istanbul TEXT NOT NULL,
+      sayi INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (logo_id, tarih_istanbul));
   `);
   return db;
 }

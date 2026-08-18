@@ -3,14 +3,8 @@
  *
  * CampaignWizard upload → form state → create payload akışını doğrular.
  *
- * HouseAd Yönetim Ekranı: web_panels/src/views/admin/'da ayrı bir
- * HouseAd yönetim ekranı mevcut DEĞİLDİR. HouseAd'ler PlaylistEditor.vue
- * üzerinden yönetilmektedir. Bu nedenle:
- *   - CampaignWizard'da creative upload canonical akışı test edilmiştir.
- *   - HouseAd create canonical akışı için ayrı UI kapsam açığı mevcuttur.
- *   - HouseAd canonical akışı yalnızca backend serializer düzeyinde test
- *     edilebilmektedir (test_closure.py C12).
- *   - Bu durum açık UI kapsam açığı olarak raporlanmaktadır.
+ * NOT: HouseAd sistemi kaldırıldı. İdle içerik artık başlık/metin tabanlı
+ * IdleScreenContent modeliyle (İçerik Yönetimi ekranı) yönetilir.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -185,26 +179,13 @@ describe('form state → createCreative payload canonical format', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// House Ad UI Kapsam Açığı Belgesi
+// İdle İçerik (IdleScreenContent) — İçerik Yönetimi ekranı
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('HouseAd UI kapsam açığı', () => {
-  it('web_panels/src/views/admin/\'da ayrı HouseAd yönetim ekranı yok', () => {
-    /**
-     * KAPSAM AÇIĞI:
-     * HouseAd'ler için web_panels'de ayrı bir yönetim ekranı bulunmamaktadır.
-     * Mevcut admin menüsünde: CampaignWizard, PlaylistEditor, PricingMatrix,
-     * DeviceManagement, MedicalLogic, DanismaYonetimi, UserManagement.
-     *
-     * HouseAd canonical medya akışı (object_key/checksum) için:
-     * - Backend serializer testi: test_closure.py C12 ✓
-     * - Frontend canonical akış testi: MEVCUT DEĞİL (ekran yok)
-     *
-     * Çözüm önerileri (Faz 6):
-     * a) PlaylistEditor.vue içinde HouseAd yönetim paneli ekle
-     * b) Admin menüsüne ayrı HouseAdManagement.vue ekle
-     * c) CampaignWizard'a benzer upload akışını HouseAd için uygula
-     */
-    expect(true).toBe(true); // Belgeleme testi
+describe('IdleScreenContent servisi', () => {
+  it('HouseAd kaldırıldı; idle içerik başlık/metin tabanlı yönetilir', () => {
+    // HouseAd sistemi uçtan uca kaldırıldı. İçerik Yönetimi ekranı artık
+    // IdleScreenContent CRUD (baslik/metin/aktif) kullanır.
+    expect(true).toBe(true);
   });
 });

@@ -6,23 +6,23 @@
 </script>
 
 <div class="screen">
-  <ScreenHeader height="52px" />
+  <ScreenHeader />
 
   <div class="flex-grow-1 d-flex flex-column justify-content-center">
     <h2 class="screen-title text-center">Nasıl Yardımcı Olabilirim?</h2>
     <div class="d-flex flex-column gap-3">
-      <button class="btn-touch btn-primary-touch" on:click={() => dispatch('flowA')}>
+      <button class="btn-touch btn-primary-touch btn-main-touch" on:click={() => dispatch('flowA')}>
         <i class="fa-solid fa-hand-pointer"></i>
-        Şikayetimi Seç &amp; Anket Çöz
-        <span class="btn-sub">Takviye önerisi al, QR fiş al</span>
+        Şikayetimi Seç &amp; Soruları Cevapla
+        <span class="btn-sub">Size uygun takviye önerisini alın ve QR fişinizi oluşturun.</span>
       </button>
 
       <div class="or-divider">VEYA</div>
 
-      <button class="btn-touch btn-consult-touch" on:click={() => dispatch('flowConsult')}>
+      <button class="btn-touch btn-consult-touch btn-main-touch" on:click={() => dispatch('flowConsult')}>
         <i class="fa-solid fa-comments"></i>
-        Eczacınıza Danışın
-        <span class="btn-sub">Danışma konusu seçin — eczacı sizi karşılasın</span>
+        Eczacınıza Özel Danışın
+        <span class="btn-sub">Kişisel konularınızı gizlilik içinde paylaşabilirsiniz.</span>
       </button>
     </div>
   </div>

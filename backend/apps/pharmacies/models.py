@@ -93,11 +93,33 @@ class Kiosk(BaseModel):
         help_text="Kiosk'un SQLite'a uyguladığı horizon aralığı bitişi.",
     )
 
+    # ── Offline-first QR: eczane içi kiosk sıra numarası ─────────────────────
+    # Crockford QR kodunun ilk karakteri; 1-31 arası, aynı eczanede benzersiz.
+    # Provisioning onayında admin tarafından atanır; kiosk payload'ından alınmaz.
+    eczane_kiosk_no = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text="Eczane içindeki stabil kiosk sıra numarası (1-31). Crockford QR prefix'i.",
+    )
+
     class Meta:
         db_table = "kiosklar"
         ordering = ("id",)
         verbose_name = "Kiosk"
         verbose_name_plural = "Kiosklar"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["eczane", "eczane_kiosk_no"],
+                condition=models.Q(eczane_kiosk_no__isnull=False),
+                name="uniq_kiosk_eczane_no",
+            ),
+            models.CheckConstraint(
+                check=(
+                    models.Q(eczane_kiosk_no__isnull=True)
+                    | (models.Q(eczane_kiosk_no__gte=1) & models.Q(eczane_kiosk_no__lte=31))
+                ),
+                name="kiosk_eczane_no_range",
+            ),
+        ]
 
     def __str__(self) -> str:
         return self.mac_adresi

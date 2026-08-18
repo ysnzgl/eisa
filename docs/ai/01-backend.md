@@ -26,6 +26,8 @@
 - `backend/apps/pharmacies/auth.py` — Kiosk authentication (tek `KioskAppKeyAuthentication`)
 - `backend/apps/kiosk_api/` — Kiosk API facade (`/api/kiosk/v1/`; bootstrap + operasyonel endpoint'ler)
 - `backend/apps/analytics/models.py` — OturumLogu/PlayLog models
+- `backend/apps/barkod_logo/` — Barkod Logo Yönetimi *(2026-08-11, DOOH'dan bağımsız)*
+- `backend/apps/destek/` — Görüş ve Destek (ticket) sistemi *(2026-08-15)*
 - `backend/apps/announcements/models.py` — Genel/sistem duyurusu, occurrence okuma ve nöbet ay/gün modelleri
 - `backend/apps/announcements/services.py` — Europe/Istanbul recurrence ve sabit nöbet uyarısı kuralları
 - `backend/apps/announcements/views.py` — Admin, eczacı aktif duyuru ve nöbet takvimi endpoint'leri
@@ -62,17 +64,25 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 | `/api/products/` | `apps.products.urls` | JWT | Kategori/Soru/EtkenMadde/Danışma CRUD |
 | `/api/analytics/` | `apps.analytics.urls` | JWT | Session log raporlama |
 | `/api/campaigns/` | `apps.campaigns.urls` | JWT (SuperAdmin) | Campaign/Creative/ScheduleRule yönetimi |
-| `/api/campaigns/v2/*` | `apps.campaigns.views_v2` | JWT (SuperAdmin) | DOOH v2 API (playlist, pricing, house ads) |
+| `/api/campaigns/v2/*` | `apps.campaigns.views_v2` | JWT (SuperAdmin) | DOOH v2 API (playlist, pricing, idle-contents) |
 | `/api/inventory/availability/` | `InventoryAvailabilityView` | JWT | Slot kapasite sorgusu |
 | `/api/kiosk/v1/bootstrap/` | `kiosk_api.KioskBootstrapView` | Fleet+HMAC | Provisioning; App Key döner |
 | `/api/kiosk/v1/identity/enroll/` | `kiosk_api.KioskIdentityEnrollView` | AppKey+MAC | Kalıcı device_id tek-seferlik bağlama |
 | `/api/kiosk/v1/ping/` | `kiosk_api.KioskPingView` | AppKey+MAC | Playlist versiyonu kontrolü |
-| `/api/kiosk/v1/sync/` | `kiosk_api.KioskSyncView` | AppKey+MAC | Creative/HouseAd + lookup |
+| `/api/kiosk/v1/sync/` | `kiosk_api.KioskSyncView` | AppKey+MAC | Creative + idle içerik (`idle_contents`) + lookup |
 | `/api/kiosk/v1/catalog/` | `kiosk_api.KioskCatalogView` | AppKey+MAC | Kategori/soru/etken madde/danışma |
 | `/api/kiosk/v1/playlist/` | `kiosk_api.KioskPlaylistView` | AppKey+MAC | Günlük playlist |
 | `/api/kiosk/v1/sessions/` | `kiosk_api.KioskSessionsView` | AppKey+MAC | Oturum outbox; backend QR üretir; response: `{results:[{idempotency_key,status,qr_kodu}]}` |
 | `/api/kiosk/v1/proof-of-play/` | `kiosk_api.KioskProofOfPlayView` | AppKey+MAC | Bulk PlayLog ingest |
 | `/api/kiosk/v1/diagnostics/` | `kiosk_api.KioskDiagnosticsView` | AppKey+MAC | Diagnostic (DB'ye yazılmaz) |
+| `/api/barkod-logo/logolar/` | `barkod_logo.BarkodLogoViewSet` | JWT (SuperAdmin) | Barkod Logo CRUD (DELETE=405) |
+| `/api/barkod-logo/upload-gorsel/` | `barkod_logo.BarkodLogoGorselUploadView` | JWT (SuperAdmin) | PNG yükleme (336×336, ≤1MB, no alfa, gri tonlu) |
+| `/api/destek/parametreler/` | `DestekParametresiListView` | JWT | Aktif destek parametreleri (TALEP_TURU/ALAN/ALT_KONU/DURUM) |
+| `/api/destek/talepler/` | `DestekTalebiViewSet` (list/create) | JWT | Liste: admin=tümü, eczacı=kendi eczanesi; filtrelenebilir, sayfalı |
+| `/api/destek/talepler/{id}/` | `DestekTalebiViewSet` (retrieve) | JWT | Detay + yorumlar |
+| `/api/destek/talepler/{id}/yorum-ekle/` | `DestekTalebiViewSet.yorum_ekle` | JWT | Yorum ekle; durum otomatik geçişi |
+| `/api/destek/talepler/{id}/durum-degistir/` | `DestekTalebiViewSet.durum_degistir` | JWT (SuperAdmin) | Admin durum değişikliği |
+| `/api/destek/talepler/yeni-sayisi/` | `DestekTalebiViewSet.yeni_sayisi` | JWT (SuperAdmin) | YENI sayısı (badge) |
 | `/api/announcements/admin/` | `AdminAnnouncementViewSet` | JWT (SuperAdmin) | Genel duyuru CRUD; sistem duyurusunda sınırlı PATCH |
 | `/api/announcements/me/active/` | `ActiveAnnouncementsView` | JWT (Eczacı) | Bugünkü hedeflenmiş occurrence ve sistem uyarıları |
 | `/api/announcements/{id}/read/` | `MarkAnnouncementReadView` | JWT (Eczacı) | Bugünkü occurrence için okundu kaydı |
@@ -116,10 +126,23 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 - `Kiosk`: Kiosk cihaz (eczane FK, mac_adresi, **device_id** (UUID, unique, nullable), uygulama_anahtari, aktif, is_online, son_goruldu, last_playlist_version). device_id ilk enrollment'ta tek-seferlik bağlanır, değiştirilemez. TPM tabanlı değil; runtime DB kopyalanırsa kopyalanabilir.
 - `KioskProvisioningRequest`: Kayıtsız kiosk onay talebi (UUID pk, mac_adresi, **device_id** (max 36, partial-unique non-empty), hostname, device_metadata JSON, status PENDING/APPROVED/REJECTED, last_seen_at, request_count, approved_by/at, rejected_by/at, rejection_reason, kiosk FK nullable). Onay anında `device_id` `Kiosk.device_id`'ye aktarılır. **Raw fleet_key/provision_secret saklanmaz.**
 
-### Analytics (`apps.analytics`) *(updated 2026-07-20)*
-- `OturumLogu`: Anonim kullanici session (**oturum_tipi** [SIKAYET/OZEL_DANISMANLIK],RUN_ONERI/DANISMANLIK], kategori FK (nullable), **danisma_kategorisi** FK (nullable, products.Danisma), hassas_akis bool, **qr_kodu** (max_length=8, unique, DB constraint), cevaplar JSON (backup), onerilen_etken_maddeler JSON (backup), tamamlandi bool). **QR backend tarafından üretilir; istemciden gelen qr_kodu yoksayılır.**
-- `OturumCevap`: Normalize cevaplar (oturum FK CASCADE, soru FK PROTECT nullable, cevap FK PROTECT nullable, soru_metni_snapshot, cevap_metni_snapshot, cevap_degeri_snapshot). unique_together (oturum, soru).
-- `OturumOnerilenEtkenMadde`: Normalize önerilen etken maddeler (oturum FK CASCADE, etken_madde FK PROTECT nullable, etken_madde_adi_snapshot). unique_together (oturum, etken_madde).
+### Analytics (`apps.analytics`) *(updated 2026-08-11)*
+- `OturumLogu`: Anonim kullanici session. **barkod_logo FK (PROTECT, nullable)** — fişte basılan logo; null=fallback. PROTECT: logo fiziksel silinemez; geçmiş ölçüm kaybolmaz.
+- `OturumCevap`: Normalize cevaplar.
+- `OturumOnerilenEtkenMadde`: Normalize önerilen etken maddeler.
+
+### Barkod Logo (`apps.barkod_logo`) *(new 2026-08-11 — DOOH sisteminden tamamen bağımsız)*
+- `BarkodLogo`: Kiosk fiş baskısında e-ISA başlığının yerini alacak logo. UUID PK, ad, media_url, object_key, checksum, baslangic_zamani, bitis_zamani, aktif, gunluk_baski_limiti (nullable ≥1), hedef_kiosklar M2M.
+
+### Destek (`apps.destek`) *(new 2026-08-15)*
+- `DestekParametresi`: Tek parametrik tablo. grup (TALEP_TURU/ALAN/ALT_KONU/DURUM), kod (unique, uygulama kodu), ad, ust_parametre (self-FK nullable PROTECT), sira, aktif. Pasif parametre fiziksel silinmez.
+- `TalepSayac`: `yil` PK, `son_sayi`. `select_for_update()` ile concurrency-safe ticket no üretimi (`EISA-YYYY-NNNNNN`).
+- `DestekTalebi`: Eczane destek talebi. talep_no (unique), eczane FK (PROTECT), olusturan_kullanici FK (PROTECT), talep_turu/alan/alt_konu/durum FK (PROTECT, DestekParametresi), kiosk FK (PROTECT nullable), aciklama (max 1000), son_hareket_tarihi.
+- `DestekYorumu`: Append-only yorum. talep FK (CASCADE), yorum_metni (max 1000). Yazar bilgisi BaseModel.olusturan alanından (SET_NULL) gelir.
+- **Fiziksel silme kapalı** (DELETE → 405). Geçmiş `OturumLogu.barkod_logo` kayıtları PROTECT ile korunur.
+- **PNG doğrulama** (yükleme endpoint'inde): 336×336 px, ≤1 MB, gri tonlu (RGB/RGBA için piksel piksel R=G=B kontrolü), şeffaf piksel yok (alpha channel + tRNS). stdlib (struct, zlib) — Pillow gerektirmez.
+- Catalog: `GET /api/kiosk/v1/catalog/` artık `barkod_logolar` snapshot içerir (aktif + bitis > now + hedef kiosk filtreli). Gelecek tarihli aktif logolar önceden dağıtılabilir.
+- Migrations: `barkod_logo/0001_initial`, `barkod_logo/0002_alter_*`, `analytics/0014_oturumlogu_barkod_logo`
 
 ### Products (`apps.products`)
 - `Kategori`: Şikayet kategorisi (ad, slug, ikon, hedef_cinsiyet, hedef_yas_araliklari M2M, bagli_kategori self-FK)
@@ -139,7 +162,7 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 ### Campaigns (`apps.campaigns`) *(Faz 0.5–Faz 1 güncellemeleri dahil)*
 - `Campaign`: Reklam kampanyasi (status: DRAFT/ACTIVE/PAUSED/COMPLETED/CANCELLED, target_scope [ALL|RULES|null-legacy], follows [FK self, null], priority). **Faz 7 kaldirildi:** is_guaranteed, impression_goal, frequency_cap_per_hour (migration 0020)
 - `CampaignTarget`: Kampanya lokasyon hedefi (campaign FK, target_type [IL/ILCE/ECZANE/KIOSK], mode [INCLUDE/EXCLUDE|null], il/ilce/eczane/kiosk FK)
-- `Creative`: Kampanyaya ait medya (campaign FK, media_url [kalıcı Faz 0.5+], duration_seconds [grid:{15,30,45,60} yeni kayıtlar], name, checksum [sha256:hex], object_key [S3 key], weight [rotasyon ağırlığı])
+- `Creative`: Kampanyaya ait medya (campaign FK, media_url [IdleScreen portrait, kaliıcı Faz 0.5+], **active_media_url** [AdStrip alt alan ~1080x768, blank=True, migration 0021], duration_seconds [grid:{15,30,45,60} yeni kayitlar], name, checksum [sha256:hex], object_key [S3 key], weight [rotasyon agirlıgı])
 - `ScheduleRule`: [Legacy] Kampanya frekans matrisi (campaign 1to1, frequency_type [PER_LOOP/PER_HOUR/PER_DAY], frequency_value, target_hours JSON)
 - `DeliveryRule`: [Faz 1] Kampanya yayın kuralı (campaign 1to1, delivery_type [TIME_WINDOW/PER_HOUR/PER_DAY/CAMPAIGN_TOTAL/LEGACY_PER_LOOP], count, window_start/end_time, active_hours, guarantee_mode [GUARANTEED/BEST_EFFORT], max_per_hour)
 - `PlanningRun`: [Faz 1] CAMPAIGN_TOTAL horizon referansı (horizon_start/end, status)
@@ -147,20 +170,21 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 - `KioskDayQuota`: [Faz 1] Kiosk+gün bazında kota (planning_run/campaign/kiosk/date, quota>=0, placed>=0, placed<=quota DB constraint)
 - `KioskDesiredBundle`: [Faz 1] Monoton desired_bundle_version (Faz 5'te aktif)
 - `Playlist`: Kiosk için üretilmiş playlist (kiosk FK, target_date, target_hour [Istanbul yereli], loop_duration_seconds, version; unique kiosk+date+hour)
-- `PlaylistItem`: Playlist öğeleri (playlist FK, creative/house_ad FK nullable, playback_order, estimated_start_offset_seconds [saat-mutlak 0..3599])
-- `HouseAd`: Filler reklam (name, media_url [kalıcı Faz 0.5+], duration_seconds [grid:{15,30,45,60} yeni kayıtlar], object_key, aktif, priority)
-- `PlayLog`: Reklam gösterim logu (kiosk FK, creative/house_ad FK nullable, played_at, duration_played, play_event_id [nullable UUID K5])
+- `PlaylistItem`: Playlist öğeleri (playlist FK, creative FK [creative-only, house_ad kaldırıldı — migration 0027; `clean()` creative zorunlu], playback_order, estimated_start_offset_seconds [saat-mutlak 0..3599])
+- `IdleScreenContent` *(2026-08-16)*: Bekleme ekranı başlık/metin idle içeriği — "İçerik Yönetimi" (id BigAutoField, `baslik` [CharField≤100, zorunlu], `metin` [CharField≤300, zorunlu], `aktif` [bool default True], olusturulma/guncellenme_tarihi). Tablo `dooh_idle_screen_contents`. Medya/HTML YOK, düz metin. Eski `HouseAd` modeli kaldırıldı (migration 0027, tablo `dooh_house_ads` düşürüldü).
+- `PlayLog`: Reklam gösterim logu (kiosk FK, creative FK nullable [house_ad FK kaldırıldı — migration 0027], played_at, duration_played, play_event_id [nullable UUID K5])
+- `PharmacyCampaign` *(2026-07-31, 2026-08-01)*: Eczacı paneli kampanyası (id UUID, name, media_url, object_key, start_at, end_at, duration_seconds [izin: 15/30/60], is_active, target_pharmacies M2M Eczane, target_iller M2M Il, target_ilceler M2M Ilce). Feed: OR mantığıyla; hiç hedefi olmayan feed'e girmez. Migration 0022+0024.
 
 **Sözleşme değişiklikleri (Faz 0.5–Faz 1):**
 - `POST /api/campaigns/v2/campaigns/`: `target_scope` zorunlu (ALL|RULES). Deprecated alan (is_guaranteed/impression_goal/frequency_cap_per_hour) gonderilenince 400. `follows` read-only (yalniz `set_campaign_follows()` servisi).
 - `POST /api/campaigns/upload-media/` (DOOH_PERSISTENT_MEDIA_URL=True): `{object_key, media_url, checksum, url[alias]}` döner; presigned URL üretilmez.
-- `Creative`/`HouseAd` API: `duration_seconds` yeni kayıtta {15,30,45,60} zorunlu; legacy ayni değerle güncelleme izin.
+- `Creative` API: `duration_seconds` yeni kayıtta {15,30,45,60} zorunlu; legacy ayni değerle güncelleme izin.
+- `IdleScreenContent` API *(2026-08-16)*: `GET/POST/PUT/PATCH/DELETE /api/campaigns/v2/idle-contents/` (JWT SuperAdmin, router basename `dooh-idle-content`); serializer alanları `id, baslik, metin, aktif, created_at, updated_at`. Eski `/api/campaigns/v2/house-ads/` viewset kaldırıldı.
 - `apps/campaigns/services/follows_service.py`: A→B ilişkisi tek nokta; self-link, zincir, döngü, tarih/saat kesişimi, CANCELLED kontrolü.
 - `Playlist`: Kiosk için üretilmiş playlist (kiosk FK, target_date, target_hour [Istanbul yereli], loop_duration_seconds, version; unique kiosk+date+hour)
-- `PlaylistItem`: Playlist öğeleri (playlist FK, creative FK nullable, house_ad FK nullable, playback_order, estimated_start_offset_seconds [saat-mutlak 0..3599])
+- `PlaylistItem`: Playlist öğeleri (playlist FK, creative FK [creative-only; house_ad FK kaldırıldı — migration 0027], playback_order, estimated_start_offset_seconds [saat-mutlak 0..3599])
 - `PlaylistTemplate`: Playlist şablonları (name, loop_duration_seconds, slots JSON, target_hours JSON, description)
-- `HouseAd`: Filler reklam (name, media_url, duration_seconds, aktif, priority)
-- `PlayLog`: Reklam gösterim logu / proof-of-play (kiosk FK, creative/house_ad FK nullable, played_at, duration_played)
+- `PlayLog`: Reklam gösterim logu / proof-of-play (kiosk FK, creative FK nullable [house_ad FK kaldırıldı], played_at, duration_played)
 - `DayPlan`: Günlük plan (kiosk FK, date, playlists FK M2M)
 - `HourPlan`: Saatlik plan (kiosk FK, date, hour, playlist FK)
 - `GenerationJob`: Async playlist üretim job'u (job_id, status, created_at, started_at, finished_at, result JSON)
@@ -262,7 +286,7 @@ Notlar (QR contract, 2026-07-20):
 
 ## Dış Sistem Entegrasyonları
 
-1. **MinIO / S3:** Creative/HouseAd media upload (`apps.campaigns.views.MediaUploadView`)
+1. **MinIO / S3:** Creative media upload (`apps.campaigns.views.MediaUploadView`)
 2. **Sentry:** Error tracking (prod ortamında `sentry_sdk.init`)
 3. **Kiosk Edge API:** İki yönlü senkronizasyon (kiosk → backend: outbox push; backend → kiosk: kategori/playlist pull)
 
@@ -281,7 +305,7 @@ Notlar (QR contract, 2026-07-20):
    - Breaking: playlist generation/sync fails
 
 3. **Kiosk Sync Payload (`/api/kiosk/v1/sync/`):**
-   - Response: `{ kategoriler, sorular, cevaplar, etken_maddeler, danisma_kategorileri, creatives, house_ads }`
+   - Response: `{ kategoriler, sorular, cevaplar, etken_maddeler, danisma_kategorileri, creatives, idle_contents }`
    - Request (outbox push): `{ sessions: [...] }`
    - Breaking: kiosk SQLite sync breaks
 
@@ -295,7 +319,7 @@ Notlar (QR contract, 2026-07-20):
      - Class: `ProofOfPlayView` (line 1068)
      - URL mapping: `backend/apps/campaigns/urls.py` (line 58)
      - Model: `backend/apps/campaigns/models.py` → `PlayLog`
-   - Request: `{ logs: [{ creative_id OR house_ad_id, played_at, duration_played, completed? }] }`
+   - Request: `{ logs: [{ creative_id, played_at, duration_played, completed? }] }` (house_ad_id hâlâ kabul edilir ama yok sayılır — playlist creative-only)
    - Bulk insert: `PlayLog.objects.bulk_create(bulk, batch_size=500)`
    - Breaking: impression tracking fails
 

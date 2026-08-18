@@ -58,10 +58,14 @@ class Danisma(BaseModel):
         related_name="alt_kategoriler",
         help_text="Ust danisma kategorisi. Bos = kok seviyesi.",
     )
+    sira = models.PositiveSmallIntegerField(
+        default=100,
+        help_text="Goruntuleme sirasi (kucuk deger once). Esit sirada ada gore sirala.",
+    )
 
     class Meta:
         db_table = "danisma_kategorileri"
-        ordering = ("ad",)
+        ordering = ("sira", "ad")
         verbose_name = "Danisma Kategorisi"
         verbose_name_plural = "Danisma Kategorileri"
 

@@ -7,7 +7,7 @@ saglar.
 from apps.analytics.serializers import OturumLoguItemSerializer
 from apps.campaigns.serializers import (
     KioskCreativeSyncSerializer,
-    KioskHouseAdSyncSerializer,
+    KioskIdleContentSyncSerializer,
     KioskPlaylistSerializer,
     ProofOfPlayBulkSerializer,
 )
@@ -20,7 +20,7 @@ from apps.products.serializers import (
 __all__ = [
     "OturumLoguItemSerializer",
     "KioskCreativeSyncSerializer",
-    "KioskHouseAdSyncSerializer",
+    "KioskIdleContentSyncSerializer",
     "KioskPlaylistSerializer",
     "ProofOfPlayBulkSerializer",
     "DanismaSyncSerializer",

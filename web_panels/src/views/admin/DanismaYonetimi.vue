@@ -46,7 +46,7 @@ onMounted(reload);
 const catModalOpen  = ref(false);
 const catModalMode  = ref('add');     // 'add' | 'edit'
 const catTarget     = ref(null);
-const EMPTY_CAT = () => ({ ad: '', ikon: 'fa-solid fa-comments', aktif: true, ust_kategori: null });
+const EMPTY_CAT = () => ({ ad: '', ikon: 'fa-solid fa-comments', aktif: true, ust_kategori: null, sira: 100 });
 const catForm       = ref(EMPTY_CAT());
 const catFormIsRoot = ref(true);
 const catFormError  = ref('');
@@ -67,7 +67,7 @@ function openEditCategory(item) {
     ikon:         item.ikon || 'fa-solid fa-comments',
     aktif:        item.aktif,
     ust_kategori: item.ust_kategori ?? null,
-  };
+    sira: item.sira ?? 100,  };
   catFormIsRoot.value = item.ust_kategori === null;
   catFormError.value  = '';
   catModalMode.value  = 'edit';
@@ -126,7 +126,7 @@ const iconPickerOpen = ref(false);
 
     <!-- ─── SOL RAIL ──────────────────────────────────────────────────────── -->
     <aside
-      class="category-rail w-64 flex-shrink-0 flex flex-col border-r border-gray-200 sticky top-0 self-start"
+      class="category-rail w-100 flex-shrink-0 flex flex-col border-r border-gray-200 sticky top-0 self-start"
       style="max-height: 100vh; overflow-y: auto;"
     >
       <div class="px-5 pt-6 pb-4 border-b border-gray-200">
@@ -375,6 +375,18 @@ const iconPickerOpen = ref(false);
                   >{{ c.ad }}</option>
                 </select>
                 <p class="mt-1 text-[10px] text-gray-500">Yalnızca ana kategoriler seçilebilir (tek seviye derinlik).</p>
+              </div>
+
+              <!-- Sıra -->
+              <div>
+                <label class="block text-xs font-semibold text-gray-600 mb-2">
+                  Sıra <span class="text-gray-400 font-normal">(küçük değer önce)</span>
+                </label>
+                <input
+                  v-model.number="catForm.sira"
+                  type="number" min="1" max="999"
+                  class="drawer-input w-full"
+                />
               </div>
 
               <!-- Aktif -->

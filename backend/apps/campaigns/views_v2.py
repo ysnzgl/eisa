@@ -11,10 +11,12 @@ Endpoint haritasi:
     GET    /api/campaigns/v2/{id}/timeline/?date=YYYY-MM-DD&hour=18
     GET    /api/campaigns/v2/pricing-matrix/  -> tek (singleton) — PUT/PATCH ile guncelle
     GET    /api/campaigns/v2/house-ads/
+    GET    /api/campaigns/v2/creatives/{id}/download/  -> orijinal dosya indirme (SuperAdmin)
+    GET    /api/campaigns/v2/house-ads/{id}/download/  -> orijinal dosya indirme (SuperAdmin)
     GET    /api/inventory/availability/?date=YYYY-MM-DD&hour=18[&kiosk=<id>]
 
   Kiosk Edge API (App-Key + MAC):
-    GET    /api/kiosk/v1/sync/                            -> tum aktif creative + house_ad listesi
+    GET    /api/kiosk/v1/sync/                            -> tum aktif creative + idle_contents listesi
     GET    /api/kiosk/v1/playlist/?date=YYYY-MM-DD
     POST   /api/kiosk/v1/proof-of-play/                   -> bulk PlayLog ingest
 """
@@ -22,9 +24,11 @@ from __future__ import annotations
 
 import datetime as _dt
 import logging
+import mimetypes
 from typing import Iterable
 
 from django.conf import settings
+from django.http import StreamingHttpResponse
 
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -35,7 +39,7 @@ from rest_framework.views import APIView
 
 from apps.core.uow import UnitOfWork
 from apps.pharmacies.models import Kiosk
-from apps.pharmacies.permissions import IsSuperAdmin
+from apps.pharmacies.permissions import IsSuperAdmin, IsEczaci
 from core_api.cookie_jwt import JWTCookieAuthentication as JWTAuthentication
 
 import threading
@@ -47,8 +51,9 @@ from .models import (
     DayPlan,
     DeliveryRule,
     GenerationJob,
-    HouseAd,
     HourPlan,
+    IdleScreenContent,
+    PharmacyCampaign,
     PlayLog,
     Playlist,
     PlaylistTemplate,
@@ -62,11 +67,12 @@ from .serializers import (
     CreativeSerializer,
     DayPlanSerializer,
     GenerationJobSerializer,
-    HouseAdSerializer,
     HourPlanSerializer,
+    IdleScreenContentSerializer,
     KioskCreativeSyncSerializer,
-    KioskHouseAdSyncSerializer,
     KioskPlaylistSerializer,
+    PharmacyCampaignFeedSerializer,
+    PharmacyCampaignSerializer,
     PlaylistAdminSerializer,
     PlaylistTemplateSerializer,
     PricingMatrixSerializer,
@@ -400,7 +406,7 @@ class CampaignViewSet(viewsets.ModelViewSet):
 
         playlist = Playlist.objects.filter(
             kiosk_id=kiosk_id, target_date=target_date, target_hour=hour,
-        ).prefetch_related("items__creative__campaign", "items__house_ad").first()
+        ).prefetch_related("items__creative__campaign").first()
 
         if playlist is None:
             return Response({"playlist": None, "items": []})
@@ -433,7 +439,7 @@ class CampaignViewSet(viewsets.ModelViewSet):
         playlists = (
             Playlist.objects
             .filter(kiosk_id=kiosk_id, target_date__gte=start_date, target_date__lte=end_date)
-            .prefetch_related("items__creative__campaign", "items__house_ad")
+            .prefetch_related("items__creative__campaign")
         )
 
         # cells[date_str][hour] = {used, free, campaigns: set, top: [name1,...]}
@@ -445,8 +451,7 @@ class CampaignViewSet(viewsets.ModelViewSet):
             used = 0
             campaign_seconds: dict = {}
             for it in pl.items.all():
-                dur = (it.creative.duration_seconds if it.creative_id
-                       else it.house_ad.duration_seconds if it.house_ad_id else 0)
+                dur = (it.creative.duration_seconds if it.creative_id else 0)
                 used += dur or 0
                 if it.creative_id and it.creative.campaign_id:
                     name = it.creative.campaign.name
@@ -537,7 +542,7 @@ class CampaignViewSet(viewsets.ModelViewSet):
         campaign = self.get_object()
 
         try:
-            result = ActivationService.activate(campaign, user=request.user)
+            result = ActivationService.activate_rolling_horizon(campaign, user=request.user)
         except ActivationValidationError as exc:
             return Response(
                 {"error": str(exc), "validation_errors": exc.errors},
@@ -583,6 +588,50 @@ class CreativeViewSet(viewsets.ModelViewSet):
         with UnitOfWork(user=self.request.user) as uow:
             uow.delete(instance)
 
+    @action(detail=True, methods=["get"], url_path="download")
+    def download(self, request, pk=None):
+        """``GET /api/campaigns/v2/creatives/{id}/download/``
+
+        Orijinal medya dosyasını SuperAdmin için stream eder.
+        object_key DB'den alınır; kullanıcıdan kabul edilmez.
+        Content-Disposition: attachment ile indirilir.
+        Presigned URL DB'ye kaydedilmez.
+        """
+        creative = self.get_object()
+        object_key = creative.object_key
+        if not object_key:
+            return Response(
+                {"error": "Bu creative için object_key bulunamadı. Backfill gerekebilir."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        from apps.core.services.storage_service import StorageService
+        try:
+            storage = StorageService()
+            minio_resp = storage.client.get_object(storage.bucket_name, object_key)
+        except Exception:
+            logger.warning("Creative download: object not found in storage key=%s id=%s", object_key, pk)
+            return Response(
+                {"error": "Medya storage'da bulunamadı."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        filename = object_key.rsplit("/", 1)[-1]
+        content_type, _ = mimetypes.guess_type(object_key)
+        content_type = content_type or "application/octet-stream"
+
+        def _stream():
+            try:
+                for chunk in minio_resp.stream(amt=65536):
+                    yield chunk
+            finally:
+                minio_resp.close()
+                minio_resp.release_conn()
+
+        http_resp = StreamingHttpResponse(_stream(), content_type=content_type)
+        http_resp["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return http_resp
+
 
 class ScheduleRuleViewSet(viewsets.ModelViewSet):
     queryset = ScheduleRule.objects.select_related("campaign").all()
@@ -608,20 +657,25 @@ class ScheduleRuleViewSet(viewsets.ModelViewSet):
             uow.delete(instance)
 
 
-class HouseAdViewSet(viewsets.ModelViewSet):
-    queryset = HouseAd.objects.all()
-    serializer_class = HouseAdSerializer
+class IdleScreenContentViewSet(viewsets.ModelViewSet):
+    """Idle ekrani baslik/metin icerigi CRUD (SuperAdmin).
+
+    ``GET/POST/PUT/PATCH/DELETE /api/campaigns/v2/idle-contents/``
+    """
+
+    queryset = IdleScreenContent.objects.all()
+    serializer_class = IdleScreenContentSerializer
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsSuperAdmin]
 
     def perform_create(self, serializer):
-        instance = HouseAd(**serializer.validated_data)
+        instance = IdleScreenContent(**serializer.validated_data)
         with UnitOfWork(user=self.request.user) as uow:
             uow.add(instance)
         serializer.instance = instance
 
     def perform_update(self, serializer):
-        instance: HouseAd = serializer.instance
+        instance: IdleScreenContent = serializer.instance
         for k, v in serializer.validated_data.items():
             setattr(instance, k, v)
         with UnitOfWork(user=self.request.user) as uow:
@@ -905,7 +959,7 @@ class PlaylistGenerateView(APIView):
 
         kiosks = list(kiosks_qs)
 
-        # Faz 7: Async queue canonical — sadece PENDING job oluştur, worker bağımsız işler
+        # Async queue: her kiosk-gün için PENDING job oluştur.
         from apps.campaigns.services.invalidation_service import _create_or_coalesce_job
         created_jobs = []
         for k in kiosks:
@@ -913,13 +967,24 @@ class PlaylistGenerateView(APIView):
             if job_obj:
                 created_jobs.append(job_obj)
 
+        # Senkron drenaj: run_scheduler çalışmasa da buton tek başına üretsin.
+        # claim_next_job SELECT FOR UPDATE kullandığından, scheduler paralel
+        # çalışsa bile aynı job iki kez işlenmez.
+        from apps.campaigns.services.queue_worker import drain_queue
+        processed = 0
+        try:
+            processed = drain_queue(max_jobs=max(20, len(created_jobs)))
+        except Exception:
+            logger.exception("PlaylistGenerateView: senkron drain_queue basarisiz")
+
         first_job = created_jobs[0] if created_jobs else None
         return Response(
             {
                 "job_id": str(first_job.pk) if first_job else None,
                 "total_kiosks": len(kiosks),
                 "target_date": str(target_date),
-                "status": "PENDING",
+                "processed": processed,
+                "status": "DONE" if processed else "PENDING",
                 "queue_mode": True,
                 "note": None if first_job else "Tum kiosklar icin is zaten kuyrukta.",
             },
@@ -958,6 +1023,103 @@ class GenerationJobListView(APIView):
     def get(self, request):
         qs = GenerationJob.objects.select_related("kiosk").order_by("-olusturulma_tarihi")[:50]
         return Response(GenerationJobSerializer(qs, many=True).data)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Yayın Akışı — günlük tüm saatlerin playlist özeti (read-only admin)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class KioskDayStreamView(APIView):
+    """``GET /api/campaigns/v2/playlists/day-stream/?kiosk=<id>&date=YYYY-MM-DD``
+
+    Bir kioskin belirtilen günündeki tüm saatlerin playlist öğelerini tek
+    istekte döner. Admin "Yayın Akışı" ekranı için tasarlanmıştır.
+
+    - Tamamen read-only; DB mutation yok.
+    - select_related + prefetch_related ile N+1 yok.
+    - Kiosk durumu (is_online, son_goruldu, last_playlist_version) dahil.
+    """
+
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsSuperAdmin]
+
+    def get(self, request):
+        kiosk_id = request.query_params.get("kiosk")
+        raw_date = request.query_params.get("date")
+
+        if not kiosk_id:
+            return Response({"error": "kiosk parametresi zorunludur."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            target_date = _parse_date(raw_date) if raw_date else timezone.now().astimezone(
+                _dt.timezone(_dt.timedelta(hours=3))  # Europe/Istanbul UTC+3 approximate
+            ).date()
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        kiosk = get_object_or_404(
+            Kiosk.objects.select_related("eczane"),
+            pk=kiosk_id,
+        )
+
+        playlists = (
+            Playlist.objects
+            .filter(kiosk_id=kiosk_id, target_date=target_date)
+            .prefetch_related(
+                "items__creative__campaign",
+            )
+            .order_by("target_hour")
+        )
+
+        hours_data = []
+        for pl in playlists:
+            items_data = []
+            for item in pl.items.all():
+                if not item.creative_id:
+                    # Defensive: legacy/house_ad item — atla.
+                    continue
+                media_url = item.creative.media_url
+                active_media_url = item.creative.active_media_url or ""
+                duration = item.creative.duration_seconds
+                asset_id = str(item.creative_id)
+                asset_type = "creative"
+                name = item.creative.campaign.name if item.creative.campaign_id else item.creative.name
+
+                items_data.append({
+                    "id": str(item.id),
+                    "asset_id": asset_id,
+                    "asset_type": asset_type,
+                    "name": name,
+                    "media_url": media_url,
+                    "active_media_url": active_media_url,
+                    "duration_seconds": duration,
+                    "playback_order": item.playback_order,
+                    "estimated_start_offset_seconds": item.estimated_start_offset_seconds,
+                })
+
+            hours_data.append({
+                "target_hour": pl.target_hour,
+                "version": pl.version,
+                "loop_duration_seconds": pl.loop_duration_seconds,
+                "items": items_data,
+            })
+
+        # Desired/applied version — canonical: Kiosk.last_playlist_version (desired),
+        # Kiosk.applied_playlist_version (kiosk ACK). useKioskRolloutStatus ile ayni sozlesme.
+        return Response({
+            "kiosk_id": kiosk.id,
+            "kiosk_name": kiosk.ad,
+            "is_online": kiosk.is_online,
+            "son_goruldu": kiosk.son_goruldu,
+            "last_playlist_version": kiosk.last_playlist_version,
+            "desired_version": kiosk.last_playlist_version,
+            "applied_version": kiosk.applied_playlist_version,
+            "applied_horizon_end": kiosk.applied_horizon_end,
+            "playlist_applied_at": kiosk.playlist_applied_at,
+            "target_date": str(target_date),
+            "hours": hours_data,
+        })
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1011,6 +1173,76 @@ class DayPlanViewSet(viewsets.ModelViewSet):
     permission_classes = [IsSuperAdmin]
     serializer_class = DayPlanSerializer
     queryset = DayPlan.objects.all().order_by("-olusturulma_tarihi")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PharmacyCampaign — Eczacı paneli kampanyaları
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class PharmacyCampaignViewSet(viewsets.ModelViewSet):
+    """``/api/campaigns/v2/pharmacy-campaigns/``
+
+    Admin CRUD + eczacı feed action.
+    """
+
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsSuperAdmin]
+    serializer_class = PharmacyCampaignSerializer
+    queryset = PharmacyCampaign.objects.prefetch_related("target_pharmacies").order_by("-olusturulma_tarihi")
+
+    @action(
+        detail=False,
+        methods=["get"],
+        permission_classes=[IsEczaci],
+        url_path="feed",
+    )
+    def feed(self, request):
+        """``GET /api/campaigns/v2/pharmacy-campaigns/feed/``
+
+        Giriş yapan eczacının eczanesine hedeflenmiş, tarih aralığı geçerli
+        ve aktif kampanyaları döndürür. Hedefleme OR mantığıyla çalışır:
+          - target_pharmacies'te doğrudan seçilmiş eczane
+          - target_iller'de eczanenin ili
+          - target_ilceler'de eczanenin ilçesi
+
+        Eczaneyi frontend'den ALMAZ; request.user.eczane_id kullanır.
+        Hiç hedefi olmayan kampanyalar feed'e girmez.
+        """
+        from apps.pharmacies.models import Eczane as EczaneModel
+        eczane_id = getattr(request.user, "eczane_id", None)
+        if not eczane_id:
+            return Response([], status=status.HTTP_200_OK)
+
+        # Eczanenin il_id ve ilce_id değerlerini al
+        try:
+            eczane = EczaneModel.objects.values("il_id", "ilce_id").get(pk=eczane_id)
+        except EczaneModel.DoesNotExist:
+            return Response([], status=status.HTTP_200_OK)
+
+        il_id = eczane["il_id"]
+        ilce_id = eczane["ilce_id"]
+
+        now = timezone.now()
+
+        # Temel filtreler
+        base_qs = PharmacyCampaign.objects.filter(
+            is_active=True,
+            start_at__lte=now,
+            end_at__gte=now,
+        )
+
+        # En az bir hedefi olan ve eczaneye uyan kampanyalar (OR)
+        from django.db.models import Q
+        match_q = (
+            Q(target_pharmacies__id=eczane_id) |
+            Q(target_iller__id=il_id) |
+            Q(target_ilceler__id=ilce_id)
+        )
+        qs = base_qs.filter(match_q).distinct()
+
+        serializer = PharmacyCampaignFeedSerializer(qs, many=True)
+        return Response(serializer.data)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

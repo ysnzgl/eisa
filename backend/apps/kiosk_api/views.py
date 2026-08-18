@@ -10,11 +10,14 @@ Namespace: /api/kiosk/v1/  (kiosk ID URL'de YOK; kiosk auth context'ten gelir).
 from __future__ import annotations
 
 import datetime as _dt
+import mimetypes
 import re
 
 from django.conf import settings
-from django.db import transaction
+from django.db import IntegrityError, transaction
+from django.db import models
 from django.db.models import F, Max
+from django.http import StreamingHttpResponse
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import AllowAny
@@ -24,10 +27,10 @@ from rest_framework.views import APIView
 
 from apps.analytics.log_ingest import MAX_BATCH_ITEMS, ingest_kiosk_diagnostic_items
 from apps.analytics.services import ingest_session_items
-from apps.campaigns.models import Campaign, Creative, HouseAd, PlayLog, Playlist
+from apps.campaigns.models import Campaign, Creative, IdleScreenContent, PlayLog, Playlist
 from apps.campaigns.serializers import (
     KioskCreativeSyncSerializer,
-    KioskHouseAdSyncSerializer,
+    KioskIdleContentSyncSerializer,
     KioskPlaylistSerializer,
     ProofOfPlayBulkSerializer,
 )
@@ -69,6 +72,9 @@ def _approved_response(kiosk: Kiosk) -> dict:
         "kiosk_id": kiosk.pk,
         "pharmacy_id": kiosk.eczane_id,
         "app_key": kiosk.uygulama_anahtari,
+        "eczane_kiosk_no": kiosk.eczane_kiosk_no,
+        "kiosk_adi": kiosk.ad,
+        "eczane_adi": kiosk.eczane.ad if kiosk.eczane else "",
     }
 
 
@@ -284,12 +290,13 @@ class KioskPingView(KioskAPIView):
 
 
 class KioskSyncView(KioskAPIView):
-    """``GET /api/kiosk/v1/sync/`` â€” aktif creative + house_ad + lookup listesi."""
+    """``GET /api/kiosk/v1/sync/`` â€” aktif creative + idle_contents + lookup listesi."""
 
     def get(self, request):
         kiosk = self.kiosk
         now = timezone.now()
         eczane_id = kiosk.eczane_id
+        ctx = {"request": request}
 
         creatives_qs = (
             Creative.objects
@@ -305,14 +312,14 @@ class KioskSyncView(KioskAPIView):
             targets = c.campaign.target_pharmacies.all()
             if targets.exists() and not targets.filter(pk=eczane_id).exists():
                 continue
-            creative_payload.append(KioskCreativeSyncSerializer(c).data)
+            creative_payload.append(KioskCreativeSyncSerializer(c, context=ctx).data)
 
-        house_ads = HouseAd.objects.filter(aktif=True)
+        idle_contents = IdleScreenContent.objects.filter(aktif=True).select_related("kategori").order_by("-guncellenme_tarihi")
         return Response({
             "kiosk_id": int(kiosk.pk),
             "generated_at": now.isoformat(),
             "creatives": creative_payload,
-            "house_ads": KioskHouseAdSyncSerializer(house_ads, many=True).data,
+            "idle_contents": KioskIdleContentSyncSerializer(idle_contents, many=True).data,
             "lookups": {
                 "cinsiyetler": list(Cinsiyet.objects.values("id", "kod", "ad").order_by("id")),
                 "yas_araliklari": list(YasAraligi.objects.values("id", "kod", "ad", "alt_sinir", "ust_sinir").order_by("id")),
@@ -323,10 +330,41 @@ class KioskSyncView(KioskAPIView):
 
 
 class KioskCatalogView(KioskAPIView):
-    """``GET /api/kiosk/v1/catalog/`` â€” kategori/soru/cevap/etken madde/danisma."""
+    """``GET /api/kiosk/v1/catalog/`` — kategori/soru/cevap/etken madde/danisma + barkod logoları."""
 
     def get(self, request):
-        return Response(build_catalog_payload())
+        from apps.barkod_logo.models import BarkodLogo
+        from apps.barkod_logo.serializers import BarkodLogoKatalogSerializer
+
+        data = build_catalog_payload()
+        kiosk = request.kiosk
+        now = timezone.now()
+
+        # Aktif, süresi dolmamış barkod logoları:
+        # - hedef_kiosklar boşsa → tüm kiosklar için (boş = sınırsız hedef)
+        # - hedef_kiosklar doluysa → yalnız bu kiosk için atanmış olanlar
+        barkod_logolar_qs = (
+            BarkodLogo.objects
+            .filter(aktif=True, bitis_zamani__gt=now)
+            .filter(
+                models.Q(hedef_kiosklar__isnull=True) |
+                models.Q(hedef_kiosklar=kiosk)
+            )
+            .distinct()
+            .order_by("olusturulma_tarihi", "id")
+        )
+
+        kiosk_meta = {
+            "eczane_kiosk_no": kiosk.eczane_kiosk_no,
+            "eczane_adi": kiosk.eczane.ad if kiosk.eczane else "",
+            "kiosk_adi": kiosk.ad,
+        }
+        ctx = {"request": request}
+        return Response({
+            **data,
+            "kiosk_meta": kiosk_meta,
+            "barkod_logolar": BarkodLogoKatalogSerializer(barkod_logolar_qs, many=True, context=ctx).data,
+        })
 
 
 class KioskPlaylistView(KioskAPIView):
@@ -342,14 +380,51 @@ class KioskPlaylistView(KioskAPIView):
             Playlist.objects
             .filter(kiosk=kiosk, target_date=target_date)
             .order_by("target_hour")
-            .prefetch_related("items__creative", "items__house_ad")
+            .prefetch_related("items__creative")
         )
         return Response({
             "kiosk_id": int(kiosk.pk),
             "target_date": str(target_date),
             "loop_duration_seconds": 60,
-            "playlists": KioskPlaylistSerializer(playlists, many=True).data,
+            "playlists": KioskPlaylistSerializer(playlists, many=True, context={"request": request}).data,
         })
+
+
+class KioskMediaProxyView(KioskAPIView):
+    """``GET /api/kiosk/v1/media/<object_key>`` — RustFS medya proxy'si.
+
+    Kiosk App Key ile doğrulanır; object_key RustFS'ten okunur ve
+    streaming yanıt olarak iletilir. Presigned URL süresi dolsa bile
+    bu URL her zaman geçerlidir.
+    Cache-Control: max-age=86400 (çünkü object_key içerik kimliğidir).
+    """
+
+    def get(self, request, object_key: str):
+        # path traversal koruşası
+        if ".." in object_key or object_key.startswith("/"):
+            return Response({"detail": "Geçersiz anahtar."}, status=status.HTTP_400_BAD_REQUEST)
+
+        from apps.core.services.storage_service import StorageService
+        try:
+            storage = StorageService()
+            minio_resp = storage.client.get_object(storage.bucket_name, object_key)
+        except Exception:
+            return Response({"detail": "Medya bulunamadı."}, status=status.HTTP_404_NOT_FOUND)
+
+        content_type, _ = mimetypes.guess_type(object_key)
+        content_type = content_type or "application/octet-stream"
+
+        def _stream():
+            try:
+                for chunk in minio_resp.stream(amt=65536):
+                    yield chunk
+            finally:
+                minio_resp.close()
+                minio_resp.release_conn()
+
+        http_resp = StreamingHttpResponse(_stream(), content_type=content_type)
+        http_resp["Cache-Control"] = "max-age=86400, immutable"
+        return http_resp
 
 
 class KioskSessionsView(KioskAPIView):
@@ -373,28 +448,94 @@ class KioskSessionsView(KioskAPIView):
 
 
 class KioskProofOfPlayView(KioskAPIView):
-    """``POST /api/kiosk/v1/proof-of-play/`` â€” reklam gosterim (PlayLog) toplu-yazma."""
+    """POST /api/kiosk/v1/proof-of-play/ - reklam gosterim (PlayLog) toplu-yazma.
+
+    Faz 3: play_event_id ile idempotent ingest. Ayni olay tekrar gonderildiginde
+    mukerrer PlayLog olusturmaz. Eski kiosk surumleri (play_event_id=null) onceki
+    gibi her zaman insert edilir.
+    """
 
     def post(self, request):
         kiosk = self.kiosk
         serializer = ProofOfPlayBulkSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         logs_data = serializer.validated_data["logs"]
+        now = timezone.now()
 
-        bulk = [
-            PlayLog(
+        new_event_ids = [
+            e["play_event_id"] for e in logs_data if e.get("play_event_id")
+        ]
+        existing_event_ids = set(
+            PlayLog.objects.filter(play_event_id__in=new_event_ids)
+            .values_list("play_event_id", flat=True)
+        ) if new_event_ids else set()
+
+        creative_ids = {entry["creative_id"] for entry in logs_data if entry.get("creative_id")}
+
+        existing_creative_ids = set(
+            Creative.objects.filter(pk__in=creative_ids).values_list("pk", flat=True)
+        ) if creative_ids else set()
+
+        bulk = []
+        invalid_ref_count = 0
+        for entry in logs_data:
+            event_id = entry.get("play_event_id")
+            if event_id and event_id in existing_event_ids:
+                continue
+
+            creative_id = entry.get("creative_id")
+            # Eski kiosk surumleri house_ad_id gonderebilir; HouseAd kaldirildi,
+            # bu kayitlar sessizce atlanir (defensive legacy guard).
+            if entry.get("house_ad_id") and not creative_id:
+                invalid_ref_count += 1
+                continue
+
+            # Silinmis ya da gecersiz creative referansi 500'e dusurmesin.
+            if creative_id and creative_id not in existing_creative_ids:
+                invalid_ref_count += 1
+                continue
+            if not creative_id:
+                invalid_ref_count += 1
+                continue
+
+            bulk.append(PlayLog(
                 kiosk=kiosk,
-                creative_id=entry.get("creative_id"),
-                house_ad_id=entry.get("house_ad_id"),
+                creative_id=creative_id,
                 played_at=entry["played_at"],
                 duration_played=entry["duration_played"],
-            )
-            for entry in logs_data
-        ]
+                play_event_id=event_id,
+                status=entry.get("status", PlayLog.PlayStatus.COMPLETED),
+                expected_duration=entry.get("expected_duration"),
+                error_code=entry.get("error_code", ""),
+                error_summary=entry.get("error_summary", ""),
+                occurred_at=entry.get("occurred_at"),
+                received_at=now,
+            ))
+        ingested_count = 0
         if bulk:
-            PlayLog.objects.bulk_create(bulk, batch_size=500)
-        Kiosk.objects.filter(pk=kiosk.pk).update(son_goruldu=timezone.now())
-        return Response({"ingested": len(bulk)}, status=status.HTTP_201_CREATED)
+            try:
+                created = PlayLog.objects.bulk_create(
+                    bulk, batch_size=500, ignore_conflicts=True
+                )
+                ingested_count = len(created)
+            except IntegrityError:
+                # Yarista creative silinmesi gibi durumlarda tek tek dene.
+                for row in bulk:
+                    try:
+                        row.save(force_insert=True)
+                        ingested_count += 1
+                    except IntegrityError:
+                        invalid_ref_count += 1
+        Kiosk.objects.filter(pk=kiosk.pk).update(son_goruldu=now)
+        skipped_count = len(existing_event_ids) + invalid_ref_count + max(0, len(bulk) - ingested_count)
+        return Response(
+            {
+                "ingested": ingested_count,
+                "skipped": skipped_count,
+                "invalid_refs": invalid_ref_count,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class KioskDiagnosticsView(KioskAPIView):
@@ -524,7 +665,7 @@ class KioskManifestView(KioskAPIView):
                     Playlist.objects
                     .filter(kiosk=kiosk, target_date=d)
                     .order_by("target_hour")
-                    .prefetch_related("items__creative__campaign", "items__house_ad")
+                    .prefetch_related("items__creative__campaign")
                 )
                 from apps.campaigns.serializers import KioskPlaylistSerializer
                 days_data.append({
@@ -643,3 +784,95 @@ class KioskAckView(KioskAPIView):
             "applied_version": playlist_version,
             "desired_version": desired,
         })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Faz 4 — KioskEvent ingest (teknik olaylar: hata, restart, bağlantı vb.)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class KioskEventIngestView(KioskAPIView):
+    """``POST /api/kiosk/v1/kiosk-events/`` - kiosk teknik olay ingesti.
+
+    Idempotent: event_id UUID ile; ayni event tekrar gonderilse mukerrer kayit olmaz.
+    Eski kiosk surumleri bu endpoint'i kullanmaz — backward compat sorunu yok.
+    """
+
+    def post(self, request):
+        import uuid as _uuid
+        from apps.analytics.models import KioskEvent
+
+        payload = request.data if isinstance(request.data, dict) else {}
+        items = payload.get("items")
+        if not isinstance(items, list) or not items:
+            return Response(
+                {"detail": "`items` bos olmayan bir liste olmalidir."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if len(items) > 200:
+            return Response(
+                {"detail": "Batch en fazla 200 kayit icerebilir."},
+                status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            )
+
+        kiosk = self.kiosk
+        now = timezone.now()
+        valid_event_types = set(dict(KioskEvent.EventType.choices))
+        valid_severities = set(dict(KioskEvent.Severity.choices))
+
+        # Idempotency: mevcut event_id'leri bul
+        candidate_ids = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            raw_id = item.get("event_id")
+            if raw_id:
+                try:
+                    candidate_ids.append(_uuid.UUID(str(raw_id)))
+                except (ValueError, AttributeError):
+                    pass
+
+        existing_ids = set(
+            KioskEvent.objects.filter(event_id__in=candidate_ids)
+            .values_list("event_id", flat=True)
+        ) if candidate_ids else set()
+
+        new_events = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            raw_id = item.get("event_id")
+            if not raw_id:
+                continue
+            try:
+                event_id = _uuid.UUID(str(raw_id))
+            except (ValueError, AttributeError):
+                continue
+            if event_id in existing_ids:
+                continue
+
+            event_type = str(item.get("event_type", "GENERAL_ERROR")).upper()
+            if event_type not in valid_event_types:
+                event_type = "GENERAL_ERROR"
+
+            severity = str(item.get("severity", "WARNING")).upper()
+            if severity not in valid_severities:
+                severity = "WARNING"
+
+            new_events.append(KioskEvent(
+                kiosk=kiosk,
+                event_id=event_id,
+                event_type=event_type,
+                severity=severity,
+                message=str(item.get("message", ""))[:512],
+                occurred_at=item.get("occurred_at"),
+                received_at=now,
+            ))
+
+        if new_events:
+            KioskEvent.objects.bulk_create(new_events, ignore_conflicts=True)
+
+        return Response(
+            {"accepted": len(new_events), "skipped": len(existing_ids)},
+            status=status.HTTP_201_CREATED,
+        )
+

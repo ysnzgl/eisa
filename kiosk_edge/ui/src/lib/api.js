@@ -112,7 +112,20 @@ export async function submitSession({ ageRange, gender, oturumTipi, categorySlug
     // retry, Node'un her seferinde farklı UUID üretmesine yol açar → çift kayıt
     retry: 0,
   });
-  return { qrCode: data.qr_kodu, qrPayload: data.qr_payload || data.qr_kodu };
+  return {
+    qrCode:      data.qr_kodu,
+    qrPayload:   data.qr_payload || data.qr_kodu,
+    syncDurum:   data.sync_durum || (data.qr_kodu ? 'bekliyor' : null),
+    devPreview:  !!data.dev_preview,
+    baskiLogoUrl: data.barkod_logo_gorsel_url
+      ? `${API_BASE}${data.barkod_logo_gorsel_url}`
+      : null,
+  };
+}
+
+/** Backend'e gönderilme durumunu sorgular ('bekliyor' | 'gonderildi'). */
+export async function fetchSessionSyncStatus(idempotencyKey) {
+  return _request(`${API_BASE}/api/oturum/sync-durum/${encodeURIComponent(idempotencyKey)}`, { timeoutMs: 3000 });
 }
 
 // ── WiFi API ────────────────────────────────────────────────────────────────
@@ -154,6 +167,25 @@ export async function fetchActiveCampaigns() {
 }
 
 /**
+ * Lokal aktif idle içeriklerini (İçerik Yönetimi — başlık/metin) döner.
+ * UI merkezi backend'e bağlanmaz; yalnız api-node lokal endpoint'ini kullanır.
+ * @returns {Promise<Array<{id:number, baslik:string, metin:string, aktif:boolean, updated_at:string}>>}
+ */
+export async function fetchIdleContents() {
+  const list = await _request(`${API_BASE}/api/idle-contents`, { timeoutMs: 4000 });
+  return Array.isArray(list) ? list : [];
+}
+
+/** Eczane adını kiosk_meta'dan döner. Offline'da boş string. */
+export async function fetchKioskInfo() {
+  try {
+    return await _request(`${API_BASE}/api/kiosk-info`, { timeoutMs: 3000 });
+  } catch {
+    return { eczane_adi: '' };
+  }
+}
+
+/**
  * Bugünün belirtilen saatine ait playlist'i döner.
  * @param {number} [hour]  — verilmezse api-node kendi saatini kullanır
  * @returns {Promise<{version:number, target_date:string, target_hour:number,
@@ -172,15 +204,21 @@ export async function fetchCurrentPlaylist(hour) {
   };
 }
 
-export async function logAdImpression({ assetId, assetType, shownAt, durationMs }) {
+export async function logAdImpression({ assetId, assetType, shownAt, durationMs, playEventId, status, expectedDuration, errorCode }) {
   try {
     await _request(`${API_BASE}/api/reklam-gosterim`, {
       method: 'POST',
       body: {
-        asset_id:       assetId,
-        asset_type:     assetType,
-        played_at:      shownAt,
-        duration_played: Math.round((durationMs || 0) / 1000),
+        asset_id:         assetId,
+        asset_type:       assetType,
+        played_at:        shownAt,
+        duration_played:  Math.round((durationMs || 0) / 1000),
+        // Faz 3: yeni alanlar (opsiyonel — backend geriye uyumlu)
+        ...(playEventId   ? { play_event_id: playEventId }         : {}),
+        status:           status || 'COMPLETED',
+        ...(expectedDuration != null ? { expected_duration: expectedDuration } : {}),
+        ...(errorCode     ? { error_code: errorCode }              : {}),
+        occurred_at:      shownAt,
       },
       timeoutMs: 3000,
     });

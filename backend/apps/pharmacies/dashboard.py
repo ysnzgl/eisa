@@ -1,18 +1,19 @@
 ﻿"""
-Eczaci paneli ana sayfa gorunumu â€” kendi eczanesine ait ozet metrikler.
+Eczaci paneli ana sayfa gorunumu — kendi eczanesine ait ozet metrikler.
 
 KVKK uyumu: Tum sayimlar request.user.eczane uzerinden filtrelenir.
 """
 from datetime import timedelta
 
-from django.db.models import Q
+from django.db.models import Count, Q
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from core_api.cookie_jwt import JWTCookieAuthentication as JWTAuthentication
 
-from apps.analytics.models import OturumLogu
+from apps.analytics.models import OturumLogu, OturumOnerilenEtkenMadde
 from apps.campaigns.models import Campaign
 from apps.products.models import Kategori
 
@@ -69,6 +70,38 @@ class EczaciDashboardView(APIView):
         oturum_sayisi = oturum_qs.count()
         oturum_sayisi_bugun = oturum_qs.filter(olusturulma_tarihi__gte=bugun_basi).count()
 
+        # Satış istatistikleri — start_date/end_date parametrelerine duyarlı
+        params = request.query_params
+        start_date = params.get("start_date")
+        end_date = params.get("end_date")
+
+        sold_qs = oturum_qs.filter(sold=True)
+        if start_date:
+            sold_qs = sold_qs.filter(olusturulma_tarihi__date__gte=start_date)
+        if end_date:
+            sold_qs = sold_qs.filter(olusturulma_tarihi__date__lte=end_date)
+        satis_sayisi = sold_qs.count()
+
+        em_qs = OturumOnerilenEtkenMadde.objects.filter(
+            oturum__kiosk_id__in=kiosk_ids, oturum__sold=True
+        )
+        if start_date:
+            em_qs = em_qs.filter(oturum__olusturulma_tarihi__date__gte=start_date)
+        if end_date:
+            em_qs = em_qs.filter(oturum__olusturulma_tarihi__date__lte=end_date)
+
+        top_em = (
+            em_qs
+            .annotate(em_adi=Coalesce("etken_madde__ad", "etken_madde_adi_snapshot"))
+            .values("em_adi")
+            .annotate(sayi=Count("id"))
+            .order_by("-sayi")
+            .first()
+        )
+        en_cok_satilan = (
+            {"ad": top_em["em_adi"], "sayi": top_em["sayi"]} if top_em else None
+        )
+
         # Bu eczaneye hedeflenmis aktif kampanyalar (DOOH v2):
         # target_pharmacies bos (herkese goster) VEYA bu eczane hedefte yer aliyor
         reklam_qs = Campaign.objects.filter(
@@ -108,6 +141,8 @@ class EczaciDashboardView(APIView):
                 "oturum_sayisi_bugun": oturum_sayisi_bugun,
                 "reklam_sayisi": reklam_sayisi,
                 "kiosklar": kiosklar_payload,
+                "satis_sayisi": satis_sayisi,
+                "en_cok_satilan_etken_madde": en_cok_satilan,
             }
         )
 

@@ -4,6 +4,9 @@
  * match_rules format:
  *   [{ gender: ["M"|"F"], age_min: int, age_max: int, primary: string, supportive: string }]
  *
+ * Her eşleşen kural bağımsız bir etken madde üretir.  Aynı madde farklı
+ * sorulardan gelirse Map deduplication ile ilk görülme sırası korunur.
+ *
  * Kullanım:
  *   const recs = getRecommendations(questions, answers, ageRange, gender);
  *   // => [{ primary: "...", supportive: "..." }, ...]
@@ -47,8 +50,8 @@ export function getRecommendations(questions, answers, ageRange, gender) {
       const maxAge = Number.isFinite(rule.age_max) ? rule.age_max : 200;
       if (age < minAge || age > maxAge) continue;
       if (!rule.primary) continue;
-      recs.set(rule.primary, rule.supportive || '');
-      break; // ilk eşleşen kural yeterli
+      // Map.set ile zaten var olan madde üzerine yazılmaz — ilk görülme sırası korunur.
+      if (!recs.has(rule.primary)) recs.set(rule.primary, rule.supportive || '');
     }
   }
 

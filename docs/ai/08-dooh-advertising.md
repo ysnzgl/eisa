@@ -1,6 +1,6 @@
 # DOOH Advertising System
 
-**Amaç:** Digital Out-Of-Home reklam sistemi mimarisini, playlist üretimini, offline senkronizasyonu dokümante etmek.
+**Amaç:** Digital Out-Of-Home reklam sistemi mimarisini, playlist üretimini, offline senkronizasyonu dokümante etmek. Eczacı paneli kampanya sistemi de bu dokümana dahildir.
 
 ---
 
@@ -43,13 +43,18 @@ Campaign (reklam kampanyası)
   ├── ScheduleRule (frekans matrisi)
   └── CampaignTarget[] (lokasyon hedefi: il/ilce/eczane)
 
-Playlist (60sn döngü, pre-computed)
-  └── PlaylistItem[] (sıralı creative/house_ad listesi)
+Playlist (60sn döngü, pre-computed) — CAMPAIGN-ONLY
+  └── PlaylistItem[] (sıralı creative listesi; uygun creative yoksa 0 item)
 
-HouseAd (filler reklam, slot boşsa oynatılır)
+IdleScreenContent (bekleme ekranı başlık/metin idle içeriği — "İçerik Yönetimi")
 
-PlayLog (impression tracking, proof-of-play)
+PlayLog (impression tracking, proof-of-play — creative-only)
 ```
+
+### Görünüm Tipleri: Idle vs Campaign
+
+- **Campaign display:** Playlist yalnız kampanya creative'lerinden üretilir. Uygun creative yoksa playlist boş kalır (boş playlist geçerlidir). Filler YOK.
+- **Idle display:** Playlist/slot boş olduğunda kiosk kendi idle (bekleme) ekranını gösterir; idle içerikleri `IdleScreenContent` (başlık/metin) offline SQLite cache'ten gelir. Eski **HouseAd** filler sistemi uçtan uca kaldırıldı (migration 0027).
 
 ---
 
@@ -117,18 +122,28 @@ ECZANE: target_type=ECZANE, eczane=xyz → tek spesifik eczane
 ```python
 class Creative(BaseModel):
     campaign = FK(Campaign)
-    media_url = URLField(https only)   # kalici URL (Faz 0.5+)
+    media_url = URLField(https only)   # bekleme ekrani (IdleScreen) gorseli — kalici URL (Faz 0.5+)
+    active_media_url = URLField(blank=True, default='')  # islem ekrani alt alani gorseli (~1080x768, ~7:5)
     duration_seconds = PositiveSmallIntegerField(1-60)
     name = CharField
     checksum = CharField(max_length=128)  # 'sha256:<hex>' formati
-    object_key = CharField(null=True)     # Faz 0.5: S3 object key
+    object_key = CharField(null=True)     # Faz 0.5: S3 object key (media_url icin)
+    active_object_key = CharField(null=True)  # Faz 0.5+: S3 object key (active_media_url icin)
 ```
+
+### Dual-Media Kullanim
+
+- `media_url` → IdleScreen (bekleme): tam ekran portrait 9:16 (1080×1920)
+- `active_media_url` → AdStrip (islem sirasinda alt alan): yaklasik 7:5 (1080×768)
+- `active_media_url` bos ise AdStrip `media_url` fallback kullanir + `object-fit: contain` (letterbox)
+- Eski creative kayitlarinda `active_media_url = ''` → fallback devrede
+- Proof-of-play `asset_id` degismez; tek impression akisi korunur
 
 ### Media Upload Flow (Faz 0.5+)
 
 **Feature flag:** `DOOH_PERSISTENT_MEDIA_URL` (settings)
-- `False` (varsayilan) = legacy presigned URL davranisi
-- `True` = kalici URL akisi aktif
+- `False` = legacy presigned URL davranisi (rollback icin)
+- `True` (varsayilan, 2026-08-15'ten itibaren) = kalici URL akisi aktif
 
 Flag=True akisi:
 ```
@@ -190,7 +205,7 @@ target_hours: null → tüm gün oynat
 
 ### V1 Scheduler: `generate_for_kiosk(date, kiosk)` *(mevcut, Faz 0–Faz 1)*
 
-ScheduleRule tabanlı 4-pass: PER_LOOP / PER_HOUR / PER_DAY / HouseAd filler.
+ScheduleRule tabanlı (PER_LOOP / PER_HOUR / PER_DAY). Playlist **campaign-only**: uygun creative yoksa 0 item (boş playlist geçerli), **filler YOK**. Eski HouseAd 4. pass'i kaldırıldı (migration 0027).
 V1 motor Faz 2'de shadow modda PlacementEngine V2 ile yarışacak.
 
 **Algorithm:**
@@ -202,8 +217,8 @@ V1 motor Faz 2'de shadow modda PlacementEngine V2 ile yarışacak.
    - CampaignTarget match (il/ilce/eczane) — target_scope NULL=legacy ALL davranışı
    - ScheduleRule.target_hours match (şimdiki saat)
 3. Kampanyaları priority'ye göre sırala (priority — küçük değer önce; Faz 7: is_guaranteed kaldırıldı)
-4. 60sn slot hesaplama (4-pass)
-5. Playlist + PlaylistItem create; version bump
+4. 60sn slot hesaplama (campaign-only; filler YOK)
+5. Playlist + PlaylistItem create; version bump (uygun creative yoksa 0 item)
 ```
 
 ### Faz 1 Yeni Modeller
@@ -256,10 +271,10 @@ class Playlist(BaseModel):
 class PlaylistItem(BaseModel):
     id = UUIDField(pk)
     playlist = FK(Playlist)
-    creative = FK(Creative, null=True)     # creative VEYA house_ad (biri dolu)
-    house_ad = FK(HouseAd, null=True)      # filler (Pass 4) icin
+    creative = FK(Creative)                # creative-only; house_ad FK KALDIRILDI (migration 0027)
     playback_order = PositiveSmallIntegerField
     estimated_start_offset_seconds = PositiveSmallIntegerField  # SAAT-mutlak 0..3599
+    # clean(): creative zorunlu
 ```
 
 > `estimated_start_offset_seconds` = `loop_index * loop_duration_seconds + slot_offset`
@@ -268,27 +283,29 @@ class PlaylistItem(BaseModel):
 > yapilir (bkz. Slot Hizalama).
 >
 > API contract'ta (`KioskPlaylistItemSerializer`) bu alanlar ayrica
-> `asset_id` + `asset_type` ("creative"|"house_ad") + `media_url` +
+> `asset_id` + `asset_type` ("creative") + `media_url` +
 > `duration_seconds` olarak duzlestirilir.
 
 ---
 
-## HouseAd Model
+## IdleScreenContent Model *(2026-08-16 — HouseAd'in yerine)*
 
 ```python
-class HouseAd(BaseModel):
-    id = UUIDField(pk)
-    name = CharField
-    media_url = URLField(https only)
-    duration_seconds = PositiveSmallIntegerField(1-60, default=10)
-    aktif = BooleanField(default=True)            # NOT: "aktif" (TR), "active" degil
-    priority = PositiveSmallIntegerField(default=100)
+class IdleScreenContent(BaseModel):
+    id = BigAutoField(pk)
+    baslik = CharField(max_length=100)            # zorunlu
+    metin = CharField(max_length=300)             # zorunlu
+    aktif = BooleanField(default=True)            # NOT: "aktif" (TR)
+    # + BaseModel: olusturulma_tarihi / guncellenme_tarihi
+    # Tablo: dooh_idle_screen_contents
 ```
 
-### Usage
-- Slot boşsa (capacity < 60sn) → HouseAd filler
-- Priority order (düşük değer önce)
-- Always available (no date/targeting constraints)
+### Kullanım
+- "İçerik Yönetimi" idle (bekleme) ekranı başlık/metin içeriği; **medya YOK, HTML YOK, düz metin**
+- CRUD API: `GET/POST/PUT/PATCH/DELETE /api/campaigns/v2/idle-contents/` (JWT SuperAdmin, basename `dooh-idle-content`); serializer `id, baslik, metin, aktif, created_at, updated_at`
+- Kiosk sync: `/api/kiosk/v1/sync/` → `idle_contents` (yalnız AKTİF; `KioskIdleContentSyncSerializer`)
+- Kiosk UI shuffled-bag ile aktif idle içerikleri döndürür (bkz. 04-kiosk-edge-ui.md `idleContentStore.js` / `AdPromo` large)
+- Eski `HouseAd` modeli/tablosu (`dooh_house_ads`), viewset (`/api/campaigns/v2/house-ads/`) ve filler mantığı uçtan uca **KALDIRILDI** (migration 0027)
 
 ---
 
@@ -339,7 +356,11 @@ class HouseAd(BaseModel):
 ---
 
 ## Ad Playback (kiosk_edge/ui)
+### IdleScreen vs AdStrip Medya Secimi
 
+- **IdleScreen**: `item.media_url` (portrait, tam ekran, cover)
+- **AdStrip** (islem sirasinda): `item.active_media_url` varsa cover; yoksa `item.media_url` + `object-fit: contain` (letterbox fallback)
+- Tek impression kaydedilir; iki ayri impression sistemi yoktur
 ### AdStrip Component
 
 Kiosk UI, merkezi backend'e DEGIL, yerel api-node'a (`http://127.0.0.1:8765`)
@@ -379,8 +400,7 @@ Oge degistiginde onceki slot icin impression backend'e loglanir
 class PlayLog(BaseModel):
     id = UUIDField(pk)
     kiosk = FK(Kiosk)
-    creative = FK(Creative, null=True, on_delete=SET_NULL)
-    house_ad = FK(HouseAd, null=True, on_delete=SET_NULL)
+    creative = FK(Creative, null=True, on_delete=SET_NULL)  # house_ad FK KALDIRILDI (migration 0027)
     played_at = DateTimeField(db_index=True)
     duration_played = PositiveSmallIntegerField   # gercekten oynatilan saniye
 ```
@@ -413,11 +433,13 @@ class PlayLog(BaseModel):
   - PlacementEngineV2 ile aynı hesaplama yolu
   - sim == generate == activation fingerprint doğrulandı
 - **Activation API:** `POST /api/campaigns/v2/campaigns/{id}/activate/`
-  - DOOH_ENGINE_V2=active gerektirir
-  - GUARANTEED: all-or-nothing (atomic rollback on any failure)
-  - BEST_EFFORT: mevcut kapasiteye sığanı yerleştir
-  - CAMPAIGN_TOTAL global invariant: select_for_update ile serialize edildi
-- **Feature flag:** off → shadow → active (off/shadow V1 authoritative, active = V2 activate endpoint açık)
+  - Faz 7+: Feature flag yok, endpoint her zaman açık
+  - Endpoint kampanya tarih aralığının tamamı için senkron playlist üretmez
+  - Ağır üretim DB-backed queue'ya alınır (`GenerationJob`, `triggered_by=campaign_activate`)
+  - Üretim kapsamı rolling horizon ile sınırlıdır (varsayılan 3 gün: bugün + 2 gün)
+  - GUARANTEED: queue'ya almadan horizon için pre-check; başarısızsa 409 ve enqueue yok (kısmi publish başlamaz)
+  - BEST_EFFORT: doğrulama sonrası horizon job'ları enqueue edilir
+- **Feature flag durumu:** Faz 7 sonrası `DOOH_ENGINE_V2` kaldırıldı; V2 akışları canonical.
 - **Idempotency:** Re-activation replaces (delete+recreate), not appends
 - **Faz 3 testleri:** 21 passed (FA-01..FA-16), PostgreSQL race testleri dahil
 - **Tüm backend testleri (Faz 3):** 371 passed, 7 skipped, 0 failed
@@ -546,7 +568,7 @@ POST /api/campaigns/v2/campaigns/{id}/activate/
 - **Faz 6:** Panel (CampaignWizard targeting + simulate/activate adımları)
 - **Faz 7:** ScheduleRule deprecation
 > ve `playlist` FK alanlari MEVCUT DEGIL. Kiosk yalnizca `played_at` +
-> `duration_played` (+ creative_id ya da house_ad_id) gonderir.
+> `duration_played` (+ creative_id) gonderir (playlist creative-only).
 
 **Backend implementation:**
 - File: `backend/apps/campaigns/views_v2.py`
@@ -572,15 +594,12 @@ POST /api/campaigns/v2/campaigns/{id}/activate/
 5. api-node → DELETE FROM reklam_gosterim_outbox WHERE id IN (...)
 ```
 
-**HouseAd logging implementation:**
-- UI: `AdStrip.svelte` correctly sends `asset_type` and `asset_id`
-- api-node: `server.js` stores both fields in outbox
-- api-node: `scheduler.js` `pushToCentral()` (line 534) correctly maps:
-  - if `asset_type === 'house_ad'` → `house_ad_id`
-  - else → `creative_id`
-- Backend: `ProofOfPlayView` accepts both `creative_id` and `house_ad_id`
+**Impression logging (creative-only):**
+- UI: `AdStrip.svelte` yalnız `asset_type='creative'` öğeleri için impression gönderir
+- api-node: `server.js` outbox'a `creative_id` yazar; `scheduler.js` `pushToCentral()` `creative_id` maplar
+- Backend: `ProofOfPlayView` `creative_id` kabul eder; `house_ad_id` gelse de yok sayılır (playlist creative-only)
 
-**Status:** HouseAd impression logging verified as implemented correctly.
+**Status:** HouseAd uçtan uca kaldırıldı (migration 0027); proof-of-play creative-only.
 
 ### Analytics
 ```python
@@ -628,7 +647,7 @@ slotu oynatir ve proof-of-play hizalanir.
 ## Bilinen Riskler
 
 1. **Campaign targeting priority:** Legacy M2M vs CampaignTarget — hangisi öncelikli? (Belirsiz / doğrulanmalı)
-2. **Playlist generation job tracking:** `GenerationJob` modeli mevcut ama job durumu belirsiz (Belirsiz / doğrulanmalı)
+2. ~~**Playlist generation job tracking:** `GenerationJob` modeli mevcut ama job durumu belirsiz~~ → **ÇÖZÜLDÜ (2026-08-09):** `drain_queue` APScheduler'a eklendi; PENDING job'lar artık işleniyor.
 3. **Slot overflow:** 60sn'den fazla campaign varsa ne olur? (Belirsiz / doğrulanmalı)
 4. **Playlist version mismatch:** Kiosk uzun süre offline kalırsa eski versiyon oynatılır mı? (Belirsiz / doğrulanmalı)
 5. **Media cache:** Creative medya cache mekanizması placeholder (Belirsiz / doğrulanmalı)
@@ -641,7 +660,69 @@ slotu oynatir ve proof-of-play hizalanir.
   hiç gösterilmiyordu. Artık 3600sn'lik saatlik dongu kullaniliyor.
 - **Ölü endpoint (ÇÖZÜLDÜ):** `server.js` `/api/lookups/iller*` kaldırılmıs tabloları
   sorguluyordu (db.js v9). Kullanılmadığı için tamamen kaldırıldı.
+- **drain_queue eksikliği (ÇÖZÜLDÜ 2026-08-09):** `run_scheduler.py` `drain_queue` job'ını kaydetmiyordu; tüm PENDING GenerationJob'lar sonsuza kadar PENDING kalıyordu. `IntervalTrigger(seconds=30)` ile eklendi. `scheduler` servisi yeniden başlatılmalıdır.
+- **active_media_url video desteği (ÇÖZÜLDÜ 2026-08-09):** CampaignWizard ikinci medya alanı `accept="image/*"` idi; video yüklenemiyordu. `accept="image/*,video/mp4,video/webm"` yapıldı; preview video kartı eklendi.
+- **Video thumbnail kırık resim (ÇÖZÜLDÜ 2026-08-09):** Kampanya listesinde video URL'leri `<img>` olarak render ediliyordu. `isVideoUrl()` yardımcısı ile video kartı gösteriliyor.
 
 ---
+
+## Admin Endpoint — Yayın Akışı (2026-08-09)
+
+```
+GET /api/campaigns/v2/playlists/day-stream/?kiosk=<id>&date=YYYY-MM-DD
+```
+- Read-only; DB mutation yok.
+- Dönen: `{ kiosk_id, kiosk_name, is_online, son_goruldu, last_playlist_version, desired_version, applied_version, applied_horizon_end, playlist_applied_at, target_date, hours: [{target_hour, version, items: [...]}] }`
+- Her item: `{ id, asset_id, asset_type, name, media_url, active_media_url, duration_seconds, playback_order, estimated_start_offset_seconds }`
+- N+1 yok: `prefetch_related("items__creative__campaign")` (playlist creative-only)
+- **Desired/applied canonical (2026-08-09):** `desired_version = Kiosk.last_playlist_version`, `applied_version = Kiosk.applied_playlist_version`. `KioskDesiredBundle` KULLANILMAZ (Faz 5 stub, boş). Frontend rollout durumu `calcKioskRolloutStatus` ile hesaplanır (Control Center ile aynı sözleşme).
+
+---
+
+## PharmacyCampaign — Eczacı Paneli Kampanyaları *(2026-07-31, 2026-08-01)*
+
+Kiosk playlist/scheduler/PlayLog sisteminden **tamamen bağımsız** sade kampanya sistemi.
+
+### Model
+
+```python
+class PharmacyCampaign(BaseModel):
+    id = UUIDField(pk)
+    name = CharField
+    media_url = URLField           # yatay görsel (eczacı paneli şerit + overlay)
+    object_key = CharField(null)   # S3 key (upload servisinden türetilir)
+    start_at = DateTimeField
+    end_at = DateTimeField
+    duration_seconds = PositiveSmallIntegerField(default=15)  # İzin verilenler: 15, 30, 60
+    is_active = BooleanField(default=True)
+    target_pharmacies = M2M(Eczane)   # tekil eczane hedefi
+    target_iller = M2M(Il)            # il hedefi (migration 0024)
+    target_ilceler = M2M(Ilce)        # ilçe hedefi (migration 0024)
+```
+
+### Feed Endpoint
+
+`GET /api/campaigns/v2/pharmacy-campaigns/feed/` (IsEczaci izni)
+
+- Eczaneyi frontend'den ALMAZ; `request.user.eczane_id` kullanır.
+- Eşleşme kuralı (OR): `target_pharmacies__id=eczane_id` VEYA `target_iller__id=il_id` VEYA `target_ilceler__id=ilce_id`
+- `.distinct()` — birden fazla koşula uyan kampanya bir kez döner.
+- Hiç hedefi olmayan kampanya (üç M2M de boş) feed'e girmez.
+- Aktif + tarih aralığı geçerli olması zorunlu.
+- Response: `[{id, name, media_url, duration_seconds}]`
+
+### Admin CRUD
+
+`/api/campaigns/v2/pharmacy-campaigns/` (IsSuperAdmin)
+
+- Upload: mevcut `POST /api/campaigns/upload-media/` (shared)
+- duration_seconds serializer validation: yalnız 15, 30, 60 kabul edilir. Eski kayıt aynı değerle güncelleniyorsa izin verilir.
+- Hedef zorunluluğu: en az bir `target_pharmacies`, `target_iller` veya `target_ilceler`.
+
+### Frontend Entegrasyon
+
+- `PharmacyCampaigns.vue` — admin CRUD; il/ilçe/eczane chip tabanlı çoklu seçim.
+- `EisaLookup` bileşeni `options: [{id, label, sub?}]` alır; eczaneler `/api/pharmacies/` (list aksiyon), iller `/api/lookups/iller/`, ilçeler `/api/lookups/ilceler/?il={id}` üzerinden yüklenir.
+- `PharmacistCampaignDisplay.vue` — AdminLayout'ta `v-if="isPharmacist"` ile mount edilir; alt şerit + 90s idle overlay; shuffle-bag rotasyon; visibility API ile sekme gizliyken ilerleme durur.
 
 **Satır sayısı: ~250**

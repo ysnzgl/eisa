@@ -60,12 +60,15 @@ INSTALLED_APPS = [
     "apps.campaigns",
     "apps.audit",
     "apps.kiosk_api",
+    "apps.barkod_logo",
+    "apps.destek",
     "apps.announcements",
 ]
 
 MIDDLEWARE = [
     "apps.core.logging.middleware.CorrelationIdMiddleware",
     "apps.core.logging.middleware.RequestLoggingMiddleware",
+    "apps.core.logging.middleware.SlowQueryMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -263,7 +266,7 @@ S3_PRESIGNED_URL_TTL_MINUTES = config("S3_PRESIGNED_URL_TTL_MINUTES",
 S3_PUBLIC_BASE_URL = config("S3_PUBLIC_BASE_URL", default="")
 
 # DOOH kalıcı medya URL feature flag.
-DOOH_PERSISTENT_MEDIA_URL = config("DOOH_PERSISTENT_MEDIA_URL", default=False, cast=bool)
+DOOH_PERSISTENT_MEDIA_URL = config("DOOH_PERSISTENT_MEDIA_URL", default=True, cast=bool)
 
 # DOOH Horizon — rolling horizon gün sayısı (bugün dahil). Operasyonel ayar.
 # Default 3: bugün, bugün+1, bugün+2.
@@ -340,6 +343,9 @@ LOG_FORMAT = config("LOG_FORMAT", default=_default_log_format).lower()
 if LOG_FORMAT not in ("json", "console"):
     LOG_FORMAT = "json"
 
+# 500ms üzerindeki DB sorguları `eisa.db` logger'ına WARNING yazar.
+SLOW_QUERY_THRESHOLD_MS = config("SLOW_QUERY_THRESHOLD_MS", default=500, cast=int)
+
 _root_handler = "console_json" if LOG_FORMAT == "json" else "console_readable"
 
 LOGGING = {
@@ -414,6 +420,12 @@ LOGGING = {
         "eisa.errors": {
             "handlers": [_root_handler],
             "level": "INFO",
+            "propagate": False,
+        },
+        "eisa.db": {
+            # Yavaş sorgu uyarıları (SlowQueryMiddleware). Her zaman WARNING+.
+            "handlers": [_root_handler],
+            "level": "WARNING",
             "propagate": False,
         },
     },

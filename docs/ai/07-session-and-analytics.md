@@ -35,19 +35,43 @@
 - Genel duyurular ve nöbet uyarıları analytics modeli değildir; `apps.announcements` tabloları ve `/api/announcements/*` endpoint'leri üzerinden çalışır.
 - Genel duyuru okuması ile sistem uyarısındaki “Bugün İçin Okudum”, kalıcı `AnnouncementRead` occurrence kaydıdır; session completion veya inbox okunmasıyla ilişkilendirilmez.
 
-## QR Tasarımı (2026-07-20 güncellemesi)
+## Duyuru / Inbox Kapsam Sınırı *(2026-08-18)*
 
-**Authoritative QR:** Backend üretir, istemci almaz.
-- Format: 8 karakter `[A-Z0-9]`, kriptografik rastgele (secrets.choice)
-- DB: `OturumLogu.qr_kodu` → `CharField(max_length=8, unique=True)` — DB seviyesinde constraint
-- Retry: `IntegrityError` yakalanır, yeni aday üretilir (max 5 deneme, her biri savepoint)
-- **"QR collision imkansız" değil; DB onu saklar, retry çözüm sağlar**
+- `/pharmacist/inbox` ve `Inbox.vue`, `OturumLogu.is_sensitive_flow` tabanlı hassas session bildirim akışıdır; local `readIds` kullanır.
+- Genel duyurular ve nöbet uyarıları analytics modeli değildir; `apps.announcements` tabloları ve `/api/announcements/*` endpoint'leri üzerinden çalışır.
+- Genel duyuru okuması ile sistem uyarısındaki “Bugün İçin Okudum”, kalıcı `AnnouncementRead` occurrence kaydıdır; session completion veya inbox okunmasıyla ilişkilendirilmez.
 
-**Edge:** Tamamlanan oturumlar için backend'i sync olarak çağırır. Response'taki `qr_kodu`'nu kullanır.
-- Backend erişilemezse → 503 döner (sahte QR gösterilmez)
-- Terk edilen oturumlar (tamamlandi=false) QR gerektirmez
+## QR Tasarımı (2026-08-06 güncellemesi — offline-first)
 
-**Geriye dönük:** `qrBitpack` encodeQrCode() hala çalışır ama sadece termal yazıcı metadata'sı için kullanılır.
+**Authoritative QR:** Kiosk yerel olarak üretir (9 karakter Crockford Base32).
+- Format: `[PREFIX][COUNTER x7][CHECK]`
+  - PREFIX: `CROCKFORD_ALPHABET[eczane_kiosk_no]` (1 char, '1'-'Z')
+  - COUNTER: mantıksal unix timestamp / sayaç (7 char)
+  - CHECK: `sum(idx(c)*(i+1) for i,c in enumerate(first8)) % 32` → 1 char
+- DB: `OturumLogu.qr_kodu` → `CharField(max_length=9, null=True)` — global unique kaldırıldı, `UNIQUE(eczane_id, qr_kodu) WHERE qr_kodu IS NOT NULL`
+- Sayaç: `qr_counter` SQLite singleton — `nextValue = max(currentUnixSeconds, lastValue+1)`
+- Sayaç güncelleme + outbox insert tek transaction'da; restart'ta kayıt korunur.
+- Backend: kiosk QR'ını doğrular (format, checksum, prefix). Eski kiosk qr_kodu göndermezse backend 8-char üretir (fallback).
+
+**Geriye uyumluluk:** Eski 8-char `[A-Z0-9]{8}` kayıtlar sorgulanabilir.
+
+**Edge akışı (tamamlandi=true) *(2026-08-11 — barkod logo + atomic commit)*:**
+1. `eczane_kiosk_no` kiosk_meta'da mevcut değilse → 503 `kiosk_no_missing`
+2. `getOrderedLogoCandidates(db)` → uygun logoların rotation sıralı listesi
+3. Atomik SQLite: QR üret + outbox insert (`barkod_logo_id=null` başlangıçta)
+4. `buildReceiptBuffer({qrPayload, logoCandidates})` → adayları sırayla dener; ilk başarılı raster kullanılır → `{buffer, logoId}`
+5. `sendToTransport({buffer, host})` — tüm fiş bellekte hazır, tek seferlik transport
+6. Transport başarısı (no throw):
+   - `commitBasariliBaski(db, logoId, idempotencyKey)` — tek atomik transaction: günlük sayaç + cursor + outbox.barkod_logo_id
+   - Süreç çökmesi sonrası: outbox null kalır → scheduler null payload gönderir (muhafazakâr)
+7. setImmediate: outbox'tan nihai payload oku → backend push (retry'da değişmez)
+
+**"Başarılı baskı" tanımı:** `sendToTransport` throw etmedi. TCP için bu bağlantı girişiminin başlatıldığını gösterir; fiziksel baskı teyit edilemez. Cihaz dosyası için writeFileSync başarısı teyit edilir.
+
+**Backend QR doğrulama (ingest):**
+- 9-char Crockford → checksum kontrol, prefix=kiosk.eczane_kiosk_no kontrolü, eczane unique kontrolü
+- Conflict → `errors[]` → edge PENDING bırakır
+- Idempotency: aynı idempotency_key → mevcut kayıt döner
 
 ---
 

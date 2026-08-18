@@ -5,6 +5,7 @@
     campaigns, activeCampaignIndex,
   } from '../stores/kiosk.js';
   import { fetchCurrentPlaylist, logAdImpression } from '../lib/api.js';
+  import { resolveActiveItem, currentHourPosition, secondsUntilBoundary } from '../lib/playlistSlot.js';
   import AdPromo from './AdPromo.svelte';
   import MediaView from './MediaView.svelte';
 
@@ -36,36 +37,59 @@
   let hourTick     = null;
   let useSlots     = false;  // gerçek slot playlist mi, yoksa basit sıralı mı
   let currentIndex = 0;      // sıralı (fallback) modda indeks
+  let currentPlayEventId = null;  // Faz 3: mevcut slot için idempotency UUID
 
   // Güncel oynatma listesi (playlist varsa oradan, yoksa eski campaigns store)
-  $: items = $playlistItems.length > 0 ? $playlistItems : $campaigns;
+  // house_ad öğeleri işlem ekranında gösterilmez; yalnız paid creative'lar oynatılır.
+  $: items = ($playlistItems.length > 0 ? $playlistItems : $campaigns)
+    .filter(i => (i.asset_type ?? i.type) === 'creative');
 
   const off   = (it) => it?.estimated_start_offset_seconds ?? 0;
+  // Slot kimligi: ayni asset farkli slotlarda ayri gosterim/impression sayilir.
   const keyOf = (it) =>
-    it ? `${it.asset_type ?? it.type ?? 'creative'}:${it.asset_id ?? it.id}` : null;
+    it ? String(it.id ?? `${it.asset_id ?? it.asset_type ?? 'creative'}:${off(it)}`) : null;
 
   // O an gösterilen reklam slotunun gerçek izlenme süresini backend'e logla.
-  function logCurrentImpression() {
-    if (!asset || !shownKey) return;
+  // Faz 3: play_event_id ile idempotent; beklenen süre ile karşılaştırarak
+  // COMPLETED (tam oynatıldı) veya INTERRUPTED (erken kesildi) durumunu belirle.
+  function logCurrentImpression(statusOverride) {
+    if (!asset || !shownKey || !currentPlayEventId) return;
     const durationMs = Date.now() - new Date(shownAt).getTime();
+    const expectedDuration = asset.duration_seconds ?? null;
+    const durationSec = Math.round(durationMs / 1000);
+    let finalStatus = statusOverride || 'COMPLETED';
+    if (!statusOverride && expectedDuration && durationSec < expectedDuration * 0.5) {
+      finalStatus = 'INTERRUPTED';  // Beklenen sürenin yarısından az oynatıldı
+    }
     logAdImpression({
-      assetId:   asset.asset_id ?? asset.id,
-      assetType: asset.asset_type ?? asset.type ?? 'creative',
+      assetId:         asset.asset_id ?? asset.id,
+      assetType:       asset.asset_type ?? asset.type ?? 'creative',
       shownAt,
       durationMs,
+      playEventId:     currentPlayEventId,
+      status:          finalStatus,
+      expectedDuration,
     });
+    currentPlayEventId = null;  // Bir kez gönder
   }
 
-  // Yeni öğeye geçir (öğe değiştiyse önceki slotu logla + yumuşak geçiş yap).
+  // Yeni ogeye gecir (oge degistiyse onceki slotu logla + yumusak gecis yap).
+  // item null ise bosluk demektir: AdPromo gosterilir, impression ACILMAZ.
   function show(item, msUntilNext) {
     const newKey = keyOf(item);
     if (newKey !== shownKey) {
-      logCurrentImpression();
+      logCurrentImpression();   // onceki slot kaydi (COMPLETED/INTERRUPTED)
       visible = false;
       setTimeout(() => {
         asset = item;
         shownKey = newKey;
         shownAt = new Date().toISOString();
+        // Impression yalniz gercek planli item icin acilir; bosluk/AdPromo icin yok.
+        currentPlayEventId = item
+          ? (typeof crypto !== 'undefined' && crypto.randomUUID
+              ? crypto.randomUUID()
+              : `${Date.now()}-${Math.random().toString(36).slice(2)}`)
+          : null;
         visible = true;
       }, 400);
     }
@@ -82,28 +106,16 @@
     else seqTick();
   }
 
-  // ── Slot modu: duvar saatine göre saatlik (3600sn) döngü içindeki konuma
-  //    karşılık gelen öğeyi göster. Bu, her kioskun aynı anda doğru slotu
-  //    oynatmasını ve proof-of-play kayıtlarının slotlarla hizalanmasını sağlar.
-  //    estimated_start_offset_seconds saat-mutlak (0..3599) olduğundan döngü
-  //    süresi loop_duration_seconds değil, tam saattir. ──
+  // ── Slot modu: her item YALNIZ kendi [offset, offset+duration) araliginda
+  //    aktiftir. Aralik disinda aktif item yoksa (bosluk) AdPromo gosterilir;
+  //    item bir sonraki offset'e kadar UZATILMAZ. Zamanlayici bir sonraki
+  //    sinira (item basi/sonu) gore planlanir. ──
   function slotTick() {
-    if (!items.length) { scheduleNext(1000); return; }
-    const sorted = [...items].sort((a, b) => off(a) - off(b));
-    const pos = Math.floor(Date.now() / 1000) % HOUR_SECONDS;
-
-    let idx = sorted.length - 1; // pos ilk offsetten önce ise son slota sar
-    for (let i = 0; i < sorted.length; i++) {
-      if (off(sorted[i]) <= pos) idx = i;
-      else break;
-    }
-    const cur = sorted[idx];
-    const nextOffset = (idx + 1 < sorted.length) ? off(sorted[idx + 1]) : HOUR_SECONDS;
-    let secsToNext = nextOffset - pos;
-    if (secsToNext <= 0) secsToNext = HOUR_SECONDS - pos; // wrap koruması
-
-    activeCampaignIndex.set(idx);
-    show(cur, Math.max(250, secsToNext * 1000));
+    const pos = currentHourPosition();
+    const active = resolveActiveItem(items, pos); // bosluk => null
+    const ms = secondsUntilBoundary(items, pos) * 1000;
+    activeCampaignIndex.set(active ? items.indexOf(active) : -1);
+    show(active, Math.max(250, ms));
   }
 
   // ── Sıralı (fallback) modu: öğeleri kendi sürelerine göre döngüsel oynat. ──
@@ -152,16 +164,39 @@
   });
 
   onDestroy(() => {
-    logCurrentImpression(); // ekran kapanırken son slotu kaybetme
+    logCurrentImpression('INTERRUPTED'); // ekran kapanırken son slotu INTERRUPTED kaydet
     clearTimeout(cycleTick);
     clearInterval(hourTick);
   });
+
+  // Faz 3: medya yükleme hatası → FAILED kaydı
+  function handleMediaError() {
+    if (!asset || !currentPlayEventId) return;
+    const pid = currentPlayEventId;
+    currentPlayEventId = null; // INTERRUPTED'ın da tetiklenmesini önle
+    logAdImpression({
+      assetId:         asset.asset_id ?? asset.id,
+      assetType:       asset.asset_type ?? asset.type ?? 'creative',
+      shownAt,
+      durationMs:      Date.now() - new Date(shownAt).getTime(),
+      playEventId:     pid,
+      status:          'FAILED',
+      expectedDuration: asset.duration_seconds ?? null,
+      errorCode:       'MEDIA_LOAD_ERROR',
+    });
+  }
 </script>
 
 <div class="ad-strip">
-  {#if asset?.media_url}
+  {#if asset?.active_media_url}
+    <!-- İşlem ekranı için doğru oranda yüklü medya (yaklaşık 7:5) -->
     <div class="ad-strip-media" style="opacity:{visible ? 1 : 0}">
-      <MediaView src={asset.media_url} alt={asset.name ?? 'Reklam'} class="ad-strip-fill" />
+      <MediaView src={asset.active_media_url} type={asset.media_type} alt={asset.name ?? 'İçerik'} class="ad-strip-fill" on:error={handleMediaError} />
+    </div>
+  {:else if asset?.media_url}
+    <!-- Fallback: bekleme ekranı görseli — object-fit:contain ile letterbox -->
+    <div class="ad-strip-media" style="opacity:{visible ? 1 : 0}">
+      <MediaView src={asset.media_url} type={asset.media_type} alt={asset.name ?? 'İçerik'} class="ad-strip-fill ad-strip-fill--contain" on:error={handleMediaError} />
     </div>
   {:else}
     <AdPromo />

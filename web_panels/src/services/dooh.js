@@ -75,22 +75,39 @@ export const listCreatives = (params = {}) =>
 export const createCreative = (data) =>
   http.post('/api/campaigns/v2/creatives/', data);
 
+/** Orijinal Creative medyasını indirmek için blob URL üretir (SuperAdmin). */
+export const downloadCreativeMedia = (creativeId) =>
+  http.get(`/api/campaigns/v2/creatives/${creativeId}/download/`, { responseType: 'blob' });
+
 // ── Media upload ──
-export async function uploadMedia(file) {
+export async function uploadMedia(file, mediaKind) {
   const fd = new FormData();
   fd.append('file', file);
+  if (mediaKind) fd.append('media_kind', mediaKind);
   const { data } = await http.post('/api/campaigns/upload-media/', fd, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
   return data;
 }
 
-// ── House ads ──
-export const listHouseAds = () =>
-  http.get('/api/campaigns/v2/house-ads/');
+// ── Idle Screen Content (İçerik Yönetimi — başlık/metin idle içerikleri) ──
+export const listIdleContents = () =>
+  http.get('/api/campaigns/v2/idle-contents/');
 
-export const createHouseAd = (data) =>
-  http.post('/api/campaigns/v2/house-ads/', data);
+export const createIdleContent = (data) =>
+  http.post('/api/campaigns/v2/idle-contents/', data);
+
+export const updateIdleContent = (id, data) =>
+  http.patch(`/api/campaigns/v2/idle-contents/${id}/`, data);
+
+export const deleteIdleContent = (id) =>
+  http.delete(`/api/campaigns/v2/idle-contents/${id}/`);
+
+export const bulkDeleteIdleContents = (ids) =>
+  Promise.all(ids.map(id => http.delete(`/api/campaigns/v2/idle-contents/${id}/`)));
+
+export const listKategoriler = () =>
+  http.get('/api/products/categories/');
 
 // ── Inventory ──
 export const getInventoryAvailability = (params) =>
@@ -183,6 +200,10 @@ export const forceRegenerateKiosk = (kioskId, targetDate = null) =>
     kiosk: kioskId,
     ...(targetDate ? { date: targetDate } : {}),
   });
+
+// ── Yayın Akışı — kiosk günlük playlist özeti (read-only) ──
+export const getKioskDayStream = (kioskId, date) =>
+  http.get('/api/campaigns/v2/playlists/day-stream/', { params: { kiosk: kioskId, date } });
 
 // ── Lokasyon Lookup'ları (hedefleme ağacı için) ──
 // getIller / getIlceler → lookups.js'den kullanın

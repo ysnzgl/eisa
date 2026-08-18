@@ -13,7 +13,7 @@
 </script>
 
 <div class="screen">
-  <ScreenHeader subtitle="Sağlık Asistanınız" />
+  <ScreenHeader />
 
   <span class="screen-badge">Adım 1 / 3 — Hızlı Profil</span>
   <h2 class="screen-title">Devam etmek için lütfen seçin</h2>

@@ -283,6 +283,8 @@ export async function resolveRuntimeSettings(db, baseSettings, log = console) {
       setMeta(db, 'kiosk_app_key', result.data.app_key);
       setMeta(db, 'kiosk_id',      result.data.kiosk_id ?? 0);
       setMeta(db, 'pharmacy_id',   result.data.pharmacy_id ?? 0);
+      if (result.data.kiosk_adi)  setMeta(db, 'kiosk_adi',  result.data.kiosk_adi);
+      if (result.data.eczane_adi) setMeta(db, 'eczane_adi', result.data.eczane_adi);
       setMeta(db, 'app_key_401_count', '0');   // Yeni App Key alindi; hata sayacini sifirla.
       setProvisioningState(db, PROVISIONING_STATE.APPROVED);
       log?.info?.({ kioskId: result.data.kiosk_id, pharmacyId: result.data.pharmacy_id, has_app_key: true },

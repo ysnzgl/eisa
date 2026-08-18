@@ -35,16 +35,27 @@ const stepError  = ref('');   // per-step inline error shown below footer
 const TOTAL_STEPS = 6;
 const STEP_LABELS = ['Bilgiler', 'Medya', 'Hedefleme', 'Frekans', 'Simülasyon', 'Aktive Et'];
 
+const _defaultStartDate = () => {
+  const d = new Date();
+  return d.toISOString().slice(0, 16);
+};
+const _defaultEndDate = () => {
+  const d = new Date();
+  d.setMonth(d.getMonth() + 1);
+  return d.toISOString().slice(0, 16);
+};
+const BUSINESS_HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
+
 const empty = () => ({
   name: '',
   advertiser_name: '',
-  start_date: '',
-  end_date: '',
+  start_date: _defaultStartDate(),
+  end_date: _defaultEndDate(),
   status: 'ACTIVE',
   target_scope: 'ALL',
   impression_goal: null,
   creatives: [],
-  rule: { frequency_type: 'PER_LOOP', frequency_value: 1, target_hours: null },
+  rule: { frequency_type: 'PER_DAY', frequency_value: 100, target_hours: [...BUSINESS_HOURS] },
 });
 const form = reactive(empty());
 
@@ -159,7 +170,11 @@ async function doActivate() {
   try {
     const { data } = await activateCampaign(editingId.value);
     activateResult.value = data;
-    toast.success('Kampanya başarıyla aktive edildi!');
+    if (data.job_id) {
+      toast.info('Aktivasyon kuyrukta — üretim arka planda işleniyor.');
+    } else {
+      toast.success('Kampanya başarıyla aktive edildi!');
+    }
     await refresh();
   } catch (e) {
     const err = e?.response?.data;
@@ -256,6 +271,13 @@ function thumbOf(c) {
   const cr = (c.creatives || []).find((x) => x.media_url);
   return cr?.media_url || '';
 }
+
+/** URL'den video olup olmadığını tespit et (uzantı + query string dayanıklı) */
+function isVideoUrl(url) {
+  if (!url) return false;
+  const clean = url.split('?')[0].toLowerCase();
+  return /\.(mp4|webm|ogg|mov)$/.test(clean);
+}
 const stats = computed(() => ({
   total:     campaigns.value.length,
   active:    campaigns.value.filter((c) => c.status === 'ACTIVE').length,
@@ -310,6 +332,9 @@ async function openEdit(c) {
       id: cr.id, name: cr.name || 'Mevcut creative',
       duration_seconds: cr.duration_seconds, uploaded_url: cr.media_url,
       media_url: cr.media_url,
+      object_key: cr.object_key || '',
+      active_media_url: cr.active_media_url || '',
+      active_object_key: cr.active_object_key || '',
     })),
   });
   simResult.value = null; simStale.value = false; simError.value = '';
@@ -383,7 +408,9 @@ async function saveDraft() {
       await createCreative({
         campaign: cId,
         media_url: cr.media_url || cr.uploaded_url || '',
+        active_media_url: cr.active_media_url || '',
         object_key: cr.object_key || undefined,
+        active_object_key: cr.active_object_key || undefined,
         checksum: cr.checksum || undefined,
         duration_seconds: Number(cr.duration_seconds),
         name: cr.name?.slice(0, 120) || '',
@@ -424,6 +451,7 @@ async function onPickFile(ev) {
       media_url:   data.media_url  ?? data.url ?? '',   // canonical
       object_key:  data.object_key ?? '',
       checksum:    data.checksum   ?? '',
+      active_media_url: '',
       // Legacy alias korunur — yalnız backward compat kontrolü için
       uploaded_url: data.media_url ?? data.url ?? '',
     });
@@ -431,6 +459,25 @@ async function onPickFile(ev) {
     toast.error(e?.response?.data?.error || 'Medya yüklenemedi.');
   } finally { saving.value = false; ev.target.value = ''; }
 }
+
+async function onPickActiveFile(ev) {
+  const file = ev.target.files?.[0];
+  if (!file) return;
+  if (!form.creatives.length) { toast.warning('Önce bekleme ekranı görselini yükleyin.'); ev.target.value = ''; return; }
+  try {
+    saving.value = true;
+    const data = await uploadMedia(file);
+    form.creatives[0].active_media_url = data.media_url ?? data.url ?? '';
+    form.creatives[0].active_object_key = data.object_key ?? '';
+  } catch (e) {
+    toast.error(e?.response?.data?.error || 'Medya yüklenemedi.');
+  } finally { saving.value = false; ev.target.value = ''; }
+}
+
+function removeActiveMedia() {
+  if (form.creatives.length) form.creatives[0].active_media_url = '';
+}
+
 function removeCreative(idx) { form.creatives.splice(idx, 1); }
 
 // ── Frequency helpers ─────────────────────────────────────────────────────────
@@ -441,6 +488,8 @@ function toggleHour(rule, h) {
   arr.sort((a, b) => a - b);
   rule.target_hours = arr.length ? arr : null;
 }
+function clearHours(rule) { rule.target_hours = null; }
+function setBusinessHours(rule) { rule.target_hours = [...BUSINESS_HOURS]; }
 
 // ── Per-step validation ───────────────────────────────────────────────────────
 function validateStep(n) {
@@ -769,9 +818,32 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
                   />
                 </td>
                 <td>
-                  <div class="thumb">
-                    <img v-if="thumbOf(c)" :src="thumbOf(c)" :alt="c.name" loading="lazy" />
-                    <i v-else class="fa-regular fa-image muted"></i>
+                  <!-- Compact media preview: görsel veya küçük video player -->
+                  <div class="campaign-media-preview">
+                    <template v-if="thumbOf(c)">
+                      <video
+                        v-if="isVideoUrl(thumbOf(c))"
+                        :src="thumbOf(c)"
+                        muted
+                        controls
+                        preload="metadata"
+                        controlslist="nodownload nofullscreen"
+                        class="campaign-media-video"
+                        :title="c.name"
+                        @error="(e) => e.target.style.display='none'"
+                      />
+                      <img
+                        v-else
+                        :src="thumbOf(c)"
+                        :alt="c.name"
+                        loading="lazy"
+                        class="campaign-media-img"
+                        @error="(e) => e.target.style.display='none'"
+                      />
+                    </template>
+                    <div v-else class="campaign-media-placeholder">
+                      <i class="fa-regular fa-image"></i>
+                    </div>
                   </div>
                 </td>
                 <td><strong>{{ c.name }}</strong></td>
@@ -784,7 +856,19 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
                     'eisa-pill-muted':   c.status === 'COMPLETED',
                   }">{{ STATUS_LABELS[c.status] || c.status }}</span>
                 </td>
-                <td>{{ c.creatives?.length ?? 0 }}</td>
+                <td>
+                  <!-- Creative sayısı + her creative için medya bilgisi -->
+                  <div class="creative-count-cell">
+                    <span class="creative-count-badge">{{ c.creatives?.length ?? 0 }} creative</span>
+                    <div v-if="c.creatives?.length" class="creative-media-tags">
+                      <span v-for="cr in (c.creatives || []).slice(0,2)" :key="cr.id" class="creative-media-tag">
+                        <i class="fa-solid" :class="isVideoUrl(cr.media_url) ? 'fa-film' : 'fa-image'"></i>
+                        {{ cr.duration_seconds }}s
+                        <span v-if="cr.active_media_url" class="active-media-indicator" title="İşlem ekranı medyası mevcut">+2</span>
+                      </span>
+                    </div>
+                  </div>
+                </td>
                 <td class="muted">
                   <span v-if="c.targets?.length">{{ c.targets.length }} hedef</span>
                   <span v-else>Tüm eczaneler</span>
@@ -852,25 +936,42 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
           <!-- Step 2: Medya -->
           <section v-if="step === 2" class="step-pane">
             <h3 class="step-title">Medya (Creative)</h3>
-            <p class="step-help">
-              Ekranda gösterilecek <strong>tek</strong> görsel veya video yükleyin.
-              Süre: 5 / 10 / 15 / 30 / 60 saniye seçeneklerinden birini belirleyin.
-            </p>
-            <label v-if="!form.creatives.length" class="upload">
-              <input type="file" accept="image/*,video/mp4,video/webm" @change="onPickFile" :disabled="saving" />
-              <span><i class="fa-solid fa-cloud-arrow-up"></i> Dosya seç (max 100 MB)</span>
-            </label>
-            <div v-if="form.creatives.length" class="creatives">
-              <div v-for="(c, idx) in form.creatives" :key="idx" class="creative">
-                <div class="thumb">
-                  <video v-if="/\.(mp4|webm)$/i.test(c.uploaded_url)" :src="c.uploaded_url" muted />
-                  <img   v-else :src="c.uploaded_url" alt="" />
+
+            <!-- Bekleme Ekranı Medyası -->
+            <div class="media-slot">
+              <div class="media-slot-header">
+                <span class="media-slot-label">Bekleme Ekranı Medyası</span>
+                <span class="media-slot-hint">Önerilen: 1080×1920 — 9:16 dikey</span>
+              </div>
+              <label v-if="!form.creatives.length" class="upload">
+                <input type="file" accept="image/*,video/mp4,video/webm" @change="onPickFile" :disabled="saving" />
+                <span><i class="fa-solid fa-cloud-arrow-up"></i> Dosya seç (max 100 MB)</span>
+              </label>
+              <div v-if="form.creatives.length" class="creative">
+                <!-- Medya önizleme: max 280×220, object-fit: contain -->
+                <div class="creative-media-preview">
+                  <video
+                    v-if="isVideoUrl(form.creatives[0].media_url || form.creatives[0].uploaded_url)"
+                    :src="form.creatives[0].media_url || form.creatives[0].uploaded_url"
+                    muted
+                    controls
+                    preload="metadata"
+                    controlslist="nodownload nofullscreen"
+                    class="creative-preview-media"
+                  />
+                  <img
+                    v-else
+                    :src="form.creatives[0].media_url || form.creatives[0].uploaded_url"
+                    alt="Bekleme ekranı medyası"
+                    class="creative-preview-media"
+                    @error="(e) => e.target.style.display='none'"
+                  />
                 </div>
                 <div class="cmeta">
-                  <strong>{{ c.name }}</strong>
+                  <strong>{{ form.creatives[0].name }}</strong>
                   <div class="eisa-form-row">
                     <label class="eisa-field-label">Ekran süresi</label>
-                    <select v-model.number="c.duration_seconds" class="eisa-field" :disabled="!!c.id">
+                    <select v-model.number="form.creatives[0].duration_seconds" class="eisa-field" :disabled="!!form.creatives[0].id">
                       <option :value="5">5 sn</option>
                       <option :value="10">10 sn</option>
                       <option :value="15">15 sn</option>
@@ -879,11 +980,58 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
                     </select>
                   </div>
                 </div>
-                <button v-if="!c.id" class="eisa-icon-btn danger" title="Kaldır" @click="removeCreative(idx)">
+                <button v-if="!form.creatives[0].id" class="eisa-icon-btn danger" title="Kaldır" @click="removeCreative(0)">
                   <i class="fa-solid fa-trash"></i>
                 </button>
               </div>
             </div>
+
+            <!-- İşlem Ekranı Medyası -->
+            <div class="media-slot" style="margin-top:1.25rem">
+              <div class="media-slot-header">
+                <span class="media-slot-label">İşlem Ekranı Medyası</span>
+                <span class="media-slot-hint">Önerilen: 1080×768 — yaklaşık 7:5 yatay</span>
+              </div>
+              <p class="muted small" style="margin-bottom:.5rem">
+                Kiosk kullanılırken alt şeritte gösterilecek içerik.
+                Yüklenmezse bekleme görseli letterbox ile kullanılır.
+              </p>
+              <div v-if="form.creatives[0]?.active_media_url" class="creative">
+                <!-- İşlem ekranı medya önizleme -->
+                <div class="creative-media-preview">
+                  <video
+                    v-if="isVideoUrl(form.creatives[0].active_media_url)"
+                    :src="form.creatives[0].active_media_url"
+                    muted
+                    controls
+                    preload="metadata"
+                    controlslist="nodownload nofullscreen"
+                    class="creative-preview-media"
+                  />
+                  <img
+                    v-else
+                    :src="form.creatives[0].active_media_url"
+                    alt="İşlem ekranı medyası"
+                    class="creative-preview-media"
+                    @error="(e) => e.target.style.display='none'"
+                  />
+                </div>
+                <div class="cmeta"><strong>İşlem ekranı medyası</strong></div>
+                <button class="eisa-icon-btn danger" title="Kaldır" @click="removeActiveMedia">
+                  <i class="fa-solid fa-trash"></i>
+                </button>
+              </div>
+              <label v-else class="upload" :class="{ 'upload--disabled': !form.creatives.length }">
+                <input
+                  type="file"
+                  accept="image/*,video/mp4,video/webm"
+                  @change="onPickActiveFile"
+                  :disabled="saving || !form.creatives.length"
+                />
+                <span><i class="fa-solid fa-cloud-arrow-up"></i> Dosya seç (yatay görsel veya video)</span>
+              </label>
+            </div>
+
             <p v-if="saving" class="muted small">Yükleniyor…</p>
           </section>
 
@@ -1019,6 +1167,14 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
                             :class="{ active: form.rule.target_hours?.includes(h) }"
                             @click="toggleHour(form.rule, h)">{{ String(h).padStart(2,'0') }}</button>
                   </div>
+                  <div class="hour-actions">
+                    <button type="button" class="eisa-btn eisa-btn-ghost eisa-btn-sm" @click="setBusinessHours(form.rule)">
+                      <i class="fa-solid fa-briefcase"></i> Mesai içi
+                    </button>
+                    <button type="button" class="eisa-btn eisa-btn-ghost eisa-btn-sm" @click="clearHours(form.rule)">
+                      <i class="fa-solid fa-xmark"></i> Temizle
+                    </button>
+                  </div>
                 </div>
 
               </div>
@@ -1062,6 +1218,14 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
                     <button v-for="h in HOURS" :key="h" type="button" class="hr"
                             :class="{ active: form.rule.target_hours?.includes(h) }"
                             @click="toggleHour(form.rule, h)">{{ String(h).padStart(2,'0') }}</button>
+                  </div>
+                  <div class="hour-actions">
+                    <button type="button" class="eisa-btn eisa-btn-ghost eisa-btn-sm" @click="setBusinessHours(form.rule)">
+                      <i class="fa-solid fa-briefcase"></i> Mesai içi
+                    </button>
+                    <button type="button" class="eisa-btn eisa-btn-ghost eisa-btn-sm" @click="clearHours(form.rule)">
+                      <i class="fa-solid fa-xmark"></i> Temizle
+                    </button>
                   </div>
                 </div>
               </div>
@@ -1178,7 +1342,14 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
               </span>
             </div>
 
-            <div v-if="activateResult" class="pacing-callout" style="background:#f0fdf4;border-color:#86efac">
+            <div v-if="activateResult && activateResult.job_id" class="pacing-callout" style="background:#fffbeb;border-color:#fcd34d">
+              <i class="fa-solid fa-hourglass-half" style="color:#d97706"></i>
+              <div>
+                <strong>Aktivasyon kuyrukta!</strong>
+                <span class="muted small"> Playlist üretimi arka planda çalışıyor. Sonuç için "Playlist Üretim İşleri" bölümünü izleyin.</span>
+              </div>
+            </div>
+            <div v-else-if="activateResult" class="pacing-callout" style="background:#f0fdf4;border-color:#86efac">
               <i class="fa-solid fa-circle-check" style="color:#16a34a"></i>
               <div>
                 <strong>Kampanya başarıyla aktive edildi!</strong>
@@ -1289,7 +1460,95 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
 .goal-card-warn  { font-size:.75rem; color:#dc2626; margin-top:.4rem; }
 .goal-card-hint  { margin-top:.4rem; font-size:.75rem; }
 
-/* Campaign list — thumbnail + selection */
+/* Campaign list — compact media preview cell */
+.campaign-media-preview {
+  width: 120px;
+  max-height: 90px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #f1f5f9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--c-border, #e2e8f0);
+}
+.campaign-media-video {
+  width: 120px;
+  max-height: 90px;
+  object-fit: contain;
+  display: block;
+}
+.campaign-media-img {
+  width: 120px;
+  max-height: 90px;
+  object-fit: contain;
+  display: block;
+}
+.campaign-media-placeholder {
+  width: 120px;
+  height: 70px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  font-size: 1.5rem;
+}
+
+/* Creative count cell */
+.creative-count-cell {
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+}
+.creative-count-badge {
+  font-size: .75rem;
+  font-weight: 600;
+  color: var(--c-text, #0f172a);
+}
+.creative-media-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .25rem;
+}
+.creative-media-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: .25rem;
+  font-size: .7rem;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  padding: .1rem .35rem;
+  color: #475569;
+}
+.active-media-indicator {
+  color: #6366f1;
+  font-weight: 700;
+  font-size: .65rem;
+}
+
+/* Wizard Step 2 — Creative media preview (max 280×220, object-fit: contain) */
+.creative-media-preview {
+  width: 100%;
+  max-width: 280px;
+  max-height: 220px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #0f172a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.creative-preview-media {
+  max-width: 280px;
+  max-height: 220px;
+  width: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+/* Thumbnail + video thumb (legacy, kept for compatibility) */
 .thumb {
   width:42px; height:42px; border-radius:6px; overflow:hidden;
   background:#f1f5f9; display:flex; align-items:center; justify-content:center;
@@ -1297,8 +1556,6 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
 }
 .thumb img { width:100%; height:100%; object-fit:cover; }
 .thumb .muted { font-size:1rem; color:#94a3b8; }
-.row-selected { background:#eef2ff !important; }
-.eisa-table th.sortable:hover { color:var(--c-accent,#6366f1); }
 
 /* Tree-select */
 .location-tree { margin-top:.75rem; max-height:380px; overflow-y:auto;
@@ -1382,4 +1639,39 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
   padding:.6rem 1rem; background:#fef2f2; border-top:1px solid #fecaca;
   color:#dc2626; font-size:.875rem;
 }
+
+/* Media upload slots (Step 2 — iki alan) */
+.media-slot {
+  border: 1px solid var(--c-border, #e2e8f0);
+  border-radius: 10px;
+  padding: .85rem 1rem;
+  background: var(--c-bg-subtle, #f8fafc);
+}
+.media-slot-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: .35rem;
+  margin-bottom: .65rem;
+}
+.media-slot-label {
+  font-size: .875rem;
+  font-weight: 700;
+  color: var(--c-text, #0f172a);
+}
+.media-slot-hint {
+  font-size: .72rem;
+  color: var(--c-text-muted, #64748b);
+  font-family: 'DM Mono', monospace;
+}
+.upload--disabled {
+  opacity: .5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Hour preset buttons row */
+.hour-actions { display:flex; gap:.5rem; margin-top:.5rem; flex-wrap:wrap; }
+.eisa-btn-sm  { padding:.25rem .65rem; font-size:.78rem; height:auto; }
 </style>

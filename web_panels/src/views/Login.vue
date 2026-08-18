@@ -1,5 +1,6 @@
 <script setup>
 import { ref, onMounted } from 'vue';
+import { toast } from 'vue-sonner';
 import { useAuthStore } from '../stores/auth';
 import { useRouter } from 'vue-router';
 import logoUrl from '../assets/eisa_logo.svg';
@@ -26,8 +27,15 @@ async function submit() {
   try {
     await auth.login(username.value.trim(), password.value);
     router.push(auth.role === 'superadmin' ? '/admin' : '/pharmacist');
-  } catch {
-    errorMsg.value = 'Kullanıcı adı veya şifre hatalı. Lütfen tekrar deneyin.';
+  } catch (error) {
+    const status = error?.response?.status;
+
+    if (status === 401 || status === 403) {
+      errorMsg.value = 'Kullanıcı adı veya şifre hatalı. Lütfen tekrar deneyin.';
+    } else {
+      errorMsg.value = '';
+      toast.error('Sunucu hatası, lütfen sistem yetkilileri ile görüşün.');
+    }
   } finally {
     isLoading.value = false;
   }
@@ -58,9 +66,7 @@ async function submit() {
       <!-- Brand content -->
       <div class="brand-body" :class="{ 'is-visible': isVisible }">
         <img :src="logoUrl" alt="E-ISA logo" />
-        <div class="brand-wordmark">
-          <span class="wm-e">e</span><span class="wm-dash">-</span><span class="wm-isa">İSA</span>
-        </div>
+ 
 
         <h1 class="brand-headline">
           Akıllı Eczane<br />
@@ -189,10 +195,6 @@ async function submit() {
             </span>
           </button>
         </form>
-
-        <footer class="fc-footer">
-          E-İSA Yönetim Sistemi &nbsp;·&nbsp; Yetkili erişim
-        </footer>
       </div>
     </div>
 

@@ -145,3 +145,41 @@ export async function fetchProfile() {
     userId: data?.id ?? null,
   };
 }
+
+// ── Görüş ve Destek ────────────────────────────────────────────────────────────
+export async function getDestekParametreleri() {
+  const { data } = await http.get('/api/destek/parametreler/');
+  return data;
+}
+
+export async function listDestekTalepleri(params = {}) {
+  const { data } = await http.get('/api/destek/talepler/', { params });
+  return data;
+}
+
+export async function createDestekTalebi(payload) {
+  const { data } = await http.post('/api/destek/talepler/', payload);
+  return data;
+}
+
+export async function getDestekTalebi(id) {
+  const { data } = await http.get(`/api/destek/talepler/${id}/`);
+  return data;
+}
+
+export async function addDestekYorum(talepId, yorumMetni) {
+  const { data } = await http.post(`/api/destek/talepler/${talepId}/yorum-ekle/`,
+    { yorum_metni: yorumMetni });
+  return data;
+}
+
+export async function changeDurumDestekTalebi(talepId, durumKod) {
+  const { data } = await http.patch(`/api/destek/talepler/${talepId}/durum-degistir/`,
+    { durum_kod: durumKod });
+  return data;
+}
+
+export async function getDestekYeniSayisi() {
+  const { data } = await http.get('/api/destek/talepler/yeni-sayisi/', { __silent: true });
+  return data.sayi ?? 0;
+}

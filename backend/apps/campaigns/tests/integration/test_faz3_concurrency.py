@@ -59,18 +59,6 @@ def kiosk_fa(db):
     )
 
 
-@pytest.fixture
-def house_ad_fa(db):
-    from apps.campaigns.models import HouseAd
-    return HouseAd.objects.create(
-        name="FA10 HouseAd",
-        media_url="http://localhost:9000/dev/ads/fa10-filler.mp4",
-        duration_seconds=15,
-        priority=1,
-        aktif=True,
-    )
-
-
 def _make_total_campaign(kiosk_id, total_target=4):
     """CAMPAIGN_TOTAL kampanya ve gerekli nesneleri oluştur."""
     base = _make_aware(TODAY, hour=0)
@@ -101,7 +89,7 @@ def _make_total_campaign(kiosk_id, total_target=4):
 
 @pytest.mark.django_db(transaction=True)
 @override_settings(DOOH_ENGINE_V2="active")
-def test_fa10_concurrent_activations_respect_global_quota(kiosk_fa, house_ad_fa):
+def test_fa10_concurrent_activations_respect_global_quota(kiosk_fa):
     """İki thread aynı CAMPAIGN_TOTAL kampanyayı aktive etmeye çalışır.
 
     GlobalQuotaService.reserve_for_kiosk_day → select_for_update(nowait=False)
@@ -150,7 +138,7 @@ def test_fa10_concurrent_activations_respect_global_quota(kiosk_fa, house_ad_fa)
 
 @pytest.mark.django_db(transaction=True)
 @override_settings(DOOH_ENGINE_V2="active")
-def test_fa11_race_only_permitted_transaction_succeeds(kiosk_fa, house_ad_fa):
+def test_fa11_race_only_permitted_transaction_succeeds(kiosk_fa):
     """Aynı anda iki GUARANTEED aktivasyon: yalnız biri başarılı olabilir.
 
     GUARANTEED + count > capacity → sadece bir thread 409 alabilir,

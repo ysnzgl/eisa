@@ -107,10 +107,11 @@ SuperAdmin → web_panels duyuru yönetimi → `/api/announcements/admin/` → g
 - **Campaign:** DOOH reklam kampanyası (başlangıç/bitiş tarihi, durum, öncelik, garanti tipi)
 - **Creative:** Kampanyaya ait medya (görsel/video URL + süre)
 - **ScheduleRule:** Kampanya frekans matrisi (per_loop/per_hour/per_day, saat hedefleme)
-- **Playlist:** Kiosk için üretilmiş 60sn reklam döngüsü (date/hour bazlı)
-- **HouseAd:** Filler reklam (slot boşsa oynatılır)
-- **OturumLogu:** KVKK uyumlu anonim kullanıcı session (yaş aralığı, cinsiyet, kategori, QR kodu, tamamlanma durumu)
-- **PlayLog:** Reklam gösterim kanıtı / proof-of-play (creative_id veya house_ad_id, played_at, duration_played)
+- **Playlist:** Kiosk için üretilmiş 60sn reklam döngüsü (date/hour bazlı); yalnız kampanya creative'lerinden oluşur (campaign-only). Uygun creative yoksa playlist boş kalır (boş playlist geçerli) → kiosk kendi idle (bekleme) ekranını gösterir. Filler YOK.
+- **IdleScreenContent:** Bekleme (idle) ekranı başlık/metin içeriği — panelde "İçerik Yönetimi" (app: campaigns, tablo `dooh_idle_screen_contents`; `baslik`, `metin`, `aktif`). Medya/HTML yok, düz metin. Eski **HouseAd** sistemi uçtan uca kaldırıldı (2026-08-16).
+- **BarkodLogo:** Kiosk fiş baskısında e-ISA başlığının yerini alan logo (UUID PK, ad, media_url, checksum, baslangic/bitis_zamani, aktif, gunluk_baski_limiti, hedef_kiosklar M2M). DOOH sisteminden bağımsız. Backend: `apps.barkod_logo`. Kiosk: `barkodLogoService.js`.
+- **OturumLogu:** KVKK uyumlu anonim kullanıcı session (yaş aralığı, cinsiyet, kategori, QR kodu, tamamlanma durumu, **barkod_logo FK** *(2026-08-11)*).
+- **PlayLog:** Reklam gösterim kanıtı / proof-of-play (creative_id, played_at, duration_played; playlist creative-only)
 - **Kiosk:** Fiziksel cihaz (mac_adresi, uygulama_anahtari, eczane, aktif/online durumu)
 - **Eczane:** Kiosk'un bulunduğu fiziksel lokasyon (il/ilçe, sahip, telefon)
 - **Announcement:** Genel veya sabit sistem duyurusu; genel duyurular recurrence/hedefleme taşır, sistem duyuruları benzersiz `system_key` ile korunur

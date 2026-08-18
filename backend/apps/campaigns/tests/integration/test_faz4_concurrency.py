@@ -63,18 +63,6 @@ def kiosk_fb2(db):
     )
 
 
-@pytest.fixture
-def house_ad_fb(db):
-    from apps.campaigns.models import HouseAd
-    return HouseAd.objects.create(
-        name="FB Race HouseAd",
-        media_url="http://localhost:9000/dev/ads/fb-race.mp4",
-        duration_seconds=15,
-        priority=1,
-        aktif=True,
-    )
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # FB-15  İki worker aynı job'u claim edemez
 # ─────────────────────────────────────────────────────────────────────────────
@@ -191,7 +179,7 @@ def test_fb16_two_workers_claim_different_jobs(kiosk_fb, kiosk_fb2):
 
 @pytest.mark.django_db(transaction=True)
 @override_settings(DOOH_ENGINE_V2="active")
-def test_fb23_duplicate_processing_safe(kiosk_fb, house_ad_fb):
+def test_fb23_duplicate_processing_safe(kiosk_fb):
     """Aynı job iki kez işlenirse idempotent: playlist sayısı katlanmaz."""
     close_old_connections()
 
@@ -251,7 +239,7 @@ def test_fb23_duplicate_processing_safe(kiosk_fb, house_ad_fb):
 
 @pytest.mark.django_db(transaction=True)
 @override_settings(DOOH_ENGINE_V2="active")
-def test_fb24_concurrent_publish_no_lost_update(kiosk_fb, house_ad_fb):
+def test_fb24_concurrent_publish_no_lost_update(kiosk_fb):
     """İki thread aynı kiosk için aynı anda process_job → son hali tutarlı."""
     close_old_connections()
 
@@ -327,7 +315,7 @@ def test_fb24_concurrent_publish_no_lost_update(kiosk_fb, house_ad_fb):
 
 @pytest.mark.django_db(transaction=True)
 @override_settings(DOOH_ENGINE_V2="active")
-def test_fb33_campaign_total_concurrency(kiosk_fb, kiosk_fb2, house_ad_fb):
+def test_fb33_campaign_total_concurrency(kiosk_fb, kiosk_fb2):
     """İki eş zamanlı activation CAMPAIGN_TOTAL global invariantı bozmamalı."""
     close_old_connections()
 

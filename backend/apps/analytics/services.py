@@ -30,6 +30,7 @@ import string
 from typing import Any
 
 from django.db import IntegrityError, transaction
+from django.utils import timezone
 
 from apps.core.uow import UnitOfWork
 from apps.lookups.models import Cinsiyet, YasAraligi
@@ -43,6 +44,29 @@ QR_ALPHABET = string.ascii_uppercase + string.digits  # A-Z, 0-9
 QR_LENGTH = 8
 MAX_QR_RETRY = 5
 _QR_RE = re.compile(r'^[A-Z0-9]{8}$')
+
+# Crockford Base32 — yeni 9 karakterli kiosk QR formatı
+CROCKFORD_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
+_CROCKFORD_RE = re.compile(r'^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{9}$')
+
+
+def _crockford_checksum_valid(code: str) -> bool:
+    """9 karakterli Crockford QR için checksum doğrulama."""
+    if len(code) != 9:
+        return False
+    try:
+        total = sum(CROCKFORD_ALPHABET.index(c) * (i + 1) for i, c in enumerate(code[:8]))
+        return code[8] == CROCKFORD_ALPHABET[total % 32]
+    except ValueError:
+        return False
+
+
+def _parse_kiosk_prefix(code: str) -> int:
+    """QR kodunun ilk karakterini Crockford alphabetindeki sıra numarasına çevirir."""
+    try:
+        return CROCKFORD_ALPHABET.index(code[0])
+    except (ValueError, IndexError):
+        return -1
 
 
 def generate_qr_candidate() -> str:
@@ -72,8 +96,16 @@ def ingest_session_items(kiosk, items: list[Any]) -> tuple[list[dict], list[dict
     `kiosk` dogrulanmis Kiosk ornegidir (auth context'ten gelir). Payload'daki
     kiosk bilgisine GUVENILMEZ; kayit her zaman `kiosk` ile iliskilendirilir.
 
-    Istemciden gelen `qr_kodu` YOKSAYILIR. Backend her oturum icin benzersiz
-    bir QR kodu uretir ve response'ta doner.
+    QR kodu kararı:
+    - Payload'da 9 karakterli Crockford QR varsa → kiosk üretmiş; doğrula ve kabul et.
+    - QR yoksa (eski kiosk / tamamlandi=False) → backend 8 karakterli üretir.
+    - tamamlandi=False → qr_kodu null bırakılır (abandoned session).
+
+    Doğrulama (Crockford QR):
+    - Format: CROCKFORD_ALPHABET, 9 karakter
+    - Checksum: son karakter kontrolü
+    - Prefix: code[0] == CROCKFORD_ALPHABET[kiosk.eczane_kiosk_no] kontrolü
+    - Eczane unique: aynı (eczane, qr_kodu) daha önce farklı idempotency ile kaydedilmemeli
 
     Idempotency: Ayni idempotency_anahtari tekrar gelirse mevcut kayit ve
     QR kodu dogrudan doner (yeni kayit olusturulmaz, child'lar tekrarlanmaz).
@@ -84,6 +116,9 @@ def ingest_session_items(kiosk, items: list[Any]) -> tuple[list[dict], list[dict
     """
     results: list[dict] = []
     errors: list[dict] = []
+    now = timezone.now()
+    # eczane FK — ingest sırasında daima auth kiosk'tan alınır
+    eczane = kiosk.eczane
 
     for i, raw in enumerate(items):
         ser = OturumLoguItemSerializer(data=raw)
@@ -191,17 +226,71 @@ def ingest_session_items(kiosk, items: list[Any]) -> tuple[list[dict], list[dict
                            "errors": {"cinsiyet_kod": [f"Cinsiyet yok: {d['cinsiyet_kod']}"]}})
             continue
 
-        # QR retry loop
-        qr_inserted = None
+        tamamlandi = d.get("tamamlandi", True)
+
+        # ── QR kodu kararı ────────────────────────────────────────────────────
+        # Kiosk 9 karakterli Crockford QR gönderdiyse doğrula ve kabul et.
+        # Göndermedi (eski kiosk / abandoned) → backend üretir veya null bırakır.
+        incoming_qr = (d.get("qr_kodu") or "").strip().upper() or None
+        kiosk_generated_qr: str | None = None
+        legacy_generate = False  # backend QR üretimi tetiklenecek mi?
+
+        if incoming_qr and _CROCKFORD_RE.match(incoming_qr):
+            # Yeni format: checksum doğrula
+            if not _crockford_checksum_valid(incoming_qr):
+                errors.append({"index": i, "idempotency_anahtari": str(idem),
+                               "errors": {"qr_kodu": ["Geçersiz QR checksum."]}})
+                continue
+            # Prefix: kiosk.eczane_kiosk_no ile eşleşmeli
+            if kiosk.eczane_kiosk_no is not None:
+                expected_prefix = CROCKFORD_ALPHABET[kiosk.eczane_kiosk_no]
+                if incoming_qr[0] != expected_prefix:
+                    errors.append({"index": i, "idempotency_anahtari": str(idem),
+                                   "errors": {"qr_kodu": [
+                                       f"QR prefix uyumsuz: beklenen '{expected_prefix}'."
+                                   ]}})
+                    continue
+            # Eczane conflict: aynı QR aynı eczanede farklı idempotency ile var mı?
+            if eczane:
+                conflict = (
+                    OturumLogu.objects
+                    .filter(eczane=eczane, qr_kodu=incoming_qr)
+                    .exclude(idempotency_anahtari=idem)
+                    .exists()
+                )
+                if conflict:
+                    errors.append({"index": i, "idempotency_anahtari": str(idem),
+                                   "errors": {"qr_kodu": [
+                                       "Bu QR kodu eczanede zaten kayıtlı."
+                                   ]}})
+                    continue
+            kiosk_generated_qr = incoming_qr
+        elif tamamlandi and not incoming_qr:
+            # Eski kiosk: backend üretecek
+            legacy_generate = True
+        elif not tamamlandi:
+            # Abandoned: QR yok
+            pass
+        elif incoming_qr and not _CROCKFORD_RE.match(incoming_qr):
+            # Eski 8-char legacy QR gönderilmiş → backend üretir (geçiş dönemi uyumu)
+            legacy_generate = True
+
+        # QR retry loop — yalnız backend üretimi için
+        qr_inserted: str | None = None
+        insert_success = False
         last_error: Exception | None = None
 
         for attempt in range(MAX_QR_RETRY):
-            qr_candidate = generate_qr_candidate()
+            qr_candidate = (
+                kiosk_generated_qr if kiosk_generated_qr
+                else (generate_qr_candidate() if legacy_generate else None)
+            )
             try:
                 with transaction.atomic():
                     instance = OturumLogu(
                         idempotency_anahtari=idem,
                         kiosk=kiosk,
+                        eczane=eczane,
                         oturum_tipi=oturum_tipi,
                         kategori=kategori,
                         danisma_kategorisi=danisma_kategorisi,
@@ -211,19 +300,32 @@ def ingest_session_items(kiosk, items: list[Any]) -> tuple[list[dict], list[dict
                         qr_kodu=qr_candidate,
                         cevaplar=d.get("cevaplar", {}),
                         onerilen_etken_maddeler=d.get("onerilen_etken_maddeler", []),
-                        tamamlandi=d.get("tamamlandi", True),
+                        tamamlandi=tamamlandi,
+                        durum=(
+                            OturumLogu.Durum.COMPLETED
+                            if tamamlandi
+                            else OturumLogu.Durum.ABANDONED
+                        ),
+                        cihaz_zamani=d.get("olusturulma_tarihi"),
+                        sunucu_zamani=now,
                     )
+                    # barkod_logo_id: kiosk payload'ından gelen opsiyonel alan.
+                    # Gecikmiş outbox kaydında logo artık pasif/silinmiş olabilir → SET_NULL ile kabul edilir.
+                    # Eski payload'lar bu alanı içermeyebilir → None ile çalışmaya devam eder.
+                    raw_logo_id = d.get("barkod_logo_id")
+                    if raw_logo_id:
+                        from apps.barkod_logo.models import BarkodLogo
+                        logo = BarkodLogo.objects.filter(pk=raw_logo_id).first()
+                        if logo:
+                            instance.barkod_logo = logo
                     with UnitOfWork(user=None) as uow:
                         uow.add(instance)
-
-                    kiosk_ts = d.get("olusturulma_tarihi")
-                    if kiosk_ts:
-                        OturumLogu.objects.filter(pk=instance.pk).update(olusturulma_tarihi=kiosk_ts)
 
                     # Soru-cevap ve etken madde normalizasyonu
                     # SessionValidationError raise ederse rollback (parent + children)
                     _create_child_records(instance, d)
                     qr_inserted = qr_candidate
+                    insert_success = True
                     break
 
             except SessionValidationError as exc:
@@ -237,17 +339,19 @@ def ingest_session_items(kiosk, items: list[Any]) -> tuple[list[dict], list[dict
 
             except IntegrityError as exc:
                 err_str = str(exc).lower()
-                if "qr_kodu" in err_str or "oturum_loglari_qr" in err_str:
+                if any(k in err_str for k in ("qr_kodu", "oturum_loglari_qr", "uniq_oturum_eczane_qr")):
                     last_error = exc
-                    if attempt == MAX_QR_RETRY - 1:
+                    if attempt == MAX_QR_RETRY - 1 or kiosk_generated_qr:
                         errors.append({
                             "index": i,
                             "idempotency_anahtari": str(idem),
                             "errors": {"qr_kodu": [
-                                f"QR benzersizligi saglanamadi ({MAX_QR_RETRY} denemede)."
+                                "QR eczanede zaten kayıtlı." if kiosk_generated_qr
+                                else f"QR benzersizligi saglanamadi ({MAX_QR_RETRY} denemede)."
                             ]},
                         })
-                    continue
+                        break
+                    continue  # backend üretiminde yeni aday dene
 
                 if "idempotency" in err_str:
                     concurrent = OturumLogu.objects.filter(idempotency_anahtari=idem).only("qr_kodu").first()
@@ -283,7 +387,7 @@ def ingest_session_items(kiosk, items: list[Any]) -> tuple[list[dict], list[dict
                 qr_inserted = None
                 break
 
-        if qr_inserted:
+        if insert_success:
             results.append({
                 "idempotency_key": str(idem),
                 "status": "created",
@@ -380,7 +484,12 @@ def _create_child_records(instance: OturumLogu, d: dict) -> None:
                     else:
                         etken_madde_adi = f"Etken Madde #{etken_id}"
                 except (ValueError, TypeError):
+                    # String name — try to resolve to a DB record by name
                     etken_madde_adi = str(value)
+                    em = EtkenMadde.objects.filter(ad__iexact=etken_madde_adi).first()
+                    if em:
+                        etken_madde = em
+                        etken_madde_adi = em.ad
             elif isinstance(value, dict):
                 etken_id = value.get("id")
                 if etken_id:
@@ -392,7 +501,15 @@ def _create_child_records(instance: OturumLogu, d: dict) -> None:
                     except (ValueError, TypeError):
                         pass
                 if not etken_madde_adi:
-                    etken_madde_adi = value.get("ad", str(value))
+                    # Try name lookup for dict entries too
+                    name = value.get("ad", "")
+                    if name:
+                        em = EtkenMadde.objects.filter(ad__iexact=name).first()
+                        if em:
+                            etken_madde = em
+                            etken_madde_adi = em.ad
+                        else:
+                            etken_madde_adi = name
 
             if etken_madde or etken_madde_adi:
                 if etken_madde is not None:

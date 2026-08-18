@@ -44,18 +44,6 @@ def kiosk_pg(db):
     )
 
 
-@pytest.fixture
-def house_ad_pg(db):
-    from apps.campaigns.models import HouseAd
-    return HouseAd.objects.create(
-        name="FD-PG HouseAd",
-        media_url="http://localhost:9000/dev/ads/fd-pg-filler.mp4",
-        duration_seconds=15,
-        priority=1,
-        aktif=True,
-    )
-
-
 def _make_pg_campaign():
     base = timezone.make_aware(_dt.datetime.combine(TODAY, _dt.time(0, 0)))
     from apps.campaigns.models import Campaign, Creative, DeliveryRule
@@ -86,7 +74,7 @@ def _make_pg_campaign():
 
 @pytest.mark.django_db(transaction=True)
 @override_settings(DOOH_ENGINE_V2="active")
-def test_fd_pg_01_concurrent_same_fingerprint_single_bump(kiosk_pg, house_ad_pg):
+def test_fd_pg_01_concurrent_same_fingerprint_single_bump(kiosk_pg):
     """İki thread aynı fingerprint ile publish yapar → tek version bump.
 
     Correctness: _persist_plan select_for_update → lock → DB fingerprint re-check.

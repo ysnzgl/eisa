@@ -163,15 +163,29 @@ class KioskProvisioningApproveView(APIView):
                     status=status.HTTP_409_CONFLICT,
                 )
 
+            # Eczanede kullanılan slot'ları kilitleyerek boş slot bul (1-31)
+            taken = set(
+                Kiosk.objects
+                .select_for_update()
+                .filter(eczane=eczane, eczane_kiosk_no__isnull=False)
+                .values_list("eczane_kiosk_no", flat=True)
+            )
+            kiosk_no = next((n for n in range(1, 32) if n not in taken), None)
+            if kiosk_no is None:
+                return Response(
+                    {"detail": "Bu eczanede maksimum kiosk sayısına (31) ulaşıldı."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
             # Yeni Kiosk olustur (UoW ile; olusturan/guncelleyen otomatik set edilir)
             new_kiosk = Kiosk(
                 eczane=eczane,
                 ad=kiosk_ad,
                 mac_adresi=provision_req.mac_adresi.upper(),
-                # Transfer device_id from provisioning request (None if legacy/empty)
                 device_id=provision_req.device_id or None,
                 uygulama_anahtari=secrets.token_urlsafe(48),
                 aktif=True,
+                eczane_kiosk_no=kiosk_no,
             )
             with UnitOfWork(user=request.user) as uow:
                 uow.add(new_kiosk)

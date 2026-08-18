@@ -26,19 +26,23 @@
 - `kiosk_edge/api-node/src/mediaCache.js` — Media download cache
 - `kiosk_edge/api-node/src/config.js` — Config management
 
-### Session QR Akışı (2026-07-20)
+### Session QR Akışı (2026-08-11 — offline-first, kesinleşti)
 ```
 UI → POST /api/oturum/gonder { ..., tamamlandi: true }
-  → Edge: hasAppKeyCredentials? YES
-  → Edge: POST /api/kiosk/v1/sessions/ { items: [payload_without_qr] }
-  → Backend: generate_qr_candidate() + DB insert + IntegrityError retry
-  → Backend response: { results: [{ idempotency_key, status: "created", qr_kodu: "XXXXXXXX" }] }
-  → Edge: outbox'a backend QR ile kaydet → UI'a { qr_kodu: "XXXXXXXX" } döndür
-  → UI: Backend QR göster (sahte QR yok!)
+  → Edge: eczane_kiosk_no kiosk_meta'dan alınır
+  → Yoksa → 503 { code: "kiosk_no_missing" } — backend çağrısı yapılmaz
+  → Atomik SQLite: QR üret (qrGen.js) + sayaç güncelle + outbox insert
+  → UI'a hemen { qr_kodu, sync_durum: "bekliyor" } döner
+  → setImmediate: backend push arka planda
+  → Push başarılı → gonderilme_tarihi set, sync_durum: "gonderildi"
+  → Push başarısız → PENDING, scheduler sonra retry
 
-Backend erişilemezse:
-  → Edge: 503 { error: "...", code: "backend_unreachable" }
-  → UI: Retry seçeneği göster
+GET /api/oturum/sync-durum/:idempotency_key
+  → { sync_durum: "bekliyor" | "gonderildi" }   (UI polling için)
+
+Backend kapalı/erişilemezse:
+  → UI yine de QR alır (SQLite'tan)
+  → Scheduler sonraki döngüde backend push dener
 ```
 
 ---
@@ -69,10 +73,10 @@ Backend erişilemezse:
    - Kiosk edge API → SQLite `playlists`, `playlist_items` tablolarına yazar
    - Scheduler: 10 dakikada bir (veya configurable)
 
-3. **Creative/HouseAd medya senkronizasyonu:**
-   - `GET /api/kiosk/v1/sync/` → backend tüm creative/house_ad listesi (media_url, checksum)
-   - Kiosk edge API → media cache indirme kuyruğuna ekler
-   - Media cache: `mediaCache.js` modülü (undici fetch, lokal dosya sistemi veya memory cache)
+3. **Creative medya + idle içerik senkronizasyonu:**
+   - `GET /api/kiosk/v1/sync/` → backend aktif creative listesi (media_url, checksum) + `idle_contents` (aktif başlık/metin idle içerikleri)
+   - Creative medyası → media cache indirme kuyruğuna; `idle_contents` → SQLite `idle_contents` tablosuna transaction içinde upsert + reconcile (artık gelmeyen/pasif satırlar silinir). Backend `idle_contents` dönmezse boş dizi sayılır; offline'da son başarılı cache korunur.
+   - Eski `house_ads` KALDIRILDI (v15 idempotent migration `house_ads` tablosunu düşürür).
 
 ### Kiosk → Backend (Push)
 1. **Session log outbox:**
@@ -106,7 +110,8 @@ Backend erişilemezse:
 - `danisma_kategorileri`: id, slug, ad, ikon, ust_kategori_id (INTEGER, FK YOK), aktif
 
 **Playlist/Creative:**
-- `creatives`: id, campaign_id, media_url, duration_seconds, name, type (creative/house_ad), checksum
+- `creatives`: id, campaign_id, media_url, **active_media_url** (v12 eklendi, DEFAULT ''), duration_seconds, name, type (creative), checksum
+- `idle_contents` *(2026-08-16, v15)*: id, baslik, metin, aktif, guncellenme_tarihi — aktif idle (bekleme) başlık/metin içerikleri; `GET /api/idle-contents` bunu döner. Eski `house_ads` tablosu v15 migration ile düşürüldü.
 - `playlists`: id, target_date, target_hour, version, items JSON
 - `playlist_items`: playlist_id, asset_type, asset_id, duration_seconds, playback_order
 
@@ -115,14 +120,27 @@ Backend erişilemezse:
 - `reklam_gosterim_outbox`: id, payload JSON, olusturulma_tarihi, gonderilme_tarihi (null = pending)
 
 **Meta:**
-- `kiosk_meta`: key, value (kiosk_app_key, kiosk_id, pharmacy_id, playlist_version, last_sync_at, provisioning_state, registration_id)
+- `kiosk_meta`: key, value (kiosk_app_key, kiosk_id, pharmacy_id, playlist_version, last_sync_at, provisioning_state, registration_id, **last_barkod_logo_id** *(2026-08-11)*)
 - `media_cache`: asset_id, asset_type, source_url, source_checksum (backend'den: sha256:<hex>), file_checksum (raw hex, downloadToFile), local_path, status, error_message, synced_at
+  - *(v15)* `asset_type='house_ad'` satırları migration ile silinir; kampanya creative cache'i etkilenmez.
+
+**Barkod Logo Cache *(2026-08-11 — DOOH'dan bağımsız)*:**
+- `barkod_logolar`: id, ad, media_url, checksum, baslangic_zamani, bitis_zamani, aktif, gunluk_limit (nullable), local_path, cache_status, synced_at
+- `barkod_logo_baski_sayaclari`: (logo_id, tarih_istanbul, sayi) — Europe/Istanbul takvim gününe göre sayaç
+- `src/barkodLogoService.js`: `getOrderedLogoCandidates(db)`, `seciSonrakiLogo(db)`, `commitBasariliBaski(db, logoId, idempotencyKey)` — counter+cursor+outbox tek atomic transaction
+- Round-robin cursor: `kiosk_meta.last_barkod_logo_id` — yalnız başarılı transport sonrası ilerler
+- **Aday logo** (belirlenmiş) ≠ **başarıyla basılmış logo** (transport onaylı). `commitBasariliBaski` yalnız transport sonrası çağrılır.
+- Süreç çökmesi (transport başarılı ama transaction tamamlanmadan): outbox `barkod_logo_id=null` kalır → muhafazakâr/güvenli.
+- `src/printer.js`: `buildReceiptBuffer({qrPayload, logoCandidates, logger})` — adayları sırayla dener, ilk başarılıyı kullanır, tüm fiş bellekte hazırlanır sonra `sendToTransport` ile tek seferlik gönderilir.
+- `sendToTransport({buffer, host, port, logger})` — cihaz dosyası (sync throw) veya TCP (async, no throw).
+- Catalog sync: `pullFromCentral` → `/api/kiosk/v1/catalog/` → `barkod_logolar` → `syncBarkodLogoCache` (snapshot reconciliation, PNG indir).
 
 **Checksum sözleşmesi (Faz 0.5+):**
 - `source_checksum`: backend'den gelen `sha256:<hex>` formatı, freshness karşılaştırması için
 - `file_checksum`: kiosk indirdiğinde hesapladığı raw hex (prefix yok)
 - Cache hit: `source_url === asset.media_url && source_checksum === asset.source_checksum && dosya var`
 - Stabil media_url sonrası gereksiz yeniden-indirme ortadan kalkar
+- `active_media_url` için `asset_id = '${id}_active'`, `asset_type = 'creative'` ile ayrı cache kaydı (v12)
 
 **Outbox pressure check (`checkOutboxPressure`):**
 - Eğer `oturum_outbox` veya `reklam_gosterim_outbox` tablolarında `gonderilme_tarihi IS NULL` kayıt sayısı `outboxMaxRows` (default 10000) değerini aşarsa warning log
@@ -131,7 +149,7 @@ Backend erişilemezse:
 ### Scheduler (`src/scheduler.js`)
 
 **Cron job'lar:**
-1. `pullFromCentral`: Her 5 dakikada bir → backend'den kategori/soru/danışma/creative/house_ad çek, SQLite'a upsert
+1. `pullFromCentral`: Her 5 dakikada bir → backend'den kategori/soru/danışma/creative + `idle_contents` çek, SQLite'a upsert (idle içerikleri reconcile)
 2. `pingAndSyncPlaylist`: Her 10 dakikada bir → backend'den playlist versiyonu kontrol, değiştiyse playlist çek
 3. `pushOutbox`: Her 1 dakikada bir → `oturum_outbox` ve `reklam_gosterim_outbox` tablolarından pending kayıtları batch olarak backend'e gönder
 4. `cleanupOldLogs`: Her gece 02:00 → 90 gün eski logları sil
@@ -143,7 +161,7 @@ Backend erişilemezse:
 
 ### Media Cache (`src/mediaCache.js`)
 
-**Amaç:** Creative/HouseAd medya URL'lerini lokal dosya sistemine indir, offline oynatım için cache
+**Amaç:** Creative medya URL'lerini lokal dosya sistemine indir, offline oynatım için cache
 **Durum:** Kodda placeholder var gibi görünüyor, tam implementasyon belirsiz (Doğrulanmalı)
 
 ### Provisioning (`src/provisioning.js`)
@@ -242,7 +260,7 @@ Toplanan veriler `device_metadata` JSON alanı olarak `KioskProvisioningRequest`
 4. Lokal API → SQLite `reklam_gosterim_outbox` → insert
 5. Scheduler → `pushToCentral` → backend'e batch gönderim
    - `POST /api/kiosk/v1/proof-of-play/` → `logs` array
-     (her log: `creative_id` VEYA `house_ad_id` + `played_at` + `duration_played`)
+     (her log: `creative_id` + `played_at` + `duration_played`; house_ad_id yok sayılır)
 6. Backend → `PlayLog` modeline bulk insert (201 `{ ingested: N }`)
 
 ---
@@ -257,6 +275,7 @@ Toplanan veriler `device_metadata` JSON alanı olarak `KioskProvisioningRequest`
 | `GET` | `/questions?kategori_id={id}` | Kategoriye ait sorular (hedef filtreleme) |
 | `GET` | `/answers?soru_id={id}` | Soruya ait cevaplar |
 | `GET` | `/playlist?date=YYYY-MM-DD` | Günlük playlist JSON |
+| `GET` | `/api/idle-contents` | *(2026-08-16)* Aktif idle (bekleme) başlık/metin içerikleri (salt okunur; UI merkezi backend'e bağlanmaz) |
 | `POST` | `/sessions` | Session log kaydı (outbox'a ekler) |
 | `POST` | `/ad-impressions` | Impression log kaydı (outbox'a ekler) |
 | `GET` | `/wifi-status` | WiFi bağlantı durumu (nmcli çağrısı, Linux) |
@@ -281,7 +300,7 @@ Toplanan veriler `device_metadata` JSON alanı olarak `KioskProvisioningRequest`
 
 3. **Outbox Payload Format:**
    - Session: `{ idempotency_key, yas_araligi_id, cinsiyet_id, kategori_id, qr_kodu, cevaplar, onerilen_etken_maddeler, tamamlandi }`
-   - Impression: `{ asset_id, asset_type, played_at, duration_played }` (push'ta creative_id/house_ad_id'ye maplenir)
+   - Impression: `{ asset_id, asset_type, played_at, duration_played }` (push'ta `creative_id`'ye maplenir; asset_type='creative')
    - Breaking: backend cannot parse
 
 4. **Scheduler Intervals (config.js varsayilanlari):**

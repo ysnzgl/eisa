@@ -39,6 +39,9 @@ class OturumLoguItemSerializer(serializers.Serializer):
     danisma_tamamlayan_eczaci = serializers.CharField(
         source="danisma_tamamlayan_eczaci.get_full_name", read_only=True, default=""
     )
+    # Fişte basılan barkod logosu ID'si (UUID). Null = e-ISA fallback.
+    # Eski kiosk payload'larında bu alan bulunmayabilir; geriye dönük uyumluluk için opsiyoneldir.
+    barkod_logo_id = serializers.UUIDField(required=False, allow_null=True, default=None)
 
 
 class OturumLoguSerializer(serializers.ModelSerializer):
@@ -56,7 +59,6 @@ class OturumLoguSerializer(serializers.ModelSerializer):
     danisma_kategorisi_detay = serializers.SerializerMethodField()
     cevap_detaylari = serializers.SerializerMethodField()
     onerilen_etken_madde_detaylari = serializers.SerializerMethodField()
-    satis_sonucu = serializers.SerializerMethodField()
     danisma_tamamlayan_eczaci_adi = serializers.CharField(
         source="danisma_tamamlayan_eczaci.get_full_name", read_only=True, default=""
     )
@@ -91,7 +93,7 @@ class OturumLoguSerializer(serializers.ModelSerializer):
             "cinsiyet_detay",
             "kategori_detay",
             "danisma_kategorisi_detay",
-            "satis_sonucu",
+            "sold",
             "danisma_tamamlandi",
             "danisma_tamamlanma_tarihi",
             "danisma_notu",
@@ -279,23 +281,15 @@ class OturumLoguSerializer(serializers.ModelSerializer):
         details.sort(key=lambda item: (item.get("sira") or 0, item.get("soru_id") or 0))
         return details
 
-    def get_onerilen_etken_madde_detaylari(self, obj):
-        if not self._include_detail_fields():
-            return []
-
-        values = obj.onerilen_etken_maddeler
+    def _resolve_etken_madde_list(self, values):
         if not isinstance(values, list) or not values:
             return []
 
-        ids = []
-        for value in values:
-            if isinstance(value, dict):
-                parsed = self._parse_int(value.get("id"))
-            else:
-                parsed = self._parse_int(value)
-            if parsed is not None:
-                ids.append(parsed)
-
+        ids = [
+            self._parse_int(v.get("id") if isinstance(v, dict) else v)
+            for v in values
+        ]
+        ids = [i for i in ids if i is not None]
         ingredient_rows = {
             row["id"]: row["ad"]
             for row in EtkenMadde.objects.filter(id__in=ids).values("id", "ad")
@@ -311,19 +305,172 @@ class OturumLoguSerializer(serializers.ModelSerializer):
                 elif name:
                     details.append({"id": None, "ad": str(name)})
                 continue
-
             parsed = self._parse_int(value)
             if parsed is not None:
                 details.append({"id": parsed, "ad": ingredient_rows.get(parsed, f"Etken Madde #{parsed}")})
             else:
                 details.append({"id": None, "ad": str(value)})
-
         return details
 
+    def get_onerilen_etken_madde_detaylari(self, obj):
+        if not self._include_detail_fields():
+            return []
+        # Prefer normalized table rows (include satildi flag)
+        records = list(obj.onerilen_etken_madde_detaylari.select_related("etken_madde").all())
+        if records:
+            return [
+                {
+                    "id": r.etken_madde_id,
+                    "ad": r.etken_madde.ad if r.etken_madde else r.etken_madde_adi_snapshot,
+                    "satildi": r.satildi,
+                }
+                for r in records
+            ]
+        # Fallback to JSON field for pre-normalization sessions
+        return self._resolve_etken_madde_list(obj.onerilen_etken_maddeler)
+
     def get_satis_sonucu(self, obj):
-        value = self.context.get("sale_result")
-        if value == "sold":
+        if obj.sold is True:
             return "Satış yapıldı"
-        if value == "not_sold":
+        if obj.sold is False:
             return "Satış yapılmadı"
         return None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Kiosk Hareketleri — liste görünümü (ham cevap yok, PII maskelendi)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class KioskActivityListSerializer(serializers.ModelSerializer):
+    """Oturum listesi için hafif serializer. Ham cevaplar gösterilmez."""
+
+    kiosk_ad = serializers.CharField(source="kiosk.ad", read_only=True)
+    kiosk_mac = serializers.CharField(source="kiosk.mac_adresi", read_only=True)
+    eczane_adi = serializers.CharField(source="kiosk.eczane.ad", read_only=True)
+    eczane_id = serializers.IntegerField(source="kiosk.eczane_id", read_only=True)
+    yas_araligi_ad = serializers.CharField(source="yas_araligi.ad", read_only=True)
+    cinsiyet_ad = serializers.CharField(source="cinsiyet.ad", read_only=True)
+    kategori_adi = serializers.CharField(source="kategori.ad", read_only=True)
+    danisma_kategorisi_adi = serializers.CharField(
+        source="danisma_kategorisi.ad", read_only=True
+    )
+    # Satış görünümünde prefetch_related ile doldurulur; aksi hâlde boş liste döner.
+    etken_madde_adlari = serializers.SerializerMethodField()
+    etken_madde_detaylari = serializers.SerializerMethodField()
+
+    def get_etken_madde_adlari(self, obj):
+        if not self.context.get("include_ingredients"):
+            return []
+        return [
+            (r.etken_madde.ad if r.etken_madde else r.etken_madde_adi_snapshot)
+            for r in obj.onerilen_etken_madde_detaylari.all()
+            if r.etken_madde or r.etken_madde_adi_snapshot
+        ]
+
+    def get_etken_madde_detaylari(self, obj):
+        """Satış görünümü için etken madde detayları (ad + satildi flag)."""
+        if not self.context.get("include_ingredients"):
+            return []
+        return [
+            {
+                "ad": r.etken_madde.ad if r.etken_madde else r.etken_madde_adi_snapshot,
+                "satildi": r.satildi,
+            }
+            for r in obj.onerilen_etken_madde_detaylari.all()
+            if r.etken_madde or r.etken_madde_adi_snapshot
+        ]
+
+    class Meta:
+        model = OturumLogu
+        fields = [
+            "id",
+            "qr_kodu",
+            "durum",
+            "oturum_tipi",
+            "kiosk",
+            "kiosk_ad",
+            "kiosk_mac",
+            "eczane_id",
+            "eczane_adi",
+            "yas_araligi_ad",
+            "cinsiyet_ad",
+            "kategori_adi",
+            "danisma_kategorisi_adi",
+            "hassas_akis",
+            "tamamlandi",
+            "danisma_tamamlandi",
+            "danisma_tamamlanma_tarihi",
+            "danisma_notu",
+            "sold",
+            "etken_madde_adlari",
+            "etken_madde_detaylari",
+            "olusturulma_tarihi",
+            "cihaz_zamani",
+            "sunucu_zamani",
+        ]
+        # cevaplar ve onerilen_etken_maddeler listede açıklanmaz — detay view'dan alınır.
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Kampanya Gösterimleri — PlayLog listesi
+# ─────────────────────────────────────────────────────────────────────────────
+
+class CampaignImpressionSerializer(serializers.Serializer):
+    """PlayLog kayıtları için serializer (Faz 3'te status/error alanları eklenir)."""
+
+    id = serializers.UUIDField(read_only=True)
+    kiosk_id = serializers.IntegerField(read_only=True)
+    kiosk_ad = serializers.CharField(source="kiosk.ad", read_only=True)
+    kiosk_mac = serializers.CharField(source="kiosk.mac_adresi", read_only=True)
+    eczane_id = serializers.IntegerField(source="kiosk.eczane_id", read_only=True)
+    eczane_adi = serializers.CharField(source="kiosk.eczane.ad", read_only=True)
+    creative_id = serializers.UUIDField(read_only=True)
+    creative_adi = serializers.SerializerMethodField()
+    campaign_id = serializers.SerializerMethodField()
+    campaign_adi = serializers.SerializerMethodField()
+    played_at = serializers.DateTimeField(read_only=True)
+    duration_played = serializers.IntegerField(read_only=True)
+
+    def get_creative_adi(self, obj):
+        return getattr(obj.creative, "name", None) if obj.creative_id else None
+
+    def get_campaign_id(self, obj):
+        if obj.creative_id and obj.creative:
+            return str(obj.creative.campaign_id)
+        return None
+
+    def get_campaign_adi(self, obj):
+        if obj.creative_id and obj.creative and obj.creative.campaign_id:
+            return getattr(obj.creative.campaign, "name", None)
+        return None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Faz 4 — KioskEvent serializer
+# ─────────────────────────────────────────────────────────────────────────────
+
+class KioskEventSerializer(serializers.ModelSerializer):
+    """KioskEvent listesi için serializer (context JSON açılmaz — sanitize edilmiş message yeterli)."""
+
+    kiosk_ad = serializers.CharField(source="kiosk.ad", read_only=True)
+    kiosk_mac = serializers.CharField(source="kiosk.mac_adresi", read_only=True)
+    eczane_id = serializers.IntegerField(source="kiosk.eczane_id", read_only=True)
+    eczane_adi = serializers.CharField(source="kiosk.eczane.ad", read_only=True)
+
+    class Meta:
+        from apps.analytics.models import KioskEvent as _KE
+        model = _KE
+        fields = [
+            "id",
+            "kiosk",
+            "kiosk_ad",
+            "kiosk_mac",
+            "eczane_id",
+            "eczane_adi",
+            "event_type",
+            "severity",
+            "message",
+            "occurred_at",
+            "received_at",
+            "olusturulma_tarihi",
+        ]

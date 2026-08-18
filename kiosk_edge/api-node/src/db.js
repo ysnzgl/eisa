@@ -9,8 +9,8 @@ let _db = null;
 const DEFAULT_OUTBOX_MAX_ROWS = 10000;
 const DEFAULT_DIAGNOSTIC_MAX_ROWS = 5000;
 
-// Sema versiyonu — v11: pending_ack + applied_version kiosk_meta alanları (Faz 5).
-const SCHEMA_VERSION = 11;
+// Sema versiyonu — v14: qr_counter (offline-first QR üretimi).
+const SCHEMA_VERSION = 14;
 
 export function openDb(sqlitePath, options = {}) {
   if (_db) return _db;
@@ -202,20 +202,21 @@ function initSchema(db, options = {}) {
     CREATE TABLE IF NOT EXISTS creatives (
       id               TEXT    PRIMARY KEY,
       media_url        TEXT    NOT NULL DEFAULT '',
+      active_media_url TEXT    NOT NULL DEFAULT '',
       duration_seconds INTEGER NOT NULL DEFAULT 15,
       checksum         TEXT    NOT NULL DEFAULT '',
       type             TEXT    NOT NULL DEFAULT 'creative',
       aktif            INTEGER NOT NULL DEFAULT 1,
       guncellenme_tarihi TEXT  NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
     );
-    CREATE TABLE IF NOT EXISTS house_ads (
-      id               TEXT    PRIMARY KEY,
-      name             TEXT    NOT NULL DEFAULT '',
-      media_url        TEXT    NOT NULL DEFAULT '',
-      duration_seconds INTEGER NOT NULL DEFAULT 15,
-      type             TEXT    NOT NULL DEFAULT 'house_ad',
-      aktif            INTEGER NOT NULL DEFAULT 1,
-      guncellenme_tarihi TEXT  NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    CREATE TABLE IF NOT EXISTS idle_contents (
+      id                 INTEGER PRIMARY KEY,
+      baslik             TEXT    NOT NULL DEFAULT '',
+      metin              TEXT    NOT NULL DEFAULT '',
+      kategori_id        INTEGER,
+      ikon               TEXT    NOT NULL DEFAULT '',
+      aktif              INTEGER NOT NULL DEFAULT 1,
+      guncellenme_tarihi TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
     );
 
     -- OUTBOX
@@ -247,6 +248,20 @@ function initSchema(db, options = {}) {
     CREATE INDEX IF NOT EXISTS oturum_outbox_pending ON oturum_outbox(gonderilme_tarihi);
     CREATE INDEX IF NOT EXISTS reklam_outbox_pending ON reklam_gosterim_outbox(gonderilme_tarihi);
 
+    -- FAZ 4: Kiosk teknik olayları outbox
+    CREATE TABLE IF NOT EXISTS kiosk_event_outbox (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_id     TEXT    NOT NULL UNIQUE,
+      event_type   TEXT    NOT NULL DEFAULT 'GENERAL_ERROR',
+      severity     TEXT    NOT NULL DEFAULT 'WARNING',
+      message      TEXT    NOT NULL DEFAULT '',
+      occurred_at  TEXT,
+      created_at   TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      sent_at      TEXT,
+      retry_count  INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS kiosk_event_outbox_pending ON kiosk_event_outbox(sent_at);
+
     -- LOCAL MEDIA CACHE (offline reklam oynatimi)
     CREATE TABLE IF NOT EXISTS media_cache (
       asset_id        TEXT    NOT NULL,
@@ -264,11 +279,34 @@ function initSchema(db, options = {}) {
     );
     CREATE INDEX IF NOT EXISTS media_cache_status_idx ON media_cache(status);
 
-    -- DOOH PLAYLIST (merkezi scheduler'dan cekilir)
     CREATE TABLE IF NOT EXISTS kiosk_meta (
       key   TEXT PRIMARY KEY,
       value TEXT NOT NULL DEFAULT ''
     );
+
+    -- BARKOD LOGO (fiş baskısında e-ISA başlığı yerine logo rotasyonu)
+    CREATE TABLE IF NOT EXISTS barkod_logolar (
+      id               TEXT    PRIMARY KEY,
+      ad               TEXT    NOT NULL DEFAULT '',
+      media_url        TEXT    NOT NULL DEFAULT '',
+      checksum         TEXT    NOT NULL DEFAULT '',
+      baslangic_zamani TEXT    NOT NULL,
+      bitis_zamani     TEXT    NOT NULL,
+      aktif            INTEGER NOT NULL DEFAULT 1,
+      gunluk_limit     INTEGER,
+      local_path       TEXT    NOT NULL DEFAULT '',
+      cache_status     TEXT    NOT NULL DEFAULT 'pending',
+      synced_at        TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
+    -- Kiosk başına günlük baskı sayacı (Istanbul takvim günü bazında)
+    CREATE TABLE IF NOT EXISTS barkod_logo_baski_sayaclari (
+      logo_id          TEXT    NOT NULL,
+      tarih_istanbul   TEXT    NOT NULL,
+      sayi             INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (logo_id, tarih_istanbul)
+    );
+    -- Eski sayaçları temizlemek için indeks
+    CREATE INDEX IF NOT EXISTS bl_sayac_tarih_idx ON barkod_logo_baski_sayaclari(tarih_istanbul);
     CREATE TABLE IF NOT EXISTS playlists (
       id                    TEXT    PRIMARY KEY,
       target_date           TEXT    NOT NULL,
@@ -322,6 +360,16 @@ function initSchema(db, options = {}) {
       created_at       TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
       retry_count      INTEGER NOT NULL DEFAULT 0
     );
+
+    -- OFFLINE-FIRST QR SAYACI (singleton)
+    -- Crockford QR için mantıksal zaman/sayaç. Monoton artar; saat geriye gitse de tekrar üretilmez.
+    -- last_value: max(currentUnixSeconds, lastValue + 1) ile güncellenir.
+    CREATE TABLE IF NOT EXISTS qr_counter (
+      id         INTEGER PRIMARY KEY CHECK(id = 1),
+      last_value INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
+    INSERT OR IGNORE INTO qr_counter (id, last_value) VALUES (1, 0);
   `);
 
   const meta = db.prepare('SELECT version FROM schema_meta LIMIT 1').get();
@@ -344,6 +392,68 @@ function initSchema(db, options = {}) {
   const ackCols = db.prepare("PRAGMA table_info(pending_ack)").all().map((c) => c.name);
   if (!ackCols.includes('next_retry_at')) {
     db.exec('ALTER TABLE pending_ack ADD COLUMN next_retry_at TEXT');
+  }
+
+  // v12: creatives.active_media_url (idempotent)
+  const creativeCols = db.prepare("PRAGMA table_info(creatives)").all().map((c) => c.name);
+  if (!creativeCols.includes('active_media_url')) {
+    db.exec("ALTER TABLE creatives ADD COLUMN active_media_url TEXT NOT NULL DEFAULT ''");
+  }
+
+  // v13: reklam_gosterim_outbox Faz 3 alanları (idempotent)
+  const reklamCols = db.prepare("PRAGMA table_info(reklam_gosterim_outbox)").all().map((c) => c.name);
+  if (!reklamCols.includes('play_event_id')) {
+    db.exec("ALTER TABLE reklam_gosterim_outbox ADD COLUMN play_event_id TEXT");
+  }
+  if (!reklamCols.includes('status')) {
+    db.exec("ALTER TABLE reklam_gosterim_outbox ADD COLUMN status TEXT NOT NULL DEFAULT 'COMPLETED'");
+  }
+  if (!reklamCols.includes('error_code')) {
+    db.exec("ALTER TABLE reklam_gosterim_outbox ADD COLUMN error_code TEXT NOT NULL DEFAULT ''");
+  }
+  if (!reklamCols.includes('occurred_at')) {
+    db.exec("ALTER TABLE reklam_gosterim_outbox ADD COLUMN occurred_at TEXT");
+  }
+  if (!reklamCols.includes('expected_duration')) {
+    db.exec("ALTER TABLE reklam_gosterim_outbox ADD COLUMN expected_duration INTEGER");
+  }
+
+  // v14: qr_counter singleton (idempotent)
+  const qrCounterExists = db.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='qr_counter'"
+  ).get();
+  if (!qrCounterExists) {
+    db.exec(`
+      CREATE TABLE qr_counter (
+        id         INTEGER PRIMARY KEY CHECK(id = 1),
+        last_value INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+      );
+      INSERT OR IGNORE INTO qr_counter (id, last_value) VALUES (1, 0);
+    `);
+  } else {
+    db.exec("INSERT OR IGNORE INTO qr_counter (id, last_value) VALUES (1, 0)");
+  }
+
+  // danisma_kategorileri.sira — idempotent, SCHEMA_VERSION degismez
+  const danismaCols = db.prepare("PRAGMA table_info(danisma_kategorileri)").all().map((c) => c.name);
+  if (!danismaCols.includes('sira')) {
+    db.exec("ALTER TABLE danisma_kategorileri ADD COLUMN sira INTEGER NOT NULL DEFAULT 100");
+  }
+
+  // v15: HouseAd kaldirildi. Eski house_ads tablosunu ve house_ad media_cache
+  // kayitlarini temizle (idempotent). Campaign creative cache kayitlarina DOKUNULMAZ.
+  // Idle icerik baslik/metin tabanli idle_contents tablosuna gecti.
+  db.exec("DROP TABLE IF EXISTS house_ads");
+  db.exec("DELETE FROM media_cache WHERE asset_type = 'house_ad'");
+
+  // v16: idle_contents.ikon kolonu — kategori ikonu (FA class, idempotent)
+  const idleCols = db.prepare("PRAGMA table_info(idle_contents)").all().map((c) => c.name);
+  if (!idleCols.includes('kategori_id')) {
+    db.exec('ALTER TABLE idle_contents ADD COLUMN kategori_id INTEGER');
+  }
+  if (!idleCols.includes('ikon')) {
+    db.exec("ALTER TABLE idle_contents ADD COLUMN ikon TEXT NOT NULL DEFAULT ''");
   }
 
   installOutboxFifoTriggers(db, outboxMaxRows);
@@ -420,6 +530,7 @@ export function rowToDanismaKategori(row) {
     ikon: row.ikon,
     ust_kategori_id: row.ust_kategori_id ?? null,
     aktif: !!row.aktif,
+    sira: row.sira ?? 100,
   };
 }
 
@@ -450,15 +561,15 @@ export function rowToCreative(row) {
   };
 }
 
-export function rowToHouseAd(row) {
+export function rowToIdleContent(row) {
   if (!row) return null;
   return {
     id: row.id,
-    name: row.name,
-    media_url: row.media_url,
-    duration_seconds: row.duration_seconds,
-    type: row.type || 'house_ad',
+    baslik: row.baslik,
+    metin: row.metin,
+    ikon: row.ikon || '',
     aktif: !!row.aktif,
+    updated_at: row.guncellenme_tarihi,
   };
 }
 
