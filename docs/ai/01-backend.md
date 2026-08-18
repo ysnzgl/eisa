@@ -1,6 +1,6 @@
 # Backend — Django 5 + DRF + PostgreSQL
 
-**Amaç:** Merkezi API servisi, kampanya/creative/playlist yönetimi, kullanıcı/eczane/ürün veritabanı, kiosk senkronizasyon endpoint'leri.
+**Amaç:** Merkezi API servisi, kampanya/creative/playlist yönetimi, kullanıcı/eczane/ürün veritabanı, duyuru/nöbet akışları ve kiosk senkronizasyon endpoint'leri.
 
 ---
 
@@ -26,6 +26,9 @@
 - `backend/apps/pharmacies/auth.py` — Kiosk authentication (tek `KioskAppKeyAuthentication`)
 - `backend/apps/kiosk_api/` — Kiosk API facade (`/api/kiosk/v1/`; bootstrap + operasyonel endpoint'ler)
 - `backend/apps/analytics/models.py` — OturumLogu/PlayLog models
+- `backend/apps/announcements/models.py` — Genel/sistem duyurusu, occurrence okuma ve nöbet ay/gün modelleri
+- `backend/apps/announcements/services.py` — Europe/Istanbul recurrence ve sabit nöbet uyarısı kuralları
+- `backend/apps/announcements/views.py` — Admin, eczacı aktif duyuru ve nöbet takvimi endpoint'leri
 
 ---
 
@@ -70,6 +73,10 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 | `/api/kiosk/v1/sessions/` | `kiosk_api.KioskSessionsView` | AppKey+MAC | Oturum outbox; backend QR üretir; response: `{results:[{idempotency_key,status,qr_kodu}]}` |
 | `/api/kiosk/v1/proof-of-play/` | `kiosk_api.KioskProofOfPlayView` | AppKey+MAC | Bulk PlayLog ingest |
 | `/api/kiosk/v1/diagnostics/` | `kiosk_api.KioskDiagnosticsView` | AppKey+MAC | Diagnostic (DB'ye yazılmaz) |
+| `/api/announcements/admin/` | `AdminAnnouncementViewSet` | JWT (SuperAdmin) | Genel duyuru CRUD; sistem duyurusunda sınırlı PATCH |
+| `/api/announcements/me/active/` | `ActiveAnnouncementsView` | JWT (Eczacı) | Bugünkü hedeflenmiş occurrence ve sistem uyarıları |
+| `/api/announcements/{id}/read/` | `MarkAnnouncementReadView` | JWT (Eczacı) | Bugünkü occurrence için okundu kaydı |
+| `/api/announcements/duty/` | `DutyCalendarView` | JWT (Eczacı) | Ay bazlı nöbet günü / nöbetim yok kaydı |
 
 **RBAC:** `IsSuperAdmin`, `IsPharmacist`, `IsKiosk` permission sınıfları mevcut.
 
@@ -121,6 +128,13 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 - `Cevap`: Soru cevapları (soru FK, metin, sira)
 - `CevapEtkenMadde`: Cevap ile etken madde ilişkisi (cevap FK, etken_madde FK, aktif)
 - `EtkenMadde`: Etken madde (ad, slug, aktif)
+
+### Announcements (`apps.announcements`) *(2026-08-18)*
+- `Announcement`: `GENERAL|SYSTEM`; başlık, mesaj, aksiyon etiketi, seviye ve aktiflik. Genel kayıtlar `ONCE|DAILY|WEEKLY|MONTHLY`, tarih aralığı, aylık mod ve `ALL|PROVINCE|DISTRICT|PHARMACY` hedefi taşır.
+- `AnnouncementRead`: `(announcement, user, occurrence_date)` unique; okuma durumu recurrence occurrence bazındadır.
+- `PharmacyDutyMonth`: `(pharmacy, month)` unique; `month` ayın ilk günü, `has_no_duty` beyanı.
+- `PharmacyDutyDay`: `(duty_month, date)` unique; tarih seçili ay içinde olmak zorundadır.
+- Migration `announcements.0001_initial`, `DUTY_NEXT_MONTH_MISSING` ve `DUTY_CURRENT_MONTH_MISSING` kayıtlarını `system_key` üzerinden idempotent `get_or_create` ile seed eder.
 
 ### Campaigns (`apps.campaigns`) *(Faz 0.5–Faz 1 güncellemeleri dahil)*
 - `Campaign`: Reklam kampanyasi (status: DRAFT/ACTIVE/PAUSED/COMPLETED/CANCELLED, target_scope [ALL|RULES|null-legacy], follows [FK self, null], priority). **Faz 7 kaldirildi:** is_guaranteed, impression_goal, frequency_cap_per_hour (migration 0020)
@@ -212,6 +226,14 @@ Notlar (QR contract, 2026-07-20):
 5. Backend → `PlayLog` modeline kayıt (bulk insert)
 6. SuperAdmin → web_panels analytics → PlayLog raporları (tamamlanma oranı, toplam impression, vb.)
 
+### Duyuru ve Nöbet Uyarısı Akışı
+1. SuperAdmin genel duyuru oluşturur; sistem koşulu/SQL/condition builder bulunmaz.
+2. Genel occurrence hesabı Europe/Istanbul gününde `ONCE`, `DAILY`, seçili weekday veya aylık mod (`SPECIFIC_DAY`, `DAY_RANGE`, `FIRST_N_DAYS`, `LAST_N_DAYS`, `LAST_WEEK`) ile yapılır. `LAST_WEEK` ayın son 7 takvim günüdür.
+3. Hedef eşleşmesi kullanıcının eczanesindeki il, ilçe veya eczane FK'sine göre backend'de yapılır.
+4. Sistem uyarıları yalnız iki sabit `system_key` için `services.system_context()` içinde değerlendirilir: gelecek ay eksikliği ayın son 3 günü; aktif ay eksikliği ayın 1–14. günleri.
+5. Hedef ayda en az bir `PharmacyDutyDay` veya `has_no_duty=true` varsa uyarı üretilmez. Aksiyon URL'si backend tarafından hedef ay query'siyle sabit üretilir.
+6. Admin sistem duyurusunda yalnız `title`, `message`, `action_label`, `severity`, `active` alanlarını değiştirebilir; sistem duyurusu DELETE 405 döner.
+
 ---
 
 ## Önemli Config / Env Değerleri
@@ -280,6 +302,11 @@ Notlar (QR contract, 2026-07-20):
 6. **Playlist Version Mechanism:**
    - `Kiosk.last_playlist_version` + `Playlist.version` matching
    - Breaking: playlist sync loops or fails
+
+7. **Sistem Duyurusu Contract'ı:**
+   - `DUTY_NEXT_MONTH_MISSING` ve `DUTY_CURRENT_MONTH_MISSING` anahtarları, tarih pencereleri, hedef ay hesabı ve aksiyon URL'si backend kodunda sabittir.
+   - Admin yalnız sunum alanlarını değiştirebilir; kayıtlar silinmez, pasifleştirilir.
+   - Breaking: günlük bastırma, hedef aya yönlendirme veya nöbet eksikliği hesabı bozulur.
 
 ---
 

@@ -1,6 +1,6 @@
 # AI Context Index — E-İSA Project
 
-**Son güncelleme:** 2026-07-14  
+**Son güncelleme:** 2026-08-18
 **Amaç:** Token-ekonomik AI context; kod yapısını hızlı anlamak ve geliştirmelerde doğru noktadan başlamak.
 
 ---
@@ -67,6 +67,7 @@ Backend'de kampanya/creative tanımı → Merkezi playlist üretimi → Kiosk'a 
 | Session/log akışı | 07-session-and-analytics.md + 04-kiosk-edge-ui.md |
 | QR kod üretimi/tarama | 07-session-and-analytics.md + 04-kiosk-edge-ui.md + 02-web-panels.md |
 | Proof-of-play log toplama | 08-dooh-advertising.md + 03-kiosk-edge-api-node.md |
+| Genel duyuru / nöbet uyarısı | 01-backend.md + 02-web-panels.md + 05-cross-project-flows.md + 06-db-and-api-contracts.md |
 | Kiosk'a yeni kategori/soru ekleme | 01-backend.md + 03-kiosk-edge-api-node.md |
 | Frontend/backend API contract | 06-db-and-api-contracts.md |
 | Proje arası veri akışları | 05-cross-project-flows.md |
@@ -93,6 +94,9 @@ kiosk_edge/ui (AdStrip impressions) → kiosk_edge/api-node (POST /ad-impression
 ### 5. QR Tamamlanma Akışı
 kiosk_edge/ui (ResultScreen QR) → web_panels (QrScan) → Backend API (GET /api/analytics/sessions/) → OturumLogu fetch
 
+### 6. Duyuru ve Nöbet Uyarısı Akışı
+SuperAdmin → web_panels duyuru yönetimi → `/api/announcements/admin/` → genel duyuru zamanlama/hedefleme; eczacı layout → `/api/announcements/me/active/` → occurrence bazlı genel duyuru veya backend koşullu iki sabit nöbet uyarısı → nöbet takvimi / günlük okundu kaydı
+
 ---
 
 ## Kritik Domain Kavramları
@@ -109,6 +113,8 @@ kiosk_edge/ui (ResultScreen QR) → web_panels (QrScan) → Backend API (GET /ap
 - **PlayLog:** Reklam gösterim kanıtı / proof-of-play (creative_id veya house_ad_id, played_at, duration_played)
 - **Kiosk:** Fiziksel cihaz (mac_adresi, uygulama_anahtari, eczane, aktif/online durumu)
 - **Eczane:** Kiosk'un bulunduğu fiziksel lokasyon (il/ilçe, sahip, telefon)
+- **Announcement:** Genel veya sabit sistem duyurusu; genel duyurular recurrence/hedefleme taşır, sistem duyuruları benzersiz `system_key` ile korunur
+- **PharmacyDutyMonth/Day:** Eczanenin ay bazlı nöbet günü veya “nöbetim yok” beyanı
 
 ---
 

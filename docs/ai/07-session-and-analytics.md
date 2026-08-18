@@ -29,6 +29,12 @@
 
 ---
 
+## Duyuru / Inbox Kapsam Sınırı *(2026-08-18)*
+
+- `/pharmacist/inbox` ve `Inbox.vue`, `OturumLogu.is_sensitive_flow` tabanlı hassas session bildirim akışıdır; local `readIds` kullanır.
+- Genel duyurular ve nöbet uyarıları analytics modeli değildir; `apps.announcements` tabloları ve `/api/announcements/*` endpoint'leri üzerinden çalışır.
+- Genel duyuru okuması ile sistem uyarısındaki “Bugün İçin Okudum”, kalıcı `AnnouncementRead` occurrence kaydıdır; session completion veya inbox okunmasıyla ilişkilendirilmez.
+
 ## QR Tasarımı (2026-07-20 güncellemesi)
 
 **Authoritative QR:** Backend üretir, istemci almaz.

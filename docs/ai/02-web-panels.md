@@ -408,6 +408,38 @@ window.EISA_API_BASE_URL = 'http://localhost:8000';
 
 ---
 
+## Duyuru ve Nöbet UI Akışı *(2026-08-18)*
+
+**Kaynak dosyalar:**
+- `src/views/admin/AnnouncementManagement.vue` — genel duyuru CRUD ve iki korumalı sistem duyurusunun sunum alanları
+- `src/views/pharmacist/Announcements.vue` — eczanenin bugün geçerli genel duyuruları ve occurrence okundu aksiyonu
+- `src/views/pharmacist/DutyCalendar.vue` — query string'deki `month=YYYY-MM` ayı için gün seçimi / “Bu Ay Nöbetim Yok”
+- `src/components/pharmacist/DutyAlertModal.vue` — aktif sistem nöbet uyarısı popup'ı
+- `src/views/admin/AdminLayout.vue` — eczacı rolünde popup'ın ortak mount noktası
+
+**Route'lar:**
+- `/admin/announcements` → `AnnouncementManagement.vue` (SuperAdmin)
+- `/pharmacist/announcements` → `Announcements.vue` (Eczacı)
+- `/pharmacist/duty?month=YYYY-MM` → `DutyCalendar.vue` (Eczacı)
+
+**Admin davranışı:**
+- Genel duyuru formu tek seferlik/günlük/haftalık/aylık tekrar, başlangıç/bitiş ve `ALL|PROVINCE|DISTRICT|PHARMACY` hedeflerini yönetir.
+- Aylık UI belirli gün, gün aralığı, ilk N gün, son N gün ve son hafta (son 7 takvim günü) seçeneklerini sunar.
+- Sistem kartında yalnız başlık, mesaj, aksiyon butonu metni, seviye ve aktiflik düzenlenir; koşul/tarih/hedef ay/aksiyon URL'si UI formuna açılmaz ve silme aksiyonu yoktur.
+
+**Popup / provider doğrulaması:**
+- Uygulamada ayrı bir global modal provider yoktur. `DutyAlertModal`, ortak `AdminLayout` içinde yalnız `!isAdmin` olduğunda render edilir; böylece tüm eczacı alt route'larını kapsar.
+- Popup `/api/announcements/me/active/` sonucundaki yalnız `kind=SYSTEM` kayıtlarını gösterir.
+- Aksiyonlar: hedef ayla nöbet takvimini açma, hedef ayı `has_no_duty=true` kaydetme ve yalnız bugünkü occurrence'ı okundu işaretleme.
+
+**Kullanılan API'ler:**
+- `GET|POST /api/announcements/admin/`, `GET|PATCH|DELETE /api/announcements/admin/{id}/`
+- `GET /api/announcements/me/active/?include_read=true|false`
+- `POST /api/announcements/{id}/read/`
+- `GET|PUT /api/announcements/duty/?month=YYYY-MM`
+
+**Sınır:** Mevcut `/pharmacist/inbox` hassas session akışını göstermeye devam eder; genel duyurular analytics inbox state'ine veya local okundu setine bağlanmaz.
+
 ## Belirsiz / Riskli Noktalar
 
 1. **CampaignWizard target_scope (Ã‡Ã–ZÃœLDÃœ):** `target_scope` Faz 6'da wizard AdÄ±m 3'e eklendi. `ALL` veya `RULES` zorunlu.

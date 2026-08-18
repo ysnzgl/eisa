@@ -5,6 +5,16 @@
 
 ---
 
+## 2026-08-18
+
+### [Frontend+Backend+Docs] Genel Duyuru ve Sabit Nöbet Uyarıları
+
+**Değişiklik:** `apps.announcements` ile genel recurrence/hedefleme, occurrence bazlı read, ay bazlı nöbet günleri ve iki sabit `system_key` uyarısı eklendi. Admin sistem kayıtlarında yalnız başlık/mesaj/aksiyon etiketi/seviye/aktiflik değiştirebilir; kayıtlar silinemez.
+**Frontend:** Admin duyuru yönetimi, eczacı genel duyuruları, ortak layout altında nöbet popup'ı ve hedef aylı nöbet takvimi eklendi; mevcut hassas-session inbox akışı ayrık tutuldu.
+**Dosyalar:** `backend/apps/announcements/*`, backend settings/urls, web router/layout ve yeni announcement/duty Vue bileşenleri; `docs/ai/{00,01,02,05,06,07,99}*.md`.
+**Etki:** Yeni `/api/announcements/*` contract'ı ve `announcements.0001_initial` migration'ı. Generic condition builder/SQL yok; nöbet koşulları backend kodunda sabit.
+**Doğrulama:** Duyuru testleri 10/10, Django check ve migration drift temiz, Vue production build başarılı. Tam backend: 454 passed/7 skipped; duyurudan bağımsız mevcut bir PG concurrency testi SQLite kilidi/fingerprint nedeniyle başarısız. Vitest runner bu ortamda çıktı vermeden timeout oldu.
+
 ## 2026-07-23
 
 ### [Frontend+Backend] Faz 6+7 Nihai Kapanış Denetimi (Tamamlandı)

@@ -40,6 +40,30 @@
 - kiosk FK (nullable, SET_NULL — OneToOne), olusturulma_tarihi, guncellenme_tarihi, surum
 - **Güvenlik:** Raw fleet_key veya provision_secret bu tabloda saklanmaz. device_id bootstrap HMAC'e dahil edilir.
 
+### Announcements and Duty *(2026-08-18)*
+
+**announcements**
+- id; kind (`GENERAL|SYSTEM`); system_key (nullable, unique, sistem kayıtlarında sabit)
+- title, message, action_label, severity (`INFO|WARNING|ACTION_REQUIRED`), active
+- recurrence (`ONCE|DAILY|WEEKLY|MONTHLY`), start_date, end_date, weekdays JSON
+- monthly_mode (`SPECIFIC_DAY|DAY_RANGE|FIRST_N_DAYS|LAST_N_DAYS|LAST_WEEK`), monthly_day_start/end/count
+- target_scope (`ALL|PROVINCE|DISTRICT|PHARMACY`), target_province_id, target_district_id, target_pharmacy_id
+- BaseModel audit/version alanları
+
+**announcement_reads**
+- announcement_id FK, user_id FK, occurrence_date, read_at
+- unique `(announcement_id, user_id, occurrence_date)`
+
+**pharmacy_duty_months**
+- pharmacy_id FK, month (daima ayın ilk günü), has_no_duty, updated_by_id, updated_at
+- unique `(pharmacy_id, month)`
+
+**pharmacy_duty_days**
+- duty_month_id FK, date
+- unique `(duty_month_id, date)`; API tüm tarihlerin seçili ay içinde olmasını doğrular
+
+`announcements.0001_initial` migration'ı iki sistem kaydını `system_key` ile idempotent oluşturur: `DUTY_NEXT_MONTH_MISSING`, `DUTY_CURRENT_MONTH_MISSING`.
+
 ### Lookups
 
 **iller**: id, ad
@@ -277,6 +301,71 @@ X-Kiosk-Device-ID: <DEVICE_UUID>  # zorunlu (device_id set edildiyse)
 - Response: tek oturum objesi (`OturumLoguSerializer`) + normalize detay alanları (`kiosk_detay`, `eczane`, `yas_araligi_detay`, `cinsiyet_detay`, `kategori_detay`, `cevap_detaylari`, `onerilen_etken_madde_detaylari`)
 
 ---
+
+### Announcements Endpoints *(2026-08-18)*
+
+**GET /api/announcements/admin/**
+- Auth: JWT (SuperAdmin)
+- Response: genel ve sistem duyuruları; hedef label ve audit/version alanları dahil.
+
+**POST /api/announcements/admin/**
+- Auth: JWT (SuperAdmin)
+- Her zaman `kind=GENERAL`, `system_key=null` oluşturur; istemci bu niteliği değiştiremez.
+- Örnek request:
+  ```json
+  {
+    "title": "Bakım Duyurusu",
+    "message": "Sistem 22:00'de bakıma alınacaktır.",
+    "severity": "INFO",
+    "active": true,
+    "recurrence": "MONTHLY",
+    "start_date": "2026-08-01",
+    "end_date": null,
+    "weekdays": [],
+    "monthly_mode": "LAST_WEEK",
+    "monthly_day_start": null,
+    "monthly_day_end": null,
+    "monthly_day_count": null,
+    "target_scope": "PROVINCE",
+    "target_province": 34,
+    "target_district": null,
+    "target_pharmacy": null
+  }
+  ```
+
+**PATCH /api/announcements/admin/{id}/**
+- Genel duyuru: form alanları güncellenebilir.
+- Sistem duyurusu allow-list: yalnız `title`, `message`, `action_label`, `severity`, `active`.
+- `system_key`, `kind`, recurrence/tarihler, hedefler, hedef ay hesabı ve aksiyon URL'si değiştirilemez; gönderilirse 400.
+
+**DELETE /api/announcements/admin/{id}/**
+- Genel duyuru: 204.
+- Sistem duyurusu: 405; yalnız PATCH ile pasifleştirilebilir.
+
+**GET /api/announcements/me/active/?include_read=false**
+- Auth: JWT (Eczacı); hedef `request.user.eczane` üzerinden belirlenir.
+- Europe/Istanbul gününde geçerli genel occurrence'ları ve koşulu sağlanan sistem uyarılarını döner.
+- `include_read=false` varsayılandır; bugünkü okunmuş kayıtları gizler. `true` okundu durumuyla birlikte döner.
+- Response item: `{id, kind, system_key, title, message, action_label, severity, occurrence_date, is_read, action_url, target_month}`.
+
+**POST /api/announcements/{id}/read/**
+- Auth: JWT (Eczacı).
+- Yalnız bugün kullanıcı/eczane için gerçekten aktif occurrence varsa kayıt oluşturur.
+- Aynı gün tekrar çağrı idempotenttir: unique occurrence kaydı; ilk çağrı 201, sonraki çağrı 200.
+
+**GET /api/announcements/duty/?month=YYYY-MM**
+- Auth: JWT (Eczacı).
+- Response: `{ "month":"2026-09", "has_no_duty":false, "dates":["2026-09-03"] }`.
+
+**PUT /api/announcements/duty/**
+- Auth: JWT (Eczacı).
+- Request: `{ "month":"2026-09", "has_no_duty":false, "dates":["2026-09-03"] }`.
+- `has_no_duty=true` ile boş olmayan `dates` birlikte gönderilemez. PUT seçili ayın gün listesini atomik olarak değiştirir.
+
+**Sabit sistem kuralları:**
+- `DUTY_NEXT_MONTH_MISSING`: Istanbul ayının son 3 takvim günü; gelecek ayda gün/beyan yoksa aktif; aksiyon gelecek ayı açar.
+- `DUTY_CURRENT_MONTH_MISSING`: Istanbul ayının 1–14. günleri; aktif ayda gün/beyan yoksa aktif; aksiyon aktif ayı açar.
+- Her iki uyarıda bugünkü read yalnız aynı günü bastırır; ertesi gün eksiklik sürerse yeni occurrence oluşur.
 
 ### Products Endpoints
 
@@ -615,6 +704,12 @@ X-Kiosk-Device-ID: <DEVICE_UUID>  # zorunlu (device_id set edildiyse)
    - JWT: httpOnly cookies
   - Kiosk: Authorization: AppKey <APP_KEY> + X-Kiosk-MAC
    - Breaking: auth fails
+
+6. **Duyuru ve Nöbet Contract'ı:**
+   - Sistem anahtarları unique ve sabittir; sistem koşulu admin payload'ından türetilmez.
+   - Okundu anahtarı `(announcement,user,occurrence_date)`; nöbet durumu `(pharmacy,month)` kapsamındadır.
+   - Sistem duyurusunun tarih penceresi, hedef ayı ve aksiyon URL'si backend kodunda kalmalıdır.
+   - Breaking: günlük yeniden gösterim, eczane izolasyonu veya doğru aya yönlendirme bozulur.
 
 ---
 

@@ -4,6 +4,7 @@ import { RouterView, RouterLink } from 'vue-router';
 import { useAuthStore } from '../../stores/auth';
 import { useRouter } from 'vue-router';
 import logoUrl from '../../assets/eisa_logo.svg';
+import DutyAlertModal from '../../components/pharmacist/DutyAlertModal.vue';
 
 const auth = useAuthStore();
 const router = useRouter();
@@ -27,11 +28,14 @@ const adminNavItems = [
   { to: '/admin/playlists',                  icon: 'fa-list-ol',       label: 'Gelişmiş Manuel Yayın' },
   { to: '/admin/pricing',                    icon: 'fa-coins',         label: 'Fiyat Matrisi' },
   { to: '/admin/users',                      icon: 'fa-user-gear',     label: 'Kullanıcı Yönetimi' },
+  { to: '/admin/announcements',              icon: 'fa-bell',          label: 'Duyuru Yönetimi' },
 ];
 
 const pharmacistNavItems = [
   { to: '/pharmacist',          exact: true, icon: 'fa-house',   label: 'Ana Sayfa' },
   { to: '/pharmacist/inbox',                 icon: 'fa-bell',    label: 'Gelen Kutusu' },
+  { to: '/pharmacist/announcements',         icon: 'fa-bullhorn', label: 'Duyurular' },
+  { to: '/pharmacist/duty',                  icon: 'fa-calendar-days', label: 'Nöbet Takvimi' },
   { to: '/pharmacist/qr',                    icon: 'fa-qrcode',  label: 'QR Okutma' },
 ];
 
@@ -80,5 +84,6 @@ const roleLabel  = computed(() => isAdmin.value ? 'Süper Admin' : 'Eczacı');
     <main class="admin-main">
       <RouterView />
     </main>
+    <DutyAlertModal v-if="!isAdmin" />
   </div>
 </template>

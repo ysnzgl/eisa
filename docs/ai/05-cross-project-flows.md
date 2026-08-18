@@ -452,6 +452,37 @@ Eczacı → session detayı görüntüleme sonrası:
 
 ---
 
+## 7. Genel Duyuru ve Sistem Nöbet Uyarısı Akışı *(2026-08-18)*
+
+### 7.1 Genel Duyuru
+```
+SuperAdmin (web_panels/AnnouncementManagement)
+  → POST/PATCH /api/announcements/admin/
+  → Backend Announcement(kind=GENERAL): recurrence + tarih aralığı + il/ilçe/eczane/tümü hedefi
+  → Eczacı (web_panels/Announcements)
+  → GET /api/announcements/me/active/?include_read=true
+  → Backend: Europe/Istanbul günü için occurrence + request.user.eczane hedef eşleşmesi
+  → POST /api/announcements/{id}/read/
+  → AnnouncementRead(announcement,user,occurrence_date) unique
+```
+
+### 7.2 Sistem Nöbet Uyarısı
+```
+Migration seed
+  → DUTY_NEXT_MONTH_MISSING + DUTY_CURRENT_MONTH_MISSING (unique system_key)
+Eczacı ortak AdminLayout → DutyAlertModal
+  → GET /api/announcements/me/active/
+  → Backend sabit system_context():
+     NEXT = ayın son 3 günü, hedef gelecek ay
+     CURRENT = ayın 1–14. günü, hedef aktif ay
+  → Hedef ayda duty day veya has_no_duty varsa uyarı yok
+  → Nöbet Günlerini Gir: /pharmacist/duty?month=YYYY-MM
+  → Bu Ay Nöbetim Yok: PUT /api/announcements/duty/
+  → Bugün İçin Okudum: POST /api/announcements/{id}/read/
+```
+
+**Güven sınırı:** Admin condition/SQL/query tanımlamaz. Sistem anahtarı, koşul, tarih penceresi, hedef ay ve aksiyon URL'si backend kodunda sabittir. Sistem duyurusu silinmez; yalnız pasifleştirilir.
+
 ## Do Not Change Without Checking
 
 **Critical cross-project data flows:**
@@ -475,6 +506,11 @@ Eczacı → session detayı görüntüleme sonrası:
 5. **QR Lifecycle:**
    - kiosk UI (generate) → session log → backend → web_panels QrScan
    - Breaking: QR scanning fails
+
+6. **Duyuru / Nöbet Lifecycle:**
+   - Announcement recurrence + eczane hedefi → aktif occurrence → occurrence bazlı read
+   - Sabit system_key → backend tarih/eksiklik hesabı → hedef aylı nöbet takvimi
+   - Breaking: yanlış eczaneye duyuru, yanlış ay uyarısı veya günlük okundu bastırmasının kaybı
 
 ---
 

@@ -24,6 +24,7 @@ const routes = [
       { path: 'playlists',     component: () => import('../views/admin/PlaylistEditor.vue') },
       { path: 'pricing',       component: () => import('../views/admin/PricingMatrixConfigurator.vue') },
       { path: 'users',         component: () => import('../views/admin/UserManagement.vue') },
+      { path: 'announcements', component: () => import('../views/admin/AnnouncementManagement.vue') },
     ]
   },
   {
@@ -33,6 +34,8 @@ const routes = [
     children: [
       { path: '', component: () => import('../views/pharmacist/Dashboard.vue') },
       { path: 'inbox', component: () => import('../views/pharmacist/Inbox.vue') },
+      { path: 'announcements', component: () => import('../views/pharmacist/Announcements.vue') },
+      { path: 'duty', component: () => import('../views/pharmacist/DutyCalendar.vue') },
       { path: 'qr', component: () => import('../views/pharmacist/QrScan.vue') }
     ]
   }

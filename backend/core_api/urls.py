@@ -50,6 +50,7 @@ urlpatterns = [
     path("api/campaigns/", include("apps.campaigns.urls")),
     path("api/inventory/", include((inventory_urlpatterns, "inventory"))),
     path("api/kiosk/v1/", include("apps.kiosk_api.urls")),
+    path("api/announcements/", include("apps.announcements.urls")),
 ]
 
 # Swagger / ReDoc yalnızca geliştirme ortamında
