@@ -1,7 +1,7 @@
 """Eczane ve kiosk serileştiricileri."""
 from rest_framework import serializers
 
-from .models import Eczane, Kiosk, KioskProvisioningRequest
+from .models import Eczane, Kiosk, KioskEczaneAtama, KioskProvisioningRequest
 
 
 class EczaneSerializer(serializers.ModelSerializer):
@@ -49,6 +49,17 @@ class KioskSerializer(serializers.ModelSerializer):
     il_adi     = serializers.CharField(source="eczane.il.ad", read_only=True)
     ilce_id    = serializers.IntegerField(source="eczane.ilce_id", read_only=True)
     ilce_adi   = serializers.CharField(source="eczane.ilce.ad", read_only=True)
+    atama_gecmisi = serializers.SerializerMethodField()
+
+    def get_atama_gecmisi(self, obj):
+        return KioskEczaneAtamaSerializer(
+            obj.eczane_atamalari.select_related("eczane", "tasiyan_admin").all(), many=True
+        ).data
+
+    def validate(self, attrs):
+        if self.instance and "eczane" in attrs and attrs["eczane"].pk != self.instance.eczane_id:
+            raise serializers.ValidationError({"eczane": "Eczane değişikliği için Başka Eczaneye Taşı işlemini kullanın."})
+        return attrs
 
     class Meta:
         model = Kiosk
@@ -76,6 +87,7 @@ class KioskSerializer(serializers.ModelSerializer):
             "olusturulma_tarihi",
             "guncellenme_tarihi",
             "surum",
+            "atama_gecmisi",
         ]
         read_only_fields = (
             "id",
@@ -92,7 +104,23 @@ class KioskSerializer(serializers.ModelSerializer):
             "playlist_applied_at",
             "applied_horizon_start",
             "applied_horizon_end",
+            "atama_gecmisi",
         )
+
+
+class KioskEczaneAtamaSerializer(serializers.ModelSerializer):
+    eczane_adi = serializers.CharField(source="eczane.ad", read_only=True)
+    tasiyan_admin_adi = serializers.CharField(source="tasiyan_admin.get_full_name", read_only=True, default="")
+
+    class Meta:
+        model = KioskEczaneAtama
+        fields = ["id", "eczane", "eczane_adi", "baslangic_zamani", "bitis_zamani", "tasima_nedeni", "tasiyan_admin_adi"]
+        read_only_fields = fields
+
+
+class KioskTransferSerializer(serializers.Serializer):
+    eczane_id = serializers.IntegerField()
+    tasima_nedeni = serializers.CharField(max_length=250, required=False, allow_blank=True, default="")
 
 
 # ── KioskProvisioningRequest Serializer'ları ─────────────────────────────────

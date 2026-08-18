@@ -400,13 +400,15 @@ window.EISA_API_BASE_URL = 'http://localhost:8000';
 4. `GET /api/analytics/sessions/?qr_kodu={qr_kodu}` Ã§aÄŸrÄ±lÄ±r.
 5. Backend 400/403/404 durumlarÄ±nÄ± ayrÄ±ÅŸtÄ±rÄ±r; UI bunu ayrÄ± mesajlarla gÃ¶sterir.
 6. BaÅŸarÄ±lÄ± response'da oturum detaylarÄ±, soru-cevap Ã§Ã¶zÃ¼mÃ¼ ve Ã¶nerilen etken madde detaylarÄ± gÃ¶sterilir.
-7. `POST /api/analytics/sessions/{id}/complete/` ile danÄ±ÅŸma tamamlanÄ±r; `sale_result` (`sold`/`not_sold`) opsiyonel gÃ¶nderilir.
+7. Detay yüklendikten sonra eczacı için `POST /api/analytics/sessions/{id}/mark-reviewed/` çağrılır; admin görüntülemesi mutation yapmaz.
+8. Eczacı modalı sonuç girilene kadar çarpı/Kapat/Escape/backdrop ile kapanmaz. Açık kayıt kullanıcı+eczane anahtarlı `sessionStorage` ile yenilemede geri yüklenir; yeni QR fonksiyon seviyesinde engellenir.
+9. `POST /api/analytics/sessions/{id}/complete/` zorunlu `sale_result` (`sold|not_sold`) ve opsiyonel `ingredient_ids` alır. Diğer etken maddeler yalnız aramalı mevcut katalogdan çoklu seçilir.
 
 ### 5. Dashboard Analytics (Dashboard.vue)
 
 1. SuperAdmin/Pharmacist â†’ `/admin` veya `/pharmacist`
 2. Kartlar: Toplam session, tamamlanan session, toplam impression, aktif kampanya sayÄ±sÄ±
-3. Grafikler: GÃ¼nlÃ¼k session trend, kampanya performansÄ±, kategori daÄŸÄ±lÄ±mÄ±
+3. Ortak `DashboardPeriodCharts`: seçili ayın tüm günleri ile Pazartesi-Pazar haftanın tüm günlerini sıfır dolgulu gösteren etkileşim/satış 2×2 grafikleri. Önceki/sonraki/güncel dönem gezinmesi vardır; gelecek dönem kapalıdır.
 4. API Ã§aÄŸrÄ±larÄ±:
    - `GET /api/analytics/oturum-loglari/?start_date={date}&end_date={date}`
    - `GET /api/analytics/play-logs/?start_date={date}&end_date={date}`
@@ -416,6 +418,12 @@ window.EISA_API_BASE_URL = 'http://localhost:8000';
    - Kiosk dÃ¼zenleme: Ad, MAC adresi, Aktif/Pasif durumu gÃ¼ncellenebilir
    - Uygulama AnahtarÄ±: Salt okunur (backend tarafÄ±ndan otomatik Ã¼retilir)
    - `PATCH /api/pharmacies/kiosks/{id}/` â†’ Kiosk gÃ¼ncelleme
+   - Eczane doğrudan PATCH edilemez. Detaydaki “Başka Eczaneye Taşı” modalı yeni eczane+neden alır, `POST .../{id}/transfer/` çağırır ve atama geçmişini gösterir.
+
+### Ortak UI kuralları
+- Global `vue-sonner` provider `top-center`, 22 px offset ve modal üstü z-index ile çalışır.
+- `--eisa-turquoise: #0F8F8A` Evet/olumlu seçim rengidir; Hayır mevcut `--eisa-red` rengini kullanır.
+- `.eisa-modal--big` yalnız Yeni Eczane oluşturma modalında (`95%`, en çok `1100px`) uygulanır.
 
 ---
 

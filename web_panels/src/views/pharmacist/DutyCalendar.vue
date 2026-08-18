@@ -6,13 +6,14 @@ import { http } from '../../services/api';
 
 const route = useRoute();
 const router = useRouter();
-const now = new Date();
-const fallbackMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+const today = new Intl.DateTimeFormat('en-CA', { timeZone:'Europe/Istanbul' }).format(new Date());
+const fallbackMonth = today.slice(0, 7);
 const month = ref(/^\d{4}-\d{2}$/.test(route.query.month || '') ? route.query.month : fallbackMonth);
 const selected = ref(new Set());
 const noDuty = ref(false);
 const loading = ref(true);
 const saving = ref(false);
+const hasPastSelected = computed(() => [...selected.value].some(value => value < today));
 
 const monthDate = computed(() => new Date(`${month.value}-01T12:00:00`));
 const monthLabel = computed(() => monthDate.value.toLocaleDateString('tr-TR', { month:'long', year:'numeric' }));
@@ -26,7 +27,7 @@ const days = computed(() => {
     ...Array.from({ length:count }, (_, i) => {
       const day = i + 1;
       const iso = `${month.value}-${String(day).padStart(2, '0')}`;
-      return { key:iso, day, iso };
+      return { key:iso, day, iso, past:iso < today };
     }),
   ];
 });
@@ -41,13 +42,14 @@ async function load() {
 }
 
 function toggle(iso) {
-  if (noDuty.value) return;
+  if (noDuty.value || iso < today) return;
   const next = new Set(selected.value);
   next.has(iso) ? next.delete(iso) : next.add(iso);
   selected.value = next;
 }
 
 function toggleNoDuty() {
+  if (month.value < fallbackMonth || [...selected.value].some(value => value < today)) return;
   noDuty.value = !noDuty.value;
   if (noDuty.value) selected.value = new Set();
 }
@@ -73,15 +75,15 @@ onMounted(load);
   <div class="eisa-page pharm-page duty-page">
     <div class="eisa-page-header">
       <div><p class="eisa-eyebrow">ECZACI / NÖBET TAKVİMİ</p><h1 class="eisa-page-title">Nöbet Günleri</h1><p class="eisa-page-subtitle">Nöbet günlerinizi seçin veya bu ay nöbetiniz olmadığını belirtin.</p></div>
-      <div class="eisa-header-actions"><input v-model="month" type="month" class="drawer-input"><button class="eisa-btn eisa-btn-primary" :disabled="saving" @click="save"><i class="fa-solid fa-floppy-disk"></i> Kaydet</button></div>
+      <div class="eisa-header-actions"><input v-model="month" type="month" class="drawer-input"><button class="eisa-btn eisa-btn-primary" :disabled="saving || month < fallbackMonth" @click="save"><i class="fa-solid fa-floppy-disk"></i> Kaydet</button></div>
     </div>
     <div class="eisa-panel duty-panel">
-      <div class="duty-panel-head"><h2>{{ monthLabel }}</h2><button class="no-duty-toggle" :class="{ active:noDuty }" @click="toggleNoDuty"><i class="fa-solid" :class="noDuty ? 'fa-square-check' : 'fa-square'"></i> Bu Ay Nöbetim Yok</button></div>
+      <div class="duty-panel-head"><h2>{{ monthLabel }}</h2><button class="no-duty-toggle" :disabled="month < fallbackMonth || hasPastSelected" :class="{ active:noDuty }" @click="toggleNoDuty"><i class="fa-solid" :class="noDuty ? 'fa-square-check' : 'fa-square'"></i> Bu Ay Nöbetim Yok</button></div>
       <div v-if="loading" class="duty-loading"><i class="fa-solid fa-circle-notch fa-spin"></i></div>
       <template v-else>
         <div class="weekday-row"><span v-for="label in ['Pzt','Sal','Çar','Per','Cum','Cmt','Paz']" :key="label">{{ label }}</span></div>
         <div class="calendar-grid">
-          <button v-for="item in days" :key="item.key" :disabled="item.empty || noDuty" :class="['calendar-day', { empty:item.empty, selected:selected.has(item.iso) }]" @click="toggle(item.iso)"><template v-if="!item.empty"><span>{{ item.day }}</span><small v-if="selected.has(item.iso)">Nöbet</small></template></button>
+          <button v-for="item in days" :key="item.key" :disabled="item.empty || noDuty || item.past" :class="['calendar-day', { empty:item.empty, selected:selected.has(item.iso), past:item.past }]" @click="toggle(item.iso)"><template v-if="!item.empty"><span>{{ item.day }}</span><small v-if="selected.has(item.iso)">Nöbet</small></template></button>
         </div>
       </template>
     </div>
@@ -93,7 +95,7 @@ onMounted(load);
 .duty-panel-head { display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-bottom:1rem; }
 .duty-panel-head h2 { text-transform:capitalize; }
 .no-duty-toggle { border:1px solid #d1d5db; border-radius:9px; padding:.65rem .85rem; background:#fff; color:#4b5563; cursor:pointer; font-weight:650; }
-.no-duty-toggle.active { color:#fff; background:#334155; border-color:#334155; }
+.no-duty-toggle.active { color:#fff; background:var(--eisa-turquoise); border-color:var(--eisa-turquoise); }
 .weekday-row,.calendar-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:.45rem; }
 .weekday-row span { text-align:center; color:#6b7280; font-size:.75rem; font-weight:700; padding:.5rem; }
 .calendar-day { min-height:82px; border:1px solid #e5e7eb; border-radius:10px; background:#fff; color:#111827; cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:.3rem; }

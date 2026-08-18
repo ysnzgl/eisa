@@ -19,6 +19,7 @@ body {
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   user-select: none;
 }
+:root { --eisa-turquoise:#0F8F8A; --eisa-red:#B1121B; }
 
 /* ─── Kiosk konteyner ─── */
 /* 1080×1920 ve 1440×2560 her ikisi de 9:16 dikey — viewport'u tam doldurur. */

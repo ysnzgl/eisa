@@ -457,18 +457,28 @@ Eczacı (web_panels/QrScan.vue)
   → Kamera kullanılmaz; yalnız input + Enter akışı vardır
   → qr_kodu = "A1B2C3D4" → trim (case dönüştürme yok)
   → GET /api/analytics/sessions/?qr_kodu={qr_kodu}
-  → Backend: OturumLogu lookup
-  → Modal: Session detayı + önerilen etken maddeler
-  → (Belirsiz: Danışmanlık sonuçlandırma endpoint'i yok gibi)
+  → Backend: OturumLogu lookup + tarihsel eczane sahipliği
+  → Modal: Session detayı + önerilen/katalogdan eklenen etken maddeler
+  → POST /api/analytics/sessions/{id}/mark-reviewed/ (yalnız eczacı, idempotent)
 ```
 
 **5.3. Danışmanlık Sonuçlandırma (Eczacı)**
 ```
-(Belirsiz / mevcut değil)
-Eczacı → session detayı görüntüleme sonrası:
-  → Danışmanlık notları ekleyebilir mi?
-  → Session durumu güncelleme (completed → consulted)?
-  → Backend'de endpoint yok gibi görünüyor, geliştirme gerekebilir.
+BEKLIYOR → INCELENDI → SATIS_YAPILDI | SATIS_YAPILMADI
+Eczacı → POST /api/analytics/sessions/{id}/complete/
+  → {sale_result, note, ingredient_ids}
+  → Backend tek sales service'inde transition + katalog doğrulama + result_at
+  → Sonuçsuz modal kapanmaz; yeni QR engellenir; başarıda storage temizlenir
+Admin detail → salt okunur; status mutation yok
+```
+
+### 5.4 Cihaz taşıma ve tarihsel sahiplik
+```
+SuperAdmin → POST /api/pharmacies/kiosks/{id}/transfer/
+  → açık KioskEczaneAtama kapanır + yeni açık atama oluşur + Kiosk.eczane güncellenir
+  → mevcut campaign invalidation receiver eski ve yeni kapsam için yeniden kullanılır
+Yeni kiosk oturumu → OturumLogu.eczane = o andaki Kiosk.eczane
+Eski oturumlar → snapshot FK nedeniyle eski eczanede kalır
 ```
 
 ---

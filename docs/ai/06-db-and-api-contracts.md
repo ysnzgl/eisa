@@ -107,12 +107,13 @@
 - unique `(announcement_id, user_id, occurrence_date)`
 
 **pharmacy_duty_months**
-- pharmacy_id FK, month (daima ayın ilk günü), has_no_duty, updated_by_id, updated_at
+- pharmacy_id FK, month (daima ayın ilk günü), has_no_duty, updated_by_id, updated_at ve BaseModel audit alanları
 - unique `(pharmacy_id, month)`
 
 **pharmacy_duty_days**
 - duty_month_id FK, date
 - unique `(duty_month_id, date)`; API tüm tarihlerin seçili ay içinde olmasını doğrular
+- BaseModel audit alanları; geçmiş tarih ekleme/silme/değiştirme API'de reddedilir
 
 `announcements.0001_initial` migration'ı iki sistem kaydını `system_key` ile idempotent oluşturur: `DUTY_NEXT_MONTH_MISSING`, `DUTY_CURRENT_MONTH_MISSING`.
 
@@ -481,9 +482,27 @@ X-Kiosk-Device-ID: <DEVICE_UUID>  # zorunlu (device_id set edildiyse)
 **POST /api/analytics/sessions/{id}/complete/**
 - Auth: JWT (Pharmacist)
 - `{id}` is the integer `OturumLogu.id` primary key
-- Request: `{ "note": "Optional pharmacist note.", "sale_result": "sold|not_sold" }`
+- Request: `{ "note": "Optional pharmacist note.", "sale_result": "sold|not_sold", "ingredient_ids": [1,2] }`
 - Response: (single updated `OturumLoguSerializer` object)
-- Not: Satış sonucu için kalıcı DB alanı yoktur; `sale_result` response'ta `satis_sonucu` metni üretmek için kullanılabilir.
+- `status` integer authoritative kaynaktır: `0 BEKLIYOR`, `1 INCELENDI`, `2 SATIS_YAPILDI`, `3 SATIS_YAPILMADI`; sonuçlarda `result_at` set edilir. Boolean `sold` response alanı status'tan türetilen geriye uyumluluktur.
+- `not_sold` ile ingredient gönderimi, pasif/geçersiz ID ve duplicate global kayıt oluşturma reddedilir.
+
+**POST /api/analytics/sessions/{id}/mark-reviewed/**
+- Auth: JWT (Pharmacist), tarihsel `OturumLogu.eczane_id` scope'u.
+- Yalnız `0 -> 1`; 1/2/3 için idempotent 200, final status geriye dönmez ve `result_at` set edilmez.
+
+**GET /api/analytics/dashboard-series/**
+- Auth: JWT (SuperAdmin/Pharmacist). Params: `month=YYYY-MM`, `week=YYYY-MM-DD`; admin için `il_id`, `ilce_id`, `eczane_id`.
+- Response: `monthly_interactions`, `monthly_sales`, `weekly_interactions`, `weekly_sales`, `totals`, `week_start/end`, `timezone`.
+- Ayın bütün günleri ve Pazartesi-Pazar yedi gün sıfır dolgulu döner. Satış yalnız status=2 ve `result_at` gününde sayılır; timezone Europe/Istanbul'dur.
+
+**POST /api/pharmacies/kiosks/{id}/transfer/**
+- Auth: JWT (SuperAdmin). Request: `{ "eczane_id": 2, "tasima_nedeni": "opsiyonel" }`.
+- Transaction içinde kiosk+açık atama lock edilir. Aynı eczane 409; kimlik/MAC/app key korunur. Response kiosk ve `atama_gecmisi` içerir.
+
+**kiosk_eczane_atamalari**
+- kiosk_id, eczane_id, baslangic_zamani, bitis_zamani nullable, tasima_nedeni, tasiyan_admin_id ve BaseModel audit alanları.
+- Kiosk başına `bitis_zamani IS NULL` partial unique; mevcut kiosklar oluşturulma zamanından başlayan açık atamayla backfill edilir.
 
 **POST /api/kiosk/v1/diagnostics/** *(2026-07-16)*
 - Auth: Kiosk (AppKey + MAC)

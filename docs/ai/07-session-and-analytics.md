@@ -318,16 +318,16 @@ GET /api/analytics/oturum-loglari/
      "danisma_notu": "",
      "danisma_tamamlayan_eczaci": null
    }
-6. Modal gösterimi: Oturum detayı ve "Danışmayı Tamamla" butonu gösterilir.
-7. Eczacı not ekler (opsiyonel) ve butona tıklar.
+6. Modal gösterimi sonrası `mark-reviewed` çağrılır; status yalnız `BEKLIYOR -> INCELENDI` olur. Admin detail bu çağrıyı yapmaz.
+7. Eczacı katalogdan önerilen/diğer etken maddeleri seçebilir, not ekleyebilir ve zorunlu satış sonucunu girer. Sonuçsuz modal Escape/backdrop/Kapat ile kapanmaz.
 8. POST /api/analytics/sessions/{id}/complete/
-  { "note": "Hastaya danışmanlık verildi.", "sale_result": "sold|not_sold" }
+  { "note": "Hastaya danışmanlık verildi.", "sale_result": "sold|not_sold", "ingredient_ids": [1,2] }
 9. Backend:
-   - OturumLogu'nu bulur ve eczane sahipliğini kontrol eder.
-   - `danisma_tamamlandi`, `danisma_tamamlanma_tarihi`, `danisma_notu`, `danisma_tamamlayan_eczaci` alanlarını günceller.
+   - OturumLogu'nu tarihsel `eczane_id` ile bulur.
+   - Merkezi transition service `status`, `result_at`, danışma alanları ve seçili etken madde ilişkilerini atomik günceller.
    - Idempotency: Eğer zaten tamamlanmışsa, tekrar güncellemez, mevcut durumu döner.
 10. Response: Güncellenmiş oturum objesi döner.
-11. Frontend: UI güncellenir, tamamlama formu kaybolur ve tamamlama bilgisi gösterilir.
+11. Frontend: modal kontrollü kapanır ve kullanıcı+eczane kapsamlı sessionStorage temizlenir.
 ```
 
 ---
@@ -339,7 +339,8 @@ GET /api/analytics/oturum-loglari/
 3. **Outbox tam dolunca:** Log kaybı riski, overwrite/block mekanizması yok
 4. **Session timeout:** 10sn çok kısa olabilir, configurable değil
 5. **Abandoned session tracking:** Terk edilmiş session'lar analytics'te görünüyor mu?
-- **Satış sonucu kalıcılığı:** Mevcut şemada ayrı satış sonucu kolonu yok; completion response'ta anlık metin üretilebilir, ancak DB'de kalıcı alan bulunmaz.
+- **Legacy sold:** nullable Boolean kolon fiziksel olarak geriye uyumluluk için kalır; iş kuralları ve yeni analytics `status` alanını authoritative kullanır. Migration `NULL/true/false -> 0/2/3` ve eski sonuç zamanını completion/creation zamanından backfill eder.
+- **Tarihsel sahiplik:** `OturumLogu.eczane` ingest anında snapshot'tır. Cihaz taşıma geçmiş oturumları değiştirmez; liste, satış yetkisi ve dashboard bu FK'yi kullanır.
 
 ---
 

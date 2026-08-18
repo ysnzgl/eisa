@@ -131,6 +131,32 @@ class Kiosk(BaseModel):
         return True
 
 
+class KioskEczaneAtama(BaseModel):
+    """Bir kioskun zaman içindeki eczane sahipliği."""
+
+    kiosk = models.ForeignKey(Kiosk, on_delete=models.CASCADE, related_name="eczane_atamalari")
+    eczane = models.ForeignKey(Eczane, on_delete=models.PROTECT, related_name="kiosk_atamalari")
+    baslangic_zamani = models.DateTimeField(db_index=True)
+    bitis_zamani = models.DateTimeField(null=True, blank=True, db_index=True)
+    tasima_nedeni = models.CharField(max_length=250, blank=True, default="")
+    tasiyan_admin = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="kiosk_tasimalari"
+    )
+
+    class Meta:
+        db_table = "kiosk_eczane_atamalari"
+        ordering = ("-baslangic_zamani", "-id")
+        constraints = [
+            models.UniqueConstraint(
+                fields=["kiosk"], condition=models.Q(bitis_zamani__isnull=True), name="uniq_kiosk_acik_eczane_atamasi"
+            ),
+            models.CheckConstraint(
+                check=models.Q(bitis_zamani__isnull=True) | models.Q(bitis_zamani__gte=models.F("baslangic_zamani")),
+                name="kiosk_atama_bitis_baslangic_sirasi",
+            ),
+        ]
+
+
 class KioskProvisioningRequest(BaseModel):
     """
     Henuz kayitli olmayan kiosk cihazlarinin onay talepleri.

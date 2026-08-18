@@ -15,7 +15,9 @@ import {
   updateKiosk,
   deleteKiosk,
   resetKioskDeviceId,
+  transferKiosk,
 } from '../../services/devices';
+import { toast } from 'vue-sonner';
 import { getIller, getIlceler } from '../../services/lookups';
 import EisaDeleteConfirm from '../../components/shared/EisaDeleteConfirm.vue';
 import EisaLookup from '../../components/shared/EisaLookup.vue';
@@ -76,6 +78,10 @@ const kioskEditError     = ref('');
 
 const kioskDetailOpen   = ref(false);
 const kioskDetailTarget = ref(null);
+const transferOpen = ref(false);
+const transferForm = ref({ pharmacyId: '', reason: '' });
+const transferError = ref('');
+const transferSaving = ref(false);
 
 const pendingDetailOpen   = ref(false);
 const pendingDetailTarget = ref(null);
@@ -101,14 +107,7 @@ const toastVisible = ref(false);
 const toastMessage = ref('');
 let toastTimeout = null;
 
-function showToast(message) {
-  if (toastTimeout) clearTimeout(toastTimeout);
-  toastMessage.value = message;
-  toastVisible.value = true;
-  toastTimeout = setTimeout(() => {
-    toastVisible.value = false;
-  }, 2000);
-}
+function showToast(message) { toast.success(message); }
 
 // ─── Kiosk Silme ──────────────────────────────────────────────────────────────
 const kioskDeleteTarget = ref(null);
@@ -367,6 +366,27 @@ async function confirmDeleteKiosk() {
 function openKioskDetail(kiosk) {
   kioskDetailTarget.value = kiosk;
   kioskDetailOpen.value = true;
+}
+
+function openTransfer() {
+  transferForm.value = { pharmacyId: '', reason: '' };
+  transferError.value = '';
+  transferOpen.value = true;
+}
+
+async function confirmTransfer() {
+  if (!transferForm.value.pharmacyId) { transferError.value = 'Yeni eczane seçimi zorunludur.'; return; }
+  transferSaving.value = true;
+  transferError.value = '';
+  try {
+    const updated = await transferKiosk(kioskDetailTarget.value.id, transferForm.value.pharmacyId, transferForm.value.reason);
+    kioskDetailTarget.value = updated;
+    transferOpen.value = false;
+    await Promise.all([loadKiosks(), loadPharmacies()]);
+    toast.success('Kiosk yeni eczaneye taşındı.');
+  } catch (error) {
+    transferError.value = error?.response?.data?.detail || 'Kiosk taşınamadı.';
+  } finally { transferSaving.value = false; }
 }
 
 function closeKioskDetail() {
@@ -924,7 +944,7 @@ async function copyAppKey() {
         @click.self="closeModal"
       >
         <Transition name="modal" appear>
-          <div v-if="modalOpen" id="pharmacy-modal" class="eisa-modal">
+          <div v-if="modalOpen" id="pharmacy-modal" class="eisa-modal" :class="{ 'eisa-modal--big': modalMode === 'add' }">
             <div class="eisa-modal-header">
               <h3 class="eisa-modal-title">
                 {{ modalMode === 'add' ? 'Yeni Eczane Ekle' : 'Eczane Düzenle' }}
@@ -1297,15 +1317,46 @@ async function copyAppKey() {
                 </div>
               </div>
               <div v-else class="eisa-empty-inline">Bu kioska bağlı provisioning kaydı bulunamadı.</div>
+
+              <div class="detail-section-title">Eczane Atama Geçmişi</div>
+              <div v-if="kioskDetailTarget.assignments?.length" class="eisa-provisioning-list">
+                <div v-for="assignment in kioskDetailTarget.assignments" :key="assignment.id" class="eisa-provisioning-item">
+                  <div class="eisa-provisioning-item__head">
+                    <strong>{{ assignment.pharmacyName }}</strong>
+                    <span class="badge" :class="assignment.endedAt ? 'badge-rejected' : 'badge-approved'">{{ assignment.endedAt ? 'Sona erdi' : 'Aktif' }}</span>
+                  </div>
+                  <div class="eisa-detail-row"><span>Başlangıç:</span>{{ formatProvisioningDate(assignment.startedAt) }}</div>
+                  <div class="eisa-detail-row"><span>Bitiş:</span>{{ assignment.endedAt ? formatProvisioningDate(assignment.endedAt) : '—' }}</div>
+                  <div v-if="assignment.reason" class="eisa-detail-row"><span>Neden:</span>{{ assignment.reason }}</div>
+                  <div v-if="assignment.movedBy" class="eisa-detail-row"><span>Taşıyan:</span>{{ assignment.movedBy }}</div>
+                </div>
+              </div>
             </div>
 
             <div class="eisa-modal-footer">
+              <button class="eisa-btn eisa-btn-cta" @click="openTransfer">Başka Eczaneye Taşı</button>
               <button class="eisa-btn eisa-btn-ghost" @click="closeKioskDetail">Kapat</button>
             </div>
           </div>
         </Transition>
       </div>
     </Transition>
+  </Teleport>
+
+  <Teleport to="body">
+    <div v-if="transferOpen" class="eisa-modal-backdrop" @click.self="transferOpen = false">
+      <div class="eisa-modal" style="max-width:520px;">
+        <div class="eisa-modal-header"><h3 class="eisa-modal-title">Başka Eczaneye Taşı</h3><button class="eisa-modal-close" @click="transferOpen = false"><i class="fa-solid fa-xmark"></i></button></div>
+        <div class="eisa-modal-body">
+          <label class="eisa-label">Yeni Eczane</label>
+          <EisaLookup v-model="transferForm.pharmacyId" :options="pharmacyOptions.filter(item => item.id !== kioskDetailTarget?.pharmacyId)" placeholder="Eczane ara…" />
+          <label class="eisa-label" style="margin-top:1rem;">Taşıma Nedeni (Opsiyonel)</label>
+          <textarea v-model="transferForm.reason" class="eisa-field" maxlength="250" rows="3"></textarea>
+          <p v-if="transferError" class="eisa-error-text">{{ transferError }}</p>
+        </div>
+        <div class="eisa-modal-footer"><button class="eisa-btn eisa-btn-ghost" @click="transferOpen = false">İptal</button><button class="eisa-btn eisa-btn-cta" :disabled="transferSaving" @click="confirmTransfer">{{ transferSaving ? 'Taşınıyor…' : 'Taşı' }}</button></div>
+      </div>
+    </div>
   </Teleport>
 
   <!-- ═══════════════════════════════════════════════════════════════════════ -->
@@ -1540,18 +1591,6 @@ async function copyAppKey() {
     @cancel="closeDelete"
   />
 
-  <!-- Toast Notification -->
-  <Teleport to="body">
-    <Transition name="toast">
-      <div
-        v-if="toastVisible"
-        style="position:fixed;bottom:2rem;right:2rem;background:#10B981;color:white;padding:0.75rem 1.25rem;border-radius:0.5rem;box-shadow:0 10px 25px rgba(0,0,0,0.2);z-index:9999;display:flex;align-items:center;gap:0.5rem;font-weight:500;"
-      >
-        <i class="fa-solid fa-check-circle"></i>
-        {{ toastMessage }}
-      </div>
-    </Transition>
-  </Teleport>
 </template>
 
 <style scoped>

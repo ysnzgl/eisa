@@ -63,6 +63,11 @@ export function mapKioskFromApi(k) {
     lastPing: k.son_goruldu,
     lastIp: k.last_ip ?? null,
     health: k.durum ?? null,
+    assignments: (k.atama_gecmisi ?? []).map(a => ({
+      id: a.id, pharmacyId: a.eczane, pharmacyName: a.eczane_adi,
+      startedAt: a.baslangic_zamani, endedAt: a.bitis_zamani,
+      reason: a.tasima_nedeni, movedBy: a.tasiyan_admin_adi,
+    })),
   };
 }
 
@@ -138,6 +143,14 @@ export async function deleteKiosk(id) {
 export async function resetKioskDeviceId(id) {
   const { data } = await http.post(`/api/pharmacies/kiosks/${id}/reset-device-id/`);
   return data;
+}
+
+export async function transferKiosk(id, pharmacyId, reason = '') {
+  const { data } = await http.post(`/api/pharmacies/kiosks/${id}/transfer/`, {
+    eczane_id: pharmacyId,
+    tasima_nedeni: reason,
+  });
+  return mapKioskFromApi(data);
 }
 
 // ── Provisioning (Onay Bekleyen Cihazlar) ───────────────────────────────────

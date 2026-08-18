@@ -23,7 +23,7 @@ from apps.audit.models import DenetimLogu, kayit_birak
 from apps.core.uow import UnitOfWork
 
 from .auth import KioskAppKeyAuthentication
-from .models import Eczane, Kiosk, KioskProvisioningRequest
+from .models import Eczane, Kiosk, KioskEczaneAtama, KioskProvisioningRequest
 from .permissions import IsKiosk, IsSuperAdmin
 from .serializers import (
     EczaneSerializer,
@@ -31,6 +31,7 @@ from .serializers import (
     KioskProvisioningRejectSerializer,
     KioskProvisioningRequestSerializer,
     KioskSerializer,
+    KioskTransferSerializer,
 )
 
 
@@ -189,6 +190,10 @@ class KioskProvisioningApproveView(APIView):
             )
             with UnitOfWork(user=request.user) as uow:
                 uow.add(new_kiosk)
+                uow.add(KioskEczaneAtama(
+                    kiosk=new_kiosk, eczane=eczane, baslangic_zamani=now,
+                    tasiyan_admin=request.user,
+                ))
 
             # Provision talebi: APPROVED
             provision_req.status = KioskProvisioningRequest.Status.APPROVED
@@ -328,7 +333,7 @@ class EczaneViewSet(viewsets.ModelViewSet):
 class KioskViewSet(viewsets.ModelViewSet):
     """Kiosk CRUD (super admin) + /me/ (kiosk) + /regenerate-key/ (admin)."""
 
-    queryset = Kiosk.objects.select_related("eczane__il", "eczane__ilce").all()
+    queryset = Kiosk.objects.select_related("eczane__il", "eczane__ilce").prefetch_related("eczane_atamalari__eczane").all()
     serializer_class = KioskSerializer
     authentication_classes = [JWTAuthentication, KioskAppKeyAuthentication]
 
@@ -349,8 +354,12 @@ class KioskViewSet(viewsets.ModelViewSet):
             uygulama_anahtari=secrets.token_urlsafe(48),
             **serializer.validated_data,
         )
-        with UnitOfWork(user=self.request.user) as uow:
+        with transaction.atomic(), UnitOfWork(user=self.request.user) as uow:
             uow.add(instance)
+            uow.add(KioskEczaneAtama(
+                kiosk=instance, eczane=instance.eczane,
+                baslangic_zamani=timezone.now(), tasiyan_admin=self.request.user,
+            ))
         serializer.instance = instance
         kayit_birak(
             eylem=DenetimLogu.Eylem.OLUSTUR,
@@ -375,6 +384,58 @@ class KioskViewSet(viewsets.ModelViewSet):
             kiosk_mac=instance.mac_adresi,
             ip_adresi=_client_ip(self.request),
         )
+
+    @action(
+        detail=True, methods=["post"], url_path="transfer",
+        authentication_classes=[JWTAuthentication], permission_classes=[IsSuperAdmin],
+    )
+    def transfer(self, request, pk=None):
+        payload = KioskTransferSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        target_id = payload.validated_data["eczane_id"]
+        reason = payload.validated_data["tasima_nedeni"].strip()
+        now = timezone.now()
+        with transaction.atomic():
+            kiosk = Kiosk.objects.select_for_update().select_related("eczane").get(pk=pk)
+            if kiosk.eczane_id == target_id:
+                return Response({"detail": "Kiosk zaten seçilen eczaneye bağlı."}, status=409)
+            target = Eczane.objects.select_for_update().filter(pk=target_id, aktif=True).first()
+            if target is None:
+                return Response({"detail": "Hedef eczane bulunamadı veya pasif."}, status=400)
+            current = KioskEczaneAtama.objects.select_for_update().filter(
+                kiosk=kiosk, bitis_zamani__isnull=True
+            ).first()
+            if current is None:
+                return Response({"detail": "Kioskun açık eczane ataması bulunamadı."}, status=409)
+            taken = set(Kiosk.objects.select_for_update().filter(
+                eczane=target, eczane_kiosk_no__isnull=False
+            ).values_list("eczane_kiosk_no", flat=True))
+            new_no = next((value for value in range(1, 32) if value not in taken), None)
+            if new_no is None:
+                return Response({"detail": "Hedef eczanede boş kiosk sırası yok."}, status=409)
+            old_pharmacy = kiosk.eczane
+            with UnitOfWork(user=request.user) as uow:
+                current.bitis_zamani = now
+                uow.update(current, update_fields=["bitis_zamani"])
+                uow.add(KioskEczaneAtama(
+                    kiosk=kiosk, eczane=target, baslangic_zamani=now,
+                    tasima_nedeni=reason, tasiyan_admin=request.user,
+                ))
+                kiosk.eczane = target
+                kiosk.eczane_kiosk_no = new_no
+                uow.update(kiosk, update_fields=["eczane_id", "eczane_kiosk_no"])
+            # UoW optimistic UPDATE kullandığı için Django post_save sinyali
+            # otomatik tetiklenmez; mevcut invalidation receiver'ını aynı
+            # old/new kapsam bilgisiyle çağır.
+            from apps.campaigns.signals import _on_kiosk_save
+            kiosk._old_eczane_id = old_pharmacy.id
+            _on_kiosk_save(Kiosk, kiosk, created=False, update_fields={"eczane_id", "eczane_kiosk_no"})
+        kayit_birak(
+            eylem=DenetimLogu.Eylem.GUNCELLE, aktor=request.user, hedef=kiosk,
+            ozet=f"Kiosk taşındı: {old_pharmacy.ad} -> {target.ad}", kiosk_mac=kiosk.mac_adresi,
+            ip_adresi=_client_ip(request),
+        )
+        return Response(KioskSerializer(kiosk).data)
 
     def perform_destroy(self, instance):
         target_id = instance.pk

@@ -7,13 +7,15 @@ Admin: istatistikler ve sayfalanmis liste.
 Yazma yolu UoW uzerindendir; ancak kiosk push akisinda kullanici yoktur
 (kiosk anonim cihaz), bu yuzden olusturan/guncelleyen NULL kalir.
 """
-from datetime import timedelta
+from datetime import date, datetime, time, timedelta
+import calendar
+from zoneinfo import ZoneInfo
 import re
 
 from django.db.models import Count, Q
 from django.db.models.functions import Coalesce, TruncDate
 from django.utils import timezone
-from rest_framework import status
+from rest_framework import serializers, status
 from rest_framework.pagination import CursorPagination, PageNumberPagination
 from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
@@ -26,6 +28,7 @@ from apps.pharmacies.permissions import IsEczaci, IsSuperAdmin
 from apps.products.models import Kategori
 
 from .models import OturumLogu, OturumOnerilenEtkenMadde
+from .sales import complete_sale, mark_reviewed
 from .serializers import (
     CampaignImpressionSerializer,
     KioskActivityListSerializer,
@@ -59,8 +62,8 @@ def _build_oturum_queryset(request):
     qs = (
         OturumLogu.objects
         .select_related(
-            "kiosk__eczane__il",
-            "kiosk__eczane__ilce",
+            "eczane__il",
+            "eczane__ilce",
             "kategori",
             "danisma_kategorisi",
             "yas_araligi",
@@ -76,7 +79,7 @@ def _build_oturum_queryset(request):
     if rol == "pharmacist":
         if not getattr(user, "eczane_id", None):
             return qs.none()
-        qs = qs.filter(kiosk__eczane_id=user.eczane_id)
+        qs = qs.filter(Q(eczane_id=user.eczane_id) | Q(eczane__isnull=True, kiosk__eczane_id=user.eczane_id))
 
     params = request.query_params
 
@@ -84,13 +87,13 @@ def _build_oturum_queryset(request):
     if rol != "pharmacist":
         eczane_id = params.get("eczane_id")
         if eczane_id:
-            qs = qs.filter(kiosk__eczane_id=eczane_id)
+            qs = qs.filter(Q(eczane_id=eczane_id) | Q(eczane__isnull=True, kiosk__eczane_id=eczane_id))
         il_id = params.get("il_id")
         if il_id:
-            qs = qs.filter(kiosk__eczane__il_id=il_id)
+            qs = qs.filter(Q(eczane__il_id=il_id) | Q(eczane__isnull=True, kiosk__eczane__il_id=il_id))
         ilce_id = params.get("ilce_id")
         if ilce_id:
-            qs = qs.filter(kiosk__eczane__ilce_id=ilce_id)
+            qs = qs.filter(Q(eczane__ilce_id=ilce_id) | Q(eczane__isnull=True, kiosk__eczane__ilce_id=ilce_id))
 
     # Kiosk filtresi (her iki rol)
     kiosk_id = params.get("kiosk_id")
@@ -143,9 +146,9 @@ def _build_oturum_queryset(request):
     sold = params.get("sold")
     if sold is not None:
         if str(sold).lower() in ("true", "1"):
-            qs = qs.filter(sold=True)
+            qs = qs.filter(Q(status=OturumLogu.SatisDurumu.SATIS_YAPILDI) | Q(status=0, sold=True))
         elif str(sold).lower() in ("false", "0"):
-            qs = qs.filter(sold=False)
+            qs = qs.filter(Q(status=OturumLogu.SatisDurumu.SATIS_YAPILMADI) | Q(status=0, sold=False))
 
     return qs
 
@@ -174,7 +177,7 @@ class OturumLoguView(APIView):
 
         qs = (
             OturumLogu.objects.select_related(
-                "kiosk__eczane", "kategori", "yas_araligi", "cinsiyet"
+                "kiosk", "eczane", "kategori", "yas_araligi", "cinsiyet"
             )
             .all()
             .order_by("-olusturulma_tarihi")
@@ -219,7 +222,7 @@ class OturumLoguView(APIView):
             if getattr(user, "rol", None) == "pharmacist":
                 oturum = (
                     OturumLogu.objects
-                    .select_related("kiosk__eczane", "kategori", "yas_araligi", "cinsiyet")
+                    .select_related("kiosk", "eczane", "kategori", "yas_araligi", "cinsiyet")
                     .filter(eczane_id=user.eczane_id, qr_kodu=qr_kodu)
                     .first()
                 )
@@ -232,7 +235,7 @@ class OturumLoguView(APIView):
             else:
                 oturum = (
                     OturumLogu.objects
-                    .select_related("kiosk__eczane", "kategori", "yas_araligi", "cinsiyet")
+                    .select_related("kiosk", "eczane", "kategori", "yas_araligi", "cinsiyet")
                     .filter(qr_kodu=qr_kodu)
                     .first()
                 )
@@ -246,7 +249,7 @@ class OturumLoguView(APIView):
             return Response(serializer.data, status=status.HTTP_200_OK)
 
         if getattr(user, "rol", None) == "pharmacist":
-            qs = qs.filter(kiosk__eczane_id=user.eczane_id)
+            qs = qs.filter(Q(eczane_id=user.eczane_id) | Q(eczane__isnull=True, kiosk__eczane_id=user.eczane_id))
 
         hassas = request.query_params.get("hassas_akis") or request.query_params.get("is_sensitive_flow")
         if hassas is not None:
@@ -279,62 +282,114 @@ class OturumLoguCompleteView(APIView):
             )
 
         try:
-            oturum = OturumLogu.objects.get(pk=pk, kiosk__eczane_id=user.eczane_id)
-        except OturumLogu.DoesNotExist:
+            oturum = complete_sale(
+                session_id=pk,
+                pharmacy_id=user.eczane_id,
+                user=user,
+                sale_result=request.data.get("sale_result"),
+                note=request.data.get("note", "") or request.data.get("not", ""),
+                ingredient_ids=request.data.get("ingredient_ids", request.data.get("satildi_ids", [])),
+            )
+        except serializers.ValidationError as exc:
+            return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
+        if oturum is None:
             return Response(
                 {"detail": "Oturum bulunamadı veya bu oturuma erişim yetkiniz yok."},
                 status=status.HTTP_404_NOT_FOUND,
             )
-
-        sale_result = request.data.get("sale_result")
-        if sale_result not in (None, "sold", "not_sold"):
-            return Response(
-                {"detail": "Geçersiz satış sonucu. 'sold' veya 'not_sold' olmalıdır."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        if oturum.danisma_tamamlandi:
-            serializer = OturumLoguSerializer(oturum, context={"include_detail_fields": True})
-            return Response(serializer.data, status=status.HTTP_200_OK)
-
-        oturum.danisma_tamamlandi = True
-        oturum.danisma_tamamlanma_tarihi = timezone.now()
-        oturum.danisma_tamamlayan_eczaci = user
-        oturum.danisma_notu = request.data.get("note", "") or request.data.get("not", "")
-        if sale_result == "sold":
-            oturum.sold = True
-        elif sale_result == "not_sold":
-            oturum.sold = False
-        else:
-            oturum.sold = None
-
-        with UnitOfWork(user=user) as uow:
-            uow.update(
-                oturum,
-                update_fields=[
-                    "danisma_tamamlandi",
-                    "danisma_tamamlanma_tarihi",
-                    "danisma_tamamlayan_eczaci_id",
-                    "danisma_notu",
-                    "sold",
-                ],
-            )
-
-        # Mark selected ingredients as satildi=True on the normalized table
-        satildi_keys = {str(k) for k in request.data.get("satildi_ids", [])}
-        if satildi_keys:
-            for record in OturumOnerilenEtkenMadde.objects.filter(oturum=oturum):
-                key = str(record.etken_madde_id) if record.etken_madde_id else record.etken_madde_adi_snapshot
-                new_val = key in satildi_keys
-                if record.satildi != new_val:
-                    record.satildi = new_val
-                    record.save(update_fields=["satildi"])
 
         serializer = OturumLoguSerializer(
             oturum,
             context={"include_detail_fields": True},
         )
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class OturumLoguMarkReviewedView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsEczaci]
+
+    def post(self, request, pk=None):
+        if not request.user.eczane_id:
+            return Response({"detail": "Eczane bağlantısı gerekli."}, status=403)
+        session = mark_reviewed(session_id=pk, pharmacy_id=request.user.eczane_id, user=request.user)
+        if session is None:
+            return Response({"detail": "Oturum bulunamadı veya erişim yetkiniz yok."}, status=404)
+        return Response(OturumLoguSerializer(session, context={"include_detail_fields": True}).data)
+
+
+class DashboardSeriesView(APIView):
+    """Admin ve eczacı için İstanbul gün sınırlarıyla 4 dashboard serisi."""
+
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [_OrPerm(IsSuperAdmin, IsEczaci)]
+    tz = ZoneInfo("Europe/Istanbul")
+
+    def _parse_periods(self, request):
+        today = timezone.now().astimezone(self.tz).date()
+        try:
+            month = date.fromisoformat(f"{request.query_params.get('month', today.strftime('%Y-%m'))}-01")
+            week_day = date.fromisoformat(request.query_params.get("week", today.isoformat()))
+        except ValueError:
+            raise serializers.ValidationError({"detail": "month YYYY-MM, week YYYY-MM-DD biçiminde olmalıdır."})
+        if month > today.replace(day=1):
+            raise serializers.ValidationError({"month": "Gelecek ay görüntülenemez."})
+        week_start = week_day - timedelta(days=week_day.weekday())
+        current_week = today - timedelta(days=today.weekday())
+        if week_start > current_week:
+            raise serializers.ValidationError({"week": "Gelecek hafta görüntülenemez."})
+        return today, month, week_start
+
+    def _scoped(self, request):
+        qs = OturumLogu.objects.select_related("eczane")
+        if getattr(request.user, "rol", None) == "pharmacist":
+            return qs.filter(eczane_id=request.user.eczane_id) if request.user.eczane_id else qs.none()
+        params = request.query_params
+        if params.get("eczane_id"):
+            qs = qs.filter(eczane_id=params["eczane_id"])
+        if params.get("il_id"):
+            qs = qs.filter(eczane__il_id=params["il_id"])
+        if params.get("ilce_id"):
+            qs = qs.filter(eczane__ilce_id=params["ilce_id"])
+        return qs
+
+    def _series(self, qs, days, field, sales=False):
+        values = {day: 0 for day in days}
+        start = timezone.make_aware(datetime.combine(days[0], time.min), self.tz)
+        end = timezone.make_aware(datetime.combine(days[-1] + timedelta(days=1), time.min), self.tz)
+        filtered = qs.filter(**{f"{field}__gte": start, f"{field}__lt": end})
+        if sales:
+            filtered = filtered.filter(status=OturumLogu.SatisDurumu.SATIS_YAPILDI)
+        for stamp in filtered.values_list(field, flat=True).iterator():
+            if stamp:
+                values[stamp.astimezone(self.tz).date()] += 1
+        return [{"date": day.isoformat(), "value": values[day]} for day in days]
+
+    def get(self, request):
+        _, month, week_start = self._parse_periods(request)
+        month_days = [month + timedelta(days=i) for i in range(calendar.monthrange(month.year, month.month)[1])]
+        week_days = [week_start + timedelta(days=i) for i in range(7)]
+        qs = self._scoped(request)
+        monthly_interactions = self._series(qs, month_days, "olusturulma_tarihi")
+        monthly_sales = self._series(qs, month_days, "result_at", sales=True)
+        weekly_interactions = self._series(qs, week_days, "olusturulma_tarihi")
+        weekly_sales = self._series(qs, week_days, "result_at", sales=True)
+        return Response({
+            "timezone": "Europe/Istanbul",
+            "month": month.strftime("%Y-%m"),
+            "week_start": week_start.isoformat(),
+            "week_end": week_days[-1].isoformat(),
+            "monthly_interactions": monthly_interactions,
+            "monthly_sales": monthly_sales,
+            "weekly_interactions": weekly_interactions,
+            "weekly_sales": weekly_sales,
+            "totals": {
+                "monthly_interactions": sum(item["value"] for item in monthly_interactions),
+                "monthly_sales": sum(item["value"] for item in monthly_sales),
+                "weekly_interactions": sum(item["value"] for item in weekly_interactions),
+                "weekly_sales": sum(item["value"] for item in weekly_sales),
+            },
+        })
 
 
 class OturumLoguStatsView(APIView):
@@ -452,18 +507,23 @@ class AdminDashboardView(APIView):
         start_date = params.get("start_date")
         end_date = params.get("end_date")
 
-        sold_qs = OturumLogu.objects.filter(sold=True)
+        sold_qs = OturumLogu.objects.filter(
+            Q(status=OturumLogu.SatisDurumu.SATIS_YAPILDI) | Q(status=0, sold=True)
+        )
         if start_date:
-            sold_qs = sold_qs.filter(olusturulma_tarihi__date__gte=start_date)
+            sold_qs = sold_qs.filter(Q(result_at__date__gte=start_date) | Q(result_at__isnull=True, olusturulma_tarihi__date__gte=start_date))
         if end_date:
-            sold_qs = sold_qs.filter(olusturulma_tarihi__date__lte=end_date)
+            sold_qs = sold_qs.filter(Q(result_at__date__lte=end_date) | Q(result_at__isnull=True, olusturulma_tarihi__date__lte=end_date))
         satis_sayisi = sold_qs.count()
 
-        em_qs = OturumOnerilenEtkenMadde.objects.filter(oturum__sold=True)
+        em_qs = OturumOnerilenEtkenMadde.objects.filter(
+            Q(oturum__status=OturumLogu.SatisDurumu.SATIS_YAPILDI, satildi=True)
+            | Q(oturum__status=0, oturum__sold=True)
+        )
         if start_date:
-            em_qs = em_qs.filter(oturum__olusturulma_tarihi__date__gte=start_date)
+            em_qs = em_qs.filter(Q(oturum__result_at__date__gte=start_date) | Q(oturum__result_at__isnull=True, oturum__olusturulma_tarihi__date__gte=start_date))
         if end_date:
-            em_qs = em_qs.filter(oturum__olusturulma_tarihi__date__lte=end_date)
+            em_qs = em_qs.filter(Q(oturum__result_at__date__lte=end_date) | Q(oturum__result_at__isnull=True, oturum__olusturulma_tarihi__date__lte=end_date))
 
         top_em = (
             em_qs

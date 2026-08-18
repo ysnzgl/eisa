@@ -87,6 +87,10 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 | `/api/announcements/me/active/` | `ActiveAnnouncementsView` | JWT (Eczacı) | Bugünkü hedeflenmiş occurrence ve sistem uyarıları |
 | `/api/announcements/{id}/read/` | `MarkAnnouncementReadView` | JWT (Eczacı) | Bugünkü occurrence için okundu kaydı |
 | `/api/announcements/duty/` | `DutyCalendarView` | JWT (Eczacı) | Ay bazlı nöbet günü / nöbetim yok kaydı |
+| `/api/analytics/sessions/{id}/mark-reviewed/` | `OturumLoguMarkReviewedView` | JWT (Eczacı) | Tarihsel eczane scope'unda idempotent `BEKLIYOR -> INCELENDI` |
+| `/api/analytics/dashboard-series/` | `DashboardSeriesView` | JWT (Admin/Eczacı) | İstanbul zamanıyla aylık/haftalık etkileşim ve satış serileri |
+| `/api/pharmacies/kiosks/{id}/transfer/` | `KioskViewSet.transfer` | JWT (SuperAdmin) | Transaction'lı eczane taşıma ve atama geçmişi |
+| `/api/announcements/admin/duty/` | `AdminDutyCalendarView` | JWT (SuperAdmin) | Eczane+ay bazlı salt-okunur nöbet görünümü |
 
 **RBAC:** `IsSuperAdmin`, `IsPharmacist`, `IsKiosk` permission sınıfları mevcut.
 
@@ -124,10 +128,11 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 ### Pharmacies (`apps.pharmacies`)
 - `Eczane`: Eczane (il/ilce, ad, sahip, telefon, aktif)
 - `Kiosk`: Kiosk cihaz (eczane FK, mac_adresi, **device_id** (UUID, unique, nullable), uygulama_anahtari, aktif, is_online, son_goruldu, last_playlist_version). device_id ilk enrollment'ta tek-seferlik bağlanır, değiştirilemez. TPM tabanlı değil; runtime DB kopyalanırsa kopyalanabilir.
+- `KioskEczaneAtama`: Kiosk/eczane, başlangıç-bitiş zamanı, neden ve taşıyan admin. `bitis_zamani IS NULL` için kiosk başına partial unique constraint vardır; `Kiosk.eczane` yalnız güncel pointer'dır.
 - `KioskProvisioningRequest`: Kayıtsız kiosk onay talebi (UUID pk, mac_adresi, **device_id** (max 36, partial-unique non-empty), hostname, device_metadata JSON, status PENDING/APPROVED/REJECTED, last_seen_at, request_count, approved_by/at, rejected_by/at, rejection_reason, kiosk FK nullable). Onay anında `device_id` `Kiosk.device_id`'ye aktarılır. **Raw fleet_key/provision_secret saklanmaz.**
 
 ### Analytics (`apps.analytics`) *(updated 2026-08-11)*
-- `OturumLogu`: Anonim kullanici session. **barkod_logo FK (PROTECT, nullable)** — fişte basılan logo; null=fallback. PROTECT: logo fiziksel silinemez; geçmiş ölçüm kaybolmaz.
+- `OturumLogu`: Anonim session; olay anındaki `eczane` snapshot FK'si authoritative'dir. Satış iş akışı `status` (`0 BEKLIYOR`, `1 INCELENDI`, `2 SATIS_YAPILDI`, `3 SATIS_YAPILMADI`) ve sonuç zamanı `result_at` ile tutulur. Nullable Boolean `sold` yalnız geriye uyumluluk alanıdır ve merkezi satış service'i dışında yazılmaz.
 - `OturumCevap`: Normalize cevaplar.
 - `OturumOnerilenEtkenMadde`: Normalize önerilen etken maddeler.
 
@@ -155,8 +160,8 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 ### Announcements (`apps.announcements`) *(2026-08-18)*
 - `Announcement`: `GENERAL|SYSTEM`; başlık, mesaj, aksiyon etiketi, seviye ve aktiflik. Genel kayıtlar `ONCE|DAILY|WEEKLY|MONTHLY`, tarih aralığı, aylık mod ve `ALL|PROVINCE|DISTRICT|PHARMACY` hedefi taşır.
 - `AnnouncementRead`: `(announcement, user, occurrence_date)` unique; okuma durumu recurrence occurrence bazındadır.
-- `PharmacyDutyMonth`: `(pharmacy, month)` unique; `month` ayın ilk günü, `has_no_duty` beyanı.
-- `PharmacyDutyDay`: `(duty_month, date)` unique; tarih seçili ay içinde olmak zorundadır.
+- `PharmacyDutyMonth`: `(pharmacy, month)` unique; `month` ayın ilk günü, `has_no_duty` beyanı ve BaseModel audit alanları.
+- `PharmacyDutyDay`: `(duty_month, date)` unique; tarih seçili ay içinde olmak zorundadır ve BaseModel audit alanlarını taşır. Geçmiş günler API'de değiştirilemez.
 - Migration `announcements.0001_initial`, `DUTY_NEXT_MONTH_MISSING` ve `DUTY_CURRENT_MONTH_MISSING` kayıtlarını `system_key` üzerinden idempotent `get_or_create` ile seed eder.
 
 ### Campaigns (`apps.campaigns`) *(Faz 0.5–Faz 1 güncellemeleri dahil)*
@@ -240,7 +245,7 @@ Notlar (QR contract, 2026-07-20):
 - QR üretimi 8 karakter Base36 (0-9A-Z) olarak korunur; algoritma değiştirilmez.
 - QR içine soru/cevap/kategori/etken madde gömülmez; QR yalnızca backend'deki `OturumLogu` kaydını bulmak için kullanılır.
 - Kiosk session verisini mevcut `POST /api/oturum/gonder` akışıyla lokal API'ye yazar; bu akış merkezi backend'e `POST /api/analytics/sessions/` ile gönderilir.
-- Eczacı sorgusunda sahiplik kontrolü backend'de zorunludur (`kiosk__eczane_id == request.user.eczane_id`).
+- Eczacı sorgusunda sahiplik kontrolü backend'de oturumun tarihsel `eczane_id` alanıyla zorunludur. `kiosk__eczane` yalnız migration öncesi null snapshot uyumluluğunda fallback'tir.
 
 ### Proof-of-Play Akışı
 1. Kiosk UI AdStrip → creative oynatma başlangıç/bitiş zamanlarını kaydeder

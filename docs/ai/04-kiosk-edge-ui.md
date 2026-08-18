@@ -414,6 +414,10 @@ Detay: `kiosk_edge/README_DEMO_DOCKER.md`
 
 ## Belirsiz / Riskli Noktalar
 
+### Evet/Hayır görsel standardı *(2026-08-19)*
+
+`QuestionScreen.svelte` davranışı değişmeden ortak token kullanır: Evet `--eisa-turquoise: #0F8F8A`, Hayır mevcut E-İSA kırmızısı `--eisa-red: #B1121B`. Seçili/focus görünümü iki cevapta da okunur kalır.
+
 1. **Etken madde önerileri hesaplama:** `getRecommendations` fonksiyonu (`lib/ingredients.js`) mantığı tam açık değil. Hangi kurallara göre öneri yapılıyor? (Belirsiz)
 2. **QR kod formatı:** `"EISA-" + timestamp + random` → collision riski düşük ama garantisi yok. Backend'de unique constraint var mı? (Doğrulanmalı)
 3. **Session idempotency_key:** UUID nasıl üretiliyor? `uuid()` fonksiyonu nereden geliyor? (Belirsiz)

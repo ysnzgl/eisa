@@ -19,6 +19,7 @@ import SessionsPanel from '../../components/kiosk/SessionsPanel.vue';
 import SalesPanel from '../../components/kiosk/SalesPanel.vue';
 import ImpressionsPanel from '../../components/kiosk/ImpressionsPanel.vue';
 import EventsPanel from '../../components/kiosk/EventsPanel.vue';
+import { useAuthStore } from '../../stores/auth';
 
 // ─── URL senkronizasyonu ──────────────────────────────────────────────────────
 const route  = useRoute();
@@ -207,8 +208,13 @@ function setTab(key) {
 
 // ─── Detay drawer ─────────────────────────────────────────────────────────────
 const selected  = ref(null);
-function openDetail(row) { selected.value = row; }
-function closeDetail()   { selected.value = null; }
+const auth = useAuthStore();
+const openStorageKey = `eisa:open-consultation:${auth.pharmacyId || 'none'}:${auth.userId || 'none'}`;
+function openDetail(row) {
+  selected.value = row;
+  if (![2, 3].includes(Number(row.status))) sessionStorage.setItem(openStorageKey, JSON.stringify({ id:row.id, qr:row.qr_kodu }));
+}
+function closeDetail() { selected.value = null; sessionStorage.removeItem(openStorageKey); }
 
 const totalPages = computed(() => Math.ceil(sessionsTotal.value / 50) || 1);
 const salesTotalPages = computed(() => Math.ceil(salesTotal.value / 50) || 1);
@@ -221,6 +227,10 @@ onMounted(() => {
   else if (activeTab.value === 'sales') loadSales();
   else if (activeTab.value === 'impressions') loadImpressions();
   else loadEvents();
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(openStorageKey) || 'null');
+    if (saved?.id && saved?.qr) selected.value = { id:saved.id, qr_kodu:saved.qr };
+  } catch { sessionStorage.removeItem(openStorageKey); }
 });
 </script>
 
@@ -371,6 +381,7 @@ onMounted(() => {
     <SessionDetailModal
       :session="selected"
       :readonly="false"
+      mandatory
       @close="closeDetail"
       @completed="(updated) => { const row = sessions.find(s => s.id === updated.id); if (row) row.danisma_tamamlandi = updated.danisma_tamamlandi; closeDetail(); }"
     />

@@ -130,7 +130,7 @@ class AnnouncementRead(models.Model):
         ]
 
 
-class PharmacyDutyMonth(models.Model):
+class PharmacyDutyMonth(BaseModel):
     pharmacy = models.ForeignKey("pharmacies.Eczane", on_delete=models.CASCADE, related_name="duty_months")
     month = models.DateField(help_text="Ayın ilk günü")
     has_no_duty = models.BooleanField(default=False)
@@ -144,7 +144,7 @@ class PharmacyDutyMonth(models.Model):
         ]
 
 
-class PharmacyDutyDay(models.Model):
+class PharmacyDutyDay(BaseModel):
     duty_month = models.ForeignKey(PharmacyDutyMonth, on_delete=models.CASCADE, related_name="days")
     date = models.DateField()
 

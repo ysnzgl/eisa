@@ -157,6 +157,12 @@ class EtkenMaddeViewSet(_UoWWritableViewSet):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsSuperAdmin]
 
+    def get_permissions(self):
+        if self.action in ("list", "retrieve"):
+            from rest_framework.permissions import IsAuthenticated
+            return [IsAuthenticated()]
+        return [IsSuperAdmin()]
+
     def get_queryset(self):
         qs = EtkenMadde.objects.all()
         if self.action == 'list' and not self.request.query_params.get('include_inactive'):

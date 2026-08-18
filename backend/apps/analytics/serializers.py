@@ -47,7 +47,9 @@ class OturumLoguItemSerializer(serializers.Serializer):
 class OturumLoguSerializer(serializers.ModelSerializer):
     kategori_adi = serializers.CharField(source="kategori.ad", read_only=True)
     kiosk_mac = serializers.CharField(source="kiosk.mac_adresi", read_only=True)
-    eczane_adi = serializers.CharField(source="kiosk.eczane.ad", read_only=True)
+    eczane_adi = serializers.SerializerMethodField()
+    sold = serializers.SerializerMethodField()
+    status_label = serializers.CharField(source="get_status_display", read_only=True)
     yas_araligi_kod = serializers.CharField(source="yas_araligi.kod", read_only=True)
     cinsiyet_kod = serializers.CharField(source="cinsiyet.kod", read_only=True)
     qr_code = serializers.CharField(source="qr_kodu", read_only=True)
@@ -94,6 +96,9 @@ class OturumLoguSerializer(serializers.ModelSerializer):
             "kategori_detay",
             "danisma_kategorisi_detay",
             "sold",
+            "status",
+            "status_label",
+            "result_at",
             "danisma_tamamlandi",
             "danisma_tamamlanma_tarihi",
             "danisma_notu",
@@ -104,6 +109,8 @@ class OturumLoguSerializer(serializers.ModelSerializer):
             "danisma_tamamlandi",
             "danisma_tamamlanma_tarihi",
             "danisma_tamamlayan_eczaci",
+            "status",
+            "result_at",
         ]
 
     def _include_detail_fields(self) -> bool:
@@ -187,14 +194,17 @@ class OturumLoguSerializer(serializers.ModelSerializer):
         }
 
     def get_eczane(self, obj):
-        kiosk = getattr(obj, "kiosk", None)
-        eczane = getattr(kiosk, "eczane", None) if kiosk else None
+        eczane = getattr(obj, "eczane", None) or getattr(getattr(obj, "kiosk", None), "eczane", None)
         if not eczane:
             return None
         return {
             "id": eczane.id,
             "ad": getattr(eczane, "ad", "") or "",
         }
+
+    def get_eczane_adi(self, obj):
+        pharmacy = getattr(obj, "eczane", None) or getattr(getattr(obj, "kiosk", None), "eczane", None)
+        return getattr(pharmacy, "ad", "")
 
     def get_yas_araligi_detay(self, obj):
         age = getattr(obj, "yas_araligi", None)
@@ -330,11 +340,14 @@ class OturumLoguSerializer(serializers.ModelSerializer):
         return self._resolve_etken_madde_list(obj.onerilen_etken_maddeler)
 
     def get_satis_sonucu(self, obj):
-        if obj.sold is True:
+        if obj.status == obj.SatisDurumu.SATIS_YAPILDI:
             return "Satış yapıldı"
-        if obj.sold is False:
+        if obj.status == obj.SatisDurumu.SATIS_YAPILMADI:
             return "Satış yapılmadı"
         return None
+
+    def get_sold(self, obj):
+        return obj.sold_compat
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -346,8 +359,8 @@ class KioskActivityListSerializer(serializers.ModelSerializer):
 
     kiosk_ad = serializers.CharField(source="kiosk.ad", read_only=True)
     kiosk_mac = serializers.CharField(source="kiosk.mac_adresi", read_only=True)
-    eczane_adi = serializers.CharField(source="kiosk.eczane.ad", read_only=True)
-    eczane_id = serializers.IntegerField(source="kiosk.eczane_id", read_only=True)
+    eczane_adi = serializers.SerializerMethodField()
+    eczane_id = serializers.SerializerMethodField()
     yas_araligi_ad = serializers.CharField(source="yas_araligi.ad", read_only=True)
     cinsiyet_ad = serializers.CharField(source="cinsiyet.ad", read_only=True)
     kategori_adi = serializers.CharField(source="kategori.ad", read_only=True)
@@ -357,6 +370,17 @@ class KioskActivityListSerializer(serializers.ModelSerializer):
     # Satış görünümünde prefetch_related ile doldurulur; aksi hâlde boş liste döner.
     etken_madde_adlari = serializers.SerializerMethodField()
     etken_madde_detaylari = serializers.SerializerMethodField()
+    sold = serializers.SerializerMethodField()
+
+    def get_sold(self, obj):
+        return obj.sold_compat
+
+    def get_eczane_id(self, obj):
+        return obj.eczane_id or getattr(obj.kiosk, "eczane_id", None)
+
+    def get_eczane_adi(self, obj):
+        pharmacy = obj.eczane or getattr(obj.kiosk, "eczane", None)
+        return getattr(pharmacy, "ad", "")
 
     def get_etken_madde_adlari(self, obj):
         if not self.context.get("include_ingredients"):
@@ -402,6 +426,8 @@ class KioskActivityListSerializer(serializers.ModelSerializer):
             "danisma_tamamlanma_tarihi",
             "danisma_notu",
             "sold",
+            "status",
+            "result_at",
             "etken_madde_adlari",
             "etken_madde_detaylari",
             "olusturulma_tarihi",

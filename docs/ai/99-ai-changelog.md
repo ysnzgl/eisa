@@ -825,6 +825,18 @@
 
 ---
 
+## 2026-08-19
+
+### [Backend/Web/Kiosk/Docs] Oturum status, zorunlu satış, dönem grafikleri ve cihaz taşıma
+
+**Backend:** `OturumLogu.status` (0/1/2/3) authoritative satış durumu ve `result_at` eklendi; legacy `sold` migration/response uyumluluğu korundu. Tarihsel eczane scope'u liste/satış/dashboard'a yayıldı. Idempotent `mark-reviewed`, katalog doğrulamalı merkezi satış service'i ve İstanbul zamanlı 4 dashboard serisi eklendi. `KioskEczaneAtama` geçmişi, partial unique açık atama ve transaction'lı SuperAdmin transfer action eklendi; mevcut campaign invalidation receiver'ı yeniden kullanıldı. Nöbet tabloları audit alanları kazandı, geçmiş gün mutation'ı engellendi.
+
+**Web/Kiosk:** Eczacı QR/list detail modalı sonuçlandırılana kadar kapatılamaz; yeni QR guard ve kullanıcı+eczane sessionStorage restore vardır. Mevcut katalogdan aramalı çoklu diğer etken madde seçimi, ortak 2×2 dönem grafikleri, cihaz taşıma/geçmiş UI'si, üst-orta global toast ve yalnız Yeni Eczane için big modal eklendi. Evet `#0F8F8A`, Hayır E-İSA kırmızısı olarak panel/kiosk tokenlarına taşındı.
+
+**Migrationlar:** `analytics.0018_oturum_satis_status`, `pharmacies.0011_kiosk_eczane_atama`, `announcements.0002_duty_audit_fields`.
+
+**Doğrulama:** Yeni backend testleri 8/8; backend tam paket 661 passed, 7 skipped, SQLite'ta PostgreSQL eşzamanlı ACK testine ait 1 bağımsız failure. Web Vitest 60/60, kiosk Vitest 56/56; web ve kiosk production build başarılı; Django check ve migration drift temiz. Browser/screenshot aracı bulunmadığından gerçek viewport görsel testi yapılmadı.
+
 ## 2026-08-18
 
 ### [Frontend+Backend+Docs] Genel Duyuru ve Sabit Nöbet Uyarıları

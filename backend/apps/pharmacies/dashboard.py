@@ -62,10 +62,8 @@ class EczaciDashboardView(APIView):
         kiosklar = list(Kiosk.objects.filter(eczane_id=eczane.id).order_by("id"))
         kiosk_ids = [k.id for k in kiosklar]
 
-        oturum_qs = (
-            OturumLogu.objects.filter(kiosk_id__in=kiosk_ids)
-            if kiosk_ids
-            else OturumLogu.objects.none()
+        oturum_qs = OturumLogu.objects.filter(
+            Q(eczane_id=eczane.id) | Q(eczane__isnull=True, kiosk__eczane_id=eczane.id)
         )
         oturum_sayisi = oturum_qs.count()
         oturum_sayisi_bugun = oturum_qs.filter(olusturulma_tarihi__gte=bugun_basi).count()
@@ -75,20 +73,24 @@ class EczaciDashboardView(APIView):
         start_date = params.get("start_date")
         end_date = params.get("end_date")
 
-        sold_qs = oturum_qs.filter(sold=True)
+        sold_qs = oturum_qs.filter(Q(status=OturumLogu.SatisDurumu.SATIS_YAPILDI) | Q(status=0, sold=True))
         if start_date:
-            sold_qs = sold_qs.filter(olusturulma_tarihi__date__gte=start_date)
+            sold_qs = sold_qs.filter(Q(result_at__date__gte=start_date) | Q(result_at__isnull=True, olusturulma_tarihi__date__gte=start_date))
         if end_date:
-            sold_qs = sold_qs.filter(olusturulma_tarihi__date__lte=end_date)
+            sold_qs = sold_qs.filter(Q(result_at__date__lte=end_date) | Q(result_at__isnull=True, olusturulma_tarihi__date__lte=end_date))
         satis_sayisi = sold_qs.count()
 
         em_qs = OturumOnerilenEtkenMadde.objects.filter(
-            oturum__kiosk_id__in=kiosk_ids, oturum__sold=True
+            Q(oturum__eczane_id=eczane.id)
+            | Q(oturum__eczane__isnull=True, oturum__kiosk__eczane_id=eczane.id)
+        ).filter(
+            Q(oturum__status=OturumLogu.SatisDurumu.SATIS_YAPILDI, satildi=True)
+            | Q(oturum__status=0, oturum__sold=True)
         )
         if start_date:
-            em_qs = em_qs.filter(oturum__olusturulma_tarihi__date__gte=start_date)
+            em_qs = em_qs.filter(Q(oturum__result_at__date__gte=start_date) | Q(oturum__result_at__isnull=True, oturum__olusturulma_tarihi__date__gte=start_date))
         if end_date:
-            em_qs = em_qs.filter(oturum__olusturulma_tarihi__date__lte=end_date)
+            em_qs = em_qs.filter(Q(oturum__result_at__date__lte=end_date) | Q(oturum__result_at__isnull=True, oturum__olusturulma_tarihi__date__lte=end_date))
 
         top_em = (
             em_qs

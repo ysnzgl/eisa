@@ -32,7 +32,7 @@
       <p class="question-text">{$currentQuestions[$currentQIndex].metin}</p>
       <div class="answer-row">
         <button
-          class="btn-touch btn-primary-touch"
+          class="btn-touch btn-primary-touch btn-evet"
           class:btn-answer-selected={currentAnswer === 'Y'}
           on:click={() => dispatch('answer', 'Y')}
         >
@@ -64,12 +64,15 @@
 
 <style>
   .btn-answer-selected {
-    outline: 3px solid #B1121B;
+    outline: 3px solid rgba(17,24,39,.75);
     outline-offset: 2px;
   }
-  /* HAYIR butonu için koyu gri ton */
+  .btn-evet {
+    background: linear-gradient(135deg, var(--eisa-turquoise), #0C7773);
+    box-shadow: 0 6px 24px rgba(15, 143, 138, 0.35);
+  }
   .btn-hayir {
-    background: linear-gradient(135deg, #4B5563, #374151);
-    box-shadow: 0 6px 24px rgba(55, 65, 81, 0.35);
+    background: linear-gradient(135deg, var(--eisa-red), #7F1D1D);
+    box-shadow: 0 6px 24px rgba(177, 18, 27, 0.35);
   }
 </style>

@@ -8,14 +8,18 @@ from .views import (
     KioskActivityView,
     KioskEventListView,
     OturumLoguCompleteView,
+    OturumLoguMarkReviewedView,
+    DashboardSeriesView,
     OturumLoguStatsView,
     OturumLoguView,
 )
 
 urlpatterns = [
     path("admin-dashboard/", AdminDashboardView.as_view(), name="admin-dashboard"),
+    path("dashboard-series/", DashboardSeriesView.as_view(), name="dashboard-series"),
     path("sessions/stats/", OturumLoguStatsView.as_view(), name="oturum-stats"),
     path("sessions/<int:pk>/complete/", OturumLoguCompleteView.as_view(), name="oturum-complete"),
+    path("sessions/<int:pk>/mark-reviewed/", OturumLoguMarkReviewedView.as_view(), name="oturum-mark-reviewed"),
     path("sessions/", OturumLoguView.as_view(), name="oturum-log"),
     # Kiosk hareketleri — zengin filtreli liste (admin + eczacı)
     path("kiosk-activities/", KioskActivityView.as_view(), name="kiosk-activities"),

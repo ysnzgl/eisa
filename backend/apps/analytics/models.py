@@ -101,6 +101,20 @@ class OturumLogu(BaseModel):
     danisma_tamamlandi = models.BooleanField(default=False, db_index=True)
     danisma_tamamlanma_tarihi = models.DateTimeField(null=True, blank=True)
     danisma_notu = models.TextField(blank=True)
+    class SatisDurumu(models.IntegerChoices):
+        BEKLIYOR = 0, "Bekliyor"
+        INCELENDI = 1, "İncelendi"
+        SATIS_YAPILDI = 2, "Satış yapıldı"
+        SATIS_YAPILMADI = 3, "Satış yapılmadı"
+
+    status = models.PositiveSmallIntegerField(
+        choices=SatisDurumu.choices,
+        default=SatisDurumu.BEKLIYOR,
+        db_index=True,
+    )
+    result_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    # Legacy DB alanı. Yeni iş kuralları status üzerinden yürür; API Boolean
+    # sözleşmesi status'tan türetilir.
     sold = models.BooleanField(null=True, blank=True)
     danisma_tamamlayan_eczaci = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -141,6 +155,16 @@ class OturumLogu(BaseModel):
         ]
         verbose_name = "Oturum Logu"
         verbose_name_plural = "Oturum Loglari"
+
+    @property
+    def sold_compat(self):
+        if self.status == self.SatisDurumu.SATIS_YAPILDI:
+            return True
+        if self.status == self.SatisDurumu.SATIS_YAPILMADI:
+            return False
+        # Migration öncesi sözleşmeyle doğrudan oluşturulmuş geçici/legacy
+        # kayıtlar için; uygulamanın bütün yeni yazmaları status'u set eder.
+        return self.sold if self.status == self.SatisDurumu.BEKLIYOR else None
 
 
 class OturumCevap(BaseModel):

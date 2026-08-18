@@ -8,6 +8,7 @@
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { http } from '../../services/api';
+import DashboardPeriodCharts from '../../components/DashboardPeriodCharts.vue';
 
 const data    = ref(null);
 const loading = ref(true);
@@ -260,6 +261,8 @@ const HEALTH_LABEL = {
           </div>
         </div>
       </div>
+
+      <DashboardPeriodCharts />
 
       <!-- Kiosk Health Panel -->
       <div class="eisa-panel">

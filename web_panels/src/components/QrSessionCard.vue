@@ -1,7 +1,8 @@
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { toast } from 'vue-sonner';
 import { completeSession } from '../services/analytics';
+import { http } from '../services/api';
 
 const props = defineProps({
   session:   { type: Object,  required: true },
@@ -17,6 +18,16 @@ const completionNote    = ref('');
 const completionLoading = ref(false);
 const completionError   = ref('');
 const selectedIngredients = ref([]);
+const ingredientCatalog = ref([]);
+const otherSearch = ref('');
+
+onMounted(async () => {
+  if (props.readonly) return;
+  try {
+    const { data } = await http.get('/api/products/ingredients/');
+    ingredientCatalog.value = Array.isArray(data) ? data : (data?.results ?? []);
+  } catch { /* global interceptor */ }
+});
 
 const GENDER_LABEL = { F: 'Kadın', M: 'Erkek', O: 'Diğer', male: 'Erkek', female: 'Kadın' };
 const DURUM_LABEL  = {
@@ -38,13 +49,36 @@ const ingredientList = computed(() => {
 });
 
 function toggleIngredient(key) {
+  if (!Number.isInteger(Number(key))) return;
+  key = Number(key);
   const idx = selectedIngredients.value.indexOf(key);
   if (idx === -1) selectedIngredients.value.push(key);
   else selectedIngredients.value.splice(idx, 1);
 }
 
 function selectAllIngredients() {
-  selectedIngredients.value = ingredientList.value.map(ing => ing.id ?? ing.ad);
+  selectedIngredients.value = ingredientList.value.filter(ing => ing.id).map(ing => Number(ing.id));
+}
+
+const otherOptions = computed(() => {
+  const query = otherSearch.value.trim().toLocaleLowerCase('tr-TR');
+  if (query.length < 2) return [];
+  const recommendedIds = new Set(ingredientList.value.map(item => Number(item.id)).filter(Boolean));
+  return ingredientCatalog.value.filter(item =>
+    item.aktif !== false && !recommendedIds.has(Number(item.id)) &&
+    item.ad.toLocaleLowerCase('tr-TR').includes(query)
+  ).slice(0, 8);
+});
+
+const selectedOther = computed(() => ingredientCatalog.value.filter(item =>
+  selectedIngredients.value.includes(Number(item.id)) &&
+  !ingredientList.value.some(recommended => Number(recommended.id) === Number(item.id))
+));
+
+function addOther(item) {
+  const id = Number(item.id);
+  if (!selectedIngredients.value.includes(id)) selectedIngredients.value.push(id);
+  otherSearch.value = '';
 }
 
 function clearAllIngredients() {
@@ -213,12 +247,13 @@ async function handleComplete(saleResult) {
           v-if="!session.danisma_tamamlandi && !readonly"
           type="button"
           class="qsc-ing-label"
-          :class="{ 'qsc-ing-label--selected': selectedIngredients.includes(ing.id ?? ing.ad) }"
-          @click="toggleIngredient(ing.id ?? ing.ad)"
+          :disabled="!ing.id"
+          :class="{ 'qsc-ing-label--selected': selectedIngredients.includes(Number(ing.id)) }"
+          @click="toggleIngredient(ing.id)"
         >
           <i
             class="fa-solid"
-            :class="selectedIngredients.includes(ing.id ?? ing.ad) ? 'fa-square-check' : 'fa-square'"
+            :class="selectedIngredients.includes(Number(ing.id)) ? 'fa-square-check' : 'fa-square'"
             style="font-size:0.8rem;"
           ></i>
           {{ ing.ad }}
@@ -234,6 +269,22 @@ async function handleComplete(saleResult) {
           {{ ing.ad }}
         </span>
       </div>
+    </div>
+
+    <div v-if="!readonly && !session.danisma_tamamlandi" class="qr-result-section">
+      <p class="qr-detail-label" style="margin-bottom:0.5rem;">Diğer Etken Madde Ekle</p>
+      <div class="qsc-other-picker">
+        <input v-model="otherSearch" class="eisa-field" placeholder="Mevcut etken madde kataloğunda ara…" autocomplete="off" />
+        <div v-if="otherOptions.length" class="qsc-other-options">
+          <button v-for="item in otherOptions" :key="item.id" type="button" @click="addOther(item)">{{ item.ad }}</button>
+        </div>
+      </div>
+      <div v-if="selectedOther.length" style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-top:0.5rem;">
+        <button v-for="item in selectedOther" :key="item.id" type="button" class="qsc-ing-label qsc-ing-label--selected" @click="toggleIngredient(item.id)">
+          {{ item.ad }} <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <p v-if="otherSearch.length >= 2 && !otherOptions.length" class="qsc-help">Katalogda bulunamadı. Bilgiyi danışma notuna yazabilirsiniz.</p>
     </div>
 
     <!-- Tamamlandı bilgisi -->
@@ -407,4 +458,9 @@ async function handleComplete(saleResult) {
   background: #FECACA;
   border-color: #F87171;
 }
+.qsc-other-picker { position:relative; }
+.qsc-other-options { position:absolute;z-index:20;left:0;right:0;top:100%;background:#fff;border:1px solid #D1D5DB;border-radius:8px;box-shadow:0 10px 24px rgba(0,0,0,.12);overflow:hidden; }
+.qsc-other-options button { display:block;width:100%;padding:.55rem .7rem;text-align:left;background:#fff;border:0;cursor:pointer; }
+.qsc-other-options button:hover { background:#ECFDF5;color:#065F46; }
+.qsc-help { margin-top:.4rem;font-size:.75rem;color:#6B7280; }
 </style>

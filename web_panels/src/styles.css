@@ -14,6 +14,8 @@
   --eisa-400: #D72638;
   --eisa-300: #F59CA3;
   --eisa-accent: #D72638;
+  --eisa-turquoise: #0F8F8A;
+  --eisa-red: #B1121B;
 
   /* Surfaces */
   --surface-bg:   #F7F9FC;
@@ -258,8 +260,10 @@ body {
     border-color: var(--border);
   }
   .eisa-btn-ghost:hover:not(:disabled) { color: var(--text); border-color: #C7C4BD; }
-  .eisa-btn-success { color: #065f46;  background: #d1fae5; border-color: #6ee7b7 }
-  .eisa-btn-success:hover:not(:disabled) { background: #A7F3D0; border-color: #34D399; }
+  .eisa-btn-success { color: #fff; background: var(--eisa-turquoise); border-color: var(--eisa-turquoise); }
+  .eisa-btn-success:hover:not(:disabled) { background: #0C7773; border-color: #0C7773; }
+  .eisa-btn-success:focus-visible { outline:3px solid rgba(15,143,138,.25); outline-offset:2px; }
+  .eisa-btn-success:disabled { opacity:.55; }
   /* Form fields */
   .eisa-field-label {
     display: block;
@@ -352,6 +356,7 @@ body {
     flex-direction: column;
     overflow: hidden;
   }
+  .eisa-modal--big { width:95%; max-width:1100px; }
   .eisa-modal-header {
     display: flex;
     align-items: center;
@@ -393,6 +398,8 @@ body {
   .eisa-toast-success { border-color: #FECACA; color: #7F1D1D; background: #FFF1F2; }
   .eisa-toast-error   { border-color: #FECACA; color: #991B1B; background: #FEF2F2; }
 }
+
+[data-sonner-toaster] { z-index: 10000 !important; max-width: min(420px, calc(100vw - 24px)); }
 
 /* Eisa form helpers */
 @layer utilities {

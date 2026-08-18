@@ -22,9 +22,15 @@ export const getSessions = (params = {}) =>
 export const completeSession = (sessionId, note = '', saleResult = null, selectedIngredients = []) => {
   const payload = { note };
   if (saleResult) payload.sale_result = saleResult;
-  if (selectedIngredients?.length) payload.satildi_ids = selectedIngredients;
+  if (selectedIngredients?.length) payload.ingredient_ids = selectedIngredients;
   return http.post(`/api/analytics/sessions/${sessionId}/complete/`, payload);
 };
+
+export const markSessionReviewed = (sessionId) =>
+  http.post(`/api/analytics/sessions/${sessionId}/mark-reviewed/`);
+
+export const getDashboardSeries = (params = {}) =>
+  http.get('/api/analytics/dashboard-series/', { params });
 
 /**
  * Kiosk hareketleri listesi (QR/oturum).

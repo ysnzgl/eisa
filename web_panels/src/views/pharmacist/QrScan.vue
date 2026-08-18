@@ -1,7 +1,9 @@
 ﻿<script setup>
 import { nextTick, ref, onMounted } from 'vue';
 import { http } from '../../services/api';
-import QrSessionCard from '../../components/QrSessionCard.vue';
+import SessionDetailModal from '../../components/SessionDetailModal.vue';
+import { useAuthStore } from '../../stores/auth';
+import { toast } from 'vue-sonner';
 
 // Legacy 8-char [0-9A-Z] veya yeni 9-char Crockford Base32
 const QR_LEGACY_RE = /^[0-9A-Z]{8}$/;
@@ -41,8 +43,21 @@ const qrInputRef = ref(null);
 const session    = ref(null);
 const loading    = ref(false);
 const lookupError = ref('');
+const auth = useAuthStore();
+const storageKey = `eisa:open-consultation:${auth.pharmacyId || 'none'}:${auth.userId || 'none'}`;
 
-onMounted(() => { focusQrInput(); });
+function isFinal(value) { return [2, 3].includes(Number(value?.status)); }
+
+onMounted(async () => {
+  focusQrInput();
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(storageKey) || 'null');
+    if (saved?.qr) {
+      qrInput.value = saved.qr;
+      await lookup(true);
+    }
+  } catch { sessionStorage.removeItem(storageKey); }
+});
 
 function focusQrInput() {
   nextTick(() => {
@@ -51,8 +66,15 @@ function focusQrInput() {
   });
 }
 
-async function lookup() {
+async function lookup(restoring = false) {
   if (loading.value) return;
+
+  if (session.value && !isFinal(session.value)) {
+    const message = 'Mevcut danışmanlığı sonuçlandırmadan yeni bir QR kod sorgulayamazsınız.';
+    lookupError.value = message;
+    toast.warning(message);
+    return;
+  }
 
   const raw = normalizeQr(qrInput.value);
   session.value = null;
@@ -87,8 +109,11 @@ async function lookup() {
       return;
     }
     session.value = payload;
+    if (isFinal(payload)) sessionStorage.removeItem(storageKey);
+    else sessionStorage.setItem(storageKey, JSON.stringify({ id: payload.id, qr: payload.qr_kodu || raw }));
     qrInput.value = '';
   } catch (err) {
+    if (restoring && [403, 404].includes(err?.response?.status)) sessionStorage.removeItem(storageKey);
     const status = err?.response?.status;
     if (status === 404 || status === 403) {
       lookupError.value = 'QR koduna ait oturum bulunamadı.';
@@ -107,10 +132,10 @@ function onEnter() {
   if (!loading.value) lookup();
 }
 
-function reset() {
-  qrInput.value = '';
+function completed(updated) {
+  session.value = updated;
+  sessionStorage.removeItem(storageKey);
   session.value = null;
-  lookupError.value = '';
   focusQrInput();
 }
 </script>
@@ -154,7 +179,7 @@ function reset() {
               id="qr-lookup-btn"
               class="eisa-btn eisa-btn-cta"
               :disabled="loading || !qrInput.trim()"
-              @click="lookup"
+              @click="lookup()"
             >
               <i v-if="loading" class="fa-solid fa-circle-notch fa-spin"></i>
               <i v-else class="fa-solid fa-magnifying-glass"></i>
@@ -170,12 +195,11 @@ function reset() {
       </div>
 
       <!-- Session Result -->
-      <QrSessionCard
-        v-if="session"
+      <SessionDetailModal
         :session="session"
-        show-reset
-        @completed="s => session = s"
-        @reset="reset"
+        mandatory
+        @completed="completed"
+        @close="session = null"
       />
 
     </div><!-- /qr-scan-page -->

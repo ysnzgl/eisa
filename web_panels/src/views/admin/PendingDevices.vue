@@ -15,6 +15,7 @@ import {
   getPharmacies,
 } from '../../services/devices';
 import EisaLookup from '../../components/shared/EisaLookup.vue';
+import { toast } from 'vue-sonner';
 
 // ─── Veri ─────────────────────────────────────────────────────────────────────
 const requests    = ref([]);
@@ -40,11 +41,7 @@ const toastType    = ref('success');
 let toastTimeout   = null;
 
 function showToast(message, type = 'success') {
-  if (toastTimeout) clearTimeout(toastTimeout);
-  toastMessage.value = message;
-  toastType.value    = type;
-  toastVisible.value = true;
-  toastTimeout = setTimeout(() => { toastVisible.value = false; }, 3000);
+  (toast[type] || toast)(message);
 }
 
 // ─── Veri Yükleme ─────────────────────────────────────────────────────────────
@@ -480,10 +477,6 @@ function safeMetadataDisplay(metadata) {
       </div>
     </div>
 
-    <!-- Toast -->
-    <div v-if="toastVisible" class="toast" :class="`toast-${toastType}`">
-      {{ toastMessage }}
-    </div>
   </div>
 </template>
 

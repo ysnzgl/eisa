@@ -1,13 +1,15 @@
 <script setup>
-import { ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { http } from '../services/api';
 import QrSessionCard from './QrSessionCard.vue';
+import { markSessionReviewed } from '../services/analytics';
 
 const props = defineProps({
   /** KioskActivityListSerializer satırı — qr_kodu ve id zorunlu */
   session: { type: Object, default: null },
   /** Admin görünümünde true; tamamlama formu gizlenir */
   readonly: { type: Boolean, default: false },
+  mandatory: { type: Boolean, default: false },
 });
 const emit = defineEmits(['close', 'completed']);
 
@@ -35,6 +37,10 @@ async function loadFull(qrKodu) {
         : res.data;
     if (!payload) { loadError.value = 'Oturum detayı bulunamadı.'; return; }
     fullSession.value = payload;
+    if (!props.readonly) {
+      const reviewed = await markSessionReviewed(payload.id);
+      fullSession.value = { ...payload, ...reviewed.data };
+    }
   } catch (err) {
     const st = err?.response?.status;
     loadError.value = (st === 403 || st === 404)
@@ -54,7 +60,12 @@ function onCompleted(updatedSession) {
   emit('completed', updatedSession);
 }
 
-function close() { emit('close'); }
+const isFinal = computed(() => [2, 3].includes(Number(fullSession.value?.status)));
+const canClose = computed(() => !props.mandatory || isFinal.value || !!loadError.value);
+function close() { if (canClose.value) emit('close'); }
+function onEscape(event) { if (event.key === 'Escape') close(); }
+onMounted(() => window.addEventListener('keydown', onEscape));
+onUnmounted(() => window.removeEventListener('keydown', onEscape));
 </script>
 
 <template>
@@ -68,7 +79,7 @@ function close() { emit('close'); }
             <i class="fa-solid fa-qrcode" style="color:#0D9488;"></i>
             QR Oturum Detayı
           </h3>
-          <button class="eisa-modal-close" @click="close">
+          <button v-if="canClose" class="eisa-modal-close" @click="close">
             <i class="fa-solid fa-xmark"></i>
           </button>
         </div>
@@ -113,7 +124,7 @@ function close() { emit('close'); }
         </template>
 
         <!-- Footer -->
-        <div class="eisa-modal-footer">
+        <div v-if="canClose" class="eisa-modal-footer">
           <button class="eisa-btn eisa-btn-ghost" @click="close">Kapat</button>
         </div>
 

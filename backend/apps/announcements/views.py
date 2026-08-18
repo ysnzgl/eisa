@@ -9,7 +9,8 @@ from rest_framework.views import APIView
 from apps.core.uow import UnitOfWork
 from apps.pharmacies.permissions import IsEczaci, IsSuperAdmin
 
-from .models import Announcement, AnnouncementRead, PharmacyDutyDay, PharmacyDutyMonth
+from .models import Announcement, AnnouncementRead, PharmacyDutyMonth
+from .duty import save_duty_month
 from .serializers import AdminAnnouncementSerializer, AnnouncementDisplaySerializer
 from .services import applies_to_pharmacy, is_general_occurrence, istanbul_today, month_start, system_context
 
@@ -132,17 +133,30 @@ class DutyCalendarView(APIView):
         if has_no_duty and parsed_dates:
             raise serializers.ValidationError("Nöbetim yok seçiliyken nöbet günü girilemez.")
 
-        duty, _ = PharmacyDutyMonth.objects.update_or_create(
-            pharmacy=request.user.eczane,
-            month=month,
-            defaults={"has_no_duty": has_no_duty, "updated_by": request.user},
-        )
-        duty.days.all().delete()
-        PharmacyDutyDay.objects.bulk_create(
-            [PharmacyDutyDay(duty_month=duty, date=item) for item in sorted(set(parsed_dates))]
+        duty = save_duty_month(
+            pharmacy=request.user.eczane, month=month, has_no_duty=has_no_duty,
+            dates=parsed_dates, user=request.user,
         )
         return Response({
             "month": month.strftime("%Y-%m"),
             "has_no_duty": duty.has_no_duty,
             "dates": sorted(set(parsed_dates)),
+        })
+
+
+class AdminDutyCalendarView(DutyCalendarView):
+    permission_classes = [IsSuperAdmin]
+
+    def get(self, request):
+        try:
+            pharmacy_id = int(request.query_params.get("pharmacy_id"))
+        except (TypeError, ValueError):
+            raise serializers.ValidationError({"pharmacy_id": "Eczane seçimi zorunludur."})
+        month = self.parse_month(request.query_params.get("month"))
+        duty = PharmacyDutyMonth.objects.filter(pharmacy_id=pharmacy_id, month=month).prefetch_related("days").first()
+        return Response({
+            "pharmacy_id": pharmacy_id,
+            "month": month.strftime("%Y-%m"),
+            "has_no_duty": duty.has_no_duty if duty else False,
+            "dates": [item.date for item in duty.days.all()] if duty else [],
         })

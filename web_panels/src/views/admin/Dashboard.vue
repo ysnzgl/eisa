@@ -9,6 +9,7 @@ import { http } from '../../services/api';
 import { getAdminDashboard } from '../../services/analytics';
 import { getPharmacies, getKioskStatus, listProvisioningRequests } from '../../services/devices';
 import EisaLookup from '../../components/shared/EisaLookup.vue';
+import DashboardPeriodCharts from '../../components/DashboardPeriodCharts.vue';
 
 const router = useRouter();
 
@@ -469,6 +470,8 @@ onMounted(async () => {
 
     </div>
     <!-- /dash-bottom-grid -->
+
+    <DashboardPeriodCharts :filters="selectedPharmacy ? { eczane_id: selectedPharmacy } : {}" />
 
     <!-- Satış İstatistikleri -->
     <div class="eisa-panel" style="margin-top:1.5rem;">
