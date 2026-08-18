@@ -598,7 +598,7 @@
     letter-spacing: 0.3px;
     text-shadow: 0 2px 18px rgba(0, 0, 0, 0.6);
     display: -webkit-box;
-    -webkit-line-clamp: 2;
+    -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
     padding: 14px 28px;
