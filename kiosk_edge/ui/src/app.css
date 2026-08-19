@@ -216,8 +216,8 @@ body {
 }
 .cat-card:hover   { border-color: #B1121B; background: #FEF2F2; }
 .cat-card:active  { transform: scale(0.97); }
-.cat-card i       { font-size: 28px; color: #B1121B; }
-.cat-card h3 { font-size: 30px; font-weight: 700; color: #111827; margin: 0; line-height: 1.3; }
+.cat-card i       { font-size: 22px; color: #B1121B; }
+.cat-card h3 { font-size: 23px; font-weight: 700; color: #111827; margin: 0; line-height: 1.3; }
 
 /* Kategori listesi kaydırma konteyneri */
 .cat-grid-scroll {
