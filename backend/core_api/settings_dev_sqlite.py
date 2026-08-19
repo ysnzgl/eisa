@@ -7,6 +7,7 @@ DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
         "NAME": BASE_DIR / "db_dev.sqlite3",
+        "DISABLE_SERVER_SIDE_CURSORS": True,
     }
 }
 DEBUG = True

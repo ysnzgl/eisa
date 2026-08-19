@@ -99,7 +99,7 @@ Sebep: Registry'yi kurmadan image push/pull akışı hemen çalışır. Daha son
 
 ```powershell
 $REGISTRY = "10.200.202.20:30500"
-$TAG      = "1.0.9"
+$TAG      = "1.0.10"
 
 docker rmi -f "$REGISTRY/eisa-api:$TAG"
 docker build --no-cache -t "$REGISTRY/eisa-api:$TAG" ./backend
@@ -117,7 +117,7 @@ Write-Host "Yeni tag: $TAG"
 ```
 
 REGISTRY="10.200.202.20:30500"
-TAG="1.0.9"
+TAG="1.0.10"
 
 # API
 kubectl -n eisa-app set image deployment/eisa-api api="${REGISTRY}/eisa-api:${TAG}"

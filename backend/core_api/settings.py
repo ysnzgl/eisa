@@ -111,6 +111,7 @@ DATABASES = {
         # PgBouncer transaction pooling ile uyumlu olması için connection-level
         # özellikleri kapalı tutuyoruz; uzun süreli connection açmıyoruz.
         "CONN_MAX_AGE": config("DB_CONN_MAX_AGE", default=0, cast=int),
+        "DISABLE_SERVER_SIDE_CURSORS": True,
     }
 }
 if not DEBUG and (not DATABASES["default"]["PASSWORD"] or DATABASES["default"]["PASSWORD"] == "eisa"):
