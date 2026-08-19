@@ -17,6 +17,7 @@ build/
 *.sqlite3
 staticfiles/
 media/
+backend/backups/
 
 # Nuitka
 *.build/
