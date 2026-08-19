@@ -124,11 +124,11 @@
 
   <div class="mt-auto pt-3 d-flex gap-2">
     {#if activeParent}
-      <button class="btn-touch btn-secondary-touch" on:click={backToParents}>
+      <button class="btn-touch btn-primary-touch" on:click={backToParents}>
         <i class="fa-solid fa-arrow-left"></i> Geri
       </button>
     {:else}
-      <button class="btn-touch btn-secondary-touch" on:click={() => dispatch('back')}>
+      <button class="btn-touch btn-primary-touch" on:click={() => dispatch('back')}>
         <i class="fa-solid fa-arrow-left"></i> Geri
       </button>
     {/if}

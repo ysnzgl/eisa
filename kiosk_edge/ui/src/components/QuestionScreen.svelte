@@ -55,24 +55,9 @@
 
   {#if $currentQIndex > 0}
     <div class="mt-auto pt-2">
-      <button class="btn-touch btn-secondary-touch" on:click={() => dispatch('back')}>
-        <i class="fa-solid fa-arrow-left"></i> Onceki Soru
+      <button class="btn-touch btn-primary-touch" on:click={() => dispatch('back')}>
+        <i class="fa-solid fa-arrow-left"></i> Önceki Soru
       </button>
     </div>
   {/if}
 </div>
-
-<style>
-  .btn-answer-selected {
-    outline: 3px solid rgba(17,24,39,.75);
-    outline-offset: 2px;
-  }
-  .btn-evet {
-    background: linear-gradient(135deg, var(--eisa-turquoise), #0C7773);
-    box-shadow: 0 6px 24px rgba(15, 143, 138, 0.35);
-  }
-  .btn-hayir {
-    background: linear-gradient(135deg, var(--eisa-red), #7F1D1D);
-    box-shadow: 0 6px 24px rgba(177, 18, 27, 0.35);
-  }
-</style>

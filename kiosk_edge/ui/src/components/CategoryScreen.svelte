@@ -123,8 +123,8 @@
   {/if}
 
   <div class="mt-auto pt-3">
-    <button class="btn-touch btn-secondary-touch" on:click={goBack}>
-      <i class="fa-solid fa-arrow-left"></i> {stack.length ? 'Üst Başlık' : 'Geri'}
+    <button class="btn-touch btn-primary-touch" on:click={goBack}>
+      <i class="fa-solid fa-arrow-left"></i>Geri
     </button>
   </div>
 </div>

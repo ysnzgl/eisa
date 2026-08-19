@@ -53,7 +53,7 @@
 
   <div class="mt-auto d-flex flex-column gap-2">
     <button
-      class="btn-touch btn-primary-touch"
+      class="btn-touch btn-secondary-touch"
       disabled={!demoReady}
       class:disabled={!demoReady}
       on:click={proceed}
@@ -61,7 +61,7 @@
       <i class="fa-solid fa-arrow-right"></i>
       Devam Et
     </button>
-    <button class="btn-touch btn-secondary-touch" on:click={() => dispatch('cancel')}>
+    <button class="btn-touch btn-primary-touch" on:click={() => dispatch('cancel')}>
       <i class="fa-solid fa-xmark"></i> Vazgeç
     </button>
   </div>

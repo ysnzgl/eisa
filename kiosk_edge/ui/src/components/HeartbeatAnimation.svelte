@@ -54,7 +54,7 @@
 <style>
   .heartbeat-animation {
     position: absolute;
-    top: 35%;
+    top: 40%;
     left: 50%;
     transform: translate(-50%, -50%);
     width: clamp(580px, 35vw, 680px);

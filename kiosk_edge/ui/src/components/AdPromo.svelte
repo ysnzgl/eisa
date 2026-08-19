@@ -18,7 +18,6 @@
 
   // ── İdle içerik: başlık fade + metin daktilo ──
   let idle = null; // normal içerik veya null
-  let welcome = null; // {_type:'welcome', eczane_adi}
   let typedText = "";
   let typingActive = false;
   let titleKey = 0;
@@ -65,27 +64,20 @@
 
   function onContent(val) {
     if (!large) return;
-    // Welcome slide
-    if (val?._type === "welcome") {
-      welcome = val;
-      idle = null;
-      cancelTyping();
-      typedText = "";
-      lastId = null;
-      titleKey += 1;
-      return;
-    }
-    welcome = null;
+
     const id = val?.id ?? null;
     if (id === lastId) return;
+
     lastId = id;
     idle = val;
     titleKey += 1;
+
     if (!val) {
       cancelTyping();
       typedText = "";
       return;
     }
+
     startTyping(val.metin || "");
   }
 
@@ -102,24 +94,31 @@
   class:ad-promo--float={floatCard}
 >
   <span class="ad-promo-glow" aria-hidden="true"></span>
-
+  {#if large}
+ <div class="ai-assistant-label" style="top:18%">
+        <span class="ai-assistant-text">SİZE UYGUN ÖNERİLER İÇİN</span>
+      </div>
+      <div class="idle-cta" style="top:23%">
+        <!-- <span class="idle-cta-line1">Takviye Önerileri için</span> -->
+        <span class="idle-cta-line2">
+          <span class="idle-cta-finger">
+            <i class="fa-solid fa-hand-pointer"></i>
+            <span class="idle-cta-ring"></span>
+            <span class="idle-cta-ring idle-cta-ring--2"></span>
+          </span>
+          <b>DOKUNUN</b>
+        </span>
+      </div>
+      {/if}
   <!-- Dekoratif kalp atışı animasyonu + idle içerik (yalnız large varyantında) -->
 
   <HeartbeatAnimation />
   {#if large}
     <div class="idle-layer" aria-hidden="true">
-      <div class="ai-assistant-label">
-        <span class="ai-assistant-text">YAPAY ZEKA ASİSTANI</span>
+      <div class="welcome-block">
+        <div class="welcome-name">{$eczaneAdi || "Eczanemize"}</div>
+        <div class="welcome-hos">HOŞGELDİNİZ</div>
       </div>
-
-      {#if welcome}
-        {#key titleKey}
-          <div class="welcome-block">
-            <div class="welcome-name">{welcome.eczane_adi || "Eczanemize"}</div>
-            <div class="welcome-hos">HOŞGELDİNİZ</div>
-          </div>
-        {/key}
-      {/if}
 
       {#if idle}
         {#key titleKey}
@@ -138,18 +137,6 @@
           </div>
         {/key}
       {/if}
-
-      <div class="idle-cta">
-        <span class="idle-cta-line1">Size özel öneriler için</span>
-        <span class="idle-cta-line2">
-          <span class="idle-cta-finger">
-            <i class="fa-solid fa-hand-pointer"></i>
-            <span class="idle-cta-ring"></span>
-            <span class="idle-cta-ring idle-cta-ring--2"></span>
-          </span>
-          <b>DOKUNUN</b>
-        </span>
-      </div>
     </div>
   {/if}
 
@@ -158,9 +145,9 @@
       <i class="fa-solid fa-bullhorn"></i>
     </div>
     <div class="ad-promo-text">
-      <span class="ad-promo-title">Bu alana sponsor olabilirsiniz</span>
+      <span class="ad-promo-title">Bu Alana Sponsor Olabilirsiniz</span>
       <span class="ad-promo-sub">
-        <Logo height={large ? "20px" : "15px"} light class="ad-promo-logo" />
+        <Logo height={large ? "50px" : "25px"} light class="ad-promo-logo" />
         <span>Sponsorluk Ağı · Eczane Ekranında Markanız</span>
       </span>
     </div>
@@ -228,8 +215,8 @@
 
   .ad-promo-badge {
     flex: none;
-    width: 52px;
-    height: 52px;
+    width: 75px;
+    height: 75px;
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -249,14 +236,14 @@
   }
 
   .ad-promo-title {
-    font-size: 19px;
-    font-weight: 700;
+    font-size: 40px;
+    font-weight: 800;
     letter-spacing: 0.3px;
     background: linear-gradient(90deg, #ffffff 0%, #cfd6e4 45%, #ffffff 90%);
     background-size: 200% 100%;
     -webkit-background-clip: text;
     background-clip: text;
-    color: transparent;
+    color: white;
     animation: ad-promo-shimmer 4.5s linear infinite;
   }
 
@@ -264,7 +251,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 12.5px;
+    font-size: 15px;
     font-weight: 500;
     letter-spacing: 0.4px;
     color: #9aa6bd;
@@ -281,15 +268,15 @@
     border-radius: 22px;
   }
   .ad-promo--large .ad-promo-badge {
-    width: 84px;
-    height: 84px;
+    width: 95px;
+    height: 95px;
     font-size: 2.3rem;
   }
   .ad-promo--large .ad-promo-title {
-    font-size: 34px;
+    font-size: 50px;
   }
   .ad-promo--large .ad-promo-sub {
-    font-size: 16px;
+    font-size: 22px;
     gap: 10px;
   }
 
@@ -368,7 +355,7 @@
     .idle-title-block {
       animation: none !important;
       opacity: 1;
-      transform: translateX(-50%) !important;
+      /* transform: translateX(-50%) !important; */
     }
     .idle-title {
       animation: none !important;
@@ -395,8 +382,8 @@
   /* Yapay Zeka Asistanı yazısı - HeartBeat'in üstünde */
   .ai-assistant-label {
     position: absolute;
-    top: 18%;
-    left: 52%;
+    top: 15%;
+    left: 50%;
     transform: translateX(-50%);
     z-index: 3;
     transform-origin: center;
@@ -406,7 +393,7 @@
   .ai-assistant-text {
     display: inline-block;
     /* 1080px'de 64px; küçük viewport'larda sığacak şekilde ölçeklenir */
-    font-size: min(64px, 6vw);
+    font-size: min(58px, 6vw);
     font-weight: 900;
     letter-spacing: min(4px, 0.37vw);
     text-transform: uppercase;
@@ -478,13 +465,12 @@
   /* ── Welcome slide ─────────────────────────────────────────────────────────── */
   .welcome-block {
     position: absolute;
-    bottom: calc(25% + 250px);
-    left: 50%;
-    transform: translateX(-50%);
+    bottom: 18%;
+    left: 50%;    
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: clamp(8px, 1.5vh, 28px);
+    gap: clamp(5px, 0.8vh, 30px);
     width: 90%;
     animation: welcome-in 600ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
@@ -499,11 +485,11 @@
       0 0 40px rgba(255, 255, 255, 0.5),
       0 3px 16px rgba(0, 0, 0, 0.5);
     line-height: 1.1;
-    animation: welcome-fade-up 600ms 100ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    /* animation: welcome-fade-up 600ms 100ms cubic-bezier(0.22, 1, 0.36, 1) both; */
   }
 
   .welcome-hos {
-    font-size: clamp(40px, 8.5vw, 100px);
+    font-size: clamp(40px, 5vw, 100px);
     font-weight: 900;
     letter-spacing: clamp(2px, 0.5vw, 8px);
     text-align: center;
@@ -521,9 +507,9 @@
     background-clip: text;
     color: transparent;
     filter: drop-shadow(0 0 24px rgba(224, 68, 76, 0.7));
-    animation:
+    /* animation:
       welcome-fade-up 600ms 200ms cubic-bezier(0.22, 1, 0.36, 1) both,
-      welcome-hos-shine 2.4s 800ms ease-in-out infinite;
+      welcome-hos-shine 2.4s 800ms ease-in-out infinite; */
   }
 
   .welcome-tagline {
@@ -568,7 +554,7 @@
   /* başlık + ikon bloğu: heartbeat'in hemen üstünde, alt kenar = heart top - 20px */
   .idle-title-block {
     position: absolute;
-    bottom: calc(25% + 250px);
+    bottom: 32%;
     left: 50%;
     transform: translateX(-50%);
     display: flex;
@@ -646,7 +632,7 @@
   .idle-cta {
     position: absolute;
     /* metin altında: text top 63.5% + min-height 150px + bofsluk */
-    top: calc(60% + 175px);
+    top: 20%;
     left: 50%;
     transform: translateX(-50%);
     display: flex;
@@ -699,7 +685,7 @@
   }
   .idle-cta-ring {
     position: absolute;
-    top: -10px;
+    top: 0px;
     left: 50%;
     width: 56px;
     height: 56px;
@@ -738,8 +724,8 @@
       transform: translateY(0);
     }
     45% {
-      transform: translateY(4px);
-    }
+      transform: translateY(18px) rotate(-10deg);
+    }     
   }
   @keyframes idle-cta-ripple {
     0% {

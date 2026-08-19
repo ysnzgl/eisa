@@ -83,7 +83,7 @@
     <div class="result-card" style="text-align:center;">
       <p class="qr-heading">
         <i class="fa-solid fa-ticket text-success"></i>
-        Lütfen fişinizi/QR kodunuzu alınız
+        Lütfen Fişinizi/QR kodunuzu Eczacınıza gösterin. <br />
       </p>
       {#if $result?.qrCode}
         <div class="qr-box">
@@ -93,7 +93,7 @@
       {:else}
         <p style="color:#6B7280; font-size:14px; margin:12px 0;">QR kodu oluşturulamadı. Lütfen eczacıya danışın.</p>
       {/if}
-      <p class="qr-note">Bu QR kodu eczacınıza gösterin — bilgileriniz ekranına düşecek.</p>
+      <p class="qr-note">Öneriler için profesyonellere danışın. Yapay zeka tarafından üretilmiş yanıtlarda hata olabilir.</p>
     </div>
 
     {#if $result?.devPreview}
@@ -120,7 +120,7 @@
       <i class="fa-solid fa-rotate-left"></i> Başka Bir Şikayet Seç
     </button>
     <button class="btn-touch btn-primary-touch" on:click={() => dispatch('done')}>
-      <i class="fa-solid fa-house"></i> Bitir &amp; Başa Dön
+      <i class="fa-solid fa-house"></i> Ana Sayfaya Dön
     </button>
   </div>
 </div>

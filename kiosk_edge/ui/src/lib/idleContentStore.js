@@ -21,13 +21,10 @@ import { fetchIdleContents, fetchKioskInfo } from './api.js';
 const REFRESH_MS = 5 * 60 * 1000;
 const DWELL_MIN = 10000;
 const DWELL_MAX = 12000;
-const WELCOME_DWELL = 12000;
-const WELCOME_EVERY = 5; // TEST: hemen welcome göster
 
-/** Normal içerik veya `{_type:'welcome', eczane_adi:string}` */
 export const currentIdleContent = writable(null);
 export const eczaneAdi = writable('');
-export const kioskId   = writable(''); // kiosk_adi (display name) tutar
+export const kioskId = writable(''); // kiosk_adi (display name) tutar
 
 let contents = [];
 let bag = [];
@@ -35,7 +32,6 @@ let lastShownId = null;
 let rotateTimer = null;
 let refreshTimer = null;
 let started = false;
-let shownSinceWelcome = 0; // welcome'a kadar gösterilen içerik sayacı
 
 function shuffle(arr) {
   const a = arr.slice();
@@ -56,7 +52,6 @@ function refillBag() {
 }
 
 function dwellFor(item) {
-  if (item?._type === 'welcome') return WELCOME_DWELL;
   const len = (item?.metin || '').length;
   return Math.min(DWELL_MAX, Math.max(DWELL_MIN, DWELL_MIN + len * 27));
 }
@@ -67,14 +62,8 @@ function clearRotate() {
 
 function advance() {
   clearRotate();
-  if (contents.length === 0) { currentIdleContent.set(null); return; }
-
-  // Her WELCOME_EVERY normal içerikten sonra welcome slaytı göster
-  if (shownSinceWelcome >= WELCOME_EVERY) {
-    shownSinceWelcome = 0;
-    const adi = get(eczaneAdi);
-    currentIdleContent.set({ _type: 'welcome', eczane_adi: adi });
-    rotateTimer = setTimeout(advance, WELCOME_DWELL);
+  if (contents.length === 0) {
+    currentIdleContent.set(null);
     return;
   }
 
@@ -82,13 +71,12 @@ function advance() {
     const only = contents[0];
     if (get(currentIdleContent)?.id !== only.id) currentIdleContent.set(only);
     lastShownId = only.id;
-    shownSinceWelcome += 1;
     return;
   }
+
   if (bag.length === 0) refillBag();
   const next = bag.shift();
   lastShownId = next.id;
-  shownSinceWelcome += 1;
   currentIdleContent.set(next);
   rotateTimer = setTimeout(advance, dwellFor(next));
 }
