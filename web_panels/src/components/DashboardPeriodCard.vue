@@ -128,10 +128,10 @@ watch(() => [props.period, props.kind, props.value, JSON.stringify(props.filters
 .period-summary span { display: inline-flex; align-items: center; gap: .25rem; white-space: nowrap; }
 .period-summary .period-total-badge { color: #fff; background: var(--eisa-red); border-radius: 999px; padding: .18rem .45rem; }
 .period-legend-dot { width: 7px; height: 7px; border-radius: 50%; }
-.chart-metric--recommended { color: var(--eisa-turquoise); background-color: var(--eisa-turquoise); }
-.chart-metric--sold { color: var(--eisa-red); background-color: var(--eisa-red); }
+.chart-metric--recommended { color: #D97706; background-color: #D97706; }
+.chart-metric--sold { color: var(--eisa-turquoise); background-color: var(--eisa-turquoise); }
 .chart-metric--pending { color: #D97706; background-color: #D97706; }
-.chart-metric--not-sold { color: #64748B; background-color: #64748B; }
+.chart-metric--not-sold { color: var(--eisa-red); background-color: var(--eisa-red) }
 .period-summary .chart-metric--recommended,
 .period-summary .chart-metric--sold,
 .period-summary .chart-metric--pending,
