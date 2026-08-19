@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { toast } from 'vue-sonner';
+import EisaMultiLookup from './shared/EisaMultiLookup.vue';
 import { completeSession } from '../services/analytics';
 import { http } from '../services/api';
 
@@ -19,7 +20,6 @@ const completionLoading = ref(false);
 const completionError   = ref('');
 const selectedIngredients = ref([]);
 const ingredientCatalog = ref([]);
-const otherSearch = ref('');
 
 onMounted(async () => {
   if (props.readonly) return;
@@ -71,26 +71,20 @@ function selectAllIngredients() {
   selectedIngredients.value = recommendedIngredients.value.filter(ing => ing.id).map(ing => Number(ing.id));
 }
 
-const otherOptions = computed(() => {
-  const query = otherSearch.value.trim().toLocaleLowerCase('tr-TR');
-  if (query.length < 2) return [];
-  const recommendedIds = new Set(ingredientList.value.map(item => Number(item.id)).filter(Boolean));
-  return ingredientCatalog.value.filter(item =>
-    item.aktif !== false && !recommendedIds.has(Number(item.id)) &&
-    item.ad.toLocaleLowerCase('tr-TR').includes(query)
-  ).slice(0, 8);
+const ingredientOptions = computed(() => {
+  const recommendedIds = new Set(
+    ingredientList.value.map(item => Number(item.id)).filter(Boolean)
+  );
+
+  return ingredientCatalog.value
+    .filter(item => item.aktif !== false && !recommendedIds.has(Number(item.id)))
+    .map(item => ({
+      id: Number(item.id),
+      label: item.ad,
+      sub: item.kategori_ad || item.kategori || '',
+    }))
+    .slice(0, 200);
 });
-
-const selectedOther = computed(() => ingredientCatalog.value.filter(item =>
-  selectedIngredients.value.includes(Number(item.id)) &&
-  !ingredientList.value.some(recommended => Number(recommended.id) === Number(item.id))
-));
-
-function addOther(item) {
-  const id = Number(item.id);
-  if (!selectedIngredients.value.includes(id)) selectedIngredients.value.push(id);
-  otherSearch.value = '';
-}
 
 function clearAllIngredients() {
   selectedIngredients.value = [];
@@ -263,7 +257,7 @@ async function handleComplete(saleResult) {
             @click="toggleIngredient(ing.id)"
           >
             <i class="fa-solid" :class="selectedIngredients.includes(Number(ing.id)) ? 'fa-square-check' : 'fa-square'"></i>
-            <span>{{ ing.ad }}</span><small>Önerilen</small>
+            <span>{{ ing.ad }}</span>
           </button>
         </template>
         <template v-else>
@@ -287,18 +281,11 @@ async function handleComplete(saleResult) {
 
     <div v-if="!readonly && !session.danisma_tamamlandi" class="qr-result-section">
       <p class="qr-detail-label" style="margin-bottom:0.5rem;">Diğer Etken Madde Ekle</p>
-      <div class="qsc-other-picker">
-        <input v-model="otherSearch" class="eisa-field" placeholder="Mevcut etken madde kataloğunda ara…" autocomplete="off" />
-        <div v-if="otherOptions.length" class="qsc-other-options">
-          <button v-for="item in otherOptions" :key="item.id" type="button" @click="addOther(item)">{{ item.ad }}</button>
-        </div>
-      </div>
-      <div v-if="selectedOther.length" class="qsc-source-list qsc-selected-other">
-        <button v-for="item in selectedOther" :key="item.id" type="button" class="qsc-ing-label qsc-ing-label--added" @click="toggleIngredient(item.id)">
-          <span>{{ item.ad }}</span><small>Eczacı Ekledi</small><i class="fa-solid fa-xmark"></i>
-        </button>
-      </div>
-      <p v-if="otherSearch.length >= 2 && !otherOptions.length" class="qsc-help">Katalogda bulunamadı. Bilgiyi danışma notuna yazabilirsiniz.</p>
+      <EisaMultiLookup
+        v-model="selectedIngredients"
+        :options="ingredientOptions"
+        placeholder="Etken madde ara…"
+      />
     </div>
 
     <!-- Tamamlandı bilgisi -->
@@ -485,9 +472,65 @@ async function handleComplete(saleResult) {
 .qsc-source-pill--recommended { color:#065F46; background:#ECFDF5; border-color:#A7F3D0; }
 .qsc-source-pill--added { color:var(--eisa-info); background:var(--eisa-info-soft); border-color:var(--eisa-info-border); }
 .qsc-added-section { background:var(--eisa-info-soft); border-left:3px solid var(--eisa-info); }
-.qsc-other-picker { position:relative; }
-.qsc-other-options { position:absolute;z-index:20;left:0;right:0;top:100%;background:#fff;border:1px solid #D1D5DB;border-radius:8px;box-shadow:0 10px 24px rgba(0,0,0,.12);overflow:hidden; }
-.qsc-other-options button { display:block;width:100%;padding:.55rem .7rem;text-align:left;background:#fff;border:0;cursor:pointer; }
+.qsc-ingredient-picker {
+  position: relative;
+  border: 1.5px solid #D1D5DB;
+  border-radius: 12px;
+  background: #fff;
+  padding: 0.5rem 0.7rem 0.6rem;
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.qsc-picker-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.45rem;
+}
+.qsc-picker-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid #C7D2FE;
+  background: #EEF2FF;
+  color: #4338CA;
+  border-radius: 999px;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.qsc-picker-chip small {
+  opacity: 0.8;
+  font-size: 0.62rem;
+  letter-spacing: 0.02em;
+}
+.qsc-picker-search {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.1rem;
+}
+.qsc-picker-icon {
+  color: #6B7280;
+  font-size: 0.78rem;
+}
+.qsc-picker-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: #111827;
+  font-size: 0.9rem;
+  font-family: inherit;
+  outline: none;
+  min-width: 0;
+}
+.qsc-picker-input::placeholder { color: #9CA3AF; }
+.qsc-other-options {
+  position:absolute;z-index:20;left:0;right:0;top:calc(100% + 0.35rem);background:#fff;border:1px solid #D1D5DB;border-radius:10px;box-shadow:0 12px 28px rgba(15,23,42,0.12);overflow:hidden;
+}
+.qsc-other-options button {
+  display:block;width:100%;padding:.6rem .75rem;text-align:left;background:#fff;border:0;cursor:pointer;font-size:.82rem;color:#374151;
+}
 .qsc-other-options button:hover { background:#ECFDF5;color:#065F46; }
 .qsc-help { margin-top:.4rem;font-size:.75rem;color:#6B7280; }
 </style>
