@@ -204,6 +204,8 @@ const HEALTH_LABEL = {
         </div>
       </div>
 
+      <DashboardPeriodCharts drill-path="/pharmacist/kiosk-activities" />
+
       <!-- Satış İstatistikleri -->
       <div class="eisa-panel" style="margin-bottom:1.5rem;">
         <div class="eisa-panel-header">
@@ -261,8 +263,6 @@ const HEALTH_LABEL = {
           </div>
         </div>
       </div>
-
-      <DashboardPeriodCharts />
 
       <!-- Kiosk Health Panel -->
       <div class="eisa-panel">

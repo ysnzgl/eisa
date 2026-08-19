@@ -79,6 +79,7 @@ const kioskEditError     = ref('');
 const kioskDetailOpen   = ref(false);
 const kioskDetailTarget = ref(null);
 const transferOpen = ref(false);
+const transferTarget = ref(null);
 const transferForm = ref({ pharmacyId: '', reason: '' });
 const transferError = ref('');
 const transferSaving = ref(false);
@@ -150,6 +151,9 @@ const pharmacyOptions = computed(() =>
     label: p.name,
     sub: `${p.ilAdi || ''}${p.ilceAdi ? ' / ' + p.ilceAdi : ''}`,
   }))
+);
+const selectedTransferPharmacy = computed(() =>
+  pharmacyOptions.value.find((pharmacy) => String(pharmacy.id) === String(transferForm.value.pharmacyId)) || null
 );
 
 function provisioningHistoryForKiosk(kioskId) {
@@ -368,24 +372,38 @@ function openKioskDetail(kiosk) {
   kioskDetailOpen.value = true;
 }
 
-function openTransfer() {
+function openTransfer(kiosk = kioskDetailTarget.value) {
+  if (!kiosk) return;
+  transferTarget.value = kiosk;
   transferForm.value = { pharmacyId: '', reason: '' };
   transferError.value = '';
   transferOpen.value = true;
 }
 
+function closeTransfer() {
+  transferOpen.value = false;
+  transferTarget.value = null;
+  transferForm.value = { pharmacyId: '', reason: '' };
+  transferError.value = '';
+}
+
 async function confirmTransfer() {
   if (!transferForm.value.pharmacyId) { transferError.value = 'Yeni eczane seçimi zorunludur.'; return; }
+  if (String(transferForm.value.pharmacyId) === String(transferTarget.value?.pharmacyId)) {
+    transferError.value = 'Cihaz zaten seçilen eczaneye bağlı.';
+    return;
+  }
   transferSaving.value = true;
   transferError.value = '';
   try {
-    const updated = await transferKiosk(kioskDetailTarget.value.id, transferForm.value.pharmacyId, transferForm.value.reason);
-    kioskDetailTarget.value = updated;
-    transferOpen.value = false;
+    const updated = await transferKiosk(transferTarget.value.id, transferForm.value.pharmacyId, transferForm.value.reason);
+    if (kioskDetailTarget.value?.id === updated.id) kioskDetailTarget.value = updated;
+    closeTransfer();
     await Promise.all([loadKiosks(), loadPharmacies()]);
-    toast.success('Kiosk yeni eczaneye taşındı.');
+    toast.success('Cihaz yeni eczaneye taşındı.');
   } catch (error) {
-    transferError.value = error?.response?.data?.detail || 'Kiosk taşınamadı.';
+    const response = error?.response?.data;
+    transferError.value = response?.detail || response?.target_pharmacy?.[0] || 'Cihaz taşınamadı.';
   } finally { transferSaving.value = false; }
 }
 
@@ -820,7 +838,7 @@ async function copyAppKey() {
                     :style="{ color: isOnline(kiosk) ? '#059669' : '#EF4444' }"
                   >{{ formatPing(kiosk.lastPing) }}</p>
                 </div>
-                <div style="display:flex;gap:0.5rem;">
+                <div style="display:flex;gap:0.25rem;">
                    <button
                      class="eisa-icon-btn"
                      title="Detay"
@@ -1334,7 +1352,7 @@ async function copyAppKey() {
             </div>
 
             <div class="eisa-modal-footer">
-              <button class="eisa-btn eisa-btn-cta" @click="openTransfer">Başka Eczaneye Taşı</button>
+              <button class="eisa-btn eisa-btn-cta" @click="openTransfer(kioskDetailTarget)">Eczaneye Taşı</button>
               <button class="eisa-btn eisa-btn-ghost" @click="closeKioskDetail">Kapat</button>
             </div>
           </div>
@@ -1344,17 +1362,29 @@ async function copyAppKey() {
   </Teleport>
 
   <Teleport to="body">
-    <div v-if="transferOpen" class="eisa-modal-backdrop" @click.self="transferOpen = false">
-      <div class="eisa-modal" style="max-width:520px;">
-        <div class="eisa-modal-header"><h3 class="eisa-modal-title">Başka Eczaneye Taşı</h3><button class="eisa-modal-close" @click="transferOpen = false"><i class="fa-solid fa-xmark"></i></button></div>
+    <div v-if="transferOpen" class="eisa-modal-backdrop" @click.self="closeTransfer">
+      <div class="eisa-modal eisa-modal--transfer" role="dialog" aria-modal="true">
+        <div class="eisa-modal-header"><h3 class="eisa-modal-title">Cihazı Başka Eczaneye Taşı</h3><button class="eisa-modal-close" title="Kapat" @click="closeTransfer"><i class="fa-solid fa-xmark"></i></button></div>
         <div class="eisa-modal-body">
-          <label class="eisa-label">Yeni Eczane</label>
-          <EisaLookup v-model="transferForm.pharmacyId" :options="pharmacyOptions.filter(item => item.id !== kioskDetailTarget?.pharmacyId)" placeholder="Eczane ara…" />
-          <label class="eisa-label" style="margin-top:1rem;">Taşıma Nedeni (Opsiyonel)</label>
-          <textarea v-model="transferForm.reason" class="eisa-field" maxlength="250" rows="3"></textarea>
-          <p v-if="transferError" class="eisa-error-text">{{ transferError }}</p>
+          <div class="transfer-current">
+            <span>Mevcut Eczane</span>
+            <strong>{{ transferTarget?.pharmacyName || '—' }}</strong>
+          </div>
+          <div class="eisa-form-row">
+            <label class="eisa-field-label">Hedef Eczane <span class="required">*</span></label>
+            <EisaLookup v-model="transferForm.pharmacyId" :options="pharmacyOptions.filter(item => String(item.id) !== String(transferTarget?.pharmacyId))" placeholder="Eczane adıyla ara…" />
+          </div>
+          <div class="eisa-form-row">
+            <label class="eisa-field-label">Taşıma Nedeni (Opsiyonel)</label>
+            <textarea v-model="transferForm.reason" class="eisa-field" maxlength="250" rows="3" placeholder="Atama geçmişinde görünecek kısa açıklama"></textarea>
+          </div>
+          <div v-if="selectedTransferPharmacy" class="transfer-summary">
+            <i class="fa-solid fa-arrow-right-arrow-left"></i>
+            <div><span>{{ transferTarget?.ad }}</span><strong>{{ transferTarget?.pharmacyName }} → {{ selectedTransferPharmacy.label }}</strong></div>
+          </div>
+          <div v-if="transferError" class="eisa-error-banner"><i class="fa-solid fa-triangle-exclamation"></i>{{ transferError }}</div>
         </div>
-        <div class="eisa-modal-footer"><button class="eisa-btn eisa-btn-ghost" @click="transferOpen = false">İptal</button><button class="eisa-btn eisa-btn-cta" :disabled="transferSaving" @click="confirmTransfer">{{ transferSaving ? 'Taşınıyor…' : 'Taşı' }}</button></div>
+        <div class="eisa-modal-footer"><button class="eisa-btn eisa-btn-ghost" :disabled="transferSaving" @click="closeTransfer">İptal</button><button class="eisa-btn eisa-btn-cta" :disabled="transferSaving || !transferForm.pharmacyId" @click="confirmTransfer"><i :class="transferSaving ? 'fa-solid fa-circle-notch fa-spin' : 'fa-solid fa-arrow-right-arrow-left'"></i>{{ transferSaving ? 'Taşınıyor…' : 'Taşı' }}</button></div>
       </div>
     </div>
   </Teleport>
@@ -1760,6 +1790,39 @@ async function copyAppKey() {
 
 .font-mono {
   font-family: 'DM Mono', monospace;
+}
+
+.dm-transfer-button {
+  min-height: 32px;
+  padding: 0.35rem 0.65rem;
+  color: var(--eisa-info, #4338ca);
+  border-color: var(--eisa-info-border, #c7d2fe);
+  white-space: nowrap;
+}
+
+.eisa-modal--transfer { max-width: 560px; }
+.transfer-current,
+.transfer-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem;
+  border: 1px solid var(--eisa-info-border, #c7d2fe);
+  border-radius: 10px;
+  background: var(--eisa-info-soft, #eef2ff);
+  color: var(--eisa-info, #4338ca);
+}
+.transfer-current { justify-content: space-between; margin-bottom: 1rem; }
+.transfer-current span,
+.transfer-summary span { font-size: 0.72rem; color: #6b7280; }
+.transfer-summary { margin-top: 1rem; }
+.transfer-summary div { display: flex; flex-direction: column; gap: 0.15rem; }
+.eisa-modal--transfer .eisa-form-row { margin-top: 1rem; }
+.required { color: #dc2626; }
+
+@media (max-width: 720px) {
+  .dm-transfer-button { font-size: 0; padding: 0.45rem; }
+  .dm-transfer-button i { font-size: 0.8rem; }
 }
 
 .detail-value {

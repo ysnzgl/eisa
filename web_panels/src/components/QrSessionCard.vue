@@ -43,10 +43,21 @@ function fmtDT(iso) {
 
 const ingredientList = computed(() => {
   const s = props.session;
-  if (s.onerilen_etken_madde_detaylari?.length) return s.onerilen_etken_madde_detaylari;
+  if (s.onerilen_etken_madde_detaylari?.length) {
+    return s.onerilen_etken_madde_detaylari.map(item => ({
+      ...item,
+      source: item.source || 'RECOMMENDED',
+    }));
+  }
   return (s.onerilen_etken_maddeler || s.suggested_ingredients || [])
-    .map(v => ({ id: v?.id ?? v, ad: v?.ad ?? v }));
+    .map(v => ({ id: v?.id ?? v, ad: v?.ad ?? v, source: 'RECOMMENDED' }));
 });
+const recommendedIngredients = computed(() =>
+  ingredientList.value.filter(item => item.source !== 'PHARMACIST_ADDED')
+);
+const pharmacistAddedIngredients = computed(() =>
+  ingredientList.value.filter(item => item.source === 'PHARMACIST_ADDED')
+);
 
 function toggleIngredient(key) {
   if (!Number.isInteger(Number(key))) return;
@@ -57,7 +68,7 @@ function toggleIngredient(key) {
 }
 
 function selectAllIngredients() {
-  selectedIngredients.value = ingredientList.value.filter(ing => ing.id).map(ing => Number(ing.id));
+  selectedIngredients.value = recommendedIngredients.value.filter(ing => ing.id).map(ing => Number(ing.id));
 }
 
 const otherOptions = computed(() => {
@@ -216,15 +227,15 @@ async function handleComplete(saleResult) {
     </div>
 
     <!-- Önerilen Etken Maddeler -->
-    <div v-if="ingredientList.length" class="qr-result-section">
+    <div v-if="recommendedIngredients.length" class="qr-result-section">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;">
-        <p class="qr-detail-label" style="margin:0;">Önerilen Etken Maddeler</p>
+        <p class="qr-detail-label" style="margin:0;">Kiosk Tarafından Önerilen Etken Maddeler</p>
         <div v-if="!session.danisma_tamamlandi && !readonly" style="display:flex;gap:0.5rem;">
           <button
             type="button"
             class="qsc-batch-btn qsc-batch-btn--success"
             @click="selectAllIngredients"
-            :disabled="selectedIngredients.length === ingredientList.length"
+            :disabled="recommendedIngredients.every(item => !item.id || selectedIngredients.includes(Number(item.id)))"
           >
             <i class="fa-solid fa-check-double" style="font-size:0.7rem;"></i>
             Tümünü Seç
@@ -241,32 +252,35 @@ async function handleComplete(saleResult) {
         </div>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:0.5rem;">
-        <button
-          v-for="ing in ingredientList"
-          :key="'sel-' + (ing.id ?? ing.ad)"
-          v-if="!session.danisma_tamamlandi && !readonly"
-          type="button"
-          class="qsc-ing-label"
-          :disabled="!ing.id"
-          :class="{ 'qsc-ing-label--selected': selectedIngredients.includes(Number(ing.id)) }"
-          @click="toggleIngredient(ing.id)"
-        >
-          <i
-            class="fa-solid"
-            :class="selectedIngredients.includes(Number(ing.id)) ? 'fa-square-check' : 'fa-square'"
-            style="font-size:0.8rem;"
-          ></i>
-          {{ ing.ad }}
-        </button>
-        <span
-          v-for="ing in ingredientList"
-          :key="'ro-' + (ing.id ?? ing.ad)"
-          v-else
-          class="eisa-pill"
-          :class="ing.satildi ? 'eisa-pill-success' : 'eisa-pill-info'"
-        >
-          <i v-if="ing.satildi" class="fa-solid fa-check" style="font-size:0.7rem;margin-right:0.2rem;"></i>
-          {{ ing.ad }}
+        <template v-if="!session.danisma_tamamlandi && !readonly">
+          <button
+            v-for="ing in recommendedIngredients"
+            :key="'sel-' + (ing.id ?? ing.ad)"
+            type="button"
+            class="qsc-ing-label"
+            :disabled="!ing.id"
+            :class="{ 'qsc-ing-label--selected': selectedIngredients.includes(Number(ing.id)) }"
+            @click="toggleIngredient(ing.id)"
+          >
+            <i class="fa-solid" :class="selectedIngredients.includes(Number(ing.id)) ? 'fa-square-check' : 'fa-square'"></i>
+            <span>{{ ing.ad }}</span><small>Önerilen</small>
+          </button>
+        </template>
+        <template v-else>
+          <span v-for="ing in recommendedIngredients" :key="'ro-' + (ing.id ?? ing.ad)" class="qsc-source-pill qsc-source-pill--recommended">
+            <i v-if="ing.satildi" class="fa-solid fa-check"></i>
+            <span>{{ ing.ad }}</span><small>Önerilen</small>
+          </span>
+        </template>
+      </div>
+    </div>
+
+    <div v-if="session.danisma_tamamlandi && pharmacistAddedIngredients.length" class="qr-result-section qsc-added-section">
+      <p class="qr-detail-label">Eczacı Tarafından Eklenen Etken Maddeler</p>
+      <div class="qsc-source-list">
+        <span v-for="ing in pharmacistAddedIngredients" :key="'added-' + (ing.id ?? ing.ad)" class="qsc-source-pill qsc-source-pill--added">
+          <i v-if="ing.satildi" class="fa-solid fa-check"></i>
+          <span>{{ ing.ad }}</span><small>Eczacı Ekledi</small>
         </span>
       </div>
     </div>
@@ -279,9 +293,9 @@ async function handleComplete(saleResult) {
           <button v-for="item in otherOptions" :key="item.id" type="button" @click="addOther(item)">{{ item.ad }}</button>
         </div>
       </div>
-      <div v-if="selectedOther.length" style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-top:0.5rem;">
-        <button v-for="item in selectedOther" :key="item.id" type="button" class="qsc-ing-label qsc-ing-label--selected" @click="toggleIngredient(item.id)">
-          {{ item.ad }} <i class="fa-solid fa-xmark"></i>
+      <div v-if="selectedOther.length" class="qsc-source-list qsc-selected-other">
+        <button v-for="item in selectedOther" :key="item.id" type="button" class="qsc-ing-label qsc-ing-label--added" @click="toggleIngredient(item.id)">
+          <span>{{ item.ad }}</span><small>Eczacı Ekledi</small><i class="fa-solid fa-xmark"></i>
         </button>
       </div>
       <p v-if="otherSearch.length >= 2 && !otherOptions.length" class="qsc-help">Katalogda bulunamadı. Bilgiyi danışma notuna yazabilirsiniz.</p>
@@ -458,6 +472,19 @@ async function handleComplete(saleResult) {
   background: #FECACA;
   border-color: #F87171;
 }
+.qsc-ing-label small,
+.qsc-source-pill small { font-size:.64rem; font-weight:750; opacity:.82; }
+.qsc-ing-label--added {
+  border-color: var(--eisa-info-border);
+  background: var(--eisa-info-soft);
+  color: var(--eisa-info);
+}
+.qsc-source-list { display:flex; flex-wrap:wrap; gap:.5rem; }
+.qsc-selected-other { margin-top:.5rem; }
+.qsc-source-pill { display:inline-flex; align-items:center; gap:.38rem; padding:.35rem .7rem; border-radius:999px; font-size:.82rem; border:1px solid; }
+.qsc-source-pill--recommended { color:#065F46; background:#ECFDF5; border-color:#A7F3D0; }
+.qsc-source-pill--added { color:var(--eisa-info); background:var(--eisa-info-soft); border-color:var(--eisa-info-border); }
+.qsc-added-section { background:var(--eisa-info-soft); border-left:3px solid var(--eisa-info); }
 .qsc-other-picker { position:relative; }
 .qsc-other-options { position:absolute;z-index:20;left:0;right:0;top:100%;background:#fff;border:1px solid #D1D5DB;border-radius:8px;box-shadow:0 10px 24px rgba(0,0,0,.12);overflow:hidden; }
 .qsc-other-options button { display:block;width:100%;padding:.55rem .7rem;text-align:left;background:#fff;border:0;cursor:pointer; }

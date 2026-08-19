@@ -437,7 +437,6 @@ onMounted(async () => {
 }
 .req { color: #B1121B; }
 .destek-char-warn { font-size:.75rem; color:#B45309; margin:.25rem 0 0; }
-.eisa-table-wrap { overflow-x: auto; }
 .destek-row { cursor: pointer; }
 .destek-row:hover td { background: #FEF2F2; }
 .destek-no { font-family: 'DM Mono', monospace; font-size: .8rem; font-weight: 700; color: #B1121B; }

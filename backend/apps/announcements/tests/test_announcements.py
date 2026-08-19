@@ -121,3 +121,42 @@ def test_daily_system_read_only_suppresses_same_day(pharmacy_user):
         assert client.post(reverse("announcement-read", args=[current["id"]])).status_code == 201
         active_after_read = client.get(reverse("active-announcements"))
     assert all(item["id"] != current["id"] for item in active_after_read.data)
+
+
+def test_active_endpoint_excludes_inactive_out_of_date_and_wrong_target(pharmacy_user):
+    user, pharmacy = pharmacy_user
+    client = APIClient()
+    client.force_authenticate(user)
+    today = date(2026, 8, 19)
+
+    visible_all = general(title="Tüm eczaneler", recurrence=Announcement.Recurrence.DAILY)
+    visible_province = general(
+        title="İl hedefi",
+        recurrence=Announcement.Recurrence.DAILY,
+        target_scope=Announcement.TargetScope.PROVINCE,
+        target_province=pharmacy.il,
+    )
+    future = general(title="Gelecek", recurrence=Announcement.Recurrence.DAILY, start_date=date(2026, 8, 20))
+    expired = general(
+        title="Süresi dolmuş",
+        recurrence=Announcement.Recurrence.DAILY,
+        end_date=date(2026, 8, 18),
+    )
+    inactive = general(title="Pasif", recurrence=Announcement.Recurrence.DAILY, active=False)
+    other_province = Il.objects.create(ad="Başka İl")
+    other_district = Ilce.objects.create(ad="Başka İlçe", il=other_province)
+    other_pharmacy = Eczane.objects.create(ad="Başka Eczane", il=other_province, ilce=other_district)
+    wrong_target = general(
+        title="Başka eczane",
+        recurrence=Announcement.Recurrence.DAILY,
+        target_scope=Announcement.TargetScope.PHARMACY,
+        target_pharmacy=other_pharmacy,
+    )
+
+    with patch("apps.announcements.views.istanbul_today", return_value=today):
+        response = client.get(reverse("active-announcements"))
+
+    assert response.status_code == 200
+    returned_ids = {item["id"] for item in response.data}
+    assert {visible_all.id, visible_province.id}.issubset(returned_ids)
+    assert {future.id, expired.id, inactive.id, wrong_target.id}.isdisjoint(returned_ids)

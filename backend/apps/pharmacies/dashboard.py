@@ -4,6 +4,7 @@ Eczaci paneli ana sayfa gorunumu — kendi eczanesine ait ozet metrikler.
 KVKK uyumu: Tum sayimlar request.user.eczane uzerinden filtrelenir.
 """
 from datetime import timedelta
+from zoneinfo import ZoneInfo
 
 from django.db.models import Count, Q
 from django.db.models.functions import Coalesce
@@ -57,7 +58,9 @@ class EczaciDashboardView(APIView):
             )
 
         now = timezone.now()
-        bugun_basi = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        istanbul_now = now.astimezone(ZoneInfo("Europe/Istanbul"))
+        bugun_basi = istanbul_now.replace(hour=0, minute=0, second=0, microsecond=0)
+        yarin_basi = bugun_basi + timedelta(days=1)
 
         kiosklar = list(Kiosk.objects.filter(eczane_id=eczane.id).order_by("id"))
         kiosk_ids = [k.id for k in kiosklar]
@@ -66,31 +69,38 @@ class EczaciDashboardView(APIView):
             Q(eczane_id=eczane.id) | Q(eczane__isnull=True, kiosk__eczane_id=eczane.id)
         )
         oturum_sayisi = oturum_qs.count()
-        oturum_sayisi_bugun = oturum_qs.filter(olusturulma_tarihi__gte=bugun_basi).count()
+        oturum_sayisi_bugun = oturum_qs.filter(
+            olusturulma_tarihi__gte=bugun_basi,
+            olusturulma_tarihi__lt=yarin_basi,
+        ).count()
 
         # Satış istatistikleri — start_date/end_date parametrelerine duyarlı
         params = request.query_params
         start_date = params.get("start_date")
         end_date = params.get("end_date")
 
-        sold_qs = oturum_qs.filter(Q(status=OturumLogu.SatisDurumu.SATIS_YAPILDI) | Q(status=0, sold=True))
+        sold_qs = oturum_qs.filter(
+            status=OturumLogu.SatisDurumu.SATIS_YAPILDI,
+            result_at__isnull=False,
+        )
         if start_date:
-            sold_qs = sold_qs.filter(Q(result_at__date__gte=start_date) | Q(result_at__isnull=True, olusturulma_tarihi__date__gte=start_date))
+            sold_qs = sold_qs.filter(result_at__date__gte=start_date)
         if end_date:
-            sold_qs = sold_qs.filter(Q(result_at__date__lte=end_date) | Q(result_at__isnull=True, olusturulma_tarihi__date__lte=end_date))
+            sold_qs = sold_qs.filter(result_at__date__lte=end_date)
         satis_sayisi = sold_qs.count()
 
         em_qs = OturumOnerilenEtkenMadde.objects.filter(
             Q(oturum__eczane_id=eczane.id)
             | Q(oturum__eczane__isnull=True, oturum__kiosk__eczane_id=eczane.id)
         ).filter(
-            Q(oturum__status=OturumLogu.SatisDurumu.SATIS_YAPILDI, satildi=True)
-            | Q(oturum__status=0, oturum__sold=True)
+            oturum__status=OturumLogu.SatisDurumu.SATIS_YAPILDI,
+            oturum__result_at__isnull=False,
+            satildi=True,
         )
         if start_date:
-            em_qs = em_qs.filter(Q(oturum__result_at__date__gte=start_date) | Q(oturum__result_at__isnull=True, oturum__olusturulma_tarihi__date__gte=start_date))
+            em_qs = em_qs.filter(oturum__result_at__date__gte=start_date)
         if end_date:
-            em_qs = em_qs.filter(Q(oturum__result_at__date__lte=end_date) | Q(oturum__result_at__isnull=True, oturum__olusturulma_tarihi__date__lte=end_date))
+            em_qs = em_qs.filter(oturum__result_at__date__lte=end_date)
 
         top_em = (
             em_qs

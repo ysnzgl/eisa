@@ -459,6 +459,7 @@ Eczacı (web_panels/QrScan.vue)
   → GET /api/analytics/sessions/?qr_kodu={qr_kodu}
   → Backend: OturumLogu lookup + tarihsel eczane sahipliği
   → Modal: Session detayı + önerilen/katalogdan eklenen etken maddeler
+  → Normalize detay `source`: kiosk snapshot'ında olan `RECOMMENDED`, yalnız completion seçimine eklenen `PHARMACIST_ADDED`
   → POST /api/analytics/sessions/{id}/mark-reviewed/ (yalnız eczacı, idempotent)
 ```
 
@@ -495,6 +496,8 @@ SuperAdmin (web_panels/AnnouncementManagement)
   → Backend: Europe/Istanbul günü için occurrence + request.user.eczane hedef eşleşmesi
   → POST /api/announcements/{id}/read/
   → AnnouncementRead(announcement,user,occurrence_date) unique
+  → Ortak AdminLayout mount/yenileme: okunmamış GENERAL ve SYSTEM kayıtları tekli kuyruk halinde otomatik açılır
+  → GENERAL yalnız kullanıcının açık “Okudum” onayı başarılı olunca kuyruktan çıkar
 ```
 
 ### 7.2 Sistem Nöbet Uyarısı
@@ -512,7 +515,7 @@ Eczacı ortak AdminLayout → DutyAlertModal
   → Bugün İçin Okudum: POST /api/announcements/{id}/read/
 ```
 
-**Güven sınırı:** Admin condition/SQL/query tanımlamaz. Sistem anahtarı, koşul, tarih penceresi, hedef ay ve aksiyon URL'si backend kodunda sabittir. Sistem duyurusu silinmez; yalnız pasifleştirilir.
+**Güven sınırı:** Admin condition/SQL/query tanımlamaz. Sistem anahtarı, koşul, tarih penceresi, hedef ay ve aksiyon URL'si backend kodunda sabittir. Sistem duyurusu silinmez; yalnız pasifleştirilir. Teknik `system_key` API'de korunur ancak web panel listesi/detayı/formunda gösterilmez.
 
 ## Do Not Change Without Checking
 

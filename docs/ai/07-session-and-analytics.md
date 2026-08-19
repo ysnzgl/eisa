@@ -320,6 +320,7 @@ GET /api/analytics/oturum-loglari/
    }
 6. Modal gösterimi sonrası `mark-reviewed` çağrılır; status yalnız `BEKLIYOR -> INCELENDI` olur. Admin detail bu çağrıyı yapmaz.
 7. Eczacı katalogdan önerilen/diğer etken maddeleri seçebilir, not ekleyebilir ve zorunlu satış sonucunu girer. Sonuçsuz modal Escape/backdrop/Kapat ile kapanmaz.
+   - Detay response'unda kiosk snapshot'ıyla eşleşen satırlar `RECOMMENDED`, yalnız eczacının completion seçimine eklediği satırlar `PHARMACIST_ADDED` kaynağıyla döner; UI bu iki grubu ayrı gösterir.
 8. POST /api/analytics/sessions/{id}/complete/
   { "note": "Hastaya danışmanlık verildi.", "sale_result": "sold|not_sold", "ingredient_ids": [1,2] }
 9. Backend:

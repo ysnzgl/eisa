@@ -262,6 +262,7 @@ Notlar (QR contract, 2026-07-20):
 4. Sistem uyarıları yalnız iki sabit `system_key` için `services.system_context()` içinde değerlendirilir: gelecek ay eksikliği ayın son 3 günü; aktif ay eksikliği ayın 1–14. günleri.
 5. Hedef ayda en az bir `PharmacyDutyDay` veya `has_no_duty=true` varsa uyarı üretilmez. Aksiyon URL'si backend tarafından hedef ay query'siyle sabit üretilir.
 6. Admin sistem duyurusunda yalnız `title`, `message`, `action_label`, `severity`, `active` alanlarını değiştirebilir; sistem duyurusu DELETE 405 döner.
+7. Session detayındaki normalize etken madde satırları, kiosk öneri JSON snapshot'ı ile karşılaştırılarak additive `source=RECOMMENDED|PHARMACIST_ADDED` alanını döndürür; bu ayrım için şema değişikliği gerekmez.
 
 ---
 

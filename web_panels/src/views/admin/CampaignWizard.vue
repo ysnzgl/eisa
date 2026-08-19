@@ -2,7 +2,7 @@
 /**
  * Kampanya Yönetim Sihirbazı (DOOH v2 — Faz 6)
  * Adımlar:
- *   1) Kampanya bilgileri  (ad, reklamveren, tarih, durum)
+ *   1) Kampanya bilgileri  (ad, Sponsorluk Veren, tarih, durum)
  *   2) Medyalar             (creative yükle, süre seç)
  *   3) Hedefleme            (ALL / IL / ILCE / ECZANE)
  *   4) Frekans & Pacing     (PER_LOOP / PER_HOUR / PER_DAY + impression hedefi)
@@ -703,9 +703,9 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
   <div class="eisa-page campaign-wizard">
     <header class="eisa-page-header">
       <div>
-        <p class="eisa-eyebrow">Reklam</p>
+        <p class="eisa-eyebrow">Sponsorluk</p>
         <h1 class="eisa-page-title">Kampanyalar</h1>
-        <p class="eisa-page-subtitle">DOOH reklam kampanyalarını oluştur ve frekansını ayarla.</p>
+        <p class="eisa-page-subtitle">DOOH sponsorluk kampanyalarını oluştur ve frekansını ayarla.</p>
       </div>
       <div class="eisa-header-actions">
         <button class="eisa-btn" @click="refresh" :disabled="loading">
@@ -731,7 +731,7 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
           <input
             v-model="searchQuery"
             type="search"
-            placeholder="Kampanya adı veya reklamveren ara…"
+            placeholder="Kampanya adı veya Sponsor ara…"
             class="eisa-field"
             style="padding-left:2.25rem;width:100%"
           />
@@ -781,7 +781,7 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
                   <i v-if="sortKey==='name'" :class="sortDir==='asc' ? 'fa-solid fa-caret-up' : 'fa-solid fa-caret-down'"></i>
                 </th>
                 <th class="sortable" @click="toggleSort('advertiser')" style="cursor:pointer">
-                  Reklamveren
+                  Sponsor
                   <i v-if="sortKey==='advertiser'" :class="sortDir==='asc' ? 'fa-solid fa-caret-up' : 'fa-solid fa-caret-down'"></i>
                 </th>
                 <th class="sortable" @click="toggleSort('start')" style="cursor:pointer">
@@ -901,14 +901,14 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
           <!-- Step 1: Bilgiler -->
           <section v-if="step === 1" class="step-pane">
             <h3 class="step-title">Kampanya bilgileri</h3>
-            <p class="step-help">Reklamveren adı, kampanyanın yayında olacağı tarih aralığı ve durumu.</p>
+            <p class="step-help">Sponsor adı, kampanyanın yayında olacağı tarih aralığı ve durumu.</p>
             <div class="eisa-form-grid">
               <div class="eisa-form-row eisa-form-row-full">
                 <label class="eisa-field-label">Kampanya adı *</label>
                 <input v-model="form.name" class="eisa-field" placeholder="Örn. Aspirin Yaz Kampanyası" />
               </div>
               <div class="eisa-form-row eisa-form-row-full">
-                <label class="eisa-field-label">Reklamveren adı</label>
+                <label class="eisa-field-label">Sponsor adı</label>
                 <input v-model="form.advertiser_name" class="eisa-field" placeholder="Örn. Bayer İlaç" />
               </div>
 
@@ -1319,7 +1319,7 @@ const STATUS_LABELS = { ACTIVE: 'Aktif', PAUSED: 'Duraklatıldı', COMPLETED: 'T
               <h4>Özet</h4>
               <ul>
                 <li><strong>Kampanya:</strong> {{ form.name || '—' }}</li>
-                <li><strong>Reklamveren:</strong> {{ form.advertiser_name || '—' }}</li>
+                <li><strong>Sponsor:</strong> {{ form.advertiser_name || '—' }}</li>
                 <li><strong>Tarih:</strong> {{ form.start_date?.slice(0,10) ?? '—' }} → {{ form.end_date?.slice(0,10) ?? '—' }}</li>
                 <li><strong>Hedefleme:</strong> {{ form.target_scope === 'ALL' ? 'Tüm aktif kiosklar' : `${targets.length} hedef (RULES)` }}</li>
                 <li><strong>Medya:</strong> {{ form.creatives.length }} adet ({{ form.creatives[0]?.duration_seconds ?? '?' }} sn)</li>

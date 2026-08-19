@@ -95,17 +95,72 @@ def test_ingredient_validation_duplicate_and_not_sold_conflict(context):
     ).status_code == 400
 
 
+def test_ingredient_response_distinguishes_recommended_and_pharmacist_added(context):
+    _, _, users, admin, make_session = context
+    recommended = EtkenMadde.objects.create(ad="Önerilen Etken", aktif=True)
+    added = EtkenMadde.objects.create(ad="Eczacı Etkeni", aktif=True)
+    row = make_session()
+    row.onerilen_etken_maddeler = [recommended.id, recommended.id]
+    row.save(update_fields=["onerilen_etken_maddeler"])
+    OturumOnerilenEtkenMadde.objects.create(
+        oturum=row, etken_madde=recommended,
+        etken_madde_adi_snapshot=recommended.ad, satildi=True,
+    )
+    OturumOnerilenEtkenMadde.objects.create(
+        oturum=row, etken_madde=added,
+        etken_madde_adi_snapshot=added.ad, satildi=True,
+    )
+
+    pharmacist_response = client(users[0]).get(
+        "/api/analytics/sessions/", {"qr_kodu": row.qr_kodu}
+    )
+    admin_response = client(admin).get(
+        "/api/analytics/sessions/", {"qr_kodu": row.qr_kodu}
+    )
+    assert pharmacist_response.status_code == admin_response.status_code == 200
+    for response in (pharmacist_response, admin_response):
+        details = response.data["onerilen_etken_madde_detaylari"]
+        assert [(item["ad"], item["source"]) for item in details] == [
+            (recommended.ad, "RECOMMENDED"),
+            (added.ad, "PHARMACIST_ADDED"),
+        ]
+        assert len(details) == 2
+
+
 def test_dashboard_series_full_period_and_scope(context):
     _, _, users, admin, make_session = context
     one = make_session(0); two = make_session(1)
     now = timezone.now()
     OturumLogu.objects.filter(pk=one.pk).update(status=2, result_at=now)
+    recommended = EtkenMadde.objects.create(ad="Dashboard Önerilen", aktif=True)
+    added = EtkenMadde.objects.create(ad="Dashboard Eklenen", aktif=True)
+    OturumOnerilenEtkenMadde.objects.create(
+        oturum=one, etken_madde=recommended,
+        etken_madde_adi_snapshot=recommended.ad, satildi=True,
+    )
+    OturumOnerilenEtkenMadde.objects.create(
+        oturum=one, etken_madde=added,
+        etken_madde_adi_snapshot=added.ad, satildi=False,
+    )
+    pending_ingredient = EtkenMadde.objects.create(ad="Bekleyen Etken", aktif=True)
+    OturumOnerilenEtkenMadde.objects.create(
+        oturum=two, etken_madde=pending_ingredient,
+        etken_madde_adi_snapshot=pending_ingredient.ad, satildi=False,
+    )
     response = client(users[0]).get("/api/analytics/dashboard-series/")
     assert response.status_code == 200
     assert len(response.data["monthly_interactions"]) in (28,29,30,31)
     assert len(response.data["weekly_interactions"]) == 7
     assert sum(x["value"] for x in response.data["monthly_interactions"]) == 1
-    assert sum(x["value"] for x in client(admin).get("/api/analytics/dashboard-series/").data["monthly_interactions"]) == 2
+    assert sum(x["recommended"] for x in response.data["monthly_sales"]) == 2
+    assert sum(x["sold"] for x in response.data["monthly_sales"]) == 1
+    assert response.data["totals"]["monthly_recommended"] == 2
+    assert response.data["totals"]["monthly_sold"] == 1
+    admin_data = client(admin).get("/api/analytics/dashboard-series/").data
+    assert sum(x["value"] for x in admin_data["monthly_interactions"]) == 2
+    assert sum(x["pending"] for x in admin_data["monthly_interactions"]) == 1
+    assert sum(x["sold"] for x in admin_data["monthly_interactions"]) == 1
+    assert sum(x["recommended"] for x in admin_data["monthly_sales"]) == 2
 
 
 def test_kiosk_transfer_keeps_identity_and_historical_sessions(context):

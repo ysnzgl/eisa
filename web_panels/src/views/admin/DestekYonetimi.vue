@@ -380,7 +380,6 @@ onMounted(async () => {
 .destek-no { font-family: 'DM Mono', monospace; font-size: .8rem; font-weight: 700; color: #B1121B; }
 .admin-destek-row { cursor: pointer; }
 .admin-destek-row:hover td { background: #FEF2F2; }
-.eisa-table-wrap { overflow-x: auto; }
 .destek-detail-meta {
   display: flex; flex-wrap: wrap; align-items: center; gap: .5rem;
   padding-bottom: .75rem; border-bottom: 1px solid #E5EBF1; font-size: .8rem;

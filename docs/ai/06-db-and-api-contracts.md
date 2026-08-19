@@ -375,7 +375,7 @@ X-Kiosk-Device-ID: <DEVICE_UUID>  # zorunlu (device_id set edildiyse)
   - `400`: boş veya formatı geçersiz QR
   - `404`: QR koduna ait oturum bulunamadı
   - `403`: eczane sahipliği uyuşmuyor veya kullanıcı eczaneye bağlı değil
-- Response: tek oturum objesi (`OturumLoguSerializer`) + normalize detay alanları (`kiosk_detay`, `eczane`, `yas_araligi_detay`, `cinsiyet_detay`, `kategori_detay`, `cevap_detaylari`, `onerilen_etken_madde_detaylari`)
+- Response: tek oturum objesi (`OturumLoguSerializer`) + normalize detay alanları (`kiosk_detay`, `eczane`, `yas_araligi_detay`, `cinsiyet_detay`, `kategori_detay`, `cevap_detaylari`, `onerilen_etken_madde_detaylari`). Her etken madde detayında additive `source: "RECOMMENDED"|"PHARMACIST_ADDED"` bulunur; kaynak kiosk öneri JSON snapshot'ından türetilir.
 
 ---
 
@@ -424,6 +424,7 @@ X-Kiosk-Device-ID: <DEVICE_UUID>  # zorunlu (device_id set edildiyse)
 - Europe/Istanbul gününde geçerli genel occurrence'ları ve koşulu sağlanan sistem uyarılarını döner.
 - `include_read=false` varsayılandır; bugünkü okunmuş kayıtları gizler. `true` okundu durumuyla birlikte döner.
 - Response item: `{id, kind, system_key, title, message, action_label, severity, occurrence_date, is_read, action_url, target_month}`.
+- `system_key` backend güven/uyumluluk contract'ında kalır; son kullanıcı ve admin sunum katmanı bu teknik değeri yazdırmaz.
 
 **POST /api/announcements/{id}/read/**
 - Auth: JWT (Eczacı).
@@ -484,6 +485,7 @@ X-Kiosk-Device-ID: <DEVICE_UUID>  # zorunlu (device_id set edildiyse)
 - `{id}` is the integer `OturumLogu.id` primary key
 - Request: `{ "note": "Optional pharmacist note.", "sale_result": "sold|not_sold", "ingredient_ids": [1,2] }`
 - Response: (single updated `OturumLoguSerializer` object)
+- Response `onerilen_etken_madde_detaylari` öğeleri `id`, `ad`, `satildi`, `source` alanlarını taşır; aynı katalog girdisi öneri+eczacı seçimi kesişiminde tek normalize satır olarak kalır.
 - `status` integer authoritative kaynaktır: `0 BEKLIYOR`, `1 INCELENDI`, `2 SATIS_YAPILDI`, `3 SATIS_YAPILMADI`; sonuçlarda `result_at` set edilir. Boolean `sold` response alanı status'tan türetilen geriye uyumluluktur.
 - `not_sold` ile ingredient gönderimi, pasif/geçersiz ID ve duplicate global kayıt oluşturma reddedilir.
 
@@ -493,8 +495,16 @@ X-Kiosk-Device-ID: <DEVICE_UUID>  # zorunlu (device_id set edildiyse)
 
 **GET /api/analytics/dashboard-series/**
 - Auth: JWT (SuperAdmin/Pharmacist). Params: `month=YYYY-MM`, `week=YYYY-MM-DD`; admin için `il_id`, `ilce_id`, `eczane_id`.
-- Response: `monthly_interactions`, `monthly_sales`, `weekly_interactions`, `weekly_sales`, `totals`, `week_start/end`, `timezone`.
-- Ayın bütün günleri ve Pazartesi-Pazar yedi gün sıfır dolgulu döner. Satış yalnız status=2 ve `result_at` gününde sayılır; timezone Europe/Istanbul'dur.
+- Response: `monthly_interactions`, `monthly_sales`, `weekly_interactions`, `weekly_sales`, `totals`, `week_start/end`, `timezone`. Etkileşim satırları `pending`, `sold`, `not_sold`, `value=toplam`; satış satırları `recommended`, `sold`, `value=sold` alanlarını taşır.
+- Ayın bütün günleri ve Pazartesi-Pazar yedi gün sıfır dolgulu döner. Etkileşim serileri QR oturumunun oluşturulma gününde Danışma durumuna göre gruplanır; satış serileri yalnız `status=SATIS_YAPILDI` oturumlarında `result_at` gününde sayılır. Bu satış oturumlarında tüm öneriler `recommended`, yalnız `satildi=true` etken maddeler `sold` olur; timezone Europe/Istanbul'dur.
+
+**GET /api/analytics/admin-dashboard/**
+- `satis_yapan_eczaneler`: satış sonucu olan oturumların eczane bazlı ilk 5 dağılımı; öğe `{id, ad, sayi}`. Legacy null session eczanesi için kiosk eczanesi fallback'tir.
+- `satilan_etken_madde_dagilimi`: `SATIS_YAPILDI` oturumlarındaki gerçekten satılmış etken maddelerin ilk 5 dağılımı; öğe `{ad, sayi}`.
+- `onerilen_etken_madde_dagilimi`: tüm QR oturumlarındaki önerilen etken maddelerin ilk 10 dağılımı; öğe `{ad, sayi}`.
+- `kategori_dagilim`: yalnız gerçek kategori ilişkisi olan oturumları içerir; kategorisiz özel danışmanlık kayıtları donut'a girmez.
+- `bugunki_oturum`: sunucu saatine değil `Europe/Istanbul` takvim gününe göre `[gün başlangıcı, ertesi gün başlangıcı)` aralığında sayılır.
+- `il_id` ve `eczane_id` isteğe bağlı parametreleri ilk sıra KPI'ları ile kategori ve satış/etken-madde dashboard dağılımlarını seçilen coğrafi/eczane kapsamına indirir; parametre yoksa sistem geneli döner.
 
 **POST /api/pharmacies/kiosks/{id}/transfer/**
 - Auth: JWT (SuperAdmin). Request: `{ "eczane_id": 2, "tasima_nedeni": "opsiyonel" }`.

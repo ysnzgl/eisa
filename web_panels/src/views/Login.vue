@@ -80,7 +80,7 @@ async function submit() {
         <ul class="brand-features">
           <li>
             <span class="feat-dot" />
-            Gerçek zamanlı Reklam yönetimi
+            Gerçek zamanlı Sponsorluk yönetimi
           </li>
           <li>
             <span class="feat-dot" />

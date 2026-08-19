@@ -9,6 +9,27 @@ from apps.products.models import Cevap, EtkenMadde, Soru
 from .models import OturumLogu
 
 
+def _recommended_ingredient_identity(values):
+    """Kiosk öneri snapshot'ındaki katalog kimliklerini ve adları ayırır."""
+    ids, names = set(), set()
+    for value in values if isinstance(values, list) else []:
+        raw_id = value.get("id") if isinstance(value, dict) else value
+        raw_name = value.get("ad") if isinstance(value, dict) else value
+        if isinstance(raw_id, int) and not isinstance(raw_id, bool):
+            ids.add(raw_id)
+        elif isinstance(raw_id, str) and raw_id.strip().isdigit():
+            ids.add(int(raw_id.strip()))
+        if isinstance(raw_name, str) and raw_name.strip() and not raw_name.strip().isdigit():
+            names.add(raw_name.strip().casefold())
+    return ids, names
+
+
+def _ingredient_source(*, ingredient_id, name, recommended_ids, recommended_names):
+    if ingredient_id in recommended_ids or str(name or "").strip().casefold() in recommended_names:
+        return "RECOMMENDED"
+    return "PHARMACIST_ADDED"
+
+
 class OturumLoguItemSerializer(serializers.Serializer):
     """
     Kiosk'tan gelen tek oturum kaydi. yas_araligi_kod ve cinsiyet_kod string olarak gelir;
@@ -306,20 +327,34 @@ class OturumLoguSerializer(serializers.ModelSerializer):
         }
 
         details = []
+        seen = set()
         for value in values:
             if isinstance(value, dict):
                 parsed = self._parse_int(value.get("id"))
                 name = value.get("ad")
                 if parsed is not None:
-                    details.append({"id": parsed, "ad": ingredient_rows.get(parsed, name or f"Etken Madde #{parsed}")})
+                    resolved_name = ingredient_rows.get(parsed, name or f"Etken Madde #{parsed}")
+                    key = ("id", parsed)
+                    if key not in seen:
+                        details.append({"id": parsed, "ad": resolved_name, "source": "RECOMMENDED"})
+                        seen.add(key)
                 elif name:
-                    details.append({"id": None, "ad": str(name)})
+                    key = ("name", str(name).strip().casefold())
+                    if key not in seen:
+                        details.append({"id": None, "ad": str(name), "source": "RECOMMENDED"})
+                        seen.add(key)
                 continue
             parsed = self._parse_int(value)
             if parsed is not None:
-                details.append({"id": parsed, "ad": ingredient_rows.get(parsed, f"Etken Madde #{parsed}")})
+                key = ("id", parsed)
+                if key not in seen:
+                    details.append({"id": parsed, "ad": ingredient_rows.get(parsed, f"Etken Madde #{parsed}"), "source": "RECOMMENDED"})
+                    seen.add(key)
             else:
-                details.append({"id": None, "ad": str(value)})
+                key = ("name", str(value).strip().casefold())
+                if key not in seen:
+                    details.append({"id": None, "ad": str(value), "source": "RECOMMENDED"})
+                    seen.add(key)
         return details
 
     def get_onerilen_etken_madde_detaylari(self, obj):
@@ -328,11 +363,18 @@ class OturumLoguSerializer(serializers.ModelSerializer):
         # Prefer normalized table rows (include satildi flag)
         records = list(obj.onerilen_etken_madde_detaylari.select_related("etken_madde").all())
         if records:
+            recommended_ids, recommended_names = _recommended_ingredient_identity(obj.onerilen_etken_maddeler)
             return [
                 {
                     "id": r.etken_madde_id,
                     "ad": r.etken_madde.ad if r.etken_madde else r.etken_madde_adi_snapshot,
                     "satildi": r.satildi,
+                    "source": _ingredient_source(
+                        ingredient_id=r.etken_madde_id,
+                        name=r.etken_madde.ad if r.etken_madde else r.etken_madde_adi_snapshot,
+                        recommended_ids=recommended_ids,
+                        recommended_names=recommended_names,
+                    ),
                 }
                 for r in records
             ]
@@ -395,10 +437,17 @@ class KioskActivityListSerializer(serializers.ModelSerializer):
         """Satış görünümü için etken madde detayları (ad + satildi flag)."""
         if not self.context.get("include_ingredients"):
             return []
+        recommended_ids, recommended_names = _recommended_ingredient_identity(obj.onerilen_etken_maddeler)
         return [
             {
                 "ad": r.etken_madde.ad if r.etken_madde else r.etken_madde_adi_snapshot,
                 "satildi": r.satildi,
+                "source": _ingredient_source(
+                    ingredient_id=r.etken_madde_id,
+                    name=r.etken_madde.ad if r.etken_madde else r.etken_madde_adi_snapshot,
+                    recommended_ids=recommended_ids,
+                    recommended_names=recommended_names,
+                ),
             }
             for r in obj.onerilen_etken_madde_detaylari.all()
             if r.etken_madde or r.etken_madde_adi_snapshot

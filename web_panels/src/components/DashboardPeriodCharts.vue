@@ -1,33 +1,116 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
-import { getDashboardSeries } from '../services/analytics';
-const props = defineProps({ filters: { type: Object, default: () => ({}) } });
+import { computed, ref, useSlots } from 'vue';
+import DashboardPeriodCard from './DashboardPeriodCard.vue';
+
+const props = defineProps({
+  filters: { type: Object, default: () => ({}) },
+  drillPath: { type: String, default: '/admin/kiosk-activities' },
+});
+const slots = useSlots();
 const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Istanbul' }).format(new Date());
-const currentMonth = today.slice(0, 7); const month = ref(currentMonth); const week = ref(today);
-const data = ref(null); const loading = ref(false);
-const parseDay = value => new Date(`${value}T12:00:00Z`); const iso = value => value.toISOString().slice(0, 10);
-function moveMonth(delta) { const [y,m]=month.value.split('-').map(Number); month.value=iso(new Date(Date.UTC(y,m-1+delta,1,12))).slice(0,7); }
-function moveWeek(delta) { const d=parseDay(week.value); d.setUTCDate(d.getUTCDate()+delta*7); week.value=iso(d); }
-const monday = value => { const d=parseDay(value); const n=d.getUTCDay()||7; d.setUTCDate(d.getUTCDate()-n+1); return iso(d); };
-const nextMonthDisabled=computed(()=>month.value>=currentMonth); const nextWeekDisabled=computed(()=>monday(week.value)>=monday(today));
-const monthTitle=computed(()=>parseDay(`${month.value}-01`).toLocaleDateString('tr-TR',{month:'long',year:'numeric',timeZone:'Europe/Istanbul'}));
-const fmt=value=>parseDay(value).toLocaleDateString('tr-TR',{day:'2-digit',month:'short',timeZone:'Europe/Istanbul'});
-const weekTitle=computed(()=>data.value?`${fmt(data.value.week_start)} – ${fmt(data.value.week_end)}`:'');
-const maxOf=items=>Math.max(1,...(items||[]).map(item=>item.value));
-const label=(item,weekly)=>weekly?parseDay(item.date).toLocaleDateString('tr-TR',{weekday:'short',timeZone:'Europe/Istanbul'}):String(Number(item.date.slice(-2)));
-async function load(){loading.value=true;try{data.value=(await getDashboardSeries({...props.filters,month:month.value,week:week.value})).data;}finally{loading.value=false;}}
-watch([month,week,()=>props.filters],load,{deep:true}); onMounted(load);
-const cards=computed(()=>data.value?[
-  {key:'monthly_interactions',title:'Aylık Gün Gün Etkileşim',period:monthTitle.value,rows:data.value.monthly_interactions,weekly:false},
-  {key:'monthly_sales',title:'Aylık Gün Gün Satış',period:monthTitle.value,rows:data.value.monthly_sales,weekly:false},
-  {key:'weekly_interactions',title:'Haftalık Gün Gün Etkileşim',period:weekTitle.value,rows:data.value.weekly_interactions,weekly:true},
-  {key:'weekly_sales',title:'Haftalık Gün Gün Satış',period:weekTitle.value,rows:data.value.weekly_sales,weekly:true},
-]:[]);
+const currentMonth = today.slice(0, 7);
+const month = ref(currentMonth);
+const week = ref(today);
+
+const parseDay = (value) => new Date(`${value}T12:00:00Z`);
+const iso = (value) => value.toISOString().slice(0, 10);
+const monday = (value) => {
+  const day = parseDay(value);
+  const weekday = day.getUTCDay() || 7;
+  day.setUTCDate(day.getUTCDate() - weekday + 1);
+  return iso(day);
+};
+const addDays = (value, count) => {
+  const day = parseDay(value);
+  day.setUTCDate(day.getUTCDate() + count);
+  return iso(day);
+};
+const nextMonthDisabled = computed(() => month.value >= currentMonth);
+const nextWeekDisabled = computed(() => monday(week.value) >= monday(today));
+const hasAside = computed(() => Boolean(slots.aside));
+const monthTitle = computed(() => parseDay(`${month.value}-01`).toLocaleDateString('tr-TR', {
+  month: 'long', year: 'numeric', timeZone: 'Europe/Istanbul',
+}));
+const weekTitle = computed(() => {
+  const weekStart = monday(week.value);
+  const format = (value) => parseDay(value).toLocaleDateString('tr-TR', {
+    day: '2-digit', month: 'short', timeZone: 'Europe/Istanbul',
+  });
+  return `${format(weekStart)} – ${format(addDays(weekStart, 6))}`;
+});
+
+function moveMonth(delta) {
+  const [year, monthNumber] = month.value.split('-').map(Number);
+  month.value = iso(new Date(Date.UTC(year, monthNumber - 1 + delta, 1, 12))).slice(0, 7);
+}
+function moveWeek(delta) {
+  const day = parseDay(week.value);
+  day.setUTCDate(day.getUTCDate() + delta * 7);
+  week.value = iso(day);
+}
 </script>
-<template><section class="period-analytics">
-  <div class="period-toolbar"><div><button class="eisa-btn eisa-btn-ghost" @click="moveMonth(-1)">‹ Önceki Ay</button><button class="eisa-btn eisa-btn-ghost" @click="month=currentMonth">Güncel Ay</button><button class="eisa-btn eisa-btn-ghost" :disabled="nextMonthDisabled" @click="moveMonth(1)">Sonraki Ay ›</button></div><div><button class="eisa-btn eisa-btn-ghost" @click="moveWeek(-1)">‹ Önceki Hafta</button><button class="eisa-btn eisa-btn-ghost" @click="week=today">Güncel Hafta</button><button class="eisa-btn eisa-btn-ghost" :disabled="nextWeekDisabled" @click="moveWeek(1)">Sonraki Hafta ›</button></div></div>
-  <div v-if="loading&&!data" class="period-loading">Grafikler yükleniyor…</div><div v-else class="period-grid"><article v-for="card in cards" :key="card.key" class="eisa-panel period-card"><header><div><h3>{{card.title}}</h3><p>{{card.period}}</p></div><strong>Toplam {{data.totals[card.key].toLocaleString('tr-TR')}}</strong></header><div class="period-bars" :class="{weekly:card.weekly}"><div v-for="item in card.rows" :key="item.date" class="period-bar-cell" :title="`${item.date}: ${item.value}`"><span>{{item.value}}</span><i :style="{height:`${Math.max(2,item.value/maxOf(card.rows)*100)}%`}"></i><small>{{label(item,card.weekly)}}</small></div></div></article></div>
-</section></template>
+
+<template>
+  <section class="period-analytics" :class="{ 'period-analytics--with-aside': hasAside }">
+    <div class="period-layout">
+      <section class="eisa-panel period-column period-column--monthly">
+        <header class="eisa-panel-header period-column-header">
+          <div><p class="eisa-eyebrow">AYLIK ANALİTİK</p><h2 class="eisa-panel-title">{{ monthTitle }}</h2></div>
+          <div class="period-nav" aria-label="Ay seçimi">
+            <button class="eisa-btn eisa-btn-ghost" type="button" title="Önceki ay" aria-label="Önceki ay" @click="moveMonth(-1)"><i class="fa-solid fa-chevron-left"></i></button>
+            <button class="eisa-btn eisa-btn-ghost period-current" type="button" title="Güncel aya dön" aria-label="Güncel aya dön" @click="month = currentMonth"><i class="fa-solid fa-calendar-day"></i></button>
+            <button class="eisa-btn eisa-btn-ghost" type="button" title="Sonraki ay" aria-label="Sonraki ay" :disabled="nextMonthDisabled" @click="moveMonth(1)"><i class="fa-solid fa-chevron-right"></i></button>
+          </div>
+        </header>
+        <DashboardPeriodCard period="month" kind="interactions" :value="month" :filters="filters" :drill-path="drillPath" />
+        <DashboardPeriodCard period="month" kind="sales" :value="month" :filters="filters" :drill-path="drillPath" />
+      </section>
+
+      <section class="eisa-panel period-column period-column--weekly">
+        <header class="eisa-panel-header period-column-header">
+          <div><p class="eisa-eyebrow">HAFTALIK ANALİTİK</p><h2 class="eisa-panel-title">{{ weekTitle }}</h2></div>
+          <div class="period-nav" aria-label="Hafta seçimi">
+            <button class="eisa-btn eisa-btn-ghost" type="button" title="Önceki hafta" aria-label="Önceki hafta" @click="moveWeek(-1)"><i class="fa-solid fa-chevron-left"></i></button>
+            <button class="eisa-btn eisa-btn-ghost period-current" type="button" title="Güncel haftaya dön" aria-label="Güncel haftaya dön" @click="week = today"><i class="fa-solid fa-calendar-week"></i></button>
+            <button class="eisa-btn eisa-btn-ghost" type="button" title="Sonraki hafta" aria-label="Sonraki hafta" :disabled="nextWeekDisabled" @click="moveWeek(1)"><i class="fa-solid fa-chevron-right"></i></button>
+          </div>
+        </header>
+        <DashboardPeriodCard period="week" kind="interactions" :value="week" :filters="filters" :drill-path="drillPath" />
+        <DashboardPeriodCard period="week" kind="sales" :value="week" :filters="filters" :drill-path="drillPath" />
+      </section>
+
+      <aside v-if="hasAside" class="period-column period-column--aside"><slot name="aside" /></aside>
+    </div>
+  </section>
+</template>
+
 <style scoped>
-.period-analytics{margin-bottom:1.5rem}.period-toolbar{display:flex;justify-content:space-between;gap:1rem;margin-bottom:.75rem}.period-toolbar>div{display:flex;gap:.35rem}.period-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}.period-card{padding:1rem;min-width:0}.period-card header{display:flex;justify-content:space-between;gap:1rem;margin-bottom:1rem}.period-card h3{font-size:.92rem;margin:0}.period-card p{font-size:.75rem;color:#6B7280;margin:.2rem 0 0;text-transform:capitalize}.period-card strong{font-size:.78rem;color:#0F8F8A;white-space:nowrap}.period-bars{height:180px;display:grid;grid-template-columns:repeat(31,minmax(5px,1fr));gap:3px;align-items:end}.period-bars.weekly{grid-template-columns:repeat(7,1fr);gap:10px}.period-bar-cell{height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;min-width:0}.period-bar-cell i{display:block;width:100%;max-width:22px;background:linear-gradient(#0F8F8A,#0C7773);border-radius:4px 4px 0 0;min-height:2px}.period-bar-cell span,.period-bar-cell small{font-size:.58rem;color:#6B7280}.period-bar-cell small{margin-top:4px}.period-loading{text-align:center;padding:3rem;color:#6B7280}@media(max-width:900px){.period-grid{grid-template-columns:1fr}.period-toolbar{flex-direction:column}.period-toolbar>div{flex-wrap:wrap}.period-bars{height:150px}}
+.period-analytics { margin-bottom: 1.5rem; }
+.period-layout { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; align-items: start; }
+.period-analytics--with-aside .period-layout { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.period-analytics--with-aside .period-column--monthly { grid-column: 1 / -1; }
+.period-column { display: flex; flex-direction: column; min-width: 0; }
+.period-column--monthly,.period-column--weekly { overflow: hidden; }
+.period-column--aside { gap: 1rem; }
+.period-column-header { min-height: 54px; padding: 1rem; display: flex; align-items: flex-end; justify-content: space-between; gap: .75rem; }
+.period-column-header .eisa-eyebrow { margin-bottom: .3rem; }
+.period-column-header .eisa-panel-title { font-size: .9rem; text-transform: capitalize; }
+.period-nav { display: flex; gap: .3rem; flex-shrink: 0; }
+.period-nav .eisa-btn { width: 34px; min-width: 34px; height: 34px; padding: 0; display: inline-grid; place-items: center; font-size: .75rem; }
+.period-nav .period-current { color: var(--eisa-red); }
+.period-column--weekly .period-column-header { min-width: 0; align-items: center; flex-wrap: nowrap; }
+.period-column--weekly .period-column-header > div:first-child { min-width: 0; }
+.period-column--weekly .period-column-header .eisa-panel-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.period-column--weekly .period-nav { margin-left: auto; }
+@media (max-width: 1450px) {
+  .period-column--monthly .period-column-header { min-height: 82px; align-items: flex-start; flex-direction: column; }
+}
+@media (max-width: 1180px) {
+  .period-layout,.period-analytics--with-aside .period-layout { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 760px) {
+  .period-layout,.period-analytics--with-aside .period-layout { grid-template-columns: 1fr; }
+  .period-analytics--with-aside .period-column--monthly { grid-column: auto; }
+  .period-column-header { min-height: 0; }
+}
 </style>

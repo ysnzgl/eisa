@@ -10,6 +10,8 @@ Kapsam:
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone as datetime_timezone
+from unittest.mock import patch
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -49,10 +51,11 @@ def _make_eczane(ad="Eczane", il_ad="TestIl", ilce_ad="TestIlce"):
 
 
 def _make_kiosk(eczane, ad="Kiosk", mac=None):
-    mac = mac or f"AA:{uuid.uuid4().hex[:2].upper()}:CC:DD:EE:FF"
+    mac_suffix = uuid.uuid4().hex[:6].upper()
+    mac = mac or f"AA:{mac_suffix[:2]}:{mac_suffix[2:4]}:{mac_suffix[4:6]}:EE:FF"
     return Kiosk.objects.create(
         eczane=eczane, ad=ad, mac_adresi=mac,
-        uygulama_anahtari=f"key-{mac.replace(':', '')}",
+        uygulama_anahtari=f"key-{uuid.uuid4().hex}",
     )
 
 
@@ -60,6 +63,12 @@ def _make_session(kiosk, sold=None, qr=None, **kwargs):
     age = YasAraligi.objects.first()
     gender = Cinsiyet.objects.first()
     qr = qr or uuid.uuid4().hex[:8].upper()
+    if sold is True:
+        kwargs.setdefault("status", OturumLogu.SatisDurumu.SATIS_YAPILDI)
+        kwargs.setdefault("result_at", timezone.now())
+    elif sold is False:
+        kwargs.setdefault("status", OturumLogu.SatisDurumu.SATIS_YAPILMADI)
+        kwargs.setdefault("result_at", timezone.now())
     return OturumLogu.objects.create(
         kiosk=kiosk, yas_araligi=age, cinsiyet=gender,
         qr_kodu=qr, sold=sold, tamamlandi=True,
@@ -71,9 +80,12 @@ def _make_etken_madde(ad):
     return EtkenMadde.objects.get_or_create(ad=ad)[0]
 
 
-def _add_ingredient(oturum, em):
+def _add_ingredient(oturum, em, satildi=False):
     return OturumOnerilenEtkenMadde.objects.create(
-        oturum=oturum, etken_madde=em, etken_madde_adi_snapshot=em.ad
+        oturum=oturum,
+        etken_madde=em,
+        etken_madde_adi_snapshot=em.ad,
+        satildi=satildi,
     )
 
 
@@ -119,6 +131,57 @@ class TestAdminDashboardSatisSayisi:
         assert res.status_code == 200
         assert res.data["satis_sayisi"] == 2
 
+    def test_satis_yapan_eczaneler_donut_dagilimi(self, db):
+        eczane_a = _make_eczane("Satış Eczanesi A")
+        eczane_b = _make_eczane("Satış Eczanesi B")
+        kiosk_a = _make_kiosk(eczane_a)
+        kiosk_b = _make_kiosk(eczane_b)
+        _make_session(kiosk_a, sold=True)
+        _make_session(kiosk_a, sold=True)
+        _make_session(kiosk_b, sold=True)
+        _make_session(kiosk_b, sold=False)
+
+        client, _ = _admin_client()
+        res = client.get(ADMIN_DASHBOARD_URL)
+
+        assert res.status_code == 200
+        assert res.data["satis_yapan_eczaneler"] == [
+            {"id": eczane_a.id, "ad": eczane_a.ad, "sayi": 2},
+            {"id": eczane_b.id, "ad": eczane_b.ad, "sayi": 1},
+        ]
+
+        filtered = client.get(ADMIN_DASHBOARD_URL, {"eczane_id": eczane_b.id})
+        assert filtered.data["satis_yapan_eczaneler"] == [
+            {"id": eczane_b.id, "ad": eczane_b.ad, "sayi": 1},
+        ]
+        assert filtered.data["toplam_eczane"] == 1
+        assert filtered.data["toplam_kiosk"] == 1
+
+    def test_il_filtresi_dashboard_dagilimlarini_kapsamlar(self, db):
+        istanbul = _make_eczane("İstanbul Eczane", "İstanbul", "Kadıköy")
+        ankara = _make_eczane("Ankara Eczane", "Ankara", "Çankaya")
+        _make_session(_make_kiosk(istanbul), sold=True)
+        _make_session(_make_kiosk(ankara), sold=True)
+
+        client, _ = _admin_client()
+        response = client.get(ADMIN_DASHBOARD_URL, {"il_id": istanbul.il_id})
+
+        assert response.status_code == 200
+        assert response.data["satis_yapan_eczaneler"] == [
+            {"id": istanbul.id, "ad": istanbul.ad, "sayi": 1},
+        ]
+
+    def test_kategorisiz_danismanlik_donut_dagilimina_girmez(self, db):
+        eczane = _make_eczane()
+        kiosk = _make_kiosk(eczane)
+        _make_session(kiosk, sold=False, kategori=None)
+
+        client, _ = _admin_client()
+        res = client.get(ADMIN_DASHBOARD_URL)
+
+        assert res.status_code == 200
+        assert res.data["kategori_dagilim"] == []
+
     def test_en_cok_satilan_etken_madde(self, db):
         eczane = _make_eczane()
         kiosk = _make_kiosk(eczane)
@@ -126,11 +189,11 @@ class TestAdminDashboardSatisSayisi:
         em_b = _make_etken_madde("Ibuprofen")
 
         s1 = _make_session(kiosk, sold=True)
-        _add_ingredient(s1, em_a)
-        _add_ingredient(s1, em_b)
+        _add_ingredient(s1, em_a, satildi=True)
+        _add_ingredient(s1, em_b, satildi=True)
 
         s2 = _make_session(kiosk, sold=True)
-        _add_ingredient(s2, em_a)  # em_a: 2, em_b: 1
+        _add_ingredient(s2, em_a, satildi=True)  # em_a: 2, em_b: 1
 
         s3 = _make_session(kiosk, sold=False)
         _add_ingredient(s3, em_b)  # sold=False — sayılmaz
@@ -142,6 +205,34 @@ class TestAdminDashboardSatisSayisi:
         assert em is not None
         assert em["ad"] == "Aspirin"
         assert em["sayi"] == 2  # sold=False oturumlar sayılmaz
+        assert res.data["satilan_etken_madde_dagilimi"] == [
+            {"ad": "Aspirin", "sayi": 2},
+            {"ad": "Ibuprofen", "sayi": 1},
+        ]
+        assert res.data["en_cok_onerilen_etken_madde"] == {"ad": "Aspirin", "sayi": 2}
+        assert res.data["onerilen_etken_madde_dagilimi"] == [
+            {"ad": "Aspirin", "sayi": 2},
+            {"ad": "Ibuprofen", "sayi": 2},
+        ]
+
+    def test_bugunki_oturum_istanbul_gunune_gore_hesaplanir(self, db):
+        eczane = _make_eczane()
+        kiosk = _make_kiosk(eczane)
+        istanbul_gunune_dahil = _make_session(kiosk, qr="ISTDAY01")
+        onceki_istanbul_gunu = _make_session(kiosk, qr="ISTDAY02")
+        OturumLogu.objects.filter(pk=istanbul_gunune_dahil.pk).update(
+            olusturulma_tarihi=datetime(2026, 8, 18, 22, 30, tzinfo=datetime_timezone.utc)
+        )
+        OturumLogu.objects.filter(pk=onceki_istanbul_gunu.pk).update(
+            olusturulma_tarihi=datetime(2026, 8, 18, 20, 30, tzinfo=datetime_timezone.utc)
+        )
+
+        client, _ = _admin_client()
+        with patch("apps.analytics.views.timezone.now", return_value=datetime(2026, 8, 18, 22, 45, tzinfo=datetime_timezone.utc)):
+            res = client.get(ADMIN_DASHBOARD_URL)
+
+        assert res.status_code == 200
+        assert res.data["bugunki_oturum"] == 1
 
     def test_tarih_filtresi_satis_sayisini_etkiler(self, db):
         from django.utils.timezone import localdate
@@ -197,12 +288,12 @@ class TestEczaciDashboardSatisSayisi:
         em = _make_etken_madde("Paracetamol")
 
         s_a = _make_session(kiosk_a, sold=True)
-        _add_ingredient(s_a, em)
+        _add_ingredient(s_a, em, satildi=True)
 
         # Eczane B'de birden fazla sold session + ingredient — ama eczane A'ya etki etmemeli
         for i in range(3):
             s_b = _make_session(kiosk_b, sold=True, qr=f"SLB{i:04d}")
-            _add_ingredient(s_b, em)
+            _add_ingredient(s_b, em, satildi=True)
 
         client, _ = _pharm_client(eczane_a)
         res = client.get(PHARM_DASHBOARD_URL)

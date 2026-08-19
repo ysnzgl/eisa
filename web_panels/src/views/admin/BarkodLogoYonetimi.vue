@@ -297,7 +297,7 @@ function kioskHedefOzeti(logo) {
   <div class="page-shell">
     <div class="page-header">
       <h1>Barkod Logo Yönetimi</h1>
-      <button class="btn btn-primary" @click="openCreate">
+      <button class="eisa-btn eisa-btn-cta" @click="openCreate">
         <i class="fa-solid fa-plus"></i> Yeni Logo
       </button>
     </div>

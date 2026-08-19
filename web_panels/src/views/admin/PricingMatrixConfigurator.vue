@@ -140,7 +140,7 @@ onMounted(load);
 
       <div class="card">
         <h2>Frekans Carpanlari</h2>
-        <p class="muted">Reklam tipine gore fiyat carpani.</p>
+        <p class="muted">Sponsorluk tipine gore fiyat carpani.</p>
         <label class="field" v-for="key in ['PER_LOOP', 'PER_HOUR', 'PER_DAY']" :key="key">
           {{ key }}
           <input

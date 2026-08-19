@@ -20,11 +20,12 @@ from datetime import datetime, timezone as _tz
 
 import pytest
 from django.conf import settings
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.lookups.models import Il, Ilce
 from apps.lookups.seed import seed_lookups
-from apps.pharmacies.models import Eczane, Kiosk, KioskProvisioningRequest
+from apps.pharmacies.models import Eczane, Kiosk, KioskEczaneAtama, KioskProvisioningRequest
 
 
 # ── Yardimcilar ───────────────────────────────────────────────────────────────
@@ -113,6 +114,52 @@ def admin_client(api_client, superadmin):
     refresh = RefreshToken.for_user(superadmin)
     api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}")
     return api_client
+
+
+def test_superadmin_transfers_kiosk_without_changing_device_identity(
+    admin_client, superadmin, registered_kiosk, eczane
+):
+    target = Eczane.objects.create(ad="Hedef Eczane", il=eczane.il, ilce=eczane.ilce)
+    KioskEczaneAtama.objects.create(
+        kiosk=registered_kiosk, eczane=eczane, baslangic_zamani=timezone.now(), tasiyan_admin=superadmin
+    )
+    original_identity = (
+        registered_kiosk.mac_adresi, registered_kiosk.device_id, registered_kiosk.uygulama_anahtari
+    )
+
+    response = admin_client.post(
+        f"/api/pharmacies/kiosks/{registered_kiosk.id}/transfer/",
+        {"eczane_id": target.id, "tasima_nedeni": "Lokasyon değişikliği"},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    registered_kiosk.refresh_from_db()
+    assert registered_kiosk.eczane_id == target.id
+    assert (registered_kiosk.mac_adresi, registered_kiosk.device_id, registered_kiosk.uygulama_anahtari) == original_identity
+    assignments = list(registered_kiosk.eczane_atamalari.order_by("baslangic_zamani"))
+    assert len(assignments) == 2
+    assert assignments[0].bitis_zamani is not None
+    assert assignments[1].bitis_zamani is None
+    assert assignments[1].tasima_nedeni == "Lokasyon değişikliği"
+    assert assignments[1].tasiyan_admin == superadmin
+
+
+def test_transfer_to_current_pharmacy_is_rejected_without_history_change(
+    admin_client, superadmin, registered_kiosk, eczane
+):
+    KioskEczaneAtama.objects.create(
+        kiosk=registered_kiosk, eczane=eczane, baslangic_zamani=timezone.now(), tasiyan_admin=superadmin
+    )
+
+    response = admin_client.post(
+        f"/api/pharmacies/kiosks/{registered_kiosk.id}/transfer/",
+        {"eczane_id": eczane.id, "tasima_nedeni": "Geçersiz"},
+        format="json",
+    )
+
+    assert response.status_code == 409
+    assert registered_kiosk.eczane_atamalari.count() == 1
 
 
 @pytest.fixture

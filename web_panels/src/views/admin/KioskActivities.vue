@@ -535,7 +535,7 @@ onMounted(() => {
             <template v-if="!bcastData.hours?.length">
               <i class="fa-solid fa-rectangle-ad" style="font-size:1.5rem;opacity:0.3;display:block;margin-bottom:0.5rem;"></i>
               <p style="font-weight:600;">Playlist bulunamadı</p>
-              <p class="muted small">Bu kiosk için {{ bcastDate }} tarihinde üretilmiş playlist yok. Reklam yerine "Bu Alana Reklam Verebilirsiniz" (AdPromo) gösterilir.</p>
+              <p class="muted small">Bu kiosk için {{ bcastDate }} tarihinde üretilmiş playlist yok. Sponsorluk yerine "Bu Alana Sponsorluk Verebilirsiniz" (AdPromo) gösterilir.</p>
             </template>
             <template v-else>
               <p class="muted">Bu saatte gösterim yok.</p>

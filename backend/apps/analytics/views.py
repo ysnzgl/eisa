@@ -353,27 +353,78 @@ class DashboardSeriesView(APIView):
             qs = qs.filter(eczane__ilce_id=params["ilce_id"])
         return qs
 
-    def _series(self, qs, days, field, sales=False):
-        values = {day: 0 for day in days}
+    def _interaction_series(self, qs, days):
+        """QR oturumlarını Danışma kolonundaki sonuç durumuna göre gruplar."""
+        values = {
+            day: {"pending": 0, "sold": 0, "not_sold": 0}
+            for day in days
+        }
         start = timezone.make_aware(datetime.combine(days[0], time.min), self.tz)
         end = timezone.make_aware(datetime.combine(days[-1] + timedelta(days=1), time.min), self.tz)
-        filtered = qs.filter(**{f"{field}__gte": start, f"{field}__lt": end})
-        if sales:
-            filtered = filtered.filter(status=OturumLogu.SatisDurumu.SATIS_YAPILDI)
-        for stamp in filtered.values_list(field, flat=True).iterator():
+        rows = qs.filter(
+            olusturulma_tarihi__gte=start,
+            olusturulma_tarihi__lt=end,
+        ).values_list("olusturulma_tarihi", "status")
+        for stamp, sale_status in rows.iterator():
+            if sale_status == OturumLogu.SatisDurumu.SATIS_YAPILDI:
+                key = "sold"
+            elif sale_status == OturumLogu.SatisDurumu.SATIS_YAPILMADI:
+                key = "not_sold"
+            else:
+                # BEKLIYOR ve INCELENDI henüz satış sonucu olmayan danışmalardır.
+                key = "pending"
+            values[stamp.astimezone(self.tz).date()][key] += 1
+        return [
+            {
+                "date": day.isoformat(),
+                **values[day],
+                "value": sum(values[day].values()),
+            }
+            for day in days
+        ]
+
+    def _sales_series(self, qs, days):
+        """Günlük önerilen ve satılan etken madde adetlerini birlikte döndürür."""
+        recommended = {day: 0 for day in days}
+        sold = {day: 0 for day in days}
+        start = timezone.make_aware(datetime.combine(days[0], time.min), self.tz)
+        end = timezone.make_aware(datetime.combine(days[-1] + timedelta(days=1), time.min), self.tz)
+        ingredients = OturumOnerilenEtkenMadde.objects.filter(
+            oturum__in=qs,
+            oturum__status=OturumLogu.SatisDurumu.SATIS_YAPILDI,
+            oturum__result_at__gte=start,
+            oturum__result_at__lt=end,
+        )
+
+        for stamp, was_sold in ingredients.values_list(
+            "oturum__result_at", "satildi"
+        ).iterator():
             if stamp:
-                values[stamp.astimezone(self.tz).date()] += 1
-        return [{"date": day.isoformat(), "value": values[day]} for day in days]
+                day = stamp.astimezone(self.tz).date()
+                recommended[day] += 1
+                if was_sold:
+                    sold[day] += 1
+
+        return [
+            {
+                "date": day.isoformat(),
+                "recommended": recommended[day],
+                "sold": sold[day],
+                # Eski istemciler için satış değeri korunur.
+                "value": sold[day],
+            }
+            for day in days
+        ]
 
     def get(self, request):
         _, month, week_start = self._parse_periods(request)
         month_days = [month + timedelta(days=i) for i in range(calendar.monthrange(month.year, month.month)[1])]
         week_days = [week_start + timedelta(days=i) for i in range(7)]
         qs = self._scoped(request)
-        monthly_interactions = self._series(qs, month_days, "olusturulma_tarihi")
-        monthly_sales = self._series(qs, month_days, "result_at", sales=True)
-        weekly_interactions = self._series(qs, week_days, "olusturulma_tarihi")
-        weekly_sales = self._series(qs, week_days, "result_at", sales=True)
+        monthly_interactions = self._interaction_series(qs, month_days)
+        monthly_sales = self._sales_series(qs, month_days)
+        weekly_interactions = self._interaction_series(qs, week_days)
+        weekly_sales = self._sales_series(qs, week_days)
         return Response({
             "timezone": "Europe/Istanbul",
             "month": month.strftime("%Y-%m"),
@@ -385,9 +436,19 @@ class DashboardSeriesView(APIView):
             "weekly_sales": weekly_sales,
             "totals": {
                 "monthly_interactions": sum(item["value"] for item in monthly_interactions),
+                "monthly_pending": sum(item["pending"] for item in monthly_interactions),
+                "monthly_interaction_sold": sum(item["sold"] for item in monthly_interactions),
+                "monthly_not_sold": sum(item["not_sold"] for item in monthly_interactions),
                 "monthly_sales": sum(item["value"] for item in monthly_sales),
+                "monthly_recommended": sum(item["recommended"] for item in monthly_sales),
+                "monthly_sold": sum(item["sold"] for item in monthly_sales),
                 "weekly_interactions": sum(item["value"] for item in weekly_interactions),
+                "weekly_pending": sum(item["pending"] for item in weekly_interactions),
+                "weekly_interaction_sold": sum(item["sold"] for item in weekly_interactions),
+                "weekly_not_sold": sum(item["not_sold"] for item in weekly_interactions),
                 "weekly_sales": sum(item["value"] for item in weekly_sales),
+                "weekly_recommended": sum(item["recommended"] for item in weekly_sales),
+                "weekly_sold": sum(item["sold"] for item in weekly_sales),
             },
         })
 
@@ -449,28 +510,64 @@ class AdminDashboardView(APIView):
         from apps.pharmacies.models import Eczane, Kiosk
 
         now = timezone.now()
-        bugun_baslangic = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        istanbul = ZoneInfo("Europe/Istanbul")
+        istanbul_now = now.astimezone(istanbul)
+        bugun_baslangic = istanbul_now.replace(hour=0, minute=0, second=0, microsecond=0)
+        yarin_baslangic = bugun_baslangic + timedelta(days=1)
         yedi_gun_once = now - timedelta(days=7)
+        params = request.query_params
+        il_id = params.get("il_id")
+        eczane_id = params.get("eczane_id")
+        oturum_qs = OturumLogu.objects.all()
+        if il_id:
+            oturum_qs = oturum_qs.filter(
+                Q(eczane__il_id=il_id)
+                | Q(eczane__isnull=True, kiosk__eczane__il_id=il_id)
+            )
+        if eczane_id:
+            oturum_qs = oturum_qs.filter(
+                Q(eczane_id=eczane_id)
+                | Q(eczane__isnull=True, kiosk__eczane_id=eczane_id)
+            )
 
-        toplam_eczane = Eczane.objects.filter(aktif=True).count()
-        toplam_kiosk = Kiosk.objects.count()
-        aktif_kiosk = Kiosk.objects.filter(
+        eczane_qs = Eczane.objects.filter(aktif=True)
+        kiosk_qs = Kiosk.objects.all()
+        if il_id:
+            eczane_qs = eczane_qs.filter(il_id=il_id)
+            kiosk_qs = kiosk_qs.filter(eczane__il_id=il_id)
+        if eczane_id:
+            eczane_qs = eczane_qs.filter(id=eczane_id)
+            kiosk_qs = kiosk_qs.filter(eczane_id=eczane_id)
+
+        toplam_eczane = eczane_qs.count()
+        toplam_kiosk = kiosk_qs.count()
+        aktif_kiosk = kiosk_qs.filter(
             son_goruldu__gte=now - timedelta(minutes=15)
         ).count()
-        aktif_reklam = Campaign.objects.filter(
+        aktif_reklam_qs = Campaign.objects.filter(
             status=Campaign.Status.ACTIVE,
             start_date__lte=now,
             end_date__gte=now,
-        ).count()
-        bugunki_oturum = OturumLogu.objects.filter(
-            olusturulma_tarihi__gte=bugun_baslangic
+        )
+        if eczane_id:
+            aktif_reklam_qs = aktif_reklam_qs.filter(
+                Q(target_pharmacies__isnull=True) | Q(target_pharmacies__id=eczane_id)
+            ).distinct()
+        elif il_id:
+            aktif_reklam_qs = aktif_reklam_qs.filter(
+                Q(target_pharmacies__isnull=True) | Q(target_pharmacies__il_id=il_id)
+            ).distinct()
+        aktif_reklam = aktif_reklam_qs.count()
+        bugunki_oturum = oturum_qs.filter(
+            olusturulma_tarihi__gte=bugun_baslangic,
+            olusturulma_tarihi__lt=yarin_baslangic,
         ).count()
 
         # Son 7 günlük trend
         haftalik = [
             {"tarih": str(row["tarih"]), "sayi": row["count"]}
             for row in (
-                OturumLogu.objects.filter(olusturulma_tarihi__gte=yedi_gun_once)
+                oturum_qs.filter(olusturulma_tarihi__gte=yedi_gun_once)
                 .annotate(tarih=TruncDate("olusturulma_tarihi"))
                 .values("tarih")
                 .annotate(count=Count("id"))
@@ -482,9 +579,11 @@ class AdminDashboardView(APIView):
         kategori_dagilim = [
             {"ad": row["kategori__ad"], "slug": row["kategori__slug"], "sayi": row["count"]}
             for row in (
-                OturumLogu.objects.values("kategori__ad", "kategori__slug")
+                oturum_qs.filter(kategori__isnull=False)
+                .exclude(kategori__ad="")
+                .values("kategori__ad", "kategori__slug")
                 .annotate(count=Count("id"))
-                .order_by("-count")[:5]
+                .order_by("-count", "kategori__ad")[:10]
             )
         ]
 
@@ -497,33 +596,65 @@ class AdminDashboardView(APIView):
                 "baslangic_tarihi": row["start_date"],
                 "bitis_tarihi": row["end_date"],
             }
-            for row in Campaign.objects.filter(status=Campaign.Status.ACTIVE)
+            for row in aktif_reklam_qs
             .values("id", "name", "advertiser_id", "start_date", "end_date", "olusturulma_tarihi")
             .order_by("-olusturulma_tarihi")[:5]
         ]
 
         # Satış istatistikleri — start_date/end_date parametrelerine duyarlı
-        params = request.query_params
         start_date = params.get("start_date")
         end_date = params.get("end_date")
 
-        sold_qs = OturumLogu.objects.filter(
-            Q(status=OturumLogu.SatisDurumu.SATIS_YAPILDI) | Q(status=0, sold=True)
+        sold_qs = oturum_qs.filter(
+            status=OturumLogu.SatisDurumu.SATIS_YAPILDI,
+            result_at__isnull=False,
         )
         if start_date:
-            sold_qs = sold_qs.filter(Q(result_at__date__gte=start_date) | Q(result_at__isnull=True, olusturulma_tarihi__date__gte=start_date))
+            sold_qs = sold_qs.filter(result_at__date__gte=start_date)
         if end_date:
-            sold_qs = sold_qs.filter(Q(result_at__date__lte=end_date) | Q(result_at__isnull=True, olusturulma_tarihi__date__lte=end_date))
+            sold_qs = sold_qs.filter(result_at__date__lte=end_date)
         satis_sayisi = sold_qs.count()
+        satis_yapan_eczaneler = [
+            {
+                "id": row["pharmacy_id"],
+                "ad": row["pharmacy_name"] or "Bilinmeyen Eczane",
+                "sayi": row["count"],
+            }
+            for row in (
+                sold_qs
+                .annotate(
+                    pharmacy_id=Coalesce("eczane_id", "kiosk__eczane_id"),
+                    pharmacy_name=Coalesce("eczane__ad", "kiosk__eczane__ad"),
+                )
+                .values("pharmacy_id", "pharmacy_name")
+                .annotate(count=Count("id"))
+                .order_by("-count", "pharmacy_name")[:10]
+            )
+        ]
 
         em_qs = OturumOnerilenEtkenMadde.objects.filter(
-            Q(oturum__status=OturumLogu.SatisDurumu.SATIS_YAPILDI, satildi=True)
-            | Q(oturum__status=0, oturum__sold=True)
+            oturum__in=oturum_qs,
+            oturum__status=OturumLogu.SatisDurumu.SATIS_YAPILDI,
+            oturum__result_at__isnull=False,
+            satildi=True,
         )
         if start_date:
-            em_qs = em_qs.filter(Q(oturum__result_at__date__gte=start_date) | Q(oturum__result_at__isnull=True, oturum__olusturulma_tarihi__date__gte=start_date))
+            em_qs = em_qs.filter(oturum__result_at__date__gte=start_date)
         if end_date:
-            em_qs = em_qs.filter(Q(oturum__result_at__date__lte=end_date) | Q(oturum__result_at__isnull=True, oturum__olusturulma_tarihi__date__lte=end_date))
+            em_qs = em_qs.filter(oturum__result_at__date__lte=end_date)
+
+        satilan_etken_madde_dagilimi = [
+            {"ad": row["em_adi"], "sayi": row["sayi"]}
+            for row in (
+                em_qs
+                .annotate(em_adi=Coalesce("etken_madde__ad", "etken_madde_adi_snapshot"))
+                .exclude(em_adi__isnull=True)
+                .exclude(em_adi="")
+                .values("em_adi")
+                .annotate(sayi=Count("id"))
+                .order_by("-sayi", "em_adi")[:10]
+            )
+        ]
 
         top_em = (
             em_qs
@@ -537,6 +668,21 @@ class AdminDashboardView(APIView):
             {"ad": top_em["em_adi"], "sayi": top_em["sayi"]} if top_em else None
         )
 
+        # Tüm QR oturumlarındaki öneriler: sağ sütundaki ilk 10 listesi için.
+        onerilen_etken_madde_dagilimi = [
+            {"ad": row["em_adi"], "sayi": row["sayi"]}
+            for row in (
+                OturumOnerilenEtkenMadde.objects.filter(oturum__in=oturum_qs)
+                .annotate(em_adi=Coalesce("etken_madde__ad", "etken_madde_adi_snapshot"))
+                .exclude(em_adi__isnull=True)
+                .exclude(em_adi="")
+                .values("em_adi")
+                .annotate(sayi=Count("id"))
+                .order_by("-sayi", "em_adi")[:10]
+            )
+        ]
+        en_cok_onerilen = onerilen_etken_madde_dagilimi[0] if onerilen_etken_madde_dagilimi else None
+
         return Response(
             {
                 "toplam_eczane": toplam_eczane,
@@ -549,7 +695,11 @@ class AdminDashboardView(APIView):
                 "kategori_dagilim": kategori_dagilim,
                 "son_reklamlar": son_reklamlar,
                 "satis_sayisi": satis_sayisi,
+                "satis_yapan_eczaneler": satis_yapan_eczaneler,
                 "en_cok_satilan_etken_madde": en_cok_satilan,
+                "satilan_etken_madde_dagilimi": satilan_etken_madde_dagilimi,
+                "en_cok_onerilen_etken_madde": en_cok_onerilen,
+                "onerilen_etken_madde_dagilimi": onerilen_etken_madde_dagilimi,
             }
         )
 

@@ -5,6 +5,21 @@
 
 ---
 
+## 2026-08-19
+
+### [Backend+WebPanel] Duyuru kuyruğu, etken madde kaynağı, dashboard ve cihaz taşıma düzeltmeleri
+
+- Session etken madde detayına additive `RECOMMENDED|PHARMACIST_ADDED` kaynağı ve snapshot tabanlı dedupe ayrımı eklendi; migration gerekmedi.
+- Eczacı layout'u aktif okunmamış genel+sistem duyurularını tekli kuyrukta otomatik açıyor; genel kayıt yalnız başarılı “Okudum” ile kapanıyor.
+- Admin duyuru liste/formundan teknik sistem anahtarları kaldırıldı; ortak modal/indigo bilgi stili uygulandı.
+- Admin legacy “Kiosk Etkileşimleri” grafiği kaldırıldı; iki rolde ortak dört aylık/haftalık etkileşim+satış grafiği kullanılıyor.
+- Admin analytics alanı üç kolona toplandı: aylıklar aynı panelde, kompakt haftalıklar aynı panelde, kategori ve satış yapan eczane donut'ları üçüncü kolonda. Gün tıklamaları QR/Satış sekmesine tarih filtresiyle gider.
+- Dönem gezinmesi yalnız FA ikonlarına sıkıştırıldı; değer tipografisi güçlendirildi, satış grafikleri önerilen/satılan çift serisine çevrildi ve boş danışmanlık dilimi kategori donut'ından çıkarıldı.
+- Satış seri renkleri tasarım tokenlarına sabitlendi: önerilen `--eisa-turquoise`, satılan `--eisa-red`; haftalık dönem başlığı dar kolonda alta taşmayacak şekilde tek satıra alındı.
+- Dashboard analitiği bağımsız async bar/donut bileşenlerine ayrıldı: QR grafikleri Danışma sonucu (Bekleyen/Satış Yapılan/Satış Yapılmayan), satış grafikleri yalnız `SATIS_YAPILDI` oturumlarından Önerilen/Satılan serisini gösterir. Dashboard ilk satırda dört KPI, ikinci satırda ilk 10'luk dört donut ve üçüncü satırda iki kolon aylık/haftalık analitik düzenine sahiptir. Bugünün QR sayacı İstanbul takvim gününe göre hesaplanır.
+- Her cihaz kartına “Eczaneye Taşı” aksiyonu ve mevcut/hedef eczane özeti olan standart transfer modalı eklendi; backend kimlik/geçmiş invariant testleri eklendi.
+- Backend hedefli testleri, web component testleri, production build ve 1920/1100 gerçek Chrome turu doğrulandı; önce/sonra ekran görüntüleri `docs/qa/` altındadır.
+
 ## 2026-08-16
 
 ### [Backend+WebPanel+KioskEdge+KioskUI] HouseAd kaldırıldı; İçerik Yönetimi başlık/metin idle içeriğine geçti

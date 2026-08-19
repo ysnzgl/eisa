@@ -50,14 +50,14 @@ onBeforeUnmount(() => {
 
 const adminNavItems = [
   { to: '/admin',               exact: true, icon: 'fa-chart-line',   label: 'Dashboard' },
-  { to: '/admin/devices',                    icon: 'fa-display',       label: 'Cihaz Yönetimi', badgeKey: 'bekleyenCihazlar' },
+  { to: '/admin/devices',                    icon: 'fa-display',       label: 'Eczane & Cihaz', badgeKey: 'bekleyenCihazlar' },
   { to: '/admin/kiosk-activities',           icon: 'fa-wave-square',   label: 'Kiosk Hareketleri' },
   { to: '/admin/medical-logic',              icon: 'fa-dna',           label: 'Algoritma Editörü' },
   { to: '/admin/danisma',                    icon: 'fa-comments',      label: 'Danışma Kategorileri' },
   { to: '/admin/content-management',         icon: 'fa-images',        label: 'İçerik Yönetimi' },
-  { to: '/admin/campaigns',                  icon: 'fa-display',       label: 'Kiosk Kampanyaları' },
-  { to: '/admin/pharmacy-campaigns',         icon: 'fa-prescription-bottle-medical', label: 'Eczacı Paneli Kampanyaları' },
-  { to: '/admin/barkod-logolar',             icon: 'fa-barcode',       label: 'Barkod Logo Yönetimi' },
+  { to: '/admin/campaigns',                  icon: 'fa-display',       label: 'Kiosk Sponsorluk' },
+  { to: '/admin/pharmacy-campaigns',         icon: 'fa-prescription-bottle-medical', label: 'Eczacı Ekran Sponsorluk' },
+  { to: '/admin/barkod-logolar',             icon: 'fa-barcode',       label: 'Barkod Logo Sponsorluk' },
   { to: '/admin/destek',                     icon: 'fa-headset',       label: 'Görüş ve Destek', badgeKey: 'destekYeni' },
   { to: '/admin/dooh/control-center',        icon: 'fa-gauge-high',    label: 'Kontrol Merkezi' },
   { to: '/admin/playlists',                  icon: 'fa-list-ol',       label: 'Gelişmiş Manuel Yayın' },
@@ -126,6 +126,6 @@ const roleLabel  = computed(() => isAdmin.value ? 'Süper Admin' : 'Eczacı');
       <!-- Eczacı paneli kampanya şeridi ve idle overlay -->
       <PharmacistCampaignDisplay v-if="isPharmacist" />
     </main>
-    <DutyAlertModal v-if="!isAdmin" />
+    <DutyAlertModal v-if="isPharmacist" />
   </div>
 </template>

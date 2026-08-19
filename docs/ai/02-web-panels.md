@@ -399,7 +399,7 @@ window.EISA_API_BASE_URL = 'http://localhost:8000';
 3. Kamera akÄ±ÅŸÄ± kaldÄ±rÄ±lmÄ±ÅŸtÄ±r (getUserMedia/video/BarcodeDetector yoktur).
 4. `GET /api/analytics/sessions/?qr_kodu={qr_kodu}` Ã§aÄŸrÄ±lÄ±r.
 5. Backend 400/403/404 durumlarÄ±nÄ± ayrÄ±ÅŸtÄ±rÄ±r; UI bunu ayrÄ± mesajlarla gÃ¶sterir.
-6. BaÅŸarÄ±lÄ± response'da oturum detaylarÄ±, soru-cevap Ã§Ã¶zÃ¼mÃ¼ ve Ã¶nerilen etken madde detaylarÄ± gÃ¶sterilir.
+6. BaÅŸarÄ±lÄ± response'da oturum detaylarÄ±, soru-cevap Ã§Ã¶zÃ¼mÃ¼ ve etken madde detaylarÄ± gÃ¶sterilir. `source` alanına göre kiosk önerileri ile eczacının sonradan ekledikleri ayrı bölümlerde; eklenenler indigo bilgi stiliyle sunulur.
 7. Detay yüklendikten sonra eczacı için `POST /api/analytics/sessions/{id}/mark-reviewed/` çağrılır; admin görüntülemesi mutation yapmaz.
 8. Eczacı modalı sonuç girilene kadar çarpı/Kapat/Escape/backdrop ile kapanmaz. Açık kayıt kullanıcı+eczane anahtarlı `sessionStorage` ile yenilemede geri yüklenir; yeni QR fonksiyon seviyesinde engellenir.
 9. `POST /api/analytics/sessions/{id}/complete/` zorunlu `sale_result` (`sold|not_sold`) ve opsiyonel `ingredient_ids` alır. Diğer etken maddeler yalnız aramalı mevcut katalogdan çoklu seçilir.
@@ -408,7 +408,8 @@ window.EISA_API_BASE_URL = 'http://localhost:8000';
 
 1. SuperAdmin/Pharmacist â†’ `/admin` veya `/pharmacist`
 2. Kartlar: Toplam session, tamamlanan session, toplam impression, aktif kampanya sayÄ±sÄ±
-3. Ortak `DashboardPeriodCharts`: seçili ayın tüm günleri ile Pazartesi-Pazar haftanın tüm günlerini sıfır dolgulu gösteren etkileşim/satış 2×2 grafikleri. Önceki/sonraki/güncel dönem gezinmesi vardır; gelecek dönem kapalıdır.
+3. Ortak `DashboardPeriodCharts`, bağımsız veri yükleyen dört `DashboardPeriodCard` bileşeninden oluşur: seçili ayın tüm günleri ile Pazartesi-Pazar haftanın tüm günlerini sıfır dolgulu gösterir. QR etkileşimleri Danışma sonucuna göre Bekleyen / Satış Yapılan / Satış Yapılmayan serileridir; etkileşim başlığında toplam rozeti bulunur. Satış grafikleri yalnız `SATIS_YAPILDI` oturumlarındaki Önerilen / Satılan etken madde çift serisini gösterir (`--eisa-turquoise` / `--eisa-red`). Admin masaüstünde başlığın altında İl ve Eczane picker'larından oluşan Analitik Filtresi bulunur: İl seçimi eczane listesini daraltır, boş filtre ise tüm veriyi gösterir. İlk satır dört KPI, ikinci satır ilk 10 kayıttan oluşan dört donut (kategori, satış eczanesi, satılan etken madde, önerilen etken madde) bulunur. Aylık analitik tam genişlikte üçüncü satırı kaplar; altında solda haftalık analitik, sağda dikey Son Eklenenler ve Sistem Durum panelleri yer alır. Her bar/donut kendi isteği, loading durumu ve giriş animasyonuyla çalışır. Dönem gezinmesi erişilebilir başlıklı FA ikonlarıyla yapılır; gelecek dönem kapalıdır. Haftalık başlık ve ikon navigasyonu tek satır kalır. Kategorisiz danışmanlık oturumları kategori donut'ına dahil edilmez.
+   - Dört sabit başlık `Aylık Etkileşim`, `Aylık Satış`, `Haftalık Etkileşim`, `Haftalık Satış`tır. Etkileşim günü `tab=sessions`, satış günü `tab=sales` ile aynı gün başlangıç/bitiş filtresini Kiosk Hareketleri'ne taşır.
 4. API Ã§aÄŸrÄ±larÄ±:
    - `GET /api/analytics/oturum-loglari/?start_date={date}&end_date={date}`
    - `GET /api/analytics/play-logs/?start_date={date}&end_date={date}`
@@ -418,7 +419,7 @@ window.EISA_API_BASE_URL = 'http://localhost:8000';
    - Kiosk dÃ¼zenleme: Ad, MAC adresi, Aktif/Pasif durumu gÃ¼ncellenebilir
    - Uygulama AnahtarÄ±: Salt okunur (backend tarafÄ±ndan otomatik Ã¼retilir)
    - `PATCH /api/pharmacies/kiosks/{id}/` â†’ Kiosk gÃ¼ncelleme
-   - Eczane doğrudan PATCH edilemez. Detaydaki “Başka Eczaneye Taşı” modalı yeni eczane+neden alır, `POST .../{id}/transfer/` çağırır ve atama geçmişini gösterir.
+   - Eczane doğrudan PATCH edilemez. Her cihaz kartındaki metinli “Eczaneye Taşı” aksiyonu `Cihazı Başka Eczaneye Taşı` modalını açar; mevcut eczane salt okunur, hedef `EisaLookup` ile seçilir, neden ve taşıma özeti gösterilir. İşlem `POST .../{id}/transfer/` çağırır ve detayda atama geçmişini gösterir.
 
 ### Ortak UI kuralları
 - Global `vue-sonner` provider `top-center`, 22 px offset ve modal üstü z-index ile çalışır.
@@ -433,7 +434,7 @@ window.EISA_API_BASE_URL = 'http://localhost:8000';
 - `src/views/admin/AnnouncementManagement.vue` — genel duyuru CRUD ve iki korumalı sistem duyurusunun sunum alanları
 - `src/views/pharmacist/Announcements.vue` — eczanenin bugün geçerli genel duyuruları ve occurrence okundu aksiyonu
 - `src/views/pharmacist/DutyCalendar.vue` — query string'deki `month=YYYY-MM` ayı için gün seçimi / “Bu Ay Nöbetim Yok”
-- `src/components/pharmacist/DutyAlertModal.vue` — aktif sistem nöbet uyarısı popup'ı
+- `src/components/pharmacist/DutyAlertModal.vue` — aktif okunmamış genel duyuru ve sistem nöbet uyarısı kuyruğu
 - `src/views/admin/AdminLayout.vue` — eczacı rolünde popup'ın ortak mount noktası
 
 **Route'lar:**
@@ -445,11 +446,12 @@ window.EISA_API_BASE_URL = 'http://localhost:8000';
 - Genel duyuru formu tek seferlik/günlük/haftalık/aylık tekrar, başlangıç/bitiş ve `ALL|PROVINCE|DISTRICT|PHARMACY` hedeflerini yönetir.
 - Aylık UI belirli gün, gün aralığı, ilk N gün, son N gün ve son hafta (son 7 takvim günü) seçeneklerini sunar.
 - Sistem kartında yalnız başlık, mesaj, aksiyon butonu metni, seviye ve aktiflik düzenlenir; koşul/tarih/hedef ay/aksiyon URL'si UI formuna açılmaz ve silme aksiyonu yoktur.
+- Backend `system_key` alanını contract için döndürmeye devam eder; admin liste, detay ve düzenleme modalı bu teknik anahtarı hiçbir yerde göstermez, yalnız “Sistem Duyurusu” etiketi kullanır.
 
 **Popup / provider doğrulaması:**
-- Uygulamada ayrı bir global modal provider yoktur. `DutyAlertModal`, ortak `AdminLayout` içinde yalnız `!isAdmin` olduğunda render edilir; böylece tüm eczacı alt route'larını kapsar.
-- Popup `/api/announcements/me/active/` sonucundaki yalnız `kind=SYSTEM` kayıtlarını gösterir.
-- Aksiyonlar: hedef ayla nöbet takvimini açma, hedef ayı `has_no_duty=true` kaydetme ve yalnız bugünkü occurrence'ı okundu işaretleme.
+- Uygulamada ayrı bir global modal provider yoktur. `DutyAlertModal`, ortak `AdminLayout` içinde yalnız `isPharmacist` olduğunda render edilir; böylece giriş/yenileme sonrası tüm eczacı alt route'larını kapsar.
+- Popup `/api/announcements/me/active/` sonucundaki genel ve sistem kayıtlarını tek tek, sırayla gösterir. Genel duyuru ancak açık “Okudum” isteği başarılı olunca kapanır; istek hatasında modal açık kalır.
+- Sistem aksiyonları korunur: hedef ayla nöbet takvimini açma, hedef ayı `has_no_duty=true` kaydetme ve yalnız bugünkü occurrence'ı okundu işaretleme.
 
 **Kullanılan API'ler:**
 - `GET|POST /api/announcements/admin/`, `GET|PATCH|DELETE /api/announcements/admin/{id}/`

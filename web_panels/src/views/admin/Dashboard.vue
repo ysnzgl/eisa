@@ -6,17 +6,14 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { http } from '../../services/api';
-import { getAdminDashboard } from '../../services/analytics';
-import { getPharmacies, getKioskStatus, listProvisioningRequests } from '../../services/devices';
+import { listProvisioningRequests } from '../../services/devices';
+import EczanePicker from '../../components/shared/EczanePicker.vue';
 import EisaLookup from '../../components/shared/EisaLookup.vue';
+import { usePharmacyLookups } from '../../composables/usePharmacyLookups.js';
 import DashboardPeriodCharts from '../../components/DashboardPeriodCharts.vue';
+import DashboardAsyncDonut from '../../components/DashboardAsyncDonut.vue';
 
 const router = useRouter();
-
-//  Constants 
-const CIRC        = 2 * Math.PI * 70
-const CHART_BOTTOM = 168
-const CHART_H     = 153
 
 //  State 
 const loading   = ref(true);
@@ -42,62 +39,6 @@ const currentDate = computed(() =>
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
   })
 );
-
-//  Bar Chart 
-const DAY_LABELS = ['Paz', 'Pts', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
-const weeklyData = computed(() => {
-  const raw = dashData.value?.haftalik_trend ?? [];
-  // Fill last 7 days (oldestnewest)
-  const map = {};
-  raw.forEach(({ tarih, sayi }) => { map[tarih] = sayi; });
-  const result = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    const key = d.toISOString().slice(0, 10);
-    const dayLabel = DAY_LABELS[d.getDay()];
-    result.push({ day: dayLabel, value: map[key] ?? 0, isToday: i === 0, date: key });
-  }
-  return result;
-});
-
-const MAX_BAR = computed(() => Math.max(...weeklyData.value.map((d) => d.value), 1000));
-const totalWeekly = computed(() => weeklyData.value.reduce((s, d) => s + d.value, 0));
-
-function barH(val) { return (val / MAX_BAR.value) * CHART_H; }
-function barY(val) { return CHART_BOTTOM - barH(val); }
-function barX(i)   { return 66 + i * 74; }
-
-const yGrid = computed(() => {
-  const max = MAX_BAR.value;
-  const step = Math.ceil(max / 4 / 1000) * 1000 || 1000;
-  return [1, 2, 3, 4].map((n) => ({
-    label: `${(n * step / 1000).toFixed(0)}k`,
-    y: CHART_BOTTOM - (n * step / max) * CHART_H,
-  }));
-});
-
-//  Donut Chart 
-const DONUT_COLORS = ['#B1121B', '#7C3AED', '#DB2777', '#059669', '#F59E0B', '#0891B2'];
-
-const donutSegments = computed(() => {
-  const cats = dashData.value?.kategori_dagilim ?? [];
-  if (!cats.length) return [];
-  const total = cats.reduce((s, c) => s + c.sayi, 0) || 1;
-  let cum = 0;
-  return cats.slice(0, 5).map((cat, i) => {
-    const pct = Math.round((cat.sayi / total) * 100);
-    const dash = (pct / 100) * CIRC;
-    const rotate = (cum / total) * 360;
-    cum += cat.sayi;
-    return { label: cat.ad, slug: cat.slug ?? null, pct, dash, rotate, color: DONUT_COLORS[i] };
-  });
-});
-
-const totalSessions = computed(() => {
-  const cats = dashData.value?.kategori_dagilim ?? [];
-  return cats.reduce((s, c) => s + c.sayi, 0);
-});
 
 //  Recent Ads 
 const AD_COLORS = ['#22d3ee', '#f59e0b', '#a78bfa', '#34d399', '#fb7185'];
@@ -156,34 +97,14 @@ const kpiCards = [
   },
   {
     id: 'qr',
-    label: 'Bugün Üretilen QR',
+    label: 'Bugünkü Etkileşim',
     valueKey: 'todayQR',
     color: '#D97706',
     icon: 'fa-qrcode',
     drillTo: '/admin/kiosk-activities',
-    drillQuery: { tab: 'sessions', durum: 'COMPLETED', start_date: new Date().toISOString().slice(0,10) },
+    drillQuery: { tab: 'sessions', start_date: new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Istanbul' }).format(new Date()) },
   },
 ];
-
-//  Satış İstatistikleri (tarih filtreli) 
-const soldData       = ref(null);
-const soldLoading    = ref(false);
-const soldStartDate  = ref('');
-const soldEndDate    = ref('');
-
-async function loadSoldStats() {
-  soldLoading.value = true;
-  try {
-    const params = {};
-    if (soldStartDate.value) params.start_date = soldStartDate.value;
-    if (soldEndDate.value)   params.end_date   = soldEndDate.value;
-    const { data } = await getAdminDashboard(params);
-    soldData.value = data;
-  } catch { /* toast handled by interceptor */ }
-  finally { soldLoading.value = false; }
-}
-
-watch([soldStartDate, soldEndDate], () => loadSoldStats());
 
 //  Pending Devices 
 const pendingCount = ref(0);
@@ -195,37 +116,41 @@ async function loadPendingCount() {
   } catch { /* ignore */ }
 }
 
-//  Pharmacy Filter + Kiosk List 
-const pharmacies      = ref([]);
+//  Analytics pharmacy filter 
+const provinces = ref([]);
+const selectedProvince = ref(null);
 const selectedPharmacy = ref(null);
-const filteredKiosks  = ref([]);
-const kiosksLoading   = ref(false);
+const { pharmacies, ensureLoaded: ensurePharmaciesLoaded } = usePharmacyLookups();
+const provinceOptions = computed(() => {
+  const availableProvinceIds = new Set(pharmacies.value.map((pharmacy) => String(pharmacy.il)));
+  return provinces.value.filter((province) => availableProvinceIds.has(String(province.id)));
+});
+const analyticsFilters = computed(() => ({
+  ...(selectedProvince.value ? { il_id: selectedProvince.value } : {}),
+  ...(selectedPharmacy.value ? { eczane_id: selectedPharmacy.value } : {}),
+}));
 
-const pharmacyOptions = computed(() =>
-  pharmacies.value.map((p) => ({
-    id: p.id,
-    label: p.name,
-    sub: `${p.ilAdi || ''}${p.ilceAdi ? ' / ' + p.ilceAdi : ''}`,
-  }))
-);
-
-watch(selectedPharmacy, async (val) => {
-  filteredKiosks.value = [];
-  if (!val) return;
-  kiosksLoading.value = true;
-  try { filteredKiosks.value = await getKioskStatus(val); }
-  catch { /* ignore */ }
-  finally { kiosksLoading.value = false; }
+watch(selectedProvince, () => {
+  selectedPharmacy.value = null;
 });
 
-async function loadPharmacies() {
-  try { pharmacies.value = await getPharmacies(); } catch { /* ignore */ }
+async function loadProvinces() {
+  await ensurePharmaciesLoaded();
+  provinces.value = [...new Map(
+    pharmacies.value
+      .filter((pharmacy) => pharmacy.il && pharmacy.ilAdi)
+      .map((pharmacy) => [String(pharmacy.il), { id: pharmacy.il, label: pharmacy.ilAdi }])
+  ).values()];
 }
 
 //  Data Loading 
-onMounted(async () => {
+let dashboardRequestId = 0;
+async function loadDashboard() {
+  const requestId = ++dashboardRequestId;
+  loading.value = true;
   try {
-    const { data } = await http.get('/api/analytics/admin-dashboard/');
+    const { data } = await http.get('/api/analytics/admin-dashboard/', { params: analyticsFilters.value });
+    if (requestId !== dashboardRequestId) return;
     dashData.value = data;
     // Trigger count-up animations
     setTimeout(() => countUp('pharmacies', data.toplam_eczane ?? 0), 0);
@@ -235,11 +160,15 @@ onMounted(async () => {
   } catch {
     // errors handled by api interceptor toast
   } finally {
-    loading.value = false;
+    if (requestId === dashboardRequestId) loading.value = false;
   }
-  await loadPharmacies();
+}
+
+watch(analyticsFilters, loadDashboard, { immediate: true });
+
+onMounted(async () => {
+  await loadProvinces();
   loadPendingCount();
-  loadSoldStats();
 });
 </script>
 
@@ -260,6 +189,14 @@ onMounted(async () => {
       </div>
     </div>  <!-- eisa-page-header -->
 
+    <section class="eisa-panel dash-analytics-filter">
+      <div class="dash-analytics-filter-label"><i class="fa-solid fa-filter"></i><span>Analitik Filtresi</span></div>
+      <div class="dash-analytics-filter-fields">
+        <EisaLookup v-model="selectedProvince" :options="provinceOptions" placeholder="İl seçin…" :clearable="true" />
+        <EczanePicker v-model="selectedPharmacy" :province-id="selectedProvince" placeholder="İl / İlçe / Eczane ara…" />
+      </div>
+    </section>
+
     <!--  Pending Devices Alert  -->
     <div v-if="pendingCount > 0" class="dash-pending-alert">
       <i class="fa-solid fa-clock dash-pending-icon"></i>
@@ -267,7 +204,6 @@ onMounted(async () => {
       <router-link to="/admin/devices" class="dash-pending-link">Görüntüle →</router-link>
     </div>
 
-    <!--  KPI Cards  -->
     <div class="dash-kpi-grid">
       <div
         v-for="(kpi, i) in kpiCards"
@@ -281,113 +217,24 @@ onMounted(async () => {
         <div class="dash-kpi-body">
           <div class="dash-kpi-top">
             <span class="dash-kpi-label">{{ kpi.label }}</span>
-            <span class="dash-kpi-icon" :style="{ color: kpi.color }">
-              <i class="fa-solid" :class="kpi.icon"></i>
-            </span>
+            <span class="dash-kpi-icon" :style="{ color: kpi.color }"><i class="fa-solid" :class="kpi.icon"></i></span>
           </div>
           <div class="dash-kpi-number">{{ loading ? '…' : kpiValues[kpi.valueKey] }}</div>
-          <div v-if="kpi.subFn" class="dash-kpi-sub" :class="kpi.subClass">
-            {{ kpi.subFn() }}
-          </div>
+          <div v-if="kpi.subFn" class="dash-kpi-sub" :class="kpi.subClass">{{ kpi.subFn() }}</div>
         </div>
       </div>
     </div>
 
-    <!--  Charts  -->
-    <div class="dash-charts-grid">
-
-      <!-- Bar Chart -->
-      <div class="eisa-panel">
-        <div class="eisa-panel-header">
-          <div>
-            <p class="eisa-eyebrow" style="font-size:0.65rem;">HAFTALIK TREND</p>
-            <h2 class="eisa-panel-title">Kiosk Etkileşimleri</h2>
-          </div>
-          <span class="dash-panel-badge">{{ totalWeekly.toLocaleString('tr-TR') }} bu hafta</span>
-        </div>
-        <div style="padding:0 1.25rem 1.25rem;">
-          <svg viewBox="0 0 580 200" class="dash-bar-svg" preserveAspectRatio="xMidYMid meet">
-            <!-- Grid lines + Y labels -->
-            <line v-for="g in yGrid" :key="g.label"
-                  x1="52" :y1="g.y" x2="558" :y2="g.y" class="dash-svg-grid" />
-            <text v-for="g in yGrid" :key="'yl'+g.label"
-                  x="46" :y="g.y + 4" text-anchor="end" class="dash-svg-y-label">{{ g.label }}</text>
-            <!-- X axis -->
-            <line x1="52" :y1="CHART_BOTTOM" x2="558" :y2="CHART_BOTTOM" class="dash-svg-axis" />
-            <!-- Bars -->
-            <g v-for="(d, i) in weeklyData" :key="d.day"
-               :style="{ cursor: d.value > 0 ? 'pointer' : 'default' }"
-               @click="d.value > 0 && router.push({ path: '/admin/kiosk-activities', query: { tab: 'sessions', start_date: d.date, end_date: d.date } })">
-              <rect
-                :x="barX(i)"
-                :y="barY(d.value)"
-                :width="46"
-                :height="barH(d.value)"
-                rx="5"
-                :class="['dash-bar-rect', d.isToday ? 'dash-bar--today' : 'dash-bar--normal']"
-                :style="{ animationDelay: (i * 70 + 300) + 'ms' }"
-              />
-              <text :x="barX(i) + 23" :y="CHART_BOTTOM + 16"
-                    text-anchor="middle" class="dash-svg-x-label">{{ d.day }}</text>
-              <text :x="barX(i) + 23" :y="barY(d.value) - 5"
-                    text-anchor="middle" class="dash-svg-val-label"
-                    :class="d.isToday ? 'dash-val--today' : ''">
-                {{ d.value > 999 ? (d.value / 1000).toFixed(1) + 'k' : d.value }}
-              </text>
-            </g>
-          </svg>
-        </div>
-      </div>
-
-      <!-- Donut Chart -->
-      <div class="eisa-panel dash-donut-panel">
-        <div class="eisa-panel-header">
-          <div>
-            <p class="eisa-eyebrow" style="font-size:0.65rem;">KATEGORİ DAĞILIMI</p>
-            <h2 class="eisa-panel-title">En Çok Kullananlar</h2>
-          </div>
-        </div>
-        <div class="dash-donut-body">
-          <div class="dash-donut-wrap">
-            <svg viewBox="0 0 200 200" class="dash-donut-svg">
-              <g transform="rotate(-90, 100, 100)">
-                <circle
-                  v-for="(seg, i) in donutSegments"
-                  :key="i"
-                  cx="100" cy="100" r="70"
-                  fill="none"
-                  :stroke="seg.color"
-                  stroke-width="30"
-                  :stroke-dasharray="`${seg.dash.toFixed(2)} ${(CIRC - seg.dash).toFixed(2)}`"
-                  stroke-dashoffset="0"
-                  :transform="`rotate(${seg.rotate}, 100, 100)`"
-                  class="dash-donut-arc"
-                  :style="{ animationDelay: (i * 100) + 'ms', cursor: 'pointer' }"
-                  @click="router.push({ path: '/admin/kiosk-activities', query: { tab: 'sessions', ...(seg.slug ? { kategori_slug: seg.slug } : {}) } })"
-                />
-              </g>
-              <text x="100" y="95" text-anchor="middle" class="dash-donut-big">
-                {{ totalSessions > 999 ? (totalSessions/1000).toFixed(1)+'k' : totalSessions }}
-              </text>
-              <text x="100" y="111" text-anchor="middle" class="dash-donut-sub">oturum</text>
-            </svg>
-          </div>
-          <div class="dash-donut-legend">
-            <div v-for="seg in donutSegments" :key="seg.label" class="dash-dl-row"
-                 style="cursor:pointer"
-                 @click="router.push({ path: '/admin/kiosk-activities', query: { tab: 'sessions', ...(seg.slug ? { kategori_slug: seg.slug } : {}) } })">
-              <span class="dash-dl-dot" :style="{ background: seg.color }"></span>
-              <span class="dash-dl-name">{{ seg.label }}</span>
-              <span class="dash-dl-pct">{{ seg.pct }}%</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
+    <div class="dash-donut-grid">
+      <DashboardAsyncDonut kind="categories" eyebrow="KATEGORİ DAĞILIMI" title="Kategori Dağılımı" :filters="analyticsFilters" />
+      <DashboardAsyncDonut kind="pharmacies" eyebrow="SATIŞ ECZANE DAĞILIMI" title="Satış Eczane Dağılımı" :filters="analyticsFilters" />
+      <DashboardAsyncDonut kind="ingredients" eyebrow="SATILAN ETKEN MADDE" title="Satılan Etken Madde Dağılımı" :filters="analyticsFilters" />
+      <DashboardAsyncDonut kind="recommended-ingredients" eyebrow="ÖNERİLEN ETKEN MADDE" title="Önerilen Etken Madde Dağılımı" :filters="analyticsFilters" />
     </div>
 
-    <!-- Alt Satır -->
-    <div class="dash-bottom-grid">
+    <DashboardPeriodCharts :filters="analyticsFilters">
+      <template #aside>
+        <div class="dash-bottom-grid dash-bottom-grid--stacked">
 
       <!-- Son Reklamlar -->
       <div class="eisa-panel">
@@ -468,119 +315,21 @@ onMounted(async () => {
         </div>
       </div>
 
-    </div>
-    <!-- /dash-bottom-grid -->
-
-    <DashboardPeriodCharts :filters="selectedPharmacy ? { eczane_id: selectedPharmacy } : {}" />
-
-    <!-- Satış İstatistikleri -->
-    <div class="eisa-panel" style="margin-top:1.5rem;">
-      <div class="eisa-panel-header">
-        <div>
-          <p class="eisa-eyebrow" style="font-size:0.65rem;">SATIŞ ANALİTİĞİ</p>
-          <h2 class="eisa-panel-title">Satış Özeti</h2>
         </div>
-        <div style="display:flex;gap:0.5rem;align-items:center;">
-          <div>
-            <label class="eisa-label" style="font-size:0.7rem;">Başlangıç</label>
-            <input v-model="soldStartDate" type="date" class="eisa-field" style="font-size:0.8rem;padding:0.3rem 0.5rem;" />
-          </div>
-          <div>
-            <label class="eisa-label" style="font-size:0.7rem;">Bitiş</label>
-            <input v-model="soldEndDate" type="date" class="eisa-field" style="font-size:0.8rem;padding:0.3rem 0.5rem;" />
-          </div>
-        </div>
-      </div>
-      <div style="padding:1rem 1.25rem;display:flex;flex-wrap:wrap;gap:1rem;">
-        <!-- Satış Sayısı Kartı -->
-        <div class="dash-kpi-card" style="--kpi-c:#10B981;flex:1;min-width:220px;">
-          <div class="dash-kpi-accent"></div>
-          <div class="dash-kpi-body">
-            <div class="dash-kpi-top">
-              <span class="dash-kpi-label">Satış Sayısı</span>
-              <span class="dash-kpi-icon" style="color:#10B981;"><i class="fa-solid fa-cart-shopping"></i></span>
-            </div>
-            <div class="dash-kpi-number">
-              <span v-if="soldLoading"><i class="fa-solid fa-circle-notch fa-spin"></i></span>
-              <span v-else>{{ (soldData?.satis_sayisi ?? 0).toLocaleString('tr-TR') }}</span>
-            </div>
-            <div class="dash-kpi-sub">
-              <router-link
-                :to="{ path: '/admin/kiosk-activities', query: { tab: 'sessions', sold: 'true', ...(soldStartDate ? { start_date: soldStartDate } : {}), ...(soldEndDate ? { end_date: soldEndDate } : {}) } }"
-                style="color:inherit;text-decoration:none;opacity:0.8;font-size:0.75rem;"
-              >Satış listesini gör →</router-link>
-            </div>
-          </div>
-        </div>
-        <!-- En Çok Satılan Etken Madde Kartı -->
-        <div class="dash-kpi-card" style="--kpi-c:#0891B2;flex:1;min-width:220px;">
-          <div class="dash-kpi-accent"></div>
-          <div class="dash-kpi-body">
-            <div class="dash-kpi-top">
-              <span class="dash-kpi-label">En Çok Satılan Etken Madde</span>
-              <span class="dash-kpi-icon" style="color:#0891B2;"><i class="fa-solid fa-flask"></i></span>
-            </div>
-            <div v-if="soldLoading" class="dash-kpi-number"><i class="fa-solid fa-circle-notch fa-spin"></i></div>
-            <template v-else-if="soldData?.en_cok_satilan_etken_madde">
-              <div class="dash-kpi-number" style="font-size:1.1rem;word-break:break-word;">
-                {{ soldData.en_cok_satilan_etken_madde.ad }}
-              </div>
-              <div class="dash-kpi-sub">{{ soldData.en_cok_satilan_etken_madde.sayi }} satış</div>
-            </template>
-            <div v-else class="dash-kpi-number" style="font-size:1rem;color:#6B7280;">—</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Eczane Kiosk Filtresi -->
-    <div class="eisa-panel" style="margin-top:1.5rem;">
-      <div class="eisa-panel-header">
-        <div>
-          <p class="eisa-eyebrow" style="font-size:0.65rem;">ECZANE FİLTRESİ</p>
-          <h2 class="eisa-panel-title">Eczane Kiosklarını Görüntüle</h2>
-        </div>
-      </div>
-      <div style="padding:0 1.25rem 0.75rem; max-width:360px;">
-        <EisaLookup
-          v-model="selectedPharmacy"
-          :options="pharmacyOptions"
-          placeholder="Eczane ara (ad / il / ilçe)…"
-        />
-      </div>
-      <div v-if="kiosksLoading" class="empty-row">Yükleniyor…</div>
-      <div v-else-if="selectedPharmacy && !filteredKiosks.length" class="empty-row">
-        Bu eczaneye ait kiosk bulunamadı.
-      </div>
-      <div v-else-if="filteredKiosks.length" class="eisa-table-wrap">
-        <table class="eisa-table">
-          <thead>
-            <tr><th>Kiosk</th><th>MAC</th><th>Durum</th><th>Son Görülme</th></tr>
-          </thead>
-          <tbody>
-            <tr v-for="k in filteredKiosks" :key="k.id">
-              <td>{{ k.ad || `#${k.id}` }}</td>
-              <td class="cell-muted">{{ k.mac || '—' }}</td>
-              <td>
-                <span class="eisa-pill" :class="k.isActive ? 'eisa-pill-success' : 'eisa-pill-danger'">
-                  {{ k.isActive ? 'Aktif' : 'Pasif' }}
-                </span>
-              </td>
-              <td class="cell-muted">
-                {{ k.lastPing ? new Date(k.lastPing).toLocaleString('tr-TR') : '—' }}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <div v-else class="empty-row" style="color:#94a3b8;">Eczane seçin</div>
-    </div>
+      </template>
+    </DashboardPeriodCharts>
 
   </div>
 
 </template>
 
 <style scoped>
+.dash-donut-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; margin-bottom: 1.25rem; }
+.dash-bottom-grid--stacked { grid-template-columns: 1fr; gap: 1rem; margin: 0; }
+.dash-analytics-filter { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .75rem 1rem; margin-bottom: 1.25rem; }
+.dash-analytics-filter-label { display: inline-flex; align-items: center; gap: .5rem; color: #475569; font-size: .78rem; font-weight: 800; white-space: nowrap; }
+.dash-analytics-filter-label i { color: var(--eisa-red); }
+.dash-analytics-filter-fields { display: grid; grid-template-columns: repeat(2, minmax(220px, 280px)); gap: .65rem; width: min(100%, 580px); }
 .dash-kpi-card--clickable {
   cursor: pointer;
   transition: transform 0.15s, box-shadow 0.15s;
@@ -611,4 +360,24 @@ onMounted(async () => {
   white-space: nowrap;
 }
 .dash-pending-link:hover { text-decoration: underline; }
+.dash-donut-arc { cursor: pointer; }
+.dash-dl-button {
+  width: 100%;
+  padding: 0.15rem 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 5px;
+}
+.dash-dl-button:hover,
+.dash-dl-button:focus-visible { background: var(--eisa-info-soft, #eef2ff); outline: none; }
+.dash-donut-empty { margin: 0; font-size: 0.72rem; color: #9ca3af; }
+@media (max-width: 1180px) { .dash-donut-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 760px) {
+  .dash-donut-grid { grid-template-columns: 1fr; }
+  .dash-analytics-filter { align-items: stretch; flex-direction: column; }
+  .dash-analytics-filter-fields { grid-template-columns: 1fr; width: 100%; }
+}
 </style>
