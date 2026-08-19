@@ -1095,25 +1095,6 @@ body {
 .pharm-sidebar .logout:hover { background: #FEF2F2; color: #991B1B; border-color: #FECACA; }
 .pharm-main { flex: 1; overflow: auto; min-width: 0; }
 
-/* ─── Pharmacist page accent color ───────────────────────────── */
-.pharm-page {
-  --accent: #B1121B;
-  --accent-soft: rgba(177,18,27,0.08);
-  --border-focus: #B1121B;
-}
-.pharm-page .eisa-btn-cta {
-  background: linear-gradient(135deg, #7F1D1D 0%, #B1121B 55%, #D72638 100%);
-  box-shadow: 0 4px 14px rgba(177,18,27,0.28);
-}
-.pharm-page .eisa-btn-cta:hover:not(:disabled) {
-  box-shadow: 0 6px 20px rgba(177,18,27,0.38);
-  background: linear-gradient(135deg, #5F1417 0%, #7F1D1D 50%, #B1121B 100%);
-}
-.pharm-page .eisa-field:focus {
-  border-color: #B1121B;
-  box-shadow: 0 0 0 3px rgba(177,18,27,0.12);
-}
-
 /* ─── Inbox specific ──────────────────────────────────────────── */
 .inbox-card {
   background: #fff;
@@ -1151,7 +1132,6 @@ body {
 }
 
 /* ─── QR Scan page ────────────────────────────────────────────── */
-.qr-scan-page { max-width: 680px; margin: 0 auto; }
 .qr-result-card {
   background: #fff; border: 1px solid #E5E3DF;
   border-radius: 14px; overflow: hidden;
