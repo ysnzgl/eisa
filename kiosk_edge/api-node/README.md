@@ -1,6 +1,6 @@
 # Kiosk API (Node.js)
 
-E-İSA Kiosk lokal API — **Fastify + better-sqlite3 + node-cron**.
+e-isa Kiosk lokal API — **Fastify + better-sqlite3 + node-cron**.
 
 Bu klasor kioskun Node.js lokal API moduludur. Endpoint'ler, port (`8765`), sema ve push/pull davranisi Svelte UI ile uyumludur.
 

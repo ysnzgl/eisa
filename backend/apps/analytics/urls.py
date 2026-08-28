@@ -12,6 +12,7 @@ from .views import (
     DashboardSeriesView,
     OturumLoguStatsView,
     OturumLoguView,
+    PharmacyReportView,
 )
 
 urlpatterns = [
@@ -30,4 +31,5 @@ urlpatterns = [
     # Teknik log ingestion (web panel client hataları) — DB'ye yazılmaz.
     # Kiosk diagnostic ingest artık /api/kiosk/v1/diagnostics/ (kiosk_api facade).
     path("client-events/", ClientEventIngestView.as_view(), name="client-event-ingest"),
+    path("pharmacy-report/", PharmacyReportView.as_view(), name="pharmacy-report"),
 ]

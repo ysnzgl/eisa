@@ -1,4 +1,4 @@
-// E-İSA Kiosk API — entrypoint.
+// e-isa Kiosk API — entrypoint.
 import { settings } from './config.js';
 import { openDb, closeDb } from './db.js';
 import { buildServer } from './server.js';

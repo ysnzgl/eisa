@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo
 import re
 
 from django.db.models import Count, Q
-from django.db.models.functions import Coalesce, TruncDate
+from django.db.models.functions import Coalesce, TruncDate, ExtractHour
 from django.utils import timezone
 from rest_framework import serializers, status
 from rest_framework.pagination import CursorPagination, PageNumberPagination
@@ -914,4 +914,268 @@ class KioskEventListView(APIView):
         serializer = KioskEventSerializer(page, many=True)
         return paginator.get_paginated_response(serializer.data)
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Eczane Durum Raporu — yönetici / eczacı PDF raporu için veri
+# ─────────────────────────────────────────────────────────────────────────────
+
+class PharmacyReportView(APIView):
+    """GET /api/analytics/pharmacy-report/
+
+    Eczane bazlı özet rapor verisi.
+
+    Eczacı: kendi eczanesi için detaylı rapor.
+    Admin:  ?eczane_id=X → tek eczane, parametresiz → tüm aktif eczaneler özeti.
+    Ortak:  ?start_date=YYYY-MM-DD  ?end_date=YYYY-MM-DD
+    Admin "tüm eczaneler" modunda max 100 eczane döndürülür.
+    """
+
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [_OrPerm(IsSuperAdmin, IsEczaci)]
+
+    # ── Per-pharmacy data builder ──────────────────────────────────────────
+    def _eczane_data(self, eczane, start_date, end_date):
+        from django.db.models.functions import Coalesce as _Coalesce
+        from apps.analytics.serializers import (
+            _recommended_ingredient_identity,
+            _ingredient_source,
+        )
+
+        istanbul = ZoneInfo("Europe/Istanbul")
+
+        oturum_qs = OturumLogu.objects.filter(
+            Q(eczane_id=eczane.id) | Q(eczane__isnull=True, kiosk__eczane_id=eczane.id)
+        )
+        if start_date:
+            oturum_qs = oturum_qs.filter(olusturulma_tarihi__date__gte=start_date)
+        if end_date:
+            oturum_qs = oturum_qs.filter(olusturulma_tarihi__date__lte=end_date)
+
+        SD = OturumLogu.SatisDurumu
+
+        # ── Etkileşim sayıları ───────────────────────────────────────────────
+        toplam_oturum    = oturum_qs.count()
+        satis_yapilan    = oturum_qs.filter(status=SD.SATIS_YAPILDI).count()
+        satis_yapilmayan = oturum_qs.filter(status=SD.SATIS_YAPILMADI).count()
+        danisma_ok       = oturum_qs.filter(danisma_tamamlandi=True).count()
+        bekleyen         = toplam_oturum - satis_yapilan - satis_yapilmayan
+
+        # Günlük ortalama — aktif gün sayısına böl
+        aktif_etkilesim_gun = (
+            oturum_qs
+            .annotate(gun=TruncDate("olusturulma_tarihi", tzinfo=istanbul))
+            .values("gun").distinct().count()
+        )
+        gunluk_ort_etkilesim = round(toplam_oturum / aktif_etkilesim_gun, 1) if aktif_etkilesim_gun else 0
+
+        # ── Satış queryset ───────────────────────────────────────────────────
+        satis_qs     = oturum_qs.filter(status=SD.SATIS_YAPILDI, result_at__isnull=False)
+        toplam_satis = satis_yapilan  # alias — already counted above
+
+        aktif_satis_gun = (
+            satis_qs
+            .annotate(gun=TruncDate("result_at", tzinfo=istanbul))
+            .values("gun").distinct().count()
+        )
+        gunluk_ort_satis = round(toplam_satis / aktif_satis_gun, 1) if aktif_satis_gun else 0
+
+        # ── Etken madde istatistikleri ───────────────────────────────────────
+        total_onerilen_em = sum(
+            len(j) if isinstance(j, list) else 0
+            for j in oturum_qs.exclude(onerilen_etken_maddeler__isnull=True)
+            .values_list("onerilen_etken_maddeler", flat=True)
+        )
+
+        onerilen_satilan_em = 0
+        eczaci_eklenen_satilan_em = 0
+        for session in satis_qs.prefetch_related("onerilen_etken_madde_detaylari__etken_madde"):
+            rec_ids, rec_names = _recommended_ingredient_identity(session.onerilen_etken_maddeler)
+            for em_rec in session.onerilen_etken_madde_detaylari.all():
+                if not em_rec.satildi:
+                    continue
+                em_name = (
+                    em_rec.etken_madde.ad if em_rec.etken_madde else em_rec.etken_madde_adi_snapshot
+                ) or ""
+                if _ingredient_source(
+                    ingredient_id=em_rec.etken_madde_id,
+                    name=em_name,
+                    recommended_ids=rec_ids,
+                    recommended_names=rec_names,
+                ) == "RECOMMENDED":
+                    onerilen_satilan_em += 1
+                else:
+                    eczaci_eklenen_satilan_em += 1
+
+        toplam_satilan_em = onerilen_satilan_em + eczaci_eklenen_satilan_em
+
+        # ── Analitik tablolar ────────────────────────────────────────────────
+
+        def _top10(qs, val_key, count_key="sayi"):
+            return [{"ad": r[val_key], count_key: r[count_key]} for r in qs if r.get(val_key)]
+
+        kategoriler = _top10(
+            oturum_qs.filter(kategori__isnull=False)
+            .values("kategori__ad")
+            .annotate(sayi=Count("id"))
+            .order_by("-sayi")[:10]
+            .values("kategori__ad", "sayi"),
+            "kategori__ad",
+        )
+
+        # En çok önerilen EM: tüm danışmalardaki EM kayıtları (satıldı fark etmeksizin)
+        en_cok_onerilen_em = [
+            {"ad": r["em_adi"], "sayi": r["sayi"]}
+            for r in (
+                OturumOnerilenEtkenMadde.objects.filter(oturum__in=oturum_qs)
+                .annotate(em_adi=_Coalesce("etken_madde__ad", "etken_madde_adi_snapshot"))
+                .exclude(em_adi__isnull=True).exclude(em_adi="")
+                .values("em_adi")
+                .annotate(sayi=Count("id"))
+                .order_by("-sayi")[:10]
+            )
+        ]
+
+        # En çok satılan EM: satildi=True olan kayıtlar
+        etken_maddeler = [
+            {"ad": r["em_adi"], "sayi": r["sayi"]}
+            for r in (
+                OturumOnerilenEtkenMadde.objects.filter(oturum__in=satis_qs, satildi=True)
+                .annotate(em_adi=_Coalesce("etken_madde__ad", "etken_madde_adi_snapshot"))
+                .exclude(em_adi__isnull=True).exclude(em_adi="")
+                .values("em_adi")
+                .annotate(sayi=Count("id"))
+                .order_by("-sayi")[:10]
+            )
+        ]
+
+        # En çok satış yapılan tarihler
+        en_cok_satis_tarihler = [
+            {
+                "tarih": r["tarih"].strftime("%d.%m.%Y") if r["tarih"] else "—",
+                "sayi":  r["sayi"],
+            }
+            for r in (
+                satis_qs
+                .annotate(tarih=TruncDate("result_at", tzinfo=istanbul))
+                .values("tarih")
+                .annotate(sayi=Count("id"))
+                .order_by("-sayi")[:10]
+            )
+        ]
+
+        # En çok satış yapılan saatler (Istanbul)
+        en_cok_satis_saatler = [
+            {"saat": f"{r['saat']:02d}:00–{r['saat']:02d}:59", "sayi": r["sayi"]}
+            for r in (
+                satis_qs
+                .annotate(saat=ExtractHour("result_at", tzinfo=istanbul))
+                .values("saat")
+                .annotate(sayi=Count("id"))
+                .order_by("-sayi")[:10]
+            )
+        ]
+
+        # En çok etkileşim alan saatler (Istanbul)
+        en_cok_etkilesim_saatler = [
+            {"saat": f"{r['saat']:02d}:00–{r['saat']:02d}:59", "sayi": r["sayi"]}
+            for r in (
+                oturum_qs
+                .annotate(saat=ExtractHour("olusturulma_tarihi", tzinfo=istanbul))
+                .values("saat")
+                .annotate(sayi=Count("id"))
+                .order_by("-sayi")[:10]
+            )
+        ]
+
+        return {
+            "eczane": {
+                "id": eczane.id,
+                "ad": eczane.ad,
+                "il": eczane.il.ad if eczane.il else "",
+                "ilce": eczane.ilce.ad if eczane.ilce else "",
+                "sahip_adi": eczane.sahip_adi or "",
+                "telefon": eczane.telefon or "",
+                "eczane_kodu": eczane.eczane_kodu or "",
+            },
+            "oturum": {
+                "toplam":          toplam_oturum,
+                "satis_yapilan":   satis_yapilan,
+                "satis_yapilmayan":satis_yapilmayan,
+                "bekleyen":        bekleyen,
+                "danisma_tamamlanan": danisma_ok,
+                "gunluk_ort":      gunluk_ort_etkilesim,
+            },
+            "satis": {
+                "toplam":     toplam_satis,
+                "gunluk_ort": gunluk_ort_satis,
+            },
+            "em_stats": {
+                "onerilen":             total_onerilen_em,
+                "onerilen_satilan":     onerilen_satilan_em,
+                "eczaci_eklenen_satilan":eczaci_eklenen_satilan_em,
+                "toplam_satilan":       toplam_satilan_em,
+            },
+            "kategoriler":             kategoriler,
+            "etken_maddeler":          etken_maddeler,
+            "en_cok_onerilen_em":      en_cok_onerilen_em,
+            "en_cok_satis_tarihler":   en_cok_satis_tarihler,
+            "en_cok_satis_saatler":    en_cok_satis_saatler,
+            "en_cok_etkilesim_saatler":en_cok_etkilesim_saatler,
+        }
+
+    # ── View ─────────────────────────────────────────────────────────────────
+    def get(self, request):
+        from apps.pharmacies.models import Eczane
+
+        user    = request.user
+        rol     = getattr(user, "rol", None)
+        params  = request.query_params
+        start_d = params.get("start_date")
+        end_d   = params.get("end_date")
+
+        istanbul = ZoneInfo("Europe/Istanbul")
+        rapor_tarihi = timezone.now().astimezone(istanbul).strftime("%d.%m.%Y %H:%M")
+
+        if rol == "pharmacist":
+            eczane = getattr(user, "eczane", None)
+            if not eczane:
+                return Response({"detail": "Eczane bulunamadı."}, status=status.HTTP_403_FORBIDDEN)
+            eczane_list = [self._eczane_data(eczane, start_d, end_d)]
+            tek = True
+        else:
+            eczane_id = params.get("eczane_id")
+            if eczane_id:
+                try:
+                    eczane = Eczane.objects.select_related("il", "ilce").get(pk=eczane_id)
+                except Eczane.DoesNotExist:
+                    return Response({"detail": "Eczane bulunamadı."}, status=status.HTTP_404_NOT_FOUND)
+                eczane_list = [self._eczane_data(eczane, start_d, end_d)]
+                tek = True
+            else:
+                qs = Eczane.objects.select_related("il", "ilce").filter(aktif=True).order_by("il__ad", "ad")[:100]
+                eczane_list = [self._eczane_data(e, start_d, end_d) for e in qs]
+                tek = False
+
+        genel_ozet = None
+        if not tek:
+            genel_ozet = {
+                "toplam_eczane":            len(eczane_list),
+                "toplam_oturum":            sum(e["oturum"]["toplam"]                    for e in eczane_list),
+                "toplam_satis_yapilan":     sum(e["oturum"]["satis_yapilan"]             for e in eczane_list),
+                "toplam_satis_yapilmayan":  sum(e["oturum"]["satis_yapilmayan"]          for e in eczane_list),
+                "toplam_bekleyen":          sum(e["oturum"]["bekleyen"]                  for e in eczane_list),
+                "toplam_onerilen_em":       sum(e["em_stats"]["onerilen"]                for e in eczane_list),
+                "toplam_onerilen_satilan":  sum(e["em_stats"]["onerilen_satilan"]        for e in eczane_list),
+                "toplam_eczaci_eklenen":    sum(e["em_stats"]["eczaci_eklenen_satilan"]  for e in eczane_list),
+                "toplam_satilan_em":        sum(e["em_stats"]["toplam_satilan"]          for e in eczane_list),
+            }
+
+        return Response({
+            "rapor_tarihi":     rapor_tarihi,
+            "baslangic_tarihi": start_d or "",
+            "bitis_tarihi":     end_d   or "",
+            "tek_eczane":       tek,
+            "eczaneler":        eczane_list,
+            "genel_ozet":       genel_ozet,
+        })
 

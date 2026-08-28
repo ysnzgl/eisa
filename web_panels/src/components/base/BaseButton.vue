@@ -1,6 +1,6 @@
 <script setup>
 /**
- * BaseButton — E-İSA Design System
+ * BaseButton — e-isa Design System
  *
  * Props:
  *   variant  : 'primary' | 'secondary' | 'ghost' | 'danger'  (default: 'primary')

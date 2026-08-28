@@ -1,4 +1,4 @@
-# AI Context Index — E-İSA Project
+# AI Context Index — e-isa Project
 
 **Son güncelleme:** 2026-08-18
 **Amaç:** Token-ekonomik AI context; kod yapısını hızlı anlamak ve geliştirmelerde doğru noktadan başlamak.
@@ -16,7 +16,7 @@
 
 ## Proje Özeti
 
-**E-İSA (E-İlaç Sepeti Asistanı):** Eczanelerde konumlanmış kiosk'lar üzerinden demografik/anonim kullanıcı danışmanlığı ve DOOH (Digital Out-Of-Home) reklam sistemi.
+**e-isa:** Eczanelerde konumlanmış kiosk'lar üzerinden demografik/anonim kullanıcı danışmanlığı ve DOOH (Digital Out-Of-Home) reklam sistemi.
 
 **Temel akış:**  
 Kullanıcı → Demografi seçimi → Kategori seçimi → Sorulara cevap → Etken madde önerileri + QR kod → Eczacıya danışma  

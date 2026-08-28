@@ -1,5 +1,5 @@
 """
-Django ayarları — E-İSA Merkezi API.
+Django ayarları — e-isa Merkezi API.
 
 KVKK uyumu: tüm kişisel olmayan demografik veriler anonim toplanır.
 Loglama: dosya yerine JSON stdout üretilir; toplama Kubernetes node collector
@@ -290,9 +290,9 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # ─── API Dokümantasyonu (yalnızca geliştirme ortamında) ─────────────────────
 if DEBUG:
     SPECTACULAR_SETTINGS = {
-        "TITLE": "E-İSA Merkezi API",
+        "TITLE": "e-isa Merkezi API",
         "DESCRIPTION": (
-            "E-İSA panel API'si — yönetici ve eczacı panelleri için JWT korumalı endpoint'ler. "
+            "e-isa panel API'si — yönetici ve eczacı panelleri için JWT korumalı endpoint'ler. "
             "Kiosk kimlik doğrulaması App-Key başlığı (X-App-Key + X-Kiosk-Mac) ile yapılır."
         ),
         "VERSION": "1.0.0",

@@ -75,7 +75,7 @@
 - İki pikli kalp atışı ritmi (gerçekçi EKG dalga formu, 2.6sn döngü)
 - Eş merkezli kırmızı halkalar (merkezden dışa yayılıp saydamlaşma, 3 halka 0s/0.15s/0.3s gecikme)
 - Merkez kırmızı glow efekti (`radial-gradient` + pulse)
-- E-İSA kırmızı (#B1121B), beyaz, koyu lacivert renk paleti
+- e-isa kırmızı (#B1121B), beyaz, koyu lacivert renk paleti
 - `clamp(460px, 28vw, 540px)` responsive boyut, ekran ortasında (~%48-52 yükseklik)
 - `pointer-events: none`, `aria-hidden="true"` — dokunma engellenmez
 - `prefers-reduced-motion: reduce` → animasyonlar durur, statik EKG + halkalar görünür
@@ -271,7 +271,7 @@
 1. **QR offline-first**: `server.js` `!hasSlot` → anında `503 kiosk_no_missing` (eski senkron backend fallback kaldırıldı). Sync-durum polling endpoint `GET /api/oturum/sync-durum/:key` eklendi. `api.js` `submitSession` artık `syncDurum` döner; `fetchSessionSyncStatus` eklendi. App.svelte `doSubmitSession`/`doSubmitConsult` hata yakalamaya alındı; result store'a `syncDurum` ve `idempotencyKey` eklendi. ResultScreen 3s/+8s sonra durum polllar; gönderilmemişse köşede koyu sarı ünlem ikonu gösterir.
 2. **HAYIR butonu koyu gri**: QuestionScreen.svelte `.btn-hayir` scoped class → `#4B5563/#374151` gradient.
 3. **Etken madde kutuları**: ResultScreen ana/destek/ek ayrımı kaldırıldı; tüm `recs` eşit beyaz kutu (`ingredient-box`) koyu kırmızı (`#7f1d1d`) zemin üzerinde gösterilir.
-4. **Logo**: ResultScreen'deki `e-İSA` metin logosu kaldırıldı; `<Logo height="40px" />` kullanıldı.
+4. **Logo**: ResultScreen'deki `e-isa` metin logosu kaldırıldı; `<Logo height="40px" />` kullanıldı.
 5. **AdPromo konumu**: `.ad-promo` `align-items: center → flex-end`, normal: `padding-bottom:20px`, large: `padding-bottom:48px`.
 
 **Dosyalar:** `kiosk_edge/api-node/src/server.js`, `kiosk_edge/ui/src/lib/api.js`, `kiosk_edge/ui/src/App.svelte`, `kiosk_edge/ui/src/components/ResultScreen.svelte`, `kiosk_edge/ui/src/components/QuestionScreen.svelte`, `kiosk_edge/ui/src/components/AdPromo.svelte`
@@ -485,7 +485,7 @@
 - İki pikli kalp atışı ritmi (gerçekçi EKG dalga formu, 2.6sn döngü)
 - Eş merkezli kırmızı halkalar (merkezden dışa yayılıp saydamlaşma, 3 halka 0s/0.15s/0.3s gecikme)
 - Merkez kırmızı glow efekti (`radial-gradient` + pulse)
-- E-İSA kırmızı (#B1121B), beyaz, koyu lacivert renk paleti
+- e-isa kırmızı (#B1121B), beyaz, koyu lacivert renk paleti
 - `clamp(460px, 28vw, 540px)` responsive boyut, ekran ortasında (~%48-52 yükseklik)
 - `pointer-events: none`, `aria-hidden="true"` — dokunma engellenmez
 - `prefers-reduced-motion: reduce` → animasyonlar durur, statik EKG + halkalar görünür
@@ -681,7 +681,7 @@
 1. **QR offline-first**: `server.js` `!hasSlot` → anında `503 kiosk_no_missing` (eski senkron backend fallback kaldırıldı). Sync-durum polling endpoint `GET /api/oturum/sync-durum/:key` eklendi. `api.js` `submitSession` artık `syncDurum` döner; `fetchSessionSyncStatus` eklendi. App.svelte `doSubmitSession`/`doSubmitConsult` hata yakalamaya alındı; result store'a `syncDurum` ve `idempotencyKey` eklendi. ResultScreen 3s/+8s sonra durum polllar; gönderilmemişse köşede koyu sarı ünlem ikonu gösterir.
 2. **HAYIR butonu koyu gri**: QuestionScreen.svelte `.btn-hayir` scoped class → `#4B5563/#374151` gradient.
 3. **Etken madde kutuları**: ResultScreen ana/destek/ek ayrımı kaldırıldı; tüm `recs` eşit beyaz kutu (`ingredient-box`) koyu kırmızı (`#7f1d1d`) zemin üzerinde gösterilir.
-4. **Logo**: ResultScreen'deki `e-İSA` metin logosu kaldırıldı; `<Logo height="40px" />` kullanıldı.
+4. **Logo**: ResultScreen'deki `e-isa` metin logosu kaldırıldı; `<Logo height="40px" />` kullanıldı.
 5. **AdPromo konumu**: `.ad-promo` `align-items: center → flex-end`, normal: `padding-bottom:20px`, large: `padding-bottom:48px`.
 
 **Dosyalar:** `kiosk_edge/api-node/src/server.js`, `kiosk_edge/ui/src/lib/api.js`, `kiosk_edge/ui/src/App.svelte`, `kiosk_edge/ui/src/components/ResultScreen.svelte`, `kiosk_edge/ui/src/components/QuestionScreen.svelte`, `kiosk_edge/ui/src/components/AdPromo.svelte`
@@ -846,7 +846,7 @@
 
 **Backend:** `OturumLogu.status` (0/1/2/3) authoritative satış durumu ve `result_at` eklendi; legacy `sold` migration/response uyumluluğu korundu. Tarihsel eczane scope'u liste/satış/dashboard'a yayıldı. Idempotent `mark-reviewed`, katalog doğrulamalı merkezi satış service'i ve İstanbul zamanlı 4 dashboard serisi eklendi. `KioskEczaneAtama` geçmişi, partial unique açık atama ve transaction'lı SuperAdmin transfer action eklendi; mevcut campaign invalidation receiver'ı yeniden kullanıldı. Nöbet tabloları audit alanları kazandı, geçmiş gün mutation'ı engellendi.
 
-**Web/Kiosk:** Eczacı QR/list detail modalı sonuçlandırılana kadar kapatılamaz; yeni QR guard ve kullanıcı+eczane sessionStorage restore vardır. Mevcut katalogdan aramalı çoklu diğer etken madde seçimi, ortak 2×2 dönem grafikleri, cihaz taşıma/geçmiş UI'si, üst-orta global toast ve yalnız Yeni Eczane için big modal eklendi. Evet `#0F8F8A`, Hayır E-İSA kırmızısı olarak panel/kiosk tokenlarına taşındı.
+**Web/Kiosk:** Eczacı QR/list detail modalı sonuçlandırılana kadar kapatılamaz; yeni QR guard ve kullanıcı+eczane sessionStorage restore vardır. Mevcut katalogdan aramalı çoklu diğer etken madde seçimi, ortak 2×2 dönem grafikleri, cihaz taşıma/geçmiş UI'si, üst-orta global toast ve yalnız Yeni Eczane için big modal eklendi. Evet `#0F8F8A`, Hayır e-isa kırmızısı olarak panel/kiosk tokenlarına taşındı.
 
 **Migrationlar:** `analytics.0018_oturum_satis_status`, `pharmacies.0011_kiosk_eczane_atama`, `announcements.0002_duty_audit_fields`.
 

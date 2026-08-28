@@ -8,12 +8,18 @@
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { http } from '../../services/api';
+import { getKioskActivities, getCampaignImpressions } from '../../services/analytics';
+import { useIdleRefresh } from '../../composables/useIdleRefresh.js';
+import { useExcelExport } from '../../composables/useExcelExport.js';
 import DashboardPeriodCharts from '../../components/DashboardPeriodCharts.vue';
+import PharmacyLeaderboard from '../../components/pharmacist/PharmacyLeaderboard.vue';
+import PharmacyReportModal from '../../components/PharmacyReportModal.vue';
 
 const data    = ref(null);
 const loading = ref(true);
 const error   = ref('');
 const router  = useRouter();
+const reportModalOpen = ref(false);
 let refreshTimer = null;
 
 // KPI count-up animated values
@@ -74,6 +80,20 @@ onMounted(() => {
   refreshTimer = setInterval(load, 30_000);
 });
 onUnmounted(() => clearInterval(refreshTimer));
+
+useIdleRefresh(load);
+
+const { exporting, exportSessions, exportSales, exportImpressions } = useExcelExport();
+
+async function exportPharmSessions() {
+  await exportSessions(getKioskActivities, {}, 'eczane-oturumlar.xlsx');
+}
+async function exportPharmSales() {
+  await exportSales(getKioskActivities, {}, 'eczane-satislar.xlsx');
+}
+async function exportPharmImpressions() {
+  await exportImpressions(getCampaignImpressions, {}, 'eczane-gosterimler.xlsx');
+}
 
 const kiosks      = computed(() => data.value?.kiosklar ?? []);
 const onlineCount = computed(() => kiosks.value.filter((k) => k.durum === 'online').length);
@@ -153,6 +173,21 @@ const HEALTH_LABEL = {
         </p>
       </div>
       <div class="eisa-header-actions">
+        <div class="dash-excel-menu">
+          <button class="eisa-btn eisa-btn-ghost dash-excel-btn" :disabled="exporting">
+            <i class="fa-solid fa-file-excel" style="color:#16a34a;"></i>
+            <span>{{ exporting ? 'Hazırlanıyor…' : 'Excel İndir' }}</span>
+            <i class="fa-solid fa-chevron-down" style="font-size:0.65rem;"></i>
+          </button>
+          <div class="dash-excel-dropdown">
+            <button @click="exportPharmSessions">Oturumlar</button>
+            <button @click="exportPharmSales">Satışlar</button>
+            <button @click="exportPharmImpressions">Gösterimler</button>
+          </div>
+        </div>
+        <button class="eisa-btn eisa-btn-ghost" @click="reportModalOpen = true">
+          <i class="fa-solid fa-file-pdf" style="color:#B1121B;"></i> PDF Rapor
+        </button>
         <button class="eisa-btn eisa-btn-ghost" @click="load">
           <i class="fa-solid fa-rotate-right"></i>
           Yenile
@@ -205,6 +240,8 @@ const HEALTH_LABEL = {
       </div>
 
       <DashboardPeriodCharts drill-path="/pharmacist/kiosk-activities" />
+
+      <PharmacyLeaderboard />
 
       <!-- Satış İstatistikleri -->
       <div class="eisa-panel" style="margin-bottom:1.5rem;">
@@ -314,4 +351,39 @@ const HEALTH_LABEL = {
       </div>
     </template>
   </div>
+
+  <PharmacyReportModal v-if="reportModalOpen" @close="reportModalOpen = false" />
+
 </template>
+
+<style scoped>
+.dash-excel-menu { position: relative; display: inline-flex; }
+.dash-excel-btn { display: flex; align-items: center; gap: 0.35rem; }
+.dash-excel-dropdown {
+  display: none;
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  min-width: 160px;
+  z-index: 50;
+  padding: 0.3rem;
+}
+.dash-excel-menu:hover .dash-excel-dropdown,
+.dash-excel-menu:focus-within .dash-excel-dropdown { display: flex; flex-direction: column; }
+.dash-excel-dropdown button {
+  background: transparent;
+  border: 0;
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  font: inherit;
+  font-size: 0.83rem;
+  cursor: pointer;
+  border-radius: 6px;
+  color: #374151;
+}
+.dash-excel-dropdown button:hover { background: #f3f4f6; }
+</style>

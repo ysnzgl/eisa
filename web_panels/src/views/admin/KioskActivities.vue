@@ -14,6 +14,7 @@ import { getKioskActivities, getCampaignImpressions, getKioskEvents } from '../.
 import { getKioskDayStream } from '../../services/dooh.js';
 import { calcKioskRolloutStatus } from '../../composables/useKioskRolloutStatus.js';
 import { fmtDT } from '../../composables/useActivityFormatters.js';
+import { useExcelExport } from '../../composables/useExcelExport.js';
 import SessionDetailModal from '../../components/SessionDetailModal.vue';
 import EczanePicker from '../../components/shared/EczanePicker.vue';
 import KioskPicker from '../../components/shared/KioskPicker.vue';
@@ -315,6 +316,23 @@ onMounted(() => {
   else if (activeTab.value === 'events') loadEvents();
   else if (activeTab.value === 'broadcast') loadDayStream();
 });
+
+const { exporting, exportSessions, exportSales, exportImpressions } = useExcelExport();
+
+function _currentExportParams() {
+  const p = {};
+  ['eczane_id','kiosk_id','durum','oturum_tipi','hassas_akis','kategori_slug','start_date','end_date']
+    .forEach((k) => { if (filters.value[k]) p[k] = filters.value[k]; });
+  return p;
+}
+
+async function exportCurrentTab() {
+  const p = _currentExportParams();
+  const suffix = [p.start_date, p.end_date].filter(Boolean).join('_') || 'tum';
+  if (activeTab.value === 'sessions')    await exportSessions(getKioskActivities, p, `oturumlar_${suffix}.xlsx`);
+  else if (activeTab.value === 'sales') await exportSales(getKioskActivities, p, `satislar_${suffix}.xlsx`);
+  else if (activeTab.value === 'impressions') await exportImpressions(getCampaignImpressions, p, `gosterimler_${suffix}.xlsx`);
+}
 </script>
 
 <template>
@@ -327,6 +345,15 @@ onMounted(() => {
         <h1 class="eisa-page-title">Kiosk Hareketleri</h1>
       </div>
       <div class="eisa-header-actions">
+        <button
+          v-if="activeTab !== 'broadcast' && activeTab !== 'events'"
+          class="eisa-btn eisa-btn-ghost"
+          :disabled="exporting"
+          @click="exportCurrentTab"
+        >
+          <i class="fa-solid" :class="exporting ? 'fa-circle-notch fa-spin' : 'fa-file-excel'" style="color:#16a34a;"></i>
+          {{ exporting ? 'Hazırlanıyor…' : 'Excel İndir' }}
+        </button>
         <button class="eisa-btn eisa-btn-ghost" @click="applyFilters">
           <i class="fa-solid fa-rotate-right"></i> Yenile
         </button>

@@ -1,5 +1,5 @@
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# E-İSA Kiosk Demo — Rancher / Kubernetes Deployment
+# e-isa Kiosk Demo — Rancher / Kubernetes Deployment
 # Namespace: eisa-app
 # Host: demo.eisa.com.tr
 #
@@ -55,7 +55,7 @@ data:
   APP_ENV: "production"
   APP_VERSION: "1.0.2"
 
-  # Merkezi E-İSA API
+  # Merkezi e-isa API
   EISA_CENTRAL_API_BASE: "https://api.eisa.com.tr"
 
   # CORS — kiosk demo tam acik (UI + api-node ayni origin ustunden konusuyor,

@@ -182,7 +182,7 @@ onMounted(async () => {
       <div>
         <h2 class="destek-banner-title">Görüş ve Destek</h2>
         <p class="destek-banner-text">
-          Görüşleriniz E-İSA'yı her gün daha iyi hâle getiriyor. Sahadaki deneyiminiz bizim için en değerli rehberdir.
+          Görüşleriniz e-isa'yı her gün daha iyi hâle getiriyor. Sahadaki deneyiminiz bizim için en değerli rehberdir.
           Paylaştığınız her öneri ve bildirimi dikkatle değerlendiriyor, katkılarınızla birlikte gelişiyoruz.
         </p>
       </div>
@@ -376,7 +376,7 @@ onMounted(async () => {
               >
                 <div class="destek-msg-header">
                   <strong>{{ y.yazar_adi }}</strong>
-                  <span v-if="y.yazar_rol === 'superadmin'" class="destek-admin-badge">E-İSA Destek</span>
+                  <span v-if="y.yazar_rol === 'superadmin'" class="destek-admin-badge">e-isa Destek</span>
                   <span class="cell-muted">{{ formatDate(y.olusturulma_tarihi) }}</span>
                 </div>
                 <div class="destek-msg-body">{{ y.yorum_metni }}</div>

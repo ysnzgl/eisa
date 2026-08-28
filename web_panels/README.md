@@ -1,4 +1,4 @@
-# Web Panels — E-İSA Yönetim Panelleri
+# Web Panels — e-isa Yönetim Panelleri
 
 Vue 3 tabanlı web paneli. SuperAdmin ve Eczacı rollerine yönelik iki ayrı arayüz içerir.
 

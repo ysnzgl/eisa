@@ -70,12 +70,15 @@
         {$result?.label ?? ''}
       </div>
       {#if $result?.recs?.length}
+        {@const firstRec = $result.recs[0]}
         <div class="ingredient-area">
-          {#each $result.recs as rec}
-            <div class="ingredient-box">
-              {rec.primary}{#if rec.supportive} + {rec.supportive}{/if}
-            </div>
-          {/each}
+          <div class="ingredient-box">
+            {firstRec.primary}{#if firstRec.supportive} + {firstRec.supportive}{/if}
+          </div>
+        </div>
+        <div class="ingredient-note">
+          <div class="ingredient-note-title">Bir seçenek ekranda, diğerleri eczacınızda!</div>
+          <div class="ingredient-note-text">Diğer etken maddeleri öğrenmek için eczacınızla görüşün.</div>
         </div>
       {/if}
     </div>
@@ -169,6 +172,26 @@
     color: #111827;
     word-break: break-word;
     overflow-wrap: break-word;
+  }
+  .ingredient-note {
+    margin-top: 12px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 12px;
+    padding: 12px 14px;
+    text-align: center;
+    color: #f9fafb;
+  }
+  .ingredient-note-title {
+    font-size: 15px;
+    font-weight: 800;
+    line-height: 1.4;
+    margin-bottom: 4px;
+  }
+  .ingredient-note-text {
+    font-size: 13px;
+    line-height: 1.5;
+    color: #e5e7eb;
   }
   .receipt-preview {
     text-align: center;

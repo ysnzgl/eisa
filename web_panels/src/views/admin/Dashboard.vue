@@ -7,13 +7,19 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { http } from '../../services/api';
 import { listProvisioningRequests } from '../../services/devices';
+import { getKioskActivities, getCampaignImpressions } from '../../services/analytics';
 import EczanePicker from '../../components/shared/EczanePicker.vue';
 import EisaLookup from '../../components/shared/EisaLookup.vue';
 import { usePharmacyLookups } from '../../composables/usePharmacyLookups.js';
+import { useIdleRefresh } from '../../composables/useIdleRefresh.js';
+import { useExcelExport } from '../../composables/useExcelExport.js';
 import DashboardPeriodCharts from '../../components/DashboardPeriodCharts.vue';
 import DashboardAsyncDonut from '../../components/DashboardAsyncDonut.vue';
+import PharmacyReportModal from '../../components/PharmacyReportModal.vue';
 
 const router = useRouter();
+
+const reportModalOpen = ref(false);
 
 //  State 
 const loading   = ref(true);
@@ -166,10 +172,26 @@ async function loadDashboard() {
 
 watch(analyticsFilters, loadDashboard, { immediate: true });
 
+const { exporting, exportSessions, exportSales, exportImpressions } = useExcelExport();
+
+async function exportDashboardSessions() {
+  await exportSessions(getKioskActivities, analyticsFilters.value, 'admin-oturumlar.xlsx');
+}
+
+async function exportDashboardSales() {
+  await exportSales(getKioskActivities, analyticsFilters.value, 'admin-satislar.xlsx');
+}
+
+async function exportDashboardImpressions() {
+  await exportImpressions(getCampaignImpressions, analyticsFilters.value, 'admin-gosterimler.xlsx');
+}
+
 onMounted(async () => {
   await loadProvinces();
   loadPendingCount();
 });
+
+useIdleRefresh(loadDashboard);
 </script>
 
 <template>
@@ -182,6 +204,24 @@ onMounted(async () => {
         <h1 class="eisa-page-title">Dashboard</h1>
       </div>
       <div class="eisa-header-actions">
+        <button class="eisa-btn eisa-btn-ghost" :disabled="loading" @click="loadDashboard">
+          <i class="fa-solid fa-rotate-right" :class="{ 'fa-spin': loading }"></i> Yenile
+        </button>
+        <button class="eisa-btn eisa-btn-ghost" @click="reportModalOpen = true">
+          <i class="fa-solid fa-file-pdf" style="color:#B1121B;"></i> PDF Rapor
+        </button>
+        <div class="dash-excel-menu">
+          <button class="eisa-btn eisa-btn-ghost dash-excel-btn" :disabled="exporting">
+            <i class="fa-solid fa-file-excel" style="color:#16a34a;"></i>
+            <span>{{ exporting ? 'Hazırlanıyor…' : 'Excel İndir' }}</span>
+            <i class="fa-solid fa-chevron-down" style="font-size:0.65rem;"></i>
+          </button>
+          <div class="dash-excel-dropdown">
+            <button @click="exportDashboardSessions">Oturumlar</button>
+            <button @click="exportDashboardSales">Satışlar</button>
+            <button @click="exportDashboardImpressions">Gösterimler</button>
+          </div>
+        </div>
         <div class="dash-live-badge">
           <span class="dash-pulse-dot"></span> Canlı
         </div>
@@ -321,6 +361,12 @@ onMounted(async () => {
 
   </div>
 
+  <PharmacyReportModal
+    v-if="reportModalOpen"
+    :default-eczane-id="selectedPharmacy"
+    @close="reportModalOpen = false"
+  />
+
 </template>
 
 <style scoped>
@@ -380,4 +426,33 @@ onMounted(async () => {
   .dash-analytics-filter { align-items: stretch; flex-direction: column; }
   .dash-analytics-filter-fields { grid-template-columns: 1fr; width: 100%; }
 }
+.dash-excel-menu { position: relative; display: inline-flex; }
+.dash-excel-btn { display: flex; align-items: center; gap: 0.35rem; }
+.dash-excel-dropdown {
+  display: none;
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  min-width: 160px;
+  z-index: 50;
+  padding: 0.3rem;
+}
+.dash-excel-menu:hover .dash-excel-dropdown,
+.dash-excel-menu:focus-within .dash-excel-dropdown { display: flex; flex-direction: column; }
+.dash-excel-dropdown button {
+  background: transparent;
+  border: 0;
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  font: inherit;
+  font-size: 0.83rem;
+  cursor: pointer;
+  border-radius: 6px;
+  color: #374151;
+}
+.dash-excel-dropdown button:hover { background: #f3f4f6; }
 </style>

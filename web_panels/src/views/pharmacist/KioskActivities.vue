@@ -13,6 +13,7 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { http } from '../../services/api';
 import { getKioskActivities, getCampaignImpressions, getKioskEvents } from '../../services/analytics';
+import { useExcelExport } from '../../composables/useExcelExport.js';
 import SessionDetailModal from '../../components/SessionDetailModal.vue';
 import EisaLookup from '../../components/shared/EisaLookup.vue';
 import SessionsPanel from '../../components/kiosk/SessionsPanel.vue';
@@ -232,6 +233,27 @@ onMounted(() => {
     if (saved?.id && saved?.qr) selected.value = { id:saved.id, qr_kodu:saved.qr };
   } catch { sessionStorage.removeItem(openStorageKey); }
 });
+
+const { exporting, exportSessions, exportSales, exportImpressions } = useExcelExport();
+
+function _currentExportParams() {
+  const p = {};
+  if (filters.value.kiosk_id)    p.kiosk_id    = filters.value.kiosk_id;
+  if (filters.value.durum)       p.durum        = filters.value.durum;
+  if (filters.value.oturum_tipi) p.oturum_tipi  = filters.value.oturum_tipi;
+  if (filters.value.hassas_akis) p.hassas_akis  = filters.value.hassas_akis;
+  if (filters.value.start_date)  p.start_date   = filters.value.start_date;
+  if (filters.value.end_date)    p.end_date     = filters.value.end_date;
+  return p;
+}
+
+async function exportCurrentTab() {
+  const p = _currentExportParams();
+  const suffix = [p.start_date, p.end_date].filter(Boolean).join('_') || 'tum';
+  if (activeTab.value === 'sessions')         await exportSessions(getKioskActivities, p, `oturumlar_${suffix}.xlsx`);
+  else if (activeTab.value === 'sales')       await exportSales(getKioskActivities, p, `satislar_${suffix}.xlsx`);
+  else if (activeTab.value === 'impressions') await exportImpressions(getCampaignImpressions, p, `gosterimler_${suffix}.xlsx`);
+}
 </script>
 
 <template>
@@ -244,6 +266,15 @@ onMounted(() => {
         <h1 class="eisa-page-title">Kiosk Hareketleri</h1>
       </div>
       <div class="eisa-header-actions">
+        <button
+          v-if="activeTab !== 'events'"
+          class="eisa-btn eisa-btn-ghost"
+          :disabled="exporting"
+          @click="exportCurrentTab"
+        >
+          <i class="fa-solid" :class="exporting ? 'fa-circle-notch fa-spin' : 'fa-file-excel'" style="color:#16a34a;"></i>
+          {{ exporting ? 'Hazırlanıyor…' : 'Excel İndir' }}
+        </button>
         <button class="eisa-btn eisa-btn-ghost" @click="applyFilters">
           <i class="fa-solid fa-rotate-right"></i> Yenile
         </button>

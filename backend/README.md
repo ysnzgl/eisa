@@ -1,4 +1,4 @@
-# Backend — E-İSA Merkezi API
+# Backend — e-isa Merkezi API
 
 Django REST Framework tabanlı merkezi API. Kimlik doğrulama, eczane yönetimi, anket/kampanya veri akışı ve kiosk senkronizasyonunu yönetir.
 

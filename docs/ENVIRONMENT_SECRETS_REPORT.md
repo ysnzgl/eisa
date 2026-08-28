@@ -1,4 +1,4 @@
-# E-İSA Monorepo — Environment & Secret Dosyaları Raporu
+# e-isa Monorepo — Environment & Secret Dosyaları Raporu
 **Oluşturulma Tarihi:** 2026-07-14  
 **Amaç:** Projedeki tüm environment dosyaları ve secret/credential lokasyonlarını dokümante etmek
 

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "E-İSA Kiosk Local API (Node.js / Fastify) — offline-first",
+  "description": "e-isa Kiosk Local API (Node.js / Fastify) — offline-first",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",

@@ -18,7 +18,7 @@ from apps.analytics.models import OturumLogu, OturumOnerilenEtkenMadde
 from apps.campaigns.models import Campaign
 from apps.products.models import Kategori
 
-from .models import Kiosk
+from .models import Eczane, Kiosk
 from .permissions import IsEczaci
 
 
@@ -157,4 +157,84 @@ class EczaciDashboardView(APIView):
                 "en_cok_satilan_etken_madde": en_cok_satilan,
             }
         )
+
+
+class EczaciLeaderboardView(APIView):
+    """GET /api/pharmacies/me/leaderboard/
+
+    Eczacının tüm aktif eczaneler arasındaki etkileşim ve satış sıralamasını döndürür.
+    Diğer eczanelerin ad/ID bilgisi kesinlikle sızdırılmaz; yalnız sıra ve
+    istatistik dönülür.
+    """
+
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated, IsEczaci]
+
+    def _collect_scores(self, sales_only=False):
+        """Her eczane için oturum sayısını hesaplar (direct + kiosk path)."""
+        kw = (
+            {"status": OturumLogu.SatisDurumu.SATIS_YAPILDI, "result_at__isnull": False}
+            if sales_only
+            else {}
+        )
+        # Oturum.eczane alanı dolu olan kayıtlar
+        direct = (
+            OturumLogu.objects
+            .filter(eczane__isnull=False, eczane__aktif=True, **kw)
+            .values("eczane_id")
+            .annotate(c=Count("id"))
+            .values_list("eczane_id", "c")
+        )
+        # Oturum.eczane boş; kiosk üzerinden eczane bulunur
+        indirect = (
+            OturumLogu.objects
+            .filter(eczane__isnull=True, kiosk__eczane__aktif=True, **kw)
+            .values("kiosk__eczane_id")
+            .annotate(c=Count("id"))
+            .values_list("kiosk__eczane_id", "c")
+        )
+        scores: dict[int, int] = {}
+        for eid, c in direct:
+            if eid is not None:
+                scores[eid] = scores.get(eid, 0) + c
+        for eid, c in indirect:
+            if eid is not None:
+                scores[eid] = scores.get(eid, 0) + c
+        return scores
+
+    def _rank_info(self, scores: dict, my_id: int) -> dict:
+        if not scores:
+            return {"sira": 1, "skor": 0, "toplam_eczane": 1, "en_yuksek_skor": 0, "yuzdelik": 100}
+
+        sorted_items = sorted(scores.items(), key=lambda x: (-x[1], x[0]))
+        en_yuksek = sorted_items[0][1]
+        my_score = scores.get(my_id, 0)
+
+        if my_id in scores:
+            sira = next(i + 1 for i, (eid, _) in enumerate(sorted_items) if eid == my_id)
+            toplam = len(sorted_items)
+        else:
+            # Hiç aktivitesi olmayan eczane — sonuncu sıra
+            sira = len(sorted_items) + 1
+            toplam = sira
+
+        yuzdelik = round((toplam - sira) / (toplam - 1) * 100) if toplam > 1 else 100
+
+        return {
+            "sira": sira,
+            "skor": my_score,
+            "toplam_eczane": toplam,
+            "en_yuksek_skor": en_yuksek,
+            "yuzdelik": max(0, yuzdelik),
+        }
+
+    def get(self, request):
+        eczane = getattr(request.user, "eczane", None)
+        if eczane is None:
+            return Response({"etkilesim": None, "satis": None})
+
+        return Response({
+            "etkilesim": self._rank_info(self._collect_scores(), eczane.id),
+            "satis":     self._rank_info(self._collect_scores(sales_only=True), eczane.id),
+        })
 

@@ -2,7 +2,7 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from .dashboard import EczaciDashboardView
+from .dashboard import EczaciDashboardView, EczaciLeaderboardView
 from .views import (
     EczaneViewSet,
     KioskProvisioningApproveView,
@@ -17,6 +17,7 @@ kiosk_router.register(r"kiosks", KioskViewSet, basename="kiosk")
 
 urlpatterns = [
     path("me/dashboard/", EczaciDashboardView.as_view(), name="eczaci-dashboard"),
+    path("me/leaderboard/", EczaciLeaderboardView.as_view(), name="eczaci-leaderboard"),
     # Admin: onay bekleyen cihaz yonetimi
     path("kiosks/provisioning/", KioskProvisioningListView.as_view(), name="kiosk-provisioning-list"),
     path("kiosks/provisioning/<uuid:pk>/", KioskProvisioningDetailView.as_view(), name="kiosk-provisioning-detail"),

@@ -328,7 +328,7 @@ async function handleComplete(saleResult) {
         >
           <i v-if="completionLoading" class="fa-solid fa-circle-notch fa-spin"></i>
           <i v-else class="fa-solid fa-check"></i>
-          Satış Yaptım
+          EVET - Satış Yaptım
         </button>
         <button
           class="eisa-btn eisa-btn-danger"
@@ -338,7 +338,7 @@ async function handleComplete(saleResult) {
         >
           <i v-if="completionLoading" class="fa-solid fa-circle-notch fa-spin"></i>
           <i v-else class="fa-solid fa-xmark"></i>
-          Satış Yapmadım
+          HAYIR -Satış Yapmadım
         </button>
       </div>
       <p v-if="completionError" class="eisa-error-text" style="margin-top:0.5rem;text-align:center;">

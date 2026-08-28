@@ -1,5 +1,5 @@
 """
-E-İSA merkezi loglama altyapısı.
+e-isa merkezi loglama altyapısı.
 
 Bu paket Django tarafında Kubernetes stdout/stderr'e JSON log üretimini,
 korelasyon ID takibini ve hassas verilerin maskelenmesini sağlar.

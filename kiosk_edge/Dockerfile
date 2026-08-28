@@ -1,5 +1,5 @@
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# E-İSA Kiosk Edge — Birleşik (All-in-One) Dockerfile
+# e-isa Kiosk Edge — Birleşik (All-in-One) Dockerfile
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #
 # Tek container içinde hem API Node servisi hem de UI birlikte çalışır.

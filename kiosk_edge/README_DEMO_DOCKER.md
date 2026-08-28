@@ -1,4 +1,4 @@
-# E-İSA Kiosk Edge — Demo Deployment
+# e-isa Kiosk Edge — Demo Deployment
 
 Bu klasör, **demo.eisa.com.tr** için hazırlanmış birleşik (all-in-one) Docker yapısını içerir.
 

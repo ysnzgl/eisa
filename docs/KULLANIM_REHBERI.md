@@ -1,4 +1,4 @@
-# E-İSA Admin Panel — Kullanım Rehberi
+# e-isa Admin Panel — Kullanım Rehberi
 
 > **Hedef Kitle:** SuperAdmin rolüne sahip sistem yöneticileri  
 > **Erişim URL:** `/admin` (ör. `https://panel.eisa.com.tr/admin`)  

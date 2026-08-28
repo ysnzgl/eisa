@@ -1,5 +1,5 @@
 /**
- * QR Bit-Packing Codec — E-İSA offline-first 41-bit QR şifreleyici/çözücü.
+ * QR Bit-Packing Codec — e-isa offline-first 41-bit QR şifreleyici/çözücü.
  *
  * Amaç:
  *   İnternet bağlantısı olmayan kiosk cihazının ürettiği oturum sonucunu,

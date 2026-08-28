@@ -1,6 +1,6 @@
 <script setup>
 /**
- * BaseInput — E-İSA Design System
+ * BaseInput — e-isa Design System
  *
  * Props:
  *   modelValue : string | number         (v-model)

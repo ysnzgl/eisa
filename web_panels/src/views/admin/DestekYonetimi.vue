@@ -323,7 +323,7 @@ onMounted(async () => {
               >
                 <div class="destek-msg-header">
                   <strong>{{ y.yazar_adi }}</strong>
-                  <span v-if="y.yazar_rol==='superadmin'" class="destek-admin-badge">E-İSA Destek</span>
+                  <span v-if="y.yazar_rol==='superadmin'" class="destek-admin-badge">e-isa Destek</span>
                   <span class="cell-muted">{{ formatDate(y.olusturulma_tarihi) }}</span>
                 </div>
                 <div class="destek-msg-body">{{ y.yorum_metni }}</div>
