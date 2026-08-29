@@ -87,9 +87,6 @@
     animation: heartbeat-pulse-wave 2.8s ease-in-out infinite;
   }
 
-  .smile-curve {
-    animation: smile-fade 2.8s ease-in-out infinite;
-  }
 
   @keyframes heartbeat-pulse-wave {
     0% {
@@ -114,19 +111,6 @@
     }
   }
 
-  @keyframes smile-fade {
-    0%,
-    100% {
-      opacity: 0;
-    }
-    35%,
-    55% {
-      opacity: 1;
-    }
-    70% {
-      opacity: 0.4;
-    }
-  }
 
   /* Merkezden yayılan halkalar (beyaz) */
   .heartbeat-rings {
@@ -241,10 +225,6 @@
     .heartbeat-center-glow {
       animation: none;
       opacity: 0.4;
-    }
-    .smile-curve {
-      animation: none;
-      opacity: 0.6;
     }
   }
 </style>
