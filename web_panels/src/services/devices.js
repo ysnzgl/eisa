@@ -171,6 +171,11 @@ export async function resetKioskDeviceId(id) {
   return data;
 }
 
+export async function getKiosk(id) {
+  const { data } = await http.get(`/api/pharmacies/kiosks/${id}/`);
+  return mapKioskFromApi(data);
+}
+
 export async function uploadKioskIdleAudio(id, files) {
   const body = new FormData();
   for (const file of files) body.append('files', file);
@@ -187,6 +192,15 @@ export async function listKioskAudioLibrary() {
     contentType: asset.content_type,
     checksum: asset.checksum,
   }));
+}
+
+export async function previewKioskAudio(assetId) {
+  const { data } = await http.get(`/api/pharmacies/kiosks/idle-audio-library/${assetId}/preview/`, { responseType: 'blob' });
+  return URL.createObjectURL(data);
+}
+
+export async function deleteKioskLibraryAudio(assetId) {
+  await http.delete(`/api/pharmacies/kiosks/idle-audio-library/${assetId}/`);
 }
 
 export async function uploadKioskAudioLibrary(files) {

@@ -5,10 +5,13 @@ UoW ile yazma: tum CRUD perform_*() metotlari `UnitOfWork(user=request.user)`
 icinden kaydeder; `olusturan/guncelleyen/surum` otomatik islenir.
 """
 import logging
+import io
 import re
 import secrets
 
 from django.conf import settings
+from django.http import FileResponse
+from django.shortcuts import get_object_or_404
 from django.db import transaction
 from django.db.models import Count, F, Max
 from django.utils import timezone
@@ -477,6 +480,36 @@ class KioskViewSet(viewsets.ModelViewSet):
             logger.exception("Kiosk audio library upload failed")
             return Response({"detail": "Ses dosyası depolama alanına yüklenemedi."}, status=500)
         return Response(KioskAudioAssetSerializer(assets, many=True).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=["get"], url_path=r"idle-audio-library/(?P<asset_id>[0-9]+)/preview",
+            authentication_classes=[JWTAuthentication], permission_classes=[IsSuperAdmin])
+    def preview_idle_audio(self, request, asset_id=None):
+        asset = get_object_or_404(KioskAudioAsset, pk=asset_id, aktif=True)
+        from apps.core.services.storage_service import StorageService
+        try:
+            data = StorageService().read_object(asset.object_key)
+        except Exception:
+            return Response({"detail": "Ses dosyası okunamadı."}, status=503)
+        response = FileResponse(io.BytesIO(data), content_type=asset.content_type)
+        response["Cache-Control"] = "private, no-store"
+        return response
+
+    @action(detail=False, methods=["delete"], url_path=r"idle-audio-library/(?P<asset_id>[0-9]+)",
+            authentication_classes=[JWTAuthentication], permission_classes=[IsSuperAdmin])
+    def delete_library_audio(self, request, asset_id=None):
+        with transaction.atomic(), UnitOfWork(user=request.user) as uow:
+            asset = get_object_or_404(KioskAudioAsset.objects.select_for_update(), pk=asset_id, aktif=True)
+            kiosk_ids = list(KioskIdleAudio.objects.filter(audio_asset=asset).values_list("kiosk_id", flat=True))
+            for kiosk in Kiosk.objects.select_for_update().filter(pk__in=kiosk_ids).order_by("pk"):
+                for assignment in KioskIdleAudio.objects.filter(kiosk=kiosk, audio_asset=asset):
+                    uow.delete(assignment)
+                if not kiosk.idle_audio_files.exists() and not kiosk.idle_audio_object_key:
+                    kiosk.idle_audio_enabled = False
+                    uow.update(kiosk, update_fields=["idle_audio_enabled"])
+            # Dosya geri kurtarma icin storage'da korunur; aktif kutuphaneden kaldirilir.
+            asset.aktif = False
+            uow.update(asset, update_fields=["aktif"])
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(
         detail=True,

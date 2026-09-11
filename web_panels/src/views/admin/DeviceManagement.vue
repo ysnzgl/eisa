@@ -10,6 +10,7 @@ import {
   updatePharmacy,
   deletePharmacy,
   getKioskStatus,
+  getKiosk,
   listProvisioningRequests,
   createKiosk,
   updateKiosk,
@@ -17,6 +18,8 @@ import {
   resetKioskDeviceId,
   transferKiosk,
   listKioskAudioLibrary,
+  previewKioskAudio,
+  deleteKioskLibraryAudio,
   uploadKioskAudioLibrary,
   setKioskIdleAudios,
 } from '../../services/devices';
@@ -94,10 +97,77 @@ const kioskEditForm      = ref({
   idleAudioEnabled: false,
 });
 const kioskAudioFiles      = ref([]);
+const audioUploading = ref(false);
+const audioDeleteTarget = ref(null);
+const audioDeleting = ref(false);
+async function deleteLibraryAudio() {
+  if (!audioDeleteTarget.value || audioDeleting.value) return;
+  audioDeleting.value = true;
+  const id = audioDeleteTarget.value.id;
+  try {
+    await deleteKioskLibraryAudio(id);
+    stopAudioPreview();
+    kioskAudioLibrary.value = kioskAudioLibrary.value.filter(asset => asset.id !== id);
+    selectedKioskAudioIds.value = selectedKioskAudioIds.value.filter(assetId => assetId !== id);
+    if (!selectedKioskAudioIds.value.length) kioskEditForm.value.idleAudioEnabled = false;
+    audioDeleteTarget.value = null;
+    toast.success('Ses kütüphaneden ve bağlı kiosklardan kaldırıldı.');
+    await loadKiosks();
+  } catch { toast.error('Ses silinemedi. Tekrar deneyin.'); }
+  finally { audioDeleting.value = false; }
+}
+const audioPreviewUrl = ref('');
+const audioPreviewName = ref('');
+const audioPreviewLoading = ref(false);
+let audioPreviewRequest = 0;
+function stopAudioPreview() {
+  audioPreviewRequest += 1;
+  if (audioPreviewUrl.value) URL.revokeObjectURL(audioPreviewUrl.value);
+  audioPreviewUrl.value = '';
+  audioPreviewLoading.value = false;
+}
+onBeforeUnmount(stopAudioPreview);
+async function listenToAudio(asset) {
+  stopAudioPreview();
+  const request = audioPreviewRequest;
+  audioPreviewLoading.value = true;
+  try {
+    const url = await previewKioskAudio(asset.id);
+    if (request !== audioPreviewRequest) { URL.revokeObjectURL(url); return; }
+    audioPreviewName.value = asset.originalName;
+    audioPreviewUrl.value = url;
+  } catch {
+    if (request === audioPreviewRequest) toast.error('Ses önizlemesi yüklenemedi.');
+  } finally {
+    if (request === audioPreviewRequest) audioPreviewLoading.value = false;
+  }
+}
+async function uploadAudioToLibrary() {
+  if (!kioskAudioFiles.value.length || audioUploading.value) return;
+  audioUploading.value = true;
+  try {
+    const added = await uploadKioskAudioLibrary(kioskAudioFiles.value);
+    kioskAudioLibrary.value.push(...added);
+    kioskAudioFiles.value = [];
+    kioskAudioInputKey.value += 1;
+    toast.success('Sesler kütüphaneye eklendi. Kioska atamak için listeden seçin.');
+  } catch {
+    toast.error('Sesler yüklenemedi. Tekrar deneyin.');
+  } finally {
+    audioUploading.value = false;
+  }
+}
 const kioskAudioInputKey   = ref(0);
 const kioskAudioLibrary    = ref([]);
 const kioskAudioLibraryLoading = ref(false);
 const selectedKioskAudioIds = ref([]);
+const kioskEditLoading = ref(false);
+const kioskEditLoaded = ref(false);
+let kioskEditRequest = 0;
+const allAudioSelected = computed(() => kioskAudioLibrary.value.length > 0 && kioskAudioLibrary.value.every(asset => selectedKioskAudioIds.value.includes(asset.id)));
+function toggleAllAudio() {
+  selectedKioskAudioIds.value = allAudioSelected.value ? [] : [...new Set([...selectedKioskAudioIds.value, ...kioskAudioLibrary.value.map(asset => asset.id)])];
+}
 const kioskEditSaving    = ref(false);
 const kioskEditError     = ref('');
 
@@ -461,7 +531,7 @@ function statusClassForProvisioning(status) {
   return '';
 }
 
-function openEditKiosk(kiosk) {
+function applyKioskEdit(kiosk) {
   kioskEditTarget.value = kiosk;
   kioskEditForm.value = {
     ad: kiosk.ad || '',
@@ -471,8 +541,8 @@ function openEditKiosk(kiosk) {
     idleContentMinSeconds: kiosk.idleContentMinSeconds ?? 10,
     idleContentMaxSeconds: kiosk.idleContentMaxSeconds ?? 12,
     idleContentRefreshSeconds: kiosk.idleContentRefreshSeconds ?? 300,
-    idleAudioDelayMinutes: Math.max(1, Math.round((kiosk.idleAudioDelaySeconds ?? 1200) / 60)),
-    idleAudioRepeatMinutes: Math.max(1, Math.round((kiosk.idleAudioRepeatSeconds ?? 300) / 60)),
+    idleAudioDelayMinutes: (kiosk.idleAudioDelaySeconds ?? 1200) / 60,
+    idleAudioRepeatMinutes: (kiosk.idleAudioRepeatSeconds ?? 300) / 60,
     interactionTimeoutUnit: 'seconds', idleContentMinUnit: 'seconds',
     idleContentMaxUnit: 'seconds', idleContentRefreshUnit: 'seconds',
     idleAudioDelayUnit: 'minutes', idleAudioRepeatUnit: 'minutes',
@@ -481,14 +551,40 @@ function openEditKiosk(kiosk) {
     idleAudioEnabled: kiosk.idleAudioEnabled === true,
   };
   selectedKioskAudioIds.value = (kiosk.idleAudioFiles || []).map(file => file.assetId || file.id).filter(Boolean);
+  for (const [secondsKey, valueKey, unitKey] of [['idleAudioDelaySeconds', 'idleAudioDelayMinutes', 'idleAudioDelayUnit'], ['idleAudioRepeatSeconds', 'idleAudioRepeatMinutes', 'idleAudioRepeatUnit']]) {
+    if (kiosk[secondsKey] % 60) {
+      kioskEditForm.value[valueKey] = kiosk[secondsKey];
+      kioskEditForm.value[unitKey] = 'seconds';
+    }
+  }
+}
+async function openEditKiosk(kiosk) {
+  const request = ++kioskEditRequest;
+  applyKioskEdit(kiosk);
+  kioskEditLoading.value = true;
+  kioskEditLoaded.value = false;
   kioskAudioFiles.value = [];
   kioskAudioInputKey.value += 1;
   kioskEditError.value = '';
   kioskEditModalOpen.value = true;
   loadKioskAudioLibrary();
+  try {
+    const latest = await getKiosk(kiosk.id);
+    if (request !== kioskEditRequest) return;
+    applyKioskEdit(latest);
+    kioskEditLoaded.value = true;
+  } catch {
+    if (request === kioskEditRequest) kioskEditError.value = 'Kayıtlı cihaz ayarları alınamadı. Ekranı yeniden açın.';
+  } finally {
+    if (request === kioskEditRequest) kioskEditLoading.value = false;
+  }
 }
 
 function closeEditKiosk() {
+  if (audioUploading.value || kioskEditSaving.value || audioDeleting.value) return;
+  audioDeleteTarget.value = null;
+  stopAudioPreview();
+  kioskEditRequest += 1;
   kioskEditModalOpen.value = false;
   kioskEditTarget.value = null;
   kioskAudioFiles.value = [];
@@ -518,7 +614,9 @@ function toggleKioskAudio(assetId) {
 }
 
 async function saveEditKiosk() {
-  const { ad, mac } = kioskEditForm.value;
+  if (kioskEditSaving.value || !kioskEditLoaded.value) return;
+  const ad = kioskEditForm.value.ad.trim();
+  const mac = kioskEditForm.value.mac.trim();
   if (!ad.trim()) {
     kioskEditError.value = 'Kiosk adı zorunludur.';
     return;
@@ -549,7 +647,7 @@ async function saveEditKiosk() {
   ];
   for (const [label, value, min, max] of numericFields) {
     if (!Number.isInteger(Number(value)) || Number(value) < min || Number(value) > max) {
-      kioskEditError.value = `${label} ${min} ile ${max} arasında olmalıdır.`;
+      kioskEditError.value = `${label} ${min}–${max} saniye arasında olmalıdır. Dk/Sn birimini kontrol edin.`;
       return;
     }
   }
@@ -567,15 +665,12 @@ async function saveEditKiosk() {
       idleAudioPlayOnDuty: kioskEditForm.value.idleAudioPlayOnDuty,
       idleAudioEnabled: undefined,
     });
-    if (kioskAudioFiles.value.length) {
-      const added = await uploadKioskAudioLibrary(kioskAudioFiles.value);
-      for (const asset of added) if (!selectedKioskAudioIds.value.includes(asset.id)) selectedKioskAudioIds.value.push(asset.id);
-    }
     await setKioskIdleAudios(kioskEditTarget.value.id, selectedKioskAudioIds.value);
     if (selectedKioskAudioIds.value.length && !desiredAudioEnabled) {
       await updateKiosk(kioskEditTarget.value.id, { idleAudioEnabled: false });
     }
     await Promise.all([loadKiosks(), loadPharmacies()]);
+    kioskEditSaving.value = false;
     closeEditKiosk();
   } catch (error) {
     kioskEditError.value = error?.response?.data?.detail || 'Kiosk güncellenemedi. Bilgileri ve ses dosyasını kontrol edin.';
@@ -604,7 +699,6 @@ function onKioskAudioSelected(event) {
   }
   kioskEditError.value = '';
   kioskAudioFiles.value = files;
-  kioskEditForm.value.idleAudioEnabled = true;
 }
 
 
@@ -1402,24 +1496,38 @@ async function copyAppKey() {
               </div>
 
               <div class="eisa-form-row">
-                <label class="eisa-field-label">Ses Kütüphanesi</label>
-                <p style="margin:0 0 0.45rem;font-size:0.75rem;color:#6B7280;">Seçim sırası, cihazda çalma sırasıdır. Sesler merkezi depoda saklanır ve cihazlara atama yapılır.</p>
+                <div class="audio-library-heading"><span class="audio-library-symbol"><i class="fa-solid fa-music"></i></span><div><h3>Ses Kütüphanesi</h3><p>Dinle, seç ve cihazına ekle.</p></div><span class="audio-count">{{ selectedKioskAudioIds.length }} seçili</span></div>
+                <button type="button" class="audio-listen-button" style="margin-bottom:10px;" :disabled="!kioskAudioLibrary.length || kioskEditLoading" @click="toggleAllAudio"><i class="fa-solid fa-check-double"></i> {{ allAudioSelected ? 'Seçimi Temizle' : 'Tümünü Seç' }}</button>
                 <div v-if="kioskAudioLibraryLoading" style="font-size:0.75rem;color:#6B7280;">Ses kütüphanesi yükleniyor…</div>
-                <div v-else-if="kioskAudioLibrary.length" style="max-height:150px;overflow:auto;border:1px solid #E5E7EB;border-radius:0.375rem;padding:0.35rem;display:grid;gap:0.2rem;">
-                  <label v-for="asset in kioskAudioLibrary" :key="asset.id" style="display:flex;align-items:center;gap:0.45rem;padding:0.3rem;font-size:0.78rem;cursor:pointer;">
-                    <input type="checkbox" :checked="selectedKioskAudioIds.includes(asset.id)" @change="toggleKioskAudio(asset.id)" />
-                    <i class="fa-solid fa-file-audio" style="color:#B1121B;"></i><span>{{ asset.originalName }}</span>
+                <div v-else-if="kioskAudioLibrary.length" class="audio-library-list">
+                  <div v-for="asset in kioskAudioLibrary" :key="asset.id" class="audio-library-item" :class="{ 'audio-library-item--selected': selectedKioskAudioIds.includes(asset.id) }">
+                    <input type="checkbox" :aria-label="`${asset.originalName} kioska ata`" :checked="selectedKioskAudioIds.includes(asset.id)" @change="toggleKioskAudio(asset.id)" />
+                    <span class="audio-file-icon"><i class="fa-solid fa-file-audio"></i></span><span class="audio-file-name" :title="asset.originalName">{{ asset.originalName }}</span>
                     <span v-if="selectedKioskAudioIds.includes(asset.id)" style="margin-left:auto;color:#6B7280;">{{ selectedKioskAudioIds.indexOf(asset.id) + 1 }}.</span>
-                  </label>
+                    <button type="button" class="audio-listen-button" :disabled="audioPreviewLoading" @click="listenToAudio(asset)"><i class="fa-solid fa-play"></i> Dinle</button>
+                    <button type="button" class="audio-delete-button" :aria-label="`${asset.originalName} sil`" title="Kütüphaneden sil" :disabled="audioDeleting || kioskEditSaving" @click="audioDeleteTarget = asset"><i class="fa-solid fa-trash-can"></i></button>
+                  </div>
                 </div>
-                <p v-else-if="!kioskAudioLibraryLoading" style="margin:0 0 0.4rem;font-size:0.75rem;color:#6B7280;">Kütüphanede henüz ses yok. Aşağıdan ekleyebilirsiniz.</p>
-                <label class="eisa-field-label" style="margin-top:0.65rem;">Yeni Ses Ekle (MP3, WAV veya OGG · dosya başına en fazla 20 MB)</label>
-                <input :key="kioskAudioInputKey" type="file" multiple accept="audio/mpeg,audio/wav,audio/ogg,.mp3,.wav,.ogg" class="eisa-field" @change="onKioskAudioSelected" />
+                <div v-else-if="!kioskAudioLibraryLoading" class="audio-empty"><i class="fa-solid fa-headphones"></i><strong>İlk sesinizi ekleyin</strong><span>Yüklediğiniz sesler burada listelenecek.</span></div>
+                <div v-if="audioPreviewUrl" class="audio-preview">
+                  <p>{{ audioPreviewName }}</p>
+                  <audio :key="audioPreviewUrl" :src="audioPreviewUrl" controls autoplay style="width:100%;" @error="toast.error('Ses oynatılamadı.')"></audio>
+                </div>
+                <div class="audio-upload-panel">
+                <label class="audio-upload-picker">
+                  <input :key="kioskAudioInputKey" type="file" multiple accept="audio/mpeg,audio/wav,audio/ogg,.mp3,.wav,.ogg" :disabled="audioUploading" @change="onKioskAudioSelected" />
+                  <span class="audio-upload-icon"><i class="fa-solid fa-cloud-arrow-up"></i></span>
+                  <strong>{{ kioskAudioFiles.length ? `${kioskAudioFiles.length} dosya seçildi` : 'Yeni ses dosyası seç' }}</strong>
+                  <span>MP3, WAV veya OGG · Dosya başına en fazla 20 MB</span>
+                </label>
                 <div v-if="kioskAudioFiles.length" style="margin-top:0.4rem;display:grid;gap:0.25rem;">
                   <p v-for="file in kioskAudioFiles" :key="`${file.name}-${file.size}`" style="margin:0;font-size:0.75rem;color:#059669;">
-                    <i class="fa-solid fa-circle-check"></i> {{ file.name }} kütüphaneye ve bu kiosk listesine eklenecek.
+                    <i class="fa-solid fa-circle-check"></i> {{ file.name }} kütüphaneye yüklenecek.
                   </p>
                 </div>
+                <button type="button" class="audio-upload-button" :disabled="!kioskAudioFiles.length || audioUploading || kioskEditSaving" @click="uploadAudioToLibrary"><i :class="audioUploading ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-plus'"></i> {{ audioUploading ? 'Yükleniyor…' : 'Kütüphaneye Ekle' }}</button>
+                </div>
+                <p class="audio-library-hint"><i class="fa-solid fa-circle-info"></i> Sesleri seçtikten sonra Güncelle ile cihazınıza atayın. Seçim sırası, çalma sırasıdır.</p>
               </div>
 
               <div class="dm-settings-grid">
@@ -1451,7 +1559,9 @@ async function copyAppKey() {
 
             <div class="eisa-modal-footer">
               <button class="eisa-btn eisa-btn-ghost" :disabled="kioskEditSaving" @click="closeEditKiosk">İptal</button>
-              <button class="eisa-btn eisa-btn-cta" :disabled="kioskEditSaving" @click="saveEditKiosk">
+              <div v-if="kioskEditError" role="alert" style="color:#b1121b;font-size:12px;flex:1;">{{ kioskEditError }}</div>
+              <span v-if="kioskEditLoading">Kayıtlı ayarlar yükleniyor…</span>
+              <button type="button" class="eisa-btn eisa-btn-cta" :disabled="kioskEditSaving || audioUploading || !kioskEditLoaded || audioDeleting" @click="saveEditKiosk">
                 <i v-if="kioskEditSaving" class="fa-solid fa-circle-notch fa-spin"></i>
                 <i v-else class="fa-solid fa-check"></i>
                 {{ kioskEditSaving ? 'Kaydediliyor…' : 'Güncelle' }}
@@ -1832,6 +1942,14 @@ async function copyAppKey() {
     @cancel="closeDelete"
   />
 
+<EisaDeleteConfirm
+  :open="!!audioDeleteTarget"
+  title="Sesi kütüphaneden sil"
+  :message="`“${audioDeleteTarget?.originalName || ''}” kütüphaneden ve bağlı olduğu tüm kiosklardan kaldırılacak. Cihazlara sonraki senkronizasyonda uygulanır. Devam edilsin mi?`"
+  :loading="audioDeleting"
+  @confirm="deleteLibraryAudio"
+  @cancel="!audioDeleting && (audioDeleteTarget = null)"
+/>
 </template>
 
 <style scoped>
@@ -2080,5 +2198,40 @@ async function copyAppKey() {
   font-style: normal;
   font-size: 0.75rem;
 }
+</style>
+<style scoped>
+.audio-library-heading { display:flex; align-items:center; gap:12px; margin:16px 0; }
+.audio-library-heading h3 { margin:0; font-size:15px; font-weight:750; color:#1f2937; }
+.audio-library-heading p { margin:3px 0 0; font-size:12px; color:#6b7280; }
+.audio-library-symbol,.audio-file-icon,.audio-upload-icon { display:grid; place-items:center; flex-shrink:0; color:#b1121b; background:#fff1f2; border-radius:12px; width:42px; height:42px; }
+.audio-count { margin-left:auto; padding:5px 10px; border-radius:20px; color:#b1121b; background:#fff1f2; font-size:11px; font-weight:700; white-space:nowrap; }
+.audio-library-list { max-height:240px; overflow:auto; display:grid; gap:8px; padding:2px; }
+.audio-library-item { display:flex; align-items:center; gap:10px; padding:10px 12px; border:1px solid #e5e7eb; border-radius:12px; background:white; transition:background .15s,border-color .15s; }
+.audio-library-item--selected { border-color:#e8a5aa; background:#fff7f7; }
+.audio-library-item input { width:17px; height:17px; accent-color:#b1121b; cursor:pointer; flex-shrink:0; }
+.audio-file-icon { width:32px; height:36px; border-radius:8px; }
+.audio-file-name { min-width:0; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; font-weight:600; color:#374151; }
+.audio-listen-button { display:inline-flex; align-items:center; gap:6px; padding:8px 12px; border:1px solid #e5e7eb; border-radius:8px; background:white; color:#374151; font:inherit; font-size:12px; font-weight:650; cursor:pointer; }
+.audio-listen-button i { font-size:10px; color:#b1121b; }
+.audio-listen-button:hover { background:#fff1f2; border-color:#e8a5aa; }
+.audio-empty { display:grid; justify-items:center; gap:8px; padding:24px 12px; background:#f9fafb; border-radius:12px; color:#9ca3af; }
+.audio-empty i { font-size:24px; }.audio-empty strong { font-size:13px; color:#4b5563; }.audio-empty span { font-size:12px; }
+.audio-upload-panel { margin-top:16px; padding:14px; border:1px solid #e5e7eb; border-radius:14px; background:#fafafa; }
+.audio-upload-picker { position:relative; display:grid; justify-items:center; gap:7px; padding:18px 12px; border:1px dashed #d1d5db; border-radius:10px; background:white; cursor:pointer; text-align:center; }
+.audio-upload-picker:hover,.audio-upload-picker:focus-within { border-color:#b1121b; background:#fffafa; }
+.audio-upload-picker input { position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; }
+.audio-upload-picker strong { font-size:13px; color:#374151; }.audio-upload-picker>span:last-child { font-size:11px; color:#6b7280; }
+.audio-upload-button { display:flex; justify-content:center; align-items:center; gap:8px; width:100%; margin-top:12px; padding:12px 16px; border:0; border-radius:9px; background:#b1121b; color:white; font:inherit; font-size:13px; font-weight:700; cursor:pointer; box-shadow:0 3px 8px #b1121b20; }
+.audio-upload-button:hover:not(:disabled) { background:#941019; }
+.audio-upload-button:disabled { background:#e5e7eb; color:#9ca3af; box-shadow:none; cursor:not-allowed; }
+.audio-listen-button:disabled { opacity:.5; cursor:wait; }
+.audio-delete-button { display:grid; place-items:center; width:34px; height:34px; flex-shrink:0; border:1px solid #fecdd3; border-radius:8px; color:#b1121b; background:#fff1f2; cursor:pointer; }
+.audio-delete-button:hover { background:#ffe4e6; }
+.audio-delete-button:focus-visible { outline:2px solid #b1121b; outline-offset:2px; }
+.audio-delete-button:disabled { opacity:.5; cursor:not-allowed; }
+.audio-library-hint { display:flex; gap:7px; margin:12px 0 18px; color:#6b7280; font-size:11px; line-height:1.6; }.audio-library-hint i { margin-top:3px; }
+.audio-preview { margin-top:12px; padding:12px; border-radius:12px; background:#f3f4f6; }.audio-preview p { margin:0 0 8px; overflow-wrap:anywhere; font-size:12px; font-weight:600; color:#374151; }
+.audio-listen-button:focus-visible,.audio-upload-button:focus-visible { outline:2px solid #b1121b; outline-offset:3px; }
+@media(max-width:480px) { .audio-library-item { gap:6px; padding:8px; }.audio-file-icon { display:none; }.audio-listen-button { padding:8px; } }
 </style>
 

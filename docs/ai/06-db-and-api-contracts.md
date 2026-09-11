@@ -317,6 +317,7 @@
 - Response: güncel Kiosk serializer'ı; başarılı upload ses atamasını etkinleştirir.
 
 **GET/POST /api/pharmacies/kiosks/idle-audio-library/** *(2026-09-11)*
+- `GET .../idle-audio-library/{asset_id}/preview/`: JWT SuperAdmin yetkisiyle etkin kütüphane sesini dinlemek için dosya yanıtı verir. Portal dosyayı blob olarak alır; storage kimlik bilgileri paylaşılmaz. Yükleme kiosk atamasından bağımsızdır.
 - Auth: JWT (SuperAdmin). GET etkin merkezi ses varlıklarını listeler. POST tekrarlı multipart `files` ile en fazla 20 MP3/WAV/OGG kabul eder; dosya başına sınır 20 MB'dır.
 
 **POST /api/pharmacies/kiosks/{id}/set-idle-audios/** *(2026-09-11)*

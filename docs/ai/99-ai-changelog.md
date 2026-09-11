@@ -7,6 +7,10 @@
 
 ## 2026-09-11
 
+### Ses kütüphanesi yükleme ve dinleme
+
+- Yükleme kiosk kaydından ayrıldı; dosyalar önce kütüphaneye kaydedilir, kullanıcı seçip Güncelle ile atar. Portal Dinle kontrolü ve SuperAdmin korumalı preview endpoint'i eklendi.
+
 ### [Backend+WebPanel+Kiosk Edge/UI] Cihaz-bazlı zamanlayıcı ve idle ses yönetimi
 
 - `Kiosk` UI zamanlayıcılarına default 20 dk ilk ses ve 5 dk tekrar aralığı eklendi; sıralı çoklu dosyalar `KioskIdleAudio` ile tutulur (`pharmacies.0012` + `0013`).

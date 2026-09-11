@@ -11,6 +11,44 @@ from apps.pharmacies.models import Kiosk, KioskAudioAsset, KioskIdleAudio
 pytestmark = pytest.mark.django_db
 
 
+def test_delete_library_audio_removes_assignments_and_disables_empty_kiosk(admin_client, kiosk):
+    asset = KioskAudioAsset.objects.create(object_key='kiosk-audio/delete.mp3', original_name='delete.mp3', content_type='audio/mpeg')
+    KioskIdleAudio.objects.create(kiosk=kiosk, audio_asset=asset, object_key=asset.object_key, original_name=asset.original_name, content_type=asset.content_type)
+    kiosk.idle_audio_enabled = True
+    kiosk.save(update_fields=['idle_audio_enabled'])
+    response = admin_client.delete(f'/api/pharmacies/kiosks/idle-audio-library/{asset.pk}/')
+    assert response.status_code == 204
+    asset.refresh_from_db()
+    kiosk.refresh_from_db()
+    assert not asset.aktif
+    assert not kiosk.idle_audio_files.exists()
+    assert not kiosk.idle_audio_enabled
+    assert admin_client.get(f'/api/pharmacies/kiosks/idle-audio-library/{asset.pk}/preview/').status_code == 404
+
+
+def test_library_upload_does_not_assign_and_preview_is_protected(admin_client, eczaci, kiosk):
+    storage = MagicMock()
+    storage.upload_file_with_checksum.return_value = ('kiosk-audio/preview.mp3', 'sha256:test')
+    storage.public_url.return_value = ''
+    storage.read_object.return_value = b'ID3preview'
+    with patch('apps.core.services.storage_service.StorageService', return_value=storage):
+        response = admin_client.post('/api/pharmacies/kiosks/idle-audio-library/', {
+            'files': [SimpleUploadedFile('preview.mp3', b'ID3preview', content_type='audio/mpeg')],
+        }, format='multipart')
+        assert response.status_code == 201
+        assert not kiosk.idle_audio_files.exists()
+        asset_id = response.json()[0]['id']
+        url = f'/api/pharmacies/kiosks/idle-audio-library/{asset_id}/preview/'
+        preview = admin_client.get(url)
+        assert preview.status_code == 200
+        assert b''.join(preview.streaming_content) == b'ID3preview'
+        assert preview['Content-Type'] == 'audio/mpeg'
+        from rest_framework.test import APIClient
+        denied_client = APIClient()
+        denied_client.force_authenticate(user=eczaci)
+        assert denied_client.get(url).status_code == 403
+
+
 def test_existing_defaults_are_preserved(kiosk):
     assert kiosk.interaction_timeout_seconds == 20
     assert kiosk.idle_content_min_seconds == 10

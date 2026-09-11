@@ -423,9 +423,14 @@ window.EISA_API_BASE_URL = 'http://localhost:8000';
 
 ### DeviceManagement — cihaz zamanlayıcıları ve idle ses *(2026-09-11)*
 
+Düzenleme açılışında cihaz detay API'sinden güncel ayarlar alınır; ses süreleri yuvarlanmaz (tam dakika değilse Sn seçili gelir). Kütüphane Tümünü Seç / Seçimi Temizle sunar. Doğrulama hataları Güncelle yanında da görünür; kütüphane yüklemesi cihaz ayarlarını kaydetme butonunu kilitlemez.
+
+Ses kütüphanesi kart satırları, seçili sayısı/sırası, Dinle düğmesi ve ayrı oynatıcıyla sunulur. Dosya seçimi ikonlu alan ve belirgin kırmızı Kütüphaneye Ekle düğmesi kullanır; stiller yalnız bu bileşene scoped uygulanır.
+Her ses satırındaki çöp kutusu, ortak silme onayıyla sesi kütüphaneden ve tüm kiosk atamalarından kaldırır. Cihazlar sonraki sync'te güncellenir. Varlık pasifleştirilir; fiziksel dosya kurtarma için korunur.
+
 - Mevcut `/admin/devices` kart ve düzenleme modalı aynı tasarım sistemi korunarak genişletildi; yeni sayfa/route eklenmedi.
 - Kiosk bazında etkileşim sonrası idle'a dönüş, idle içerik min/max gösterim süresi, idle içerik yenileme süresi, ilk ses gecikmesi ve sonraki sesler arası süre düzenlenebilir. Her alan Sn/Dk seçicisi sunar; panel seçimi API/tabloda saniyeye dönüştürür. Defaultlar 20 sn, 10/12 sn, 300 sn, 20 dk ve 5 dk'dır.
-- Sesler merkezi kütüphaneden seçilir; seçilme sırası çalma sırasıdır. “Yeni Ses Ekle” MP3/WAV/OGG dosyasını (dosya başına en fazla 20 MB) merkezi depoya kaydeder ve seçili kioska atar.
+- “Kütüphaneye Yükle” MP3/WAV/OGG dosyalarını bağımsız olarak kaydeder; otomatik kiosk ataması yapmaz. Kullanıcı kütüphaneden sesleri seçip Güncelle ile kioska bağlar. Dinle düğmesi yetkili preview endpoint'inden sesi alır; oynat/duraklat ve ilerleme kontrolleri portalda sunulur. Modal kapanınca önizleme temizlenir.
 - Idle Ses bölümünde “Mesai içi (08:00–19:00)” veya “Mesai dışı / 24 saat” seçilir. “Nöbet günlerinde çal” seçeneği, eczacının girdiği nöbet gününde mesai içi sınırını kaldırır.
 - Servis sözleşmesi: `PATCH /api/pharmacies/kiosks/{id}/`, `GET/POST .../idle-audio-library/` ve `POST .../{id}/set-idle-audios/`.
 - Kampanya yönetimi ve edge'in teknik pull/push/ping/diagnostic aralıkları bu ekrana dahil değildir.
