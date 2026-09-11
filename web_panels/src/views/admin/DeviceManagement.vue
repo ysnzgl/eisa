@@ -16,6 +16,9 @@ import {
   deleteKiosk,
   resetKioskDeviceId,
   transferKiosk,
+  listKioskAudioLibrary,
+  uploadKioskAudioLibrary,
+  setKioskIdleAudios,
 } from '../../services/devices';
 import { toast } from 'vue-sonner';
 import { getIller, getIlceler } from '../../services/lookups';
@@ -72,7 +75,29 @@ const kioskSaving      = ref(false);
 // ─── Kiosk Düzenleme ──────────────────────────────────────────────────────────
 const kioskEditModalOpen = ref(false);
 const kioskEditTarget    = ref(null);
-const kioskEditForm      = ref({ ad: '', mac: '', isActive: true });
+const kioskEditForm      = ref({
+  ad: '', mac: '', isActive: true,
+  interactionTimeoutSeconds: 20,
+  idleContentMinSeconds: 10,
+  idleContentMaxSeconds: 12,
+  idleContentRefreshSeconds: 300,
+  idleAudioDelayMinutes: 20,
+  idleAudioRepeatMinutes: 5,
+  interactionTimeoutUnit: 'seconds',
+  idleContentMinUnit: 'seconds',
+  idleContentMaxUnit: 'seconds',
+  idleContentRefreshUnit: 'seconds',
+  idleAudioDelayUnit: 'minutes',
+  idleAudioRepeatUnit: 'minutes',
+  idleAudioScheduleMode: 'ALL_DAY',
+  idleAudioPlayOnDuty: false,
+  idleAudioEnabled: false,
+});
+const kioskAudioFiles      = ref([]);
+const kioskAudioInputKey   = ref(0);
+const kioskAudioLibrary    = ref([]);
+const kioskAudioLibraryLoading = ref(false);
+const selectedKioskAudioIds = ref([]);
 const kioskEditSaving    = ref(false);
 const kioskEditError     = ref('');
 
@@ -442,16 +467,54 @@ function openEditKiosk(kiosk) {
     ad: kiosk.ad || '',
     mac: kiosk.mac || '',
     isActive: kiosk.isActive !== false,
+    interactionTimeoutSeconds: kiosk.interactionTimeoutSeconds ?? 20,
+    idleContentMinSeconds: kiosk.idleContentMinSeconds ?? 10,
+    idleContentMaxSeconds: kiosk.idleContentMaxSeconds ?? 12,
+    idleContentRefreshSeconds: kiosk.idleContentRefreshSeconds ?? 300,
+    idleAudioDelayMinutes: Math.max(1, Math.round((kiosk.idleAudioDelaySeconds ?? 1200) / 60)),
+    idleAudioRepeatMinutes: Math.max(1, Math.round((kiosk.idleAudioRepeatSeconds ?? 300) / 60)),
+    interactionTimeoutUnit: 'seconds', idleContentMinUnit: 'seconds',
+    idleContentMaxUnit: 'seconds', idleContentRefreshUnit: 'seconds',
+    idleAudioDelayUnit: 'minutes', idleAudioRepeatUnit: 'minutes',
+    idleAudioScheduleMode: kiosk.idleAudioScheduleMode ?? 'ALL_DAY',
+    idleAudioPlayOnDuty: kiosk.idleAudioPlayOnDuty === true,
+    idleAudioEnabled: kiosk.idleAudioEnabled === true,
   };
+  selectedKioskAudioIds.value = (kiosk.idleAudioFiles || []).map(file => file.assetId || file.id).filter(Boolean);
+  kioskAudioFiles.value = [];
+  kioskAudioInputKey.value += 1;
   kioskEditError.value = '';
   kioskEditModalOpen.value = true;
+  loadKioskAudioLibrary();
 }
 
 function closeEditKiosk() {
   kioskEditModalOpen.value = false;
   kioskEditTarget.value = null;
-  kioskEditForm.value = { ad: '', mac: '', isActive: true };
+  kioskAudioFiles.value = [];
+  selectedKioskAudioIds.value = [];
   kioskEditError.value = '';
+}
+
+function durationToSeconds(value, unit) {
+  return Number(value) * (unit === 'minutes' ? 60 : 1);
+}
+
+async function loadKioskAudioLibrary() {
+  kioskAudioLibraryLoading.value = true;
+  try {
+    kioskAudioLibrary.value = await listKioskAudioLibrary();
+  } catch (error) {
+    kioskEditError.value = error?.response?.data?.detail || 'Ses kütüphanesi yüklenemedi.';
+  } finally {
+    kioskAudioLibraryLoading.value = false;
+  }
+}
+
+function toggleKioskAudio(assetId) {
+  const index = selectedKioskAudioIds.value.indexOf(assetId);
+  if (index >= 0) selectedKioskAudioIds.value.splice(index, 1);
+  else selectedKioskAudioIds.value.push(assetId);
 }
 
 async function saveEditKiosk() {
@@ -468,18 +531,82 @@ async function saveEditKiosk() {
     kioskEditError.value = 'Geçerli bir MAC adresi girin (örn: AA:BB:CC:DD:EE:FF).';
     return;
   }
+  const seconds = {
+    interactionTimeoutSeconds: durationToSeconds(kioskEditForm.value.interactionTimeoutSeconds, kioskEditForm.value.interactionTimeoutUnit),
+    idleContentMinSeconds: durationToSeconds(kioskEditForm.value.idleContentMinSeconds, kioskEditForm.value.idleContentMinUnit),
+    idleContentMaxSeconds: durationToSeconds(kioskEditForm.value.idleContentMaxSeconds, kioskEditForm.value.idleContentMaxUnit),
+    idleContentRefreshSeconds: durationToSeconds(kioskEditForm.value.idleContentRefreshSeconds, kioskEditForm.value.idleContentRefreshUnit),
+    idleAudioDelaySeconds: durationToSeconds(kioskEditForm.value.idleAudioDelayMinutes, kioskEditForm.value.idleAudioDelayUnit),
+    idleAudioRepeatSeconds: durationToSeconds(kioskEditForm.value.idleAudioRepeatMinutes, kioskEditForm.value.idleAudioRepeatUnit),
+  };
+  const numericFields = [
+    ['İşlemsizlik süresi', seconds.interactionTimeoutSeconds, 5, 3600],
+    ['Idle içerik minimum süresi', seconds.idleContentMinSeconds, 5, 300],
+    ['Idle içerik maksimum süresi', seconds.idleContentMaxSeconds, 5, 300],
+    ['Idle içerik yenileme süresi', seconds.idleContentRefreshSeconds, 30, 3600],
+    ['İlk ses bekleme süresi', seconds.idleAudioDelaySeconds, 60, 86400],
+    ['Ses tekrar aralığı', seconds.idleAudioRepeatSeconds, 60, 86400],
+  ];
+  for (const [label, value, min, max] of numericFields) {
+    if (!Number.isInteger(Number(value)) || Number(value) < min || Number(value) > max) {
+      kioskEditError.value = `${label} ${min} ile ${max} arasında olmalıdır.`;
+      return;
+    }
+  }
+  if (seconds.idleContentMinSeconds > seconds.idleContentMaxSeconds) {
+    kioskEditError.value = 'Idle içerik maksimum süresi minimum süreden küçük olamaz.';
+    return;
+  }
   kioskEditSaving.value = true;
   kioskEditError.value = '';
   try {
-    await updateKiosk(kioskEditTarget.value.id, kioskEditForm.value);
+    const desiredAudioEnabled = kioskEditForm.value.idleAudioEnabled;
+    await updateKiosk(kioskEditTarget.value.id, {
+      ad, mac, isActive: kioskEditForm.value.isActive, ...seconds,
+      idleAudioScheduleMode: kioskEditForm.value.idleAudioScheduleMode,
+      idleAudioPlayOnDuty: kioskEditForm.value.idleAudioPlayOnDuty,
+      idleAudioEnabled: undefined,
+    });
+    if (kioskAudioFiles.value.length) {
+      const added = await uploadKioskAudioLibrary(kioskAudioFiles.value);
+      for (const asset of added) if (!selectedKioskAudioIds.value.includes(asset.id)) selectedKioskAudioIds.value.push(asset.id);
+    }
+    await setKioskIdleAudios(kioskEditTarget.value.id, selectedKioskAudioIds.value);
+    if (selectedKioskAudioIds.value.length && !desiredAudioEnabled) {
+      await updateKiosk(kioskEditTarget.value.id, { idleAudioEnabled: false });
+    }
     await Promise.all([loadKiosks(), loadPharmacies()]);
     closeEditKiosk();
-  } catch {
-    kioskEditError.value = 'Kiosk güncellenemedi. MAC adresi zaten kayıtlı olabilir.';
+  } catch (error) {
+    kioskEditError.value = error?.response?.data?.detail || 'Kiosk güncellenemedi. Bilgileri ve ses dosyasını kontrol edin.';
   } finally {
     kioskEditSaving.value = false;
   }
 }
+
+function onKioskAudioSelected(event) {
+  const files = Array.from(event.target.files || []);
+  if (!files.length) { kioskAudioFiles.value = []; return; }
+  const allowed = new Set(['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav', 'audio/wave', 'audio/vnd.wave', 'audio/ogg', 'application/ogg']);
+  for (const file of files) {
+    if (!allowed.has(file.type)) {
+      kioskEditError.value = `${file.name}: yalnızca MP3, WAV veya OGG ses dosyası seçebilirsiniz.`;
+      event.target.value = '';
+      kioskAudioFiles.value = [];
+      return;
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      kioskEditError.value = `${file.name}: ses dosyası 20 MB'dan büyük olamaz.`;
+      event.target.value = '';
+      kioskAudioFiles.value = [];
+      return;
+    }
+  }
+  kioskEditError.value = '';
+  kioskAudioFiles.value = files;
+  kioskEditForm.value.idleAudioEnabled = true;
+}
+
 
 function formatProvisioningDate(iso) {
   if (!iso) return '—';
@@ -1158,7 +1285,7 @@ async function copyAppKey() {
         @click.self="closeEditKiosk"
       >
         <Transition name="modal" appear>
-          <div v-if="kioskEditModalOpen" id="kiosk-edit-modal" class="eisa-modal" style="max-width:500px;">
+          <div v-if="kioskEditModalOpen" id="kiosk-edit-modal" class="eisa-modal" style="max-width:680px;">
             <div class="eisa-modal-header">
               <div>
                 <h3 class="eisa-modal-title">Kiosk Düzenle</h3>
@@ -1236,6 +1363,90 @@ async function copyAppKey() {
                   Aktif
                 </label>
               </div>
+
+              <div style="height:1px;background:#E5E7EB;margin:1.1rem 0;"></div>
+              <div style="display:flex;align-items:center;gap:0.55rem;margin-bottom:0.9rem;">
+                <i class="fa-solid fa-clock" style="color:#B1121B;"></i>
+                <div>
+                  <p class="eisa-field-label" style="margin:0;">Cihaz Zamanlamaları</p>
+                  <p style="margin:0.15rem 0 0;font-size:0.75rem;color:#6B7280;">Ayarlar yalnızca bu kiosk için uygulanır.</p>
+                </div>
+              </div>
+
+              <div class="dm-settings-grid">
+                <div class="eisa-form-row" style="margin:0;">
+                  <label class="eisa-field-label">İşlemden Ana Ekrana Dönüş</label>
+                  <div class="dm-duration-input"><input v-model.number="kioskEditForm.interactionTimeoutSeconds" type="number" min="1" class="eisa-field" /><select v-model="kioskEditForm.interactionTimeoutUnit" class="eisa-field"><option value="seconds">Sn</option><option value="minutes">Dk</option></select></div>
+                </div>
+                <div class="eisa-form-row" style="margin:0;">
+                  <label class="eisa-field-label">Idle İçerik Yenileme</label>
+                  <div class="dm-duration-input"><input v-model.number="kioskEditForm.idleContentRefreshSeconds" type="number" min="1" class="eisa-field" /><select v-model="kioskEditForm.idleContentRefreshUnit" class="eisa-field"><option value="seconds">Sn</option><option value="minutes">Dk</option></select></div>
+                </div>
+                <div class="eisa-form-row" style="margin:0;">
+                  <label class="eisa-field-label">Idle İçerik Min. Gösterim</label>
+                  <div class="dm-duration-input"><input v-model.number="kioskEditForm.idleContentMinSeconds" type="number" min="1" class="eisa-field" /><select v-model="kioskEditForm.idleContentMinUnit" class="eisa-field"><option value="seconds">Sn</option><option value="minutes">Dk</option></select></div>
+                </div>
+                <div class="eisa-form-row" style="margin:0;">
+                  <label class="eisa-field-label">Idle İçerik Maks. Gösterim</label>
+                  <div class="dm-duration-input"><input v-model.number="kioskEditForm.idleContentMaxSeconds" type="number" min="1" class="eisa-field" /><select v-model="kioskEditForm.idleContentMaxUnit" class="eisa-field"><option value="seconds">Sn</option><option value="minutes">Dk</option></select></div>
+                </div>
+              </div>
+
+              <div style="height:1px;background:#E5E7EB;margin:1.1rem 0;"></div>
+              <div style="display:flex;align-items:center;gap:0.55rem;margin-bottom:0.9rem;">
+                <i class="fa-solid fa-volume-high" style="color:#B1121B;"></i>
+                <div>
+                  <p class="eisa-field-label" style="margin:0;">Idle Ses</p>
+                  <p style="margin:0.15rem 0 0;font-size:0.75rem;color:#6B7280;">Seçilen sesler sırayla çalar; her etkileşim bu sayacı sıfırlar.</p>
+                </div>
+              </div>
+
+              <div class="eisa-form-row">
+                <label class="eisa-field-label">Ses Kütüphanesi</label>
+                <p style="margin:0 0 0.45rem;font-size:0.75rem;color:#6B7280;">Seçim sırası, cihazda çalma sırasıdır. Sesler merkezi depoda saklanır ve cihazlara atama yapılır.</p>
+                <div v-if="kioskAudioLibraryLoading" style="font-size:0.75rem;color:#6B7280;">Ses kütüphanesi yükleniyor…</div>
+                <div v-else-if="kioskAudioLibrary.length" style="max-height:150px;overflow:auto;border:1px solid #E5E7EB;border-radius:0.375rem;padding:0.35rem;display:grid;gap:0.2rem;">
+                  <label v-for="asset in kioskAudioLibrary" :key="asset.id" style="display:flex;align-items:center;gap:0.45rem;padding:0.3rem;font-size:0.78rem;cursor:pointer;">
+                    <input type="checkbox" :checked="selectedKioskAudioIds.includes(asset.id)" @change="toggleKioskAudio(asset.id)" />
+                    <i class="fa-solid fa-file-audio" style="color:#B1121B;"></i><span>{{ asset.originalName }}</span>
+                    <span v-if="selectedKioskAudioIds.includes(asset.id)" style="margin-left:auto;color:#6B7280;">{{ selectedKioskAudioIds.indexOf(asset.id) + 1 }}.</span>
+                  </label>
+                </div>
+                <p v-else-if="!kioskAudioLibraryLoading" style="margin:0 0 0.4rem;font-size:0.75rem;color:#6B7280;">Kütüphanede henüz ses yok. Aşağıdan ekleyebilirsiniz.</p>
+                <label class="eisa-field-label" style="margin-top:0.65rem;">Yeni Ses Ekle (MP3, WAV veya OGG · dosya başına en fazla 20 MB)</label>
+                <input :key="kioskAudioInputKey" type="file" multiple accept="audio/mpeg,audio/wav,audio/ogg,.mp3,.wav,.ogg" class="eisa-field" @change="onKioskAudioSelected" />
+                <div v-if="kioskAudioFiles.length" style="margin-top:0.4rem;display:grid;gap:0.25rem;">
+                  <p v-for="file in kioskAudioFiles" :key="`${file.name}-${file.size}`" style="margin:0;font-size:0.75rem;color:#059669;">
+                    <i class="fa-solid fa-circle-check"></i> {{ file.name }} kütüphaneye ve bu kiosk listesine eklenecek.
+                  </p>
+                </div>
+              </div>
+
+              <div class="dm-settings-grid">
+                <div class="eisa-form-row" style="margin:0;">
+                  <label class="eisa-field-label">İlk Ses İçin Idle Bekleme</label>
+                  <div class="dm-duration-input"><input v-model.number="kioskEditForm.idleAudioDelayMinutes" type="number" min="1" class="eisa-field" /><select v-model="kioskEditForm.idleAudioDelayUnit" class="eisa-field"><option value="minutes">Dk</option><option value="seconds">Sn</option></select></div>
+                </div>
+                <div class="eisa-form-row" style="margin:0;">
+                  <label class="eisa-field-label">Sonraki Sesler Arası Bekleme</label>
+                  <div class="dm-duration-input"><input v-model.number="kioskEditForm.idleAudioRepeatMinutes" type="number" min="1" class="eisa-field" /><select v-model="kioskEditForm.idleAudioRepeatUnit" class="eisa-field"><option value="minutes">Dk</option><option value="seconds">Sn</option></select></div>
+                </div>
+              </div>
+              <div class="eisa-form-row" style="margin-top:0.8rem;">
+                <label class="eisa-field-label">Ses Çalma Zamanı</label>
+                <select v-model="kioskEditForm.idleAudioScheduleMode" class="eisa-field">
+                  <option value="BUSINESS_HOURS">Mesai içi (08:00–19:00)</option>
+                  <option value="ALL_DAY">Mesai dışı / 24 saat</option>
+                </select>
+                <label class="eisa-toggle" style="min-height:38px;margin-top:0.45rem;">
+                  <input type="checkbox" v-model="kioskEditForm.idleAudioPlayOnDuty" />
+                  Nöbet günlerinde çal (nöbet günü 24 saat)
+                </label>
+              </div>
+              <label class="eisa-toggle" style="min-height:42px;margin-top:0.8rem;">
+                <input type="checkbox" v-model="kioskEditForm.idleAudioEnabled" :disabled="!selectedKioskAudioIds.length && !kioskAudioFiles.length" />
+                Ses Aktif
+              </label>
             </div>
 
             <div class="eisa-modal-footer">
@@ -1800,6 +2011,18 @@ async function copyAppKey() {
   white-space: nowrap;
 }
 
+.dm-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.dm-duration-input {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 5rem;
+  gap: 0.4rem;
+}
+
 .eisa-modal--transfer { max-width: 560px; }
 .transfer-current,
 .transfer-summary {
@@ -1823,6 +2046,7 @@ async function copyAppKey() {
 @media (max-width: 720px) {
   .dm-transfer-button { font-size: 0; padding: 0.45rem; }
   .dm-transfer-button i { font-size: 0.8rem; }
+  .dm-settings-grid { grid-template-columns: 1fr; }
 }
 
 .detail-value {

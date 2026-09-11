@@ -5,6 +5,36 @@
 
 ---
 
+## 2026-09-11
+
+### [Backend+WebPanel+Kiosk Edge/UI] Cihaz-bazlı zamanlayıcı ve idle ses yönetimi
+
+- `Kiosk` UI zamanlayıcılarına default 20 dk ilk ses ve 5 dk tekrar aralığı eklendi; sıralı çoklu dosyalar `KioskIdleAudio` ile tutulur (`pharmacies.0012` + `0013`).
+- DeviceManagement mevcut tasarımını koruyarak çoklu MP3/WAV/OGG seçimi, sıralı liste, tekil kaldırma, ilk/tekrar süreleri ve etkinlik kontrolüyle genişletildi; kampanya/teknik scheduler süreleri kapsam dışıdır.
+- Bootstrap/sync sıralı ses manifestini döner; edge tüm listeyi AppKey proxy'sinden checksum doğrulamalı indirir ve ancak eksiksiz snapshot'ı aktive eder. Başarısız yeni listede son çalışan cache korunur.
+- Svelte UI ilk sesi kesintisiz idle gecikmesi sonunda, devamını ses bitiminden sonra default 5 dk arayla sıralı/döngüsel çalar. Etkileşim anında akış ve köşe hoparlör göstergesi kapanır.
+- Doğrulama: backend 36 test, kiosk UI 64 test ve iki production build geçti; edge iki dosyalı gerçek indirme/checksum/sıra smoke testi geçti. Node 24 native `better-sqlite3` worker kapanış sorunu sürmektedir.
+
+### [Backend+WebPanel] Merkezi ses kütüphanesi ve süre birimi seçimi
+
+- `KioskAudioAsset` ve `pharmacies.0014_kiosk_audio_library` ile yüklenmiş sesler merkezi kütüphanede kalıcı hale getirildi; var olan kiosk ses atamaları migration sırasında kütüphaneye taşınır.
+- Cihaz düzenleme modalı, tasarımı koruyarak kütüphaneden sıralı seçim ve “Yeni Ses Ekle” akışını kullanır. Tüm cihaz zamanlamaları Sn/Dk seçicisiyle girilir, backend'e saniye olarak kaydedilir.
+- Yerel edge `.env` hedefi `http://localhost:8000`'dır. Provisioning görünmüyorsa ayrıca edge API'nin 8765 portunda çalıştığı doğrulanmalıdır.
+
+### [Kiosk Edge] Node 24 SQLite native sürücü düzeltmesi
+
+- `better-sqlite3` 13.x'e yükseltildi ve minimum Node sürümü 22 yapıldı. Bu, Node 24'te eski 11.x native sürücünün API node'u başlatırken ürettiği assertion ile kapanma sorununu giderir.
+- Merkezi backend'in `pharmacies.0014_kiosk_audio_library` migration'ı uygulandı; aksi halde bootstrap, yeni ses ataması alanını okurken 500 dönüyordu.
+
+### [Kiosk UI] Idle dönüşü öncesi işlem devam uyarısı
+
+- İşlem ekranı inaktivite süresi dolduğunda, idle'a geçmeden önce 5 saniyelik geri sayımlı popup eklendi. “Devam Et” sayacı iptal eder ve işlemi bulunduğu ekranda sürdürür; süre bitiminde terk edilmiş oturum kapatılıp idle ekrana dönülür.
+
+### [Backend+WebPanel+Kiosk Edge] Idle ses çalışma zamanı ve nöbet istisnası
+
+- Kiosk ses ayarına 08:00–19:00 İstanbul mesai içi veya 24 saat çalışma modu eklendi. Nöbetlerde çal seçiliyse eczanenin kayıtlı nöbet gününde mesai içi sınırı 24 saat kaldırılır.
+- Backend nöbet günlerini sync manifestine taşır; edge bunları lokal SQLite'ta saklar ve ses başlamadan önce zaman denetimini yapar. Migration: `pharmacies.0015_kiosk_idle_audio_schedule`.
+
 ## 2026-08-19
 
 ### [Backend+WebPanel] Duyuru kuyruğu, etken madde kaynağı, dashboard ve cihaz taşıma düzeltmeleri

@@ -17,6 +17,7 @@ from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.db import models
 from django.db.models import F, Max
+from django.urls import reverse
 from django.http import StreamingHttpResponse
 from django.utils import timezone
 from rest_framework import status
@@ -27,6 +28,7 @@ from rest_framework.views import APIView
 
 from apps.analytics.log_ingest import MAX_BATCH_ITEMS, ingest_kiosk_diagnostic_items
 from apps.analytics.services import ingest_session_items
+from apps.announcements.models import PharmacyDutyDay
 from apps.campaigns.models import Campaign, Creative, IdleScreenContent, PlayLog, Playlist
 from apps.campaigns.serializers import (
     KioskCreativeSyncSerializer,
@@ -61,7 +63,64 @@ def _parse_date(raw):
 
 # â”€â”€ Bootstrap / Provisioning â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-def _approved_response(kiosk: Kiosk) -> dict:
+def _device_config_payload(kiosk: Kiosk, request=None) -> dict:
+    audio_files = []
+    for audio in kiosk.idle_audio_files.all():
+        path = reverse("kiosk_api:kiosk-media", kwargs={"object_key": audio.object_key})
+        media_url = request.build_absolute_uri(path) if request is not None else path
+        audio_files.append({
+            "id": audio.audio_asset_id or audio.pk,
+            "media_url": media_url,
+            "checksum": audio.checksum,
+            "original_name": audio.original_name,
+            "content_type": audio.content_type,
+            "order": audio.sira,
+        })
+    # 0012 tek-dosya kayitlari icin geriye uyumlu fallback.
+    if not audio_files and kiosk.idle_audio_object_key:
+        path = reverse("kiosk_api:kiosk-media", kwargs={"object_key": kiosk.idle_audio_object_key})
+        media_url = request.build_absolute_uri(path) if request is not None else path
+        audio_files.append({
+            "id": "legacy",
+            "media_url": media_url,
+            "checksum": kiosk.idle_audio_checksum,
+            "original_name": kiosk.idle_audio_original_name,
+            "content_type": kiosk.idle_audio_content_type,
+            "order": 0,
+        })
+    first = audio_files[0] if audio_files else {}
+    duty_dates = []
+    if kiosk.idle_audio_play_on_duty:
+        start = timezone.localdate()
+        end = start + _dt.timedelta(days=370)
+        duty_dates = [
+            value.isoformat() for value in PharmacyDutyDay.objects.filter(
+                duty_month__pharmacy_id=kiosk.eczane_id, date__gte=start, date__lte=end,
+            ).values_list("date", flat=True)
+        ]
+    return {
+        "interaction_timeout_seconds": kiosk.interaction_timeout_seconds,
+        "idle_content_min_seconds": kiosk.idle_content_min_seconds,
+        "idle_content_max_seconds": kiosk.idle_content_max_seconds,
+        "idle_content_refresh_seconds": kiosk.idle_content_refresh_seconds,
+        "idle_audio_delay_seconds": kiosk.idle_audio_delay_seconds,
+        "idle_audio_repeat_seconds": kiosk.idle_audio_repeat_seconds,
+        "idle_audio_schedule_mode": kiosk.idle_audio_schedule_mode,
+        "idle_audio_play_on_duty": kiosk.idle_audio_play_on_duty,
+        "idle_audio_duty_dates": duty_dates,
+        "idle_audio": {
+            "enabled": bool(kiosk.idle_audio_enabled and audio_files),
+            "files": audio_files,
+            # Eski edge surumleri ilk dosyayi kullanmaya devam edebilir.
+            "media_url": first.get("media_url", ""),
+            "checksum": first.get("checksum", ""),
+            "original_name": first.get("original_name", ""),
+            "content_type": first.get("content_type", ""),
+        },
+    }
+
+
+def _approved_response(kiosk: Kiosk, request=None) -> dict:
     """Onayli + aktif + eczaneli kiosk icin App Key contract'i.
 
     App Key URETILMEZ. Mevcut ``uygulama_anahtari`` alanindan gelir;
@@ -75,6 +134,7 @@ def _approved_response(kiosk: Kiosk) -> dict:
         "eczane_kiosk_no": kiosk.eczane_kiosk_no,
         "kiosk_adi": kiosk.ad,
         "eczane_adi": kiosk.eczane.ad if kiosk.eczane else "",
+        "device_config": _device_config_payload(kiosk, request),
     }
 
 
@@ -150,7 +210,7 @@ class KioskBootstrapView(APIView):
             .first()
         )
         if kiosk:
-            return Response(_approved_response(kiosk), status=status.HTTP_200_OK)
+            return Response(_approved_response(kiosk, request), status=status.HTTP_200_OK)
 
         # 6) Provision talebi kontrol/olustur (kimlik dogrulamasi gecti)
         now = timezone.now()
@@ -175,7 +235,7 @@ class KioskBootstrapView(APIView):
             if provision_req.status == KioskProvisioningRequest.Status.APPROVED:
                 linked = provision_req.kiosk
                 if linked and linked.aktif:
-                    return Response(_approved_response(linked), status=status.HTTP_200_OK)
+                    return Response(_approved_response(linked, request), status=status.HTTP_200_OK)
                 # Kiosk silinmis/pasif — PENDING'e geri don; yeni device_id/metadata ile guncelle.
                 KioskProvisioningRequest.objects.filter(pk=provision_req.pk).update(
                     status=KioskProvisioningRequest.Status.PENDING,
@@ -320,6 +380,7 @@ class KioskSyncView(KioskAPIView):
             "generated_at": now.isoformat(),
             "creatives": creative_payload,
             "idle_contents": KioskIdleContentSyncSerializer(idle_contents, many=True).data,
+            "device_config": _device_config_payload(kiosk, request),
             "lookups": {
                 "cinsiyetler": list(Cinsiyet.objects.values("id", "kod", "ad").order_by("id")),
                 "yas_araliklari": list(YasAraligi.objects.values("id", "kod", "ad", "alt_sinir", "ust_sinir").order_by("id")),
@@ -403,6 +464,14 @@ class KioskMediaProxyView(KioskAPIView):
         # path traversal koruşası
         if ".." in object_key or object_key.startswith("/"):
             return Response({"detail": "Geçersiz anahtar."}, status=status.HTTP_400_BAD_REQUEST)
+        # Kiosk-bazli idle ses baska bir cihaz tarafindan okunamaz. Generic
+        # creative proxy davranisi geriye uyumluluk icin aynen korunur.
+        if object_key.startswith("kiosk-audio/"):
+            owns_audio = object_key == self.kiosk.idle_audio_object_key or self.kiosk.idle_audio_files.filter(
+                object_key=object_key
+            ).exists()
+            if not owns_audio:
+                return Response({"detail": "Medya bulunamadı."}, status=status.HTTP_404_NOT_FOUND)
 
         from apps.core.services.storage_service import StorageService
         try:

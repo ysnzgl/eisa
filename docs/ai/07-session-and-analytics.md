@@ -18,7 +18,7 @@
 
 - `backend/apps/analytics/models.py` — OturumLogu, OturumCevap, OturumOnerilenEtkenMadde models
 - `backend/apps/analytics/services.py` — `ingest_session_items()`, `generate_qr_candidate()`
-- `kiosk_edge/ui/src/App.svelte` → `INACTIVITY_MS`, `onInactivityTimeout()`, session lifecycle
+- `kiosk_edge/ui/src/App.svelte` → `deviceConfig.interaction_timeout_seconds`, `onInactivityTimeout()`, session lifecycle
 - `kiosk_edge/ui/src/lib/api.js` → `submitSession()` client function
 - `kiosk_edge/api-node/src/db.js` — oturum_outbox table
 - `kiosk_edge/api-node/src/server.js` → `POST /api/oturum/gonder` handler
@@ -98,7 +98,7 @@ Kategori seçimi → Soru akışı → Sonuç ekranı
 
 ### 3. Terk Edilen Session (Abandoned)
 ```
-20sn inactivity → tamamlandi=false
+cihaz-bazlı inactivity (default 20 sn) → tamamlandi=false
   → Edge: outbox'a yaz, QR yok
   → Backend'e async gönder (scheduler)
   → UI'a qr_kodu: null döner
@@ -139,10 +139,10 @@ Kategori seçimi → Soru akışı → Sonuç ekranı
   → Ekran idle'a döner
 ```
 
-**Timeout constant location:**
-- File: `kiosk_edge/ui/src/App.svelte`
-- Constant: `INACTIVITY_MS = 10_000` (line 30)
-- Functions: `onInactivityTimeout()`, `armInactivity()`, `clearInactivity()`
+**Timeout ayarı:**
+- Kaynak: lokal edge `/api/device-config` → `deviceConfig.interaction_timeout_seconds`
+- Varsayılan: 20 saniye; SuperAdmin DeviceManagement üzerinden kiosk bazında değiştirir.
+- Uygulama: `kiosk_edge/ui/src/App.svelte` içindeki `onInactivityTimeout()`, `armInactivity()`, `clearInactivity()`
 
 ### 5. Danışma Akışı (Soru yok)
 ```

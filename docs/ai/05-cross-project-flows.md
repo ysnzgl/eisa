@@ -123,6 +123,30 @@ SuperAdmin → POST /api/pharmacies/kiosks/provisioning/{id}/reject/
   → kiosk_edge: provisioning_state = 'REJECTED', normal API çağrıları engellenir
 ```
 
+**0.5. Cihaz Ayarı ve Idle Ses Dağıtımı *(2026-09-11)***
+```
+SuperAdmin (web_panels/DeviceManagement.vue)
+  → PATCH /api/pharmacies/kiosks/{id}/ (cihaz-bazlı iş zamanlayıcıları)
+  → GET/POST /api/pharmacies/kiosks/idle-audio-library/ (merkezi çoklu MP3/WAV/OGG kütüphanesi)
+  → POST /api/pharmacies/kiosks/{id}/set-idle-audios/ (seçili asset id'leri, çalma sırası)
+  → Backend: Kiosk ayarları + KioskAudioAsset referanslı sıralı KioskIdleAudio object key/checksum listesi
+  → bootstrap ve GET /api/kiosk/v1/sync/: device_config
+  → kiosk_edge/api-node: kiosk_device_config upsert
+      + AppKey korumalı medya proxy'sinden indir
+      + tüm dosyalarda SHA-256 kontrolü
+      + liste snapshot'ını atomik lokal aktivasyon
+  → kiosk_edge/ui: GET /api/device-config
+  → yalnız screen=idle ve kesintisiz idle_audio_delay_seconds dolduysa ilk GET /api/device-audio/{id}
+  → ses bitince idle_audio_repeat_seconds bekle → sıradaki dosya; liste sonunda başa dön
+  → ses zamanı: 24 saat veya İstanbul 08:00–19:00; nöbetlerde çal seçiliyse girilmiş nöbet gününde 24 saat
+  → audio.play() başarılı → köşede hoparlör ikonu
+  → pointerdown/keydown veya idle'dan çıkış → sesi ve ikonu anında kapat
+```
+
+Varsayılanlar: işlem ekranı inaktivitesi 20 sn, idle içerik 10–12 sn, içerik refresh 300 sn, ilk idle ses beklemesi 1200 sn (20 dk), sonraki sesler arası bekleme 300 sn (5 dk). Ses varsayılan olarak kapalıdır. Kampanya ve teknik edge scheduler süreleri bu akışın dışındadır.
+
+İşlem ekranındaki inaktivite süresi sona erdiğinde kiosk önce 5 saniyelik “İşleminiz devam ediyor mu?” popup'ını gösterir. Kullanıcı “Devam Et”e dokunursa idle'a dönmez ve cihaz-bazlı inaktivite sayacı yeniden başlar; geri sayım biterse mevcut terk edilmiş oturum kapatılarak idle ekrana dönülür.
+
 ---
 
 ## 1. Kategori Akışı
@@ -388,7 +412,7 @@ Akış: CategoryScreen → ConsultScreen → danisma kategorisi seç
 **4.4. Session Terk Edilmesi (Kiosk UI)**
 ```
 kiosk_edge/ui (App.svelte: onInactivityTimeout)
-  → 20sn (INACTIVITY_MS = 20_000) cevap verilmedi → session finalize
+  → cihaz-bazlı süre (default 20 sn) cevap verilmedi → session finalize
   → POST http://localhost:5234/api/oturum/gonder
     { ..., "tamamlandi": false }
   → kiosk_edge/api-node: SQLite insert (outbox, QR yok)

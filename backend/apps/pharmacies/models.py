@@ -62,6 +62,49 @@ class Kiosk(BaseModel):
     is_online = models.BooleanField(default=False)
     last_playlist_version = models.PositiveIntegerField(null=True, blank=True)
 
+    # ── Cihaz-bazli davranis ayarlari ───────────────────────────────────────
+    # Varsayilanlar mevcut kiosk UI davranisini bire bir korur.
+    interaction_timeout_seconds = models.PositiveIntegerField(
+        default=20,
+        help_text="Etkilesim ekranlarinda islemsizlik sonrasi idle'a donus suresi.",
+    )
+    idle_content_min_seconds = models.PositiveIntegerField(
+        default=10,
+        help_text="Idle metin icerigi icin minimum gosterim suresi.",
+    )
+    idle_content_max_seconds = models.PositiveIntegerField(
+        default=12,
+        help_text="Idle metin icerigi icin maksimum gosterim suresi.",
+    )
+    idle_content_refresh_seconds = models.PositiveIntegerField(
+        default=300,
+        help_text="Lokal UI'nin idle icerik/config yenileme suresi.",
+    )
+    idle_audio_delay_seconds = models.PositiveIntegerField(
+        default=1200,
+        help_text="Kesintisiz idle durumunda sesin baslamasi icin beklenecek sure.",
+    )
+    idle_audio_repeat_seconds = models.PositiveIntegerField(
+        default=300,
+        help_text="Ilk oynatimdan sonra etkilesime kadar sesler arasinda beklenecek sure.",
+    )
+    idle_audio_schedule_mode = models.CharField(
+        max_length=20,
+        choices=(("BUSINESS_HOURS", "Mesai ici (08:00-19:00)"), ("ALL_DAY", "24 saat")),
+        default="ALL_DAY",
+        help_text="Idle sesin normal gunlerde calacagi zaman araligi.",
+    )
+    idle_audio_play_on_duty = models.BooleanField(
+        default=False,
+        help_text="Nobet gunlerinde mesai saati kisitini kaldirir.",
+    )
+    idle_audio_enabled = models.BooleanField(default=False)
+    idle_audio_media_url = models.URLField(max_length=1000, blank=True, default="")
+    idle_audio_object_key = models.CharField(max_length=500, blank=True, default="")
+    idle_audio_checksum = models.CharField(max_length=80, blank=True, default="")
+    idle_audio_original_name = models.CharField(max_length=255, blank=True, default="")
+    idle_audio_content_type = models.CharField(max_length=100, blank=True, default="")
+
     # ── Faz 4: V2 fingerprint kaydı ──────────────────────────────────────────
     # {"YYYY-MM-DD": "hex16"} — kiosk+tarih için son başarılı V2 yayın fingerprint'i.
     # Job geçmişi yerine Kiosk satırından okunur; autoritative playlistle tutarlı.
@@ -129,6 +172,43 @@ class Kiosk(BaseModel):
     @property
     def is_authenticated(self) -> bool:
         return True
+
+
+class KioskAudioAsset(BaseModel):
+    """Merkezi ses kutuphanesinde tekrar kullanilabilen dosya."""
+
+    media_url = models.URLField(max_length=1000, blank=True, default="")
+    object_key = models.CharField(max_length=500, unique=True)
+    checksum = models.CharField(max_length=80, blank=True, default="")
+    original_name = models.CharField(max_length=255)
+    content_type = models.CharField(max_length=100)
+    aktif = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = "kiosk_audio_assets"
+        ordering = ("original_name", "id")
+
+
+class KioskIdleAudio(BaseModel):
+    """Bir kioska atanmis, sira ile oynatilacak idle ses dosyasi."""
+
+    kiosk = models.ForeignKey(Kiosk, on_delete=models.CASCADE, related_name="idle_audio_files")
+    audio_asset = models.ForeignKey(
+        KioskAudioAsset, on_delete=models.PROTECT, related_name="kiosk_atamalari", null=True, blank=True
+    )
+    media_url = models.URLField(max_length=1000, blank=True, default="")
+    object_key = models.CharField(max_length=500)
+    checksum = models.CharField(max_length=80, blank=True, default="")
+    original_name = models.CharField(max_length=255)
+    content_type = models.CharField(max_length=100)
+    sira = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        db_table = "kiosk_idle_audios"
+        ordering = ("sira", "id")
+        constraints = [
+            models.UniqueConstraint(fields=["kiosk", "sira"], name="uniq_kiosk_idle_audio_sira"),
+        ]
 
 
 class KioskEczaneAtama(BaseModel):

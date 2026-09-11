@@ -24,6 +24,7 @@
 - `kiosk_edge/api-node/src/scheduler.js` — Sync/push scheduler
 - `kiosk_edge/api-node/src/provisioning.js` — Kiosk provisioning (**device_id**: `crypto.randomUUID()` ile üretilir, kiosk_meta'ya saklanır; HMAC'e dahil edilir; `/api/kiosk/v1/identity/enroll/` ile tek-seferlik bağlanır)
 - `kiosk_edge/api-node/src/mediaCache.js` — Media download cache
+- `kiosk_edge/api-node/src/deviceConfig.js` — Cihaz-bazlı iş zamanlayıcılarını doğrular/saklar; idle sesi checksum doğrulamalı ve atomik olarak lokal cache'e indirir
 - `kiosk_edge/api-node/src/config.js` — Config management
 
 ### Session QR Akışı (2026-08-11 — offline-first, kesinleşti)
@@ -78,6 +79,11 @@ Backend kapalı/erişilemezse:
    - Creative medyası → media cache indirme kuyruğuna; `idle_contents` → SQLite `idle_contents` tablosuna transaction içinde upsert + reconcile (artık gelmeyen/pasif satırlar silinir). Backend `idle_contents` dönmezse boş dizi sayılır; offline'da son başarılı cache korunur.
    - Eski `house_ads` KALDIRILDI (v15 idempotent migration `house_ads` tablosunu düşürür).
 
+4. **Cihaz ayarları + kiosk-bazlı idle ses:**
+   - `/api/kiosk/v1/sync/` içindeki `device_config`, `kiosk_device_config` singleton satırına uygulanır. Bootstrap onayından sonra yapılan ilk pull aynı akışı çalıştırır.
+   - Etkin ve atanmış ses, AppKey başlığıyla merkezi medya proxy'sinden geçici dosyaya indirilir; SHA-256 doğrulanınca atomik olarak aktive edilir. Yeni indirme başarısızsa çalışan eski lokal dosya korunur.
+   - Ses kapatıldığında lokal endpoint ses sunmaz. Teknik pull/push/ping/diagnostic scheduler periyotları portal cihaz ayarlarının kapsamı dışındadır.
+
 ### Kiosk → Backend (Push)
 1. **Session log outbox:**
    - Kiosk UI → `POST http://localhost:5234/sessions` → lokal API
@@ -121,6 +127,7 @@ Backend kapalı/erişilemezse:
 
 **Meta:**
 - `kiosk_meta`: key, value (kiosk_app_key, kiosk_id, pharmacy_id, playlist_version, last_sync_at, provisioning_state, registration_id, **last_barkod_logo_id** *(2026-08-11)*)
+- `kiosk_device_config`: singleton cihaz ayarı; etkileşim/idle içerik, ilk ses gecikmesi/tekrar aralığı, ses zaman kuralı ve nöbet günlerini tutar. `kiosk_device_audio_files` sıralı ses manifestini, checksum'ları ve lokal hazır dosyaları tutar; eski tek-dosya cache'i idempotent olarak `legacy` satırına taşınır. Additive oluşturma/kolon kontrolü schema version yükseltip kiosk cache'ini sıfırlamaz.
 - `media_cache`: asset_id, asset_type, source_url, source_checksum (backend'den: sha256:<hex>), file_checksum (raw hex, downloadToFile), local_path, status, error_message, synced_at
   - *(v15)* `asset_type='house_ad'` satırları migration ile silinir; kampanya creative cache'i etkilenmez.
 
@@ -149,7 +156,7 @@ Backend kapalı/erişilemezse:
 ### Scheduler (`src/scheduler.js`)
 
 **Cron job'lar:**
-1. `pullFromCentral`: Her 5 dakikada bir → backend'den kategori/soru/danışma/creative + `idle_contents` çek, SQLite'a upsert (idle içerikleri reconcile)
+1. `pullFromCentral`: Backend'den kategori/soru/danışma/creative + `idle_contents` + `device_config` çek; SQLite'a uygula ve atanmış idle sesi lokal cache'e indir
 2. `pingAndSyncPlaylist`: Her 10 dakikada bir → backend'den playlist versiyonu kontrol, değiştiyse playlist çek
 3. `pushOutbox`: Her 1 dakikada bir → `oturum_outbox` ve `reklam_gosterim_outbox` tablolarından pending kayıtları batch olarak backend'e gönder
 4. `cleanupOldLogs`: Her gece 02:00 → 90 gün eski logları sil
@@ -276,6 +283,8 @@ Toplanan veriler `device_metadata` JSON alanı olarak `KioskProvisioningRequest`
 | `GET` | `/answers?soru_id={id}` | Soruya ait cevaplar |
 | `GET` | `/playlist?date=YYYY-MM-DD` | Günlük playlist JSON |
 | `GET` | `/api/idle-contents` | *(2026-08-16)* Aktif idle (bekleme) başlık/metin içerikleri (salt okunur; UI merkezi backend'e bağlanmaz) |
+| `GET` | `/api/device-config` | Lokal cache'teki cihaz iş zamanlayıcılarını ve hazırsa `/api/device-audio` URL'sini döndürür |
+| `GET` | `/api/device-audio/:audioId` | Etkin listede checksum doğrulanarak hazır edilmiş ilgili kiosk sesini lokal diskten sunar; aksi halde 404 (`/api/device-audio` ilk dosya için geriye uyumlu) |
 | `POST` | `/sessions` | Session log kaydı (outbox'a ekler) |
 | `POST` | `/ad-impressions` | Impression log kaydı (outbox'a ekler) |
 | `GET` | `/wifi-status` | WiFi bağlantı durumu (nmcli çağrısı, Linux) |

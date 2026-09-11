@@ -69,7 +69,7 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 | `/api/kiosk/v1/bootstrap/` | `kiosk_api.KioskBootstrapView` | Fleet+HMAC | Provisioning; App Key döner |
 | `/api/kiosk/v1/identity/enroll/` | `kiosk_api.KioskIdentityEnrollView` | AppKey+MAC | Kalıcı device_id tek-seferlik bağlama |
 | `/api/kiosk/v1/ping/` | `kiosk_api.KioskPingView` | AppKey+MAC | Playlist versiyonu kontrolü |
-| `/api/kiosk/v1/sync/` | `kiosk_api.KioskSyncView` | AppKey+MAC | Creative + idle içerik (`idle_contents`) + lookup |
+| `/api/kiosk/v1/sync/` | `kiosk_api.KioskSyncView` | AppKey+MAC | Creative + idle içerik (`idle_contents`) + cihaz ayarları (`device_config`) + lookup |
 | `/api/kiosk/v1/catalog/` | `kiosk_api.KioskCatalogView` | AppKey+MAC | Kategori/soru/etken madde/danışma |
 | `/api/kiosk/v1/playlist/` | `kiosk_api.KioskPlaylistView` | AppKey+MAC | Günlük playlist |
 | `/api/kiosk/v1/sessions/` | `kiosk_api.KioskSessionsView` | AppKey+MAC | Oturum outbox; backend QR üretir; response: `{results:[{idempotency_key,status,qr_kodu}]}` |
@@ -127,7 +127,7 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 
 ### Pharmacies (`apps.pharmacies`)
 - `Eczane`: Eczane (il/ilce, ad, sahip, telefon, aktif)
-- `Kiosk`: Kiosk cihaz (eczane FK, mac_adresi, **device_id** (UUID, unique, nullable), uygulama_anahtari, aktif, is_online, son_goruldu, last_playlist_version). device_id ilk enrollment'ta tek-seferlik bağlanır, değiştirilemez. TPM tabanlı değil; runtime DB kopyalanırsa kopyalanabilir.
+- `Kiosk`: Kiosk cihaz (eczane FK, mac_adresi, **device_id** (UUID, unique, nullable), uygulama_anahtari, aktif, is_online, son_goruldu, last_playlist_version). Cihaz-bazlı iş zamanlayıcıları: `interaction_timeout_seconds` (20), `idle_content_min_seconds` (10), `idle_content_max_seconds` (12), `idle_content_refresh_seconds` (300), ilk ses `idle_audio_delay_seconds` (1200) ve sonraki sesler `idle_audio_repeat_seconds` (300). Idle ses kuralı `idle_audio_schedule_mode` (`BUSINESS_HOURS`: 08:00–19:00 İstanbul, `ALL_DAY`: 24 saat) ve `idle_audio_play_on_duty` ile belirlenir; nöbet işareti mesai içi kuralında nöbet gününü 24 saatlik istisna yapar. `idle_audio_enabled` listeyi açıp kapatır; dosyalar sıralı `KioskIdleAudio` kayıtlarıdır. device_id ilk enrollment'ta tek-seferlik bağlanır, değiştirilemez.
 - `KioskEczaneAtama`: Kiosk/eczane, başlangıç-bitiş zamanı, neden ve taşıyan admin. `bitis_zamani IS NULL` için kiosk başına partial unique constraint vardır; `Kiosk.eczane` yalnız güncel pointer'dır.
 - `KioskProvisioningRequest`: Kayıtsız kiosk onay talebi (UUID pk, mac_adresi, **device_id** (max 36, partial-unique non-empty), hostname, device_metadata JSON, status PENDING/APPROVED/REJECTED, last_seen_at, request_count, approved_by/at, rejected_by/at, rejection_reason, kiosk FK nullable). Onay anında `device_id` `Kiosk.device_id`'ye aktarılır. **Raw fleet_key/provision_secret saklanmaz.**
 
@@ -233,6 +233,13 @@ Kiosk provisioning (bootstrap):
 5. Cihaz tekrar `POST /api/kiosk/v1/bootstrap/` → 200 app_key (APPROVED path)
 6. REJECTED cihaz → 403 REJECTED, App Key verilmez
 
+### Kiosk Cihaz Ayarları ve Idle Ses
+- SuperAdmin mevcut kiosk detail `PATCH /api/pharmacies/kiosks/{id}/` ile cihazın iş zamanlayıcılarını ve ses etkinlik durumunu günceller; kampanya/scheduler ayarları bu sözleşmenin dışındadır.
+- Merkezi ses kütüphanesi `KioskAudioAsset` ile tutulur. `GET/POST /api/pharmacies/kiosks/idle-audio-library/` mevcut sesleri listeler veya MP3/WAV/OGG (dosya başına en fazla 20 MB) ekler; dosya storage'da `kiosk-audio/` object key'iyle saklanır.
+- `POST /api/pharmacies/kiosks/{id}/set-idle-audios/` gövdesindeki `audio_ids` listesini sırasıyla kioska atar. Atamayı kaldırmak kütüphane/storage nesnesini silmez; eski upload/remove endpoint'leri geriye uyumluluk için korunur.
+- Bootstrap ve sync yanıtlarındaki `device_config` zamanlayıcıları ve ses metadata'sını taşır. Ses URL'si kiosk AppKey korumalı `/api/kiosk/v1/media/{object_key}` proxy'sidir.
+- Audio MIME bilgisine ek olarak dosya imzası doğrulanır. Portal rolleri içinde upload/remove yalnız SuperAdmin'e açıktır.
+
 ### Log/Session Akışı
 1. Kiosk UI → kullanıcı kategori/soru akışını tamamlar → QR üretilir
 2. Kiosk UI → `POST http://localhost:5234/sessions` (local edge API) → session JSON gönderilir
@@ -311,7 +318,7 @@ Notlar (QR contract, 2026-07-20):
    - Breaking: playlist generation/sync fails
 
 3. **Kiosk Sync Payload (`/api/kiosk/v1/sync/`):**
-   - Response: `{ kategoriler, sorular, cevaplar, etken_maddeler, danisma_kategorileri, creatives, idle_contents }`
+   - Response: `{ kategoriler, sorular, cevaplar, etken_maddeler, danisma_kategorileri, creatives, idle_contents, device_config }`
    - Request (outbox push): `{ sessions: [...] }`
    - Breaking: kiosk SQLite sync breaks
 

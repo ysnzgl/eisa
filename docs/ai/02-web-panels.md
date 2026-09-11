@@ -421,6 +421,15 @@ window.EISA_API_BASE_URL = 'http://localhost:8000';
    - `PATCH /api/pharmacies/kiosks/{id}/` â†’ Kiosk gÃ¼ncelleme
    - Eczane doğrudan PATCH edilemez. Her cihaz kartındaki metinli “Eczaneye Taşı” aksiyonu `Cihazı Başka Eczaneye Taşı` modalını açar; mevcut eczane salt okunur, hedef `EisaLookup` ile seçilir, neden ve taşıma özeti gösterilir. İşlem `POST .../{id}/transfer/` çağırır ve detayda atama geçmişini gösterir.
 
+### DeviceManagement — cihaz zamanlayıcıları ve idle ses *(2026-09-11)*
+
+- Mevcut `/admin/devices` kart ve düzenleme modalı aynı tasarım sistemi korunarak genişletildi; yeni sayfa/route eklenmedi.
+- Kiosk bazında etkileşim sonrası idle'a dönüş, idle içerik min/max gösterim süresi, idle içerik yenileme süresi, ilk ses gecikmesi ve sonraki sesler arası süre düzenlenebilir. Her alan Sn/Dk seçicisi sunar; panel seçimi API/tabloda saniyeye dönüştürür. Defaultlar 20 sn, 10/12 sn, 300 sn, 20 dk ve 5 dk'dır.
+- Sesler merkezi kütüphaneden seçilir; seçilme sırası çalma sırasıdır. “Yeni Ses Ekle” MP3/WAV/OGG dosyasını (dosya başına en fazla 20 MB) merkezi depoya kaydeder ve seçili kioska atar.
+- Idle Ses bölümünde “Mesai içi (08:00–19:00)” veya “Mesai dışı / 24 saat” seçilir. “Nöbet günlerinde çal” seçeneği, eczacının girdiği nöbet gününde mesai içi sınırını kaldırır.
+- Servis sözleşmesi: `PATCH /api/pharmacies/kiosks/{id}/`, `GET/POST .../idle-audio-library/` ve `POST .../{id}/set-idle-audios/`.
+- Kampanya yönetimi ve edge'in teknik pull/push/ping/diagnostic aralıkları bu ekrana dahil değildir.
+
 ### Ortak UI kuralları
 - Global `vue-sonner` provider `top-center`, 22 px offset ve modal üstü z-index ile çalışır.
 - `--eisa-turquoise: #0F8F8A` Evet/olumlu seçim rengidir; Hayır mevcut `--eisa-red` rengini kullanır.

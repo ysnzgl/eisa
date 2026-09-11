@@ -20,6 +20,7 @@ import {
   reschedulePendingDiagnostics,
 } from './diagnosticOutbox.js';
 import { recordKioskEvent } from './kioskEventOutbox.js';
+import { syncDeviceConfig } from './deviceConfig.js';
 
 // Outbox'taki bir kaydın en fazla kaç kez scheduler tarafından deneneceği.
 // Bu sayıya ulaşan kayıtlar kalıcı hata olarak kabul edilir ve atlanır.
@@ -387,6 +388,9 @@ export async function pullFromCentral(db, settings, log = console) {
         for (const c of idleContents) upsertIdleContent(db, c);
       });
       tx(data);
+      if (data.device_config && typeof data.device_config === 'object') {
+        await syncDeviceConfig(db, data.device_config, settings, log);
+      }
       await syncMediaCache(db, settings, log);
       log.info?.(`PULL: ${(data.creatives || []).length} creative, ${(data.idle_contents || []).length} idle_content guncellendi`);
     } else if (r2.status === 401) {

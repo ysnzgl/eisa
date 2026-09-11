@@ -17,7 +17,7 @@
 ## Important Source Files
 
 - `kiosk_edge/ui/src/App.svelte` — Main app, session lifecycle + global inaktivite:
-  - `INACTIVITY_MS = 20_000` — idle/wifi disindaki HER ekranda 20sn islem yoksa idle'a doner
+  - `deviceConfigStore.interactionTimeoutSeconds` — idle/wifi disindaki HER ekranda işlem yoksa idle'a döner; merkezden cihaz-bazlı, default 20 sn
   - `onInactivityTimeout()`, `armInactivity()`, `clearInactivity()` — timeout yonetimi
   - `finalizeAbandonedSession()` — timeout'ta aktif anket oturumunu sessizce terk edilmis (tamamlandi=false) gonderir (sonuc ekranina YONLENDIRMEZ)
   - Global `pointerdown`/`keydown` dinleyicileri + reaktif ekran-bazli arm/clear
@@ -31,6 +31,10 @@
   - Kritik hatalar yerel Fastify'ye `POST /api/log/client` ile gönderilir; sadece allow-list edilen event kodları kabul edilir (`screen_render_failed`, `local_api_unreachable`, `media_playback_failed`, `session_submit_failed`, `playlist_invalid`, `window_error`, `unhandled_rejection`, `wifi_operation_failed`).
   - Kullanıcı verisi, QR içeriği, cevaplar, öneri listesi GÖNDERİLMEZ. Rate limit (15sn) ile aynı hata yüzlerce kez tetiklenmez. Detay: [docs/operations/logging.md](../operations/logging.md).
 - `kiosk_edge/ui/src/lib/ingredients.js` — Etken madde recommendation
+- `kiosk_edge/ui/src/lib/deviceConfigStore.js` — Lokal edge `GET /api/device-config` ayar cache'i; hata halinde son başarılı ayarı/defaultları korur
+- `kiosk_edge/ui/src/components/IdleAudio.svelte` + `lib/idleAudioController.js` — ilk sesi kesintisiz idle süresi dolunca, devamındaki sesleri tekrar aralığıyla sıralı/döngüsel çalar; etkileşimde anında keser ve çalarken köşede hoparlör göstergesi açar
+- `kiosk_edge/ui/src/components/IdleCountdownModal.svelte` — işlem ekranındaki inaktivite süresi bitince 5 saniyelik geri sayım gösterir; “Devam Et” idle dönüşünü iptal edip sayaç süresini yeniden başlatır.
+- `idleAudioController.js` ses başlamadan önce İstanbul saatini denetler: `BUSINESS_HOURS` yalnız 08:00–19:00; nöbet günü listede ve seçenek etkinse 24 saat; `ALL_DAY` her zaman çalar.
 - `kiosk_edge/ui/src/components/Logo.svelte` — Tekrar kullanilabilir marka logosu (SVG):
   - `height` + `light` (koyu zeminde beyaz varyant) prop'lari. Tum "e-isa" yazilari bununla degistirildi.
   - Kaynak: `src/assets/eisa-logo.svg` (koyu metin) + `src/assets/eisa-logo-light.svg` (beyaz metin)
@@ -58,7 +62,7 @@
 3. Kategori seçimi (şikayet türü: uyku, enerji, bağışıklık, vb.)
 4. Soru/cevap akışı (kategori sorularına cevap verme)
 5. Sonuç ekranı (önerilen etken maddeler + QR kod)
-6. 20sn inaktivite → otomatik idle'a dön (idle/wifi disindaki her ekranda geçerli)
+6. Cihaz-bazlı inaktivite süresi (default 20 sn) → otomatik idle'a dön (idle/wifi disindaki her ekranda geçerli)
 
 **Alternatif akış:**
 - "Eczacınıza Danışın" butonu → Danışma kategorisi seçimi → QR kod (direkt)
@@ -91,11 +95,11 @@
 
 **Lifecycle hooks:**
 - `onMount`: WiFi durumu kontrol, kategori cache kontrol, global aktivite dinleyicileri
-- Global inaktivite: idle/wifi_setup disindaki HER ekranda 20sn islem yoksa idle'a doner; herhangi bir dokunma/tus zamanlayiciyi sifirlar
+- Global inaktivite: idle/wifi_setup disindaki HER ekranda cihaz ayarındaki süre (default 20 sn) işlem yoksa idle'a döner; herhangi bir dokunma/tuş zamanlayıcıyı sıfırlar
 
 **Session lifecycle:**
 - Kategori seçiminde `sessionId` atanır
-- QR üretildiğinde session finalize (`tamamlandi: true`); 20sn inaktivite → `finalizeAbandonedSession()` ile terk edilmis (`tamamlandi: false`) gonderilir, ardindan idle'a donulur
+- QR üretildiğinde session finalize (`tamamlandi: true`); cihaz-bazlı inaktivite süresi dolunca `finalizeAbandonedSession()` ile terk edilmiş (`tamamlandi: false`) gönderilir, ardından idle'a dönülür
 - `sessionFinalized` bayrağı → duplikasyon koruması
 
 ---
@@ -141,7 +145,7 @@
    - QR kod gösterimi (qr-creator library)
    - "Eczaciniza Danisin" destek mesajı
    - "Tamamla" butonu → `idle` screen
-   - Auto-reset: 30sn sonra otomatik idle'a dön
+   - Auto-reset: ayrı sonuç zamanlayıcısı yoktur; global cihaz-bazlı inaktivite süresi geçerlidir (default 20 sn)
 
 8. **AdStrip.svelte**
    - Alt strip (kiosk yuksekliginin ~2/5'i)
@@ -167,7 +171,7 @@
      - **SABİT CTA** "Size özel öneriler için DOKUNUN" (DOKUNUN e-isa kırmızısı + light-sweep, aşağı basan kırmızı işaret parmağı ikonu + iki ripple halkası; `pointer-events:none`, `aria-hidden`). CTA idle içerik olmasa da `large`'da her zaman görünür.
      - Heartbeat içerik/typewriter değişiminde YENİDEN mount edilmez.
      - Küçük (`small`) AdPromo varyantı DEĞİŞMEDİ (başlık/metin/CTA yok).
-   - **`lib/idleContentStore.js` (2026-08-16):** `GET /api/idle-contents`'ten aktif idle içerikleri çeker; shuffled-bag ile döndürür (Fisher–Yates; yeni torbanın ilkı ≠ önceki torbanın son'u), metin uzunluğuna göre dwell 12–20sn otomatik. 0 içerik → hiçbir şey; 1 içerik → statik (yeniden yazılmaz); >1 → otomatik rotasyon. Refresh ~5dk.
+   - **`lib/idleContentStore.js` (2026-08-16; 2026-09-11 configurable):** `GET /api/idle-contents`'ten aktif idle içerikleri çeker; shuffled-bag ile döndürür (Fisher–Yates; yeni torbanın ilkı ≠ önceki torbanın son'u). Dwell min/max ve refresh cihaz ayarından gelir; gerçek mevcut defaultlar 10–12 sn ve 300 sn'dir. 0 içerik → hiçbir şey; 1 içerik → statik (yeniden yazılmaz); >1 → otomatik rotasyon.
 
 11. **HeartbeatAnimation.svelte** (2026-08-16)
    - Sponsor fallback ekranı için dekoratif kalp atışı animasyonu
@@ -180,6 +184,12 @@
    - `pointer-events: none`, `aria-hidden="true"` — erişilebilirlik
    - `prefers-reduced-motion: reduce` → animasyonlar durur, statik görünüm
    - Yalnızca **sponsor fallback ekranında** görünür (gerçek kampanya medyası gösterilirken GÖRÜNMEZ)
+
+12. **IdleAudio.svelte** (2026-09-11)
+   - Yalnız `screen === 'idle'` iken ilk dosyayı kesintisiz bekleme süresi sonunda (default 20 dk) çalar; dosya bittikten sonra default 5 dk bekleyip sıradaki dosyaya geçer ve listenin sonunda başa döner.
+   - Pointer/klavye etkileşimi sesi ve hoparlör göstergesini anında kapatır; kullanıcı başka ekrandayken ses başlayamaz. Idle'dan çıkıp yeniden girilmesi yeni bir bekleme çevrimidir.
+   - `audio.play()` başarıyla başladıktan sonra sağ üst köşede mevcut e-isa kırmızı tasarım dilinde, içerik etkileşimini engellemeyen hoparlör ikonu görünür.
+   - Chromium'un ilk kullanıcı etkileşimi olmadan sesli autoplay'i engellediği dağıtımlarda kiosk runtime `--autoplay-policy=no-user-gesture-required` ile başlatılmalıdır.
 
 12. **MediaView.svelte**
    - URL uzantisina gore `<video>` veya `<img>` render eder. Props: `src`, `alt`, `loop`, `class`. AdStrip + IdleScreen tarafindan ortak kullanilir

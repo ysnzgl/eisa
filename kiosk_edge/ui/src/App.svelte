@@ -2,6 +2,7 @@
   import { tick, onMount, onDestroy } from 'svelte';
   import { getRecommendations, recsToIngredientList } from './lib/ingredients.js';
   import { fetchCategories, fetchQuestions, fetchDanismaCategories, submitSession, fetchWifiStatus, fetchSessionSyncStatus } from './lib/api.js';
+  import { deviceConfig, startDeviceConfig, stopDeviceConfig } from './lib/deviceConfigStore.js';
   import {
     screen,
     selectedAge, selectedSex,
@@ -23,29 +24,57 @@
   import ResultScreen       from './components/ResultScreen.svelte';
   import PlaylistPlayer     from './components/PlaylistPlayer.svelte';
   import WifiSetupScreen    from './components/WifiSetupScreen.svelte';
+  import IdleAudio          from './components/IdleAudio.svelte';
+  import IdleCountdownModal from './components/IdleCountdownModal.svelte';
 
   let resultScreenRef = null;
 
   // ── Sahte oturum (fake session) yasam dongusu + global inaktivite ────────
   // Kategori seciminde bir id atanir; oturum QR uretildiginde (tamamlandi) veya
-  // 20sn islem yapilmadiginda sonlanir. Idle/wifi disindaki HER ekranda 20sn
-  // islem yoksa oturum (varsa terk edilmis olarak kapatilip) idle'a doner.
-  const INACTIVITY_MS = 20_000;
+  // cihaz ayarindaki sure boyunca islem yapilmadiginda sonlanir. Idle/wifi
+  // disindaki HER ekranda timeout olursa oturum terk edilmis kapanip idle'a doner.
   let sessionId = null;           // kategori seciminde atanan oturum id'si
   let sessionFinalized = true;    // cift gonderimi engelleyen koruma
   let sessionSubmitting = false;  // aktif HTTP gönderimi sırasında çift tetiklemeyi engeller
   let inactivityTimer = null;
+  let idleCountdownTimer = null;
+  let idleCountdownActive = false;
+  let idleCountdownRemaining = 5;
 
   function clearInactivity() {
     if (inactivityTimer) { clearTimeout(inactivityTimer); inactivityTimer = null; }
   }
-  function armInactivity() {
-    clearInactivity();
-    inactivityTimer = setTimeout(onInactivityTimeout, INACTIVITY_MS);
+  function clearIdleCountdown() {
+    if (idleCountdownTimer) { clearInterval(idleCountdownTimer); idleCountdownTimer = null; }
+    idleCountdownActive = false;
   }
-  async function onInactivityTimeout() {
-    // 20sn islem yok → varsa terk edilmis oturumu (tamamlandi=false) kapat,
-    // ardindan idle ekranina don.
+  function armInactivity(timeoutMs = 20_000) {
+    clearInactivity();
+    inactivityTimer = setTimeout(onInactivityTimeout, timeoutMs);
+  }
+  function onInactivityTimeout() {
+    // Süre bittiğinde kullanıcının devam eden işlemini korumak için kısa bir
+    // geri sayım gösterilir. Bu sırada global etkileşim sayacı yeniden kurulmaz.
+    clearInactivity();
+    idleCountdownRemaining = 5;
+    idleCountdownActive = true;
+    idleCountdownTimer = setInterval(async () => {
+      idleCountdownRemaining -= 1;
+      if (idleCountdownRemaining > 0) return;
+      clearIdleCountdown();
+      // Kullanıcı devam etmedi: varsa terk edilmiş oturumu kapat ve idle'a dön.
+      await finalizeAbandonedSession();
+      resetToIdle();
+    }, 1000);
+  }
+
+  function continueCurrentSession() {
+    clearIdleCountdown();
+    armInactivity(inactivityMs);
+  }
+
+  async function returnToIdleAfterCountdown() {
+    clearIdleCountdown();
     await finalizeAbandonedSession();
     resetToIdle();
   }
@@ -72,22 +101,25 @@
   // Global inaktivite: idle/wifi_setup disindaki her ekranda zamanlayiciyi kur;
   // bu ekranlarda durdur. Ekran degisimi de bir aktivite sayilir (yeniden kur).
   $: currentScreenName = $screen;
+  $: inactivityMs = ($deviceConfig.interaction_timeout_seconds || 20) * 1000;
   $: if (currentScreenName === 'idle' || currentScreenName === 'wifi_setup') {
     clearInactivity();
-  } else {
-    armInactivity();
+    clearIdleCountdown();
+  } else if (!idleCountdownActive) {
+    armInactivity(inactivityMs);
   }
 
   // Herhangi bir dokunma/tus, aktif ekranda zamanlayiciyi sifirlar.
   function onUserActivity() {
-    if (currentScreenName !== 'idle' && currentScreenName !== 'wifi_setup') {
-      armInactivity();
+    if (!idleCountdownActive && currentScreenName !== 'idle' && currentScreenName !== 'wifi_setup') {
+      armInactivity(inactivityMs);
     }
   }
 
   // Uygulama başlarken internet bağlantısı kontrol edilir.
   // Bağlantı yoksa doğrudan wifi_setup ekranı gösterilir.
   onMount(async () => {
+    startDeviceConfig();
     window.addEventListener('pointerdown', onUserActivity, { passive: true });
     window.addEventListener('keydown', onUserActivity);
     try {
@@ -102,13 +134,16 @@
   });
 
   onDestroy(() => {
+    stopDeviceConfig();
     clearInactivity();
+    clearIdleCountdown();
     window.removeEventListener('pointerdown', onUserActivity);
     window.removeEventListener('keydown', onUserActivity);
   });
 
   function resetToIdle() {
     clearInactivity();
+    clearIdleCountdown();
     sessionId = null;
     sessionFinalized = true;
     sessionSubmitting = false;
@@ -411,6 +446,7 @@
        arasi gecerken ayni <video> DOM instance'i KORUNUR (remount/reload yok);
        yalniz mode/CSS degisir. -->
   <span class="v-badge">v{version}</span>
+  <IdleAudio active={$screen === 'idle'} />
   <div class="ad-strip-host"
        class:ad-strip-host--fullscreen={$screen === 'idle'}
        class:ad-strip-host--hidden={$screen === 'wifi_setup'}>
@@ -418,6 +454,14 @@
       <PlaylistPlayer mode={$screen === 'idle' ? 'fullscreen' : 'strip'} />
     {/if}
   </div>
+
+  {#if idleCountdownActive}
+    <IdleCountdownModal
+      remaining={idleCountdownRemaining}
+      on:continue={continueCurrentSession}
+      on:returnToIdle={returnToIdleAfterCountdown}
+    />
+  {/if}
 </div>
 
 <style>

@@ -24,5 +24,10 @@ class Kullanici(AbstractUser):
         verbose_name = "Kullanici"
         verbose_name_plural = "Kullanicilar"
 
+    def save(self, *args, **kwargs):
+        if self.is_superuser:
+            self.rol = self.Rol.SUPERADMIN
+        super().save(*args, **kwargs)
+
     def __str__(self) -> str:  # pragma: no cover
         return self.username

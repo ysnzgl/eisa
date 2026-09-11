@@ -30,6 +30,11 @@
 
 **kiosklar**
 - id, eczane_id FK, ad, mac_adresi (unique), device_id (unique, nullable), uygulama_anahtari (unique), aktif, is_online, son_goruldu, last_playlist_version
+- Cihaz zamanlayıcıları: interaction_timeout_seconds (default 20), idle_content_min_seconds (10), idle_content_max_seconds (12), idle_content_refresh_seconds (300), idle_audio_delay_seconds (1200), idle_audio_repeat_seconds (300)
+- Ses zaman kuralı: `idle_audio_schedule_mode` (`ALL_DAY` default veya `BUSINESS_HOURS`) ve `idle_audio_play_on_duty` (default false). Sync, seçili eczanenin ileri 370 gün içindeki `idle_audio_duty_dates` listesini edge'e verir.
+- Idle ses: idle_audio_enabled (default false), idle_audio_media_url, idle_audio_object_key, idle_audio_checksum, idle_audio_original_name, idle_audio_content_type
+- **kiosk_audio_assets:** merkezi, tekrar kullanılabilir ses kütüphanesi (object_key unique, checksum, özgün ad, MIME, aktif). Dosyalar storage'da `kiosk-audio/` altında tutulur.
+- **kiosk_idle_audios:** kiosk_id + audio_asset_id FK, dağıtım snapshot alanları ve sira; unique(kiosk, sira). 0012 tek-dosya alanları geriye uyumluluk için korunur.
 - olusturulma_tarihi, guncellenme_tarihi
 - **device_id:** Kalici cihaz UUID, bootstrap sirasinda kilit (MAC spoofing onlenir)
 
@@ -298,9 +303,27 @@
 - Request: `{ "ad": "Yeni Eczane", "il_id": 1, "ilce_id": 5, "adres": "...", "sahip_adi": "...", "telefon": "...", "aktif": true }`
 - Response: `{ "id": 2, ... }`
 
-**GET /api/pharmacies/kiosklar/**
+**GET /api/pharmacies/kiosks/**
 - Auth: JWT (SuperAdmin/Pharmacist)
-- Response: `[{ "id": 1, "eczane": {...}, "mac_adresi": "AA:BB:CC:DD:EE:FF", "aktif": true, "is_online": false }, ...]`
+- Response cihaz zamanlayıcılarını, `idle_audio_enabled` ve salt-okunur sıralı `idle_audio_files[]` (`id`, `asset_id`, `original_name`, `content_type`, `sira`) alanını da içerir.
+
+**PATCH /api/pharmacies/kiosks/{id}/** *(2026-09-11)*
+- Auth: JWT (SuperAdmin)
+- Cihaz ayarları: `{ "interaction_timeout_seconds": 20, "idle_content_min_seconds": 10, "idle_content_max_seconds": 12, "idle_content_refresh_seconds": 300, "idle_audio_delay_seconds": 1200, "idle_audio_repeat_seconds": 300, "idle_audio_schedule_mode": "ALL_DAY", "idle_audio_play_on_duty": false, "idle_audio_enabled": false }`
+- Validasyon: interaction 5–3600; content min/max 5–300 ve min <= max; refresh 30–3600; audio delay 60–86400 saniye.
+
+**POST /api/pharmacies/kiosks/{id}/upload-idle-audio/** *(2026-09-11)*
+- Auth: JWT (SuperAdmin); tekrarlı multipart alanı `files`; MP3/WAV/OGG ve dosya başına en fazla 20 MB. MIME + magic-byte kontrolü yapılır; dosyalar mevcut listenin sonuna eklenir.
+- Response: güncel Kiosk serializer'ı; başarılı upload ses atamasını etkinleştirir.
+
+**GET/POST /api/pharmacies/kiosks/idle-audio-library/** *(2026-09-11)*
+- Auth: JWT (SuperAdmin). GET etkin merkezi ses varlıklarını listeler. POST tekrarlı multipart `files` ile en fazla 20 MP3/WAV/OGG kabul eder; dosya başına sınır 20 MB'dır.
+
+**POST /api/pharmacies/kiosks/{id}/set-idle-audios/** *(2026-09-11)*
+- Auth: JWT (SuperAdmin); `{ "audio_ids": [12, 8] }` kiosk oynatma listesini aynı sıra ile değiştirir. Boş liste atamayı ve ses etkinliğini kapatır; kütüphane dosyasını silmez.
+
+**POST /api/pharmacies/kiosks/{id}/remove-idle-audio/** *(2026-09-11)*
+- Auth: JWT (SuperAdmin); `{ "audio_id": 123 }` tek dosyayı, boş body tüm listeyi kaldırır. Storage nesnesini fiziksel olarak silmez.
 
 ---
 
@@ -310,7 +333,7 @@
 - Auth: `X-Kiosk-Key: <fleet_key>` (header) + HMAC; body: `{ "mac_adresi": "...", "device_id": "...", "timestamp": "ISO", "hmac": "...", "hostname": "...", "device_metadata": { ... } }`
 - `device_id`: Kalici cihaz UUID (crypto.randomUUID), HMAC'e dahil edilir: `HMAC-SHA256(MAC_UPPER + iso_timestamp + device_id, provision_secret)`
 - `hostname` ve `device_metadata` opsiyonel; kiosk_edge `collectDeviceMetadata()` ile otomatik doldurur
-- Response 200 (onaylı+aktif+eczaneli kiosk): `{ "status": "APPROVED", "kiosk_id": 1, "pharmacy_id": 1, "app_key": "..." }` — aynı kiosk tekrar bootstrap yaptığında AYNI `app_key` döner (rotasyon yok)
+- Response 200 (onaylı+aktif+eczaneli kiosk): `{ "status": "APPROVED", "kiosk_id": 1, "pharmacy_id": 1, "app_key": "...", "device_config": {...} }` — aynı kiosk tekrar bootstrap yaptığında AYNI `app_key` döner (rotasyon yok)
 - Response 202 (bilinmeyen/onay bekleyen cihaz, PENDING): `{ "status": "PENDING", "registration_id": "uuid", "retry_after_seconds": 30 }`
 - Response 403 (reddedilmiş): `{ "status": "REJECTED" }`
 - Response 401: Geçersiz fleet key veya HMAC (hangi credential yanlış belirtilmez)
@@ -331,7 +354,8 @@ X-Kiosk-Device-ID: <DEVICE_UUID>  # zorunlu (device_id set edildiyse)
 | Method | Path | Amaç |
 |--------|------|------|
 | GET  | `/api/kiosk/v1/ping/` | Heartbeat + bugünkü playlist versiyonu |
-| GET  | `/api/kiosk/v1/sync/` | Aktif creative + idle içerik (`idle_contents`) + lookup |
+| GET  | `/api/kiosk/v1/sync/` | Aktif creative + idle içerik (`idle_contents`) + cihaz ayarları (`device_config`) + lookup |
+| GET  | `/api/kiosk/v1/media/{object_key}` | AppKey korumalı kiosk medya proxy'si; ilgili kiosk'un atanmış idle ses object key'iyle sınırlıdır |
 | GET  | `/api/kiosk/v1/catalog/` | Kategori/soru/cevap/etken madde/danışma |
 | GET  | `/api/kiosk/v1/playlist/?date=YYYY-MM-DD` | Günün 24 saatlik playlist'i |
 | POST | `/api/kiosk/v1/sessions/` | Oturum outbox (idempotent) — `OturumLoguItemSerializer` |
@@ -363,7 +387,7 @@ X-Kiosk-Device-ID: <DEVICE_UUID>  # zorunlu (device_id set edildiyse)
 - Response 200: rejected KioskProvisioningRequest
 - Response 409: zaten onaylanmış talep
 
-**POST /api/pharmacies/kiosklar/**
+**POST /api/pharmacies/kiosks/**
 - Auth: JWT (SuperAdmin)
 - Request: `{ "eczane_id": 1, "ad": "Kiosk 1", "mac_adresi": "AA:BB:CC:DD:EE:FF", "uygulama_anahtari": "secret-key", "aktif": true }`
 - Response: `{ "id": 1, ... }`
@@ -685,7 +709,23 @@ X-Kiosk-Device-ID: <DEVICE_UUID>  # zorunlu (device_id set edildiyse)
     "etken_maddeler": [...],
     "danisma_kategorileri": [...],
     "creatives": [{ "id": "uuid", "media_url": "...", ... }],
-    "idle_contents": [{ "id": 1, "baslik": "...", "metin": "...", "aktif": true, "updated_at": "..." }]
+    "idle_contents": [{ "id": 1, "baslik": "...", "metin": "...", "aktif": true, "updated_at": "..." }],
+    "device_config": {
+      "interaction_timeout_seconds": 20,
+      "idle_content_min_seconds": 10,
+      "idle_content_max_seconds": 12,
+      "idle_content_refresh_seconds": 300,
+      "idle_audio_delay_seconds": 1200,
+      "idle_audio_repeat_seconds": 300,
+      "idle_audio": {
+        "enabled": true,
+        "files": [{ "id": 1, "media_url": "...", "checksum": "sha256:...", "original_name": "ses.mp3", "content_type": "audio/mpeg", "order": 0 }],
+        "media_url": "...",
+        "checksum": "sha256:...",
+        "original_name": "ses.mp3",
+        "content_type": "audio/mpeg"
+      }
+    }
   }
   ```
 - Body (optional, outbox push):

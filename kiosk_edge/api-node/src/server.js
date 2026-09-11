@@ -30,6 +30,7 @@ import { istanbulNow } from './timezone.js';
 import { requestWithRetry } from './scheduler.js';
 import { handle401Error, handle403Error, hasAppKeyCredentials } from './provisioning.js';
 import { generateNextQr, CROCKFORD_QR_RE } from './qrGen.js';
+import { getDeviceAudioFile, getDeviceConfig } from './deviceConfig.js';
 import {
   seciSonrakiLogo,
   artirGunlukSayi,
@@ -607,6 +608,25 @@ export async function buildServer({ db, settings, logger }) {
     const eczaneRow = db.prepare("SELECT value FROM kiosk_meta WHERE key = 'eczane_adi'").get();
     const kioskRow  = db.prepare("SELECT value FROM kiosk_meta WHERE key = 'kiosk_adi'").get();
     return { eczane_adi: eczaneRow?.value || '', kiosk_adi: kioskRow?.value || '' };
+  });
+
+  // Kiosk UI yalniz lokal, son basarili cihaz config snapshot'ini okur.
+  app.get('/api/device-config', async () => getDeviceConfig(db));
+
+  app.get('/api/device-audio', async (_req, reply) => {
+    const audio = getDeviceAudioFile(db);
+    if (!audio) return reply.code(404).send({ error: 'Idle ses dosyasi hazir degil' });
+    reply.header('Content-Type', audio.contentType);
+    reply.header('Cache-Control', 'no-cache');
+    return reply.send(fs.createReadStream(audio.path));
+  });
+
+  app.get('/api/device-audio/:audioId', async (req, reply) => {
+    const audio = getDeviceAudioFile(db, req.params.audioId);
+    if (!audio) return reply.code(404).send({ error: 'Idle ses dosyasi hazir degil' });
+    reply.header('Content-Type', audio.contentType);
+    reply.header('Cache-Control', 'no-cache');
+    return reply.send(fs.createReadStream(audio.path));
   });
 
   // ── idle içerikleri (İçerik Yönetimi — başlık/metin) read-only ──────────────

@@ -108,6 +108,8 @@ class TestBootstrap:
         assert data["status"] == "APPROVED"
         assert data["kiosk_id"] and data["pharmacy_id"]
         assert data["app_key"]
+        assert data["device_config"]["interaction_timeout_seconds"] == 20
+        assert data["device_config"]["idle_audio_delay_seconds"] == 1200
         assert "iot_token" not in data
         # SQLite tarafinda saklanacak degerin backend'deki App Key ile ayni olmasi
         kiosk = Kiosk.objects.get(mac_adresi__iexact=NEW_MAC)
@@ -191,6 +193,7 @@ class TestOperationalBehaviour:
         body = api_client.get("/api/kiosk/v1/sync/").json()
         assert body["kiosk_id"] == kiosk.pk
         assert "creatives" in body and "idle_contents" in body and "lookups" in body
+        assert body["device_config"]["interaction_timeout_seconds"] == 20
 
     def test_catalog_shape(self, db, api_client, kiosk):
         _appkey_creds(api_client, kiosk)

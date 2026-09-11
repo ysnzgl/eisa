@@ -284,6 +284,38 @@ function initSchema(db, options = {}) {
       value TEXT NOT NULL DEFAULT ''
     );
 
+    -- KIOSK-BAZLI DAVRANIS AYARLARI + OFFLINE IDLE SES CACHE'I (singleton)
+    CREATE TABLE IF NOT EXISTS kiosk_device_config (
+      id                           INTEGER PRIMARY KEY CHECK(id = 1),
+      interaction_timeout_seconds INTEGER NOT NULL DEFAULT 20,
+      idle_content_min_seconds     INTEGER NOT NULL DEFAULT 10,
+      idle_content_max_seconds     INTEGER NOT NULL DEFAULT 12,
+      idle_content_refresh_seconds INTEGER NOT NULL DEFAULT 300,
+      idle_audio_delay_seconds     INTEGER NOT NULL DEFAULT 1200,
+      idle_audio_repeat_seconds    INTEGER NOT NULL DEFAULT 300,
+      idle_audio_enabled           INTEGER NOT NULL DEFAULT 0,
+      audio_source_url             TEXT NOT NULL DEFAULT '',
+      audio_source_checksum        TEXT NOT NULL DEFAULT '',
+      audio_original_name          TEXT NOT NULL DEFAULT '',
+      audio_content_type           TEXT NOT NULL DEFAULT '',
+      audio_local_path             TEXT NOT NULL DEFAULT '',
+      audio_status                 TEXT NOT NULL DEFAULT 'empty',
+      updated_at                   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
+    INSERT OR IGNORE INTO kiosk_device_config (id) VALUES (1);
+
+    CREATE TABLE IF NOT EXISTS kiosk_device_audio_files (
+      audio_id          TEXT PRIMARY KEY,
+      playback_order    INTEGER NOT NULL DEFAULT 0,
+      source_url        TEXT NOT NULL,
+      source_checksum   TEXT NOT NULL DEFAULT '',
+      original_name     TEXT NOT NULL DEFAULT '',
+      content_type      TEXT NOT NULL DEFAULT '',
+      local_path        TEXT NOT NULL DEFAULT '',
+      status            TEXT NOT NULL DEFAULT 'pending',
+      updated_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
+
     -- BARKOD LOGO (fiş baskısında e-ISA başlığı yerine logo rotasyonu)
     CREATE TABLE IF NOT EXISTS barkod_logolar (
       id               TEXT    PRIMARY KEY,

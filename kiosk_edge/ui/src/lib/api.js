@@ -176,6 +176,23 @@ export async function fetchIdleContents() {
   return Array.isArray(list) ? list : [];
 }
 
+/** Kiosk bazli davranis zamanlari ve lokal-cache idle ses manifesti. */
+export async function fetchDeviceConfig() {
+  const config = await _request(`${API_BASE}/api/device-config`, { timeoutMs: 4000 });
+  const rawAudio = config?.idle_audio || {};
+  const rawFiles = Array.isArray(rawAudio.files) && rawAudio.files.length
+    ? rawAudio.files
+    : (rawAudio.media_url ? [{ id: 'legacy', media_url: rawAudio.media_url, original_name: rawAudio.original_name }] : []);
+  return {
+    ...config,
+    idle_audio: {
+      ...rawAudio,
+      files: rawFiles.map((file) => ({ ...file, media_url: _normalizeMediaUrl(file.media_url || '') })),
+      media_url: _normalizeMediaUrl(rawAudio.media_url || rawFiles[0]?.media_url || ''),
+    },
+  };
+}
+
 /** Eczane adını kiosk_meta'dan döner. Offline'da boş string. */
 export async function fetchKioskInfo() {
   try {

@@ -4,12 +4,13 @@ Eczane ve Kiosk yonetim gorunumleri.
 UoW ile yazma: tum CRUD perform_*() metotlari `UnitOfWork(user=request.user)`
 icinden kaydeder; `olusturan/guncelleyen/surum` otomatik islenir.
 """
+import logging
 import re
 import secrets
 
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Count, F
+from django.db.models import Count, F, Max
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -23,16 +24,75 @@ from apps.audit.models import DenetimLogu, kayit_birak
 from apps.core.uow import UnitOfWork
 
 from .auth import KioskAppKeyAuthentication
-from .models import Eczane, Kiosk, KioskEczaneAtama, KioskProvisioningRequest
+from .models import Eczane, Kiosk, KioskAudioAsset, KioskEczaneAtama, KioskIdleAudio, KioskProvisioningRequest
 from .permissions import IsKiosk, IsSuperAdmin
 from .serializers import (
     EczaneSerializer,
+    KioskAudioAssetSerializer,
     KioskProvisioningApproveSerializer,
     KioskProvisioningRejectSerializer,
     KioskProvisioningRequestSerializer,
     KioskSerializer,
     KioskTransferSerializer,
 )
+
+logger = logging.getLogger(__name__)
+
+_AUDIO_TYPE_ALIASES = {
+    "audio/mpeg": "audio/mpeg",
+    "audio/mp3": "audio/mpeg",
+    "audio/wav": "audio/wav",
+    "audio/x-wav": "audio/wav",
+    "audio/wave": "audio/wav",
+    "audio/vnd.wave": "audio/wav",
+    "audio/ogg": "audio/ogg",
+    "application/ogg": "audio/ogg",
+}
+
+
+def _validate_idle_audio(uploaded):
+    content_type = _AUDIO_TYPE_ALIASES.get((uploaded.content_type or "").lower())
+    if content_type is None:
+        return None, "Yalnızca MP3, WAV veya OGG ses dosyası yüklenebilir."
+    if uploaded.size > 20 * 1024 * 1024:
+        return None, "Ses dosyası 20 MB'dan büyük olamaz."
+    header = uploaded.read(12)
+    uploaded.seek(0)
+    valid_magic = (
+        (content_type == "audio/mpeg" and (header.startswith(b"ID3") or (len(header) >= 2 and header[0] == 0xFF and header[1] & 0xE0 == 0xE0)))
+        or (content_type == "audio/wav" and header[:4] == b"RIFF" and header[8:12] == b"WAVE")
+        or (content_type == "audio/ogg" and header[:4] == b"OggS")
+    )
+    if not valid_magic:
+        return None, "Dosya içeriği beyan edilen ses türüyle uyuşmuyor."
+    return content_type, None
+
+
+def _store_idle_audio_assets(validated, user, kiosk_id=None):
+    from apps.core.services.storage_service import StorageService
+
+    storage = StorageService()
+    stored = []
+    for uploaded, content_type in validated:
+        object_key, checksum = storage.upload_file_with_checksum(uploaded, prefix="kiosk-audio")
+        try:
+            media_url = storage.public_url(object_key)
+        except Exception:
+            media_url = ""
+            logger.warning("Kiosk audio public URL could not be generated", extra={"kiosk_id": kiosk_id})
+        stored.append((uploaded, content_type, object_key, checksum, media_url))
+
+    assets = []
+    with UnitOfWork(user=user) as uow:
+        for uploaded, content_type, object_key, checksum, media_url in stored:
+            assets.append(uow.add(KioskAudioAsset(
+                media_url=media_url,
+                object_key=object_key,
+                checksum=checksum,
+                original_name=uploaded.name[:255],
+                content_type=content_type,
+            )))
+    return assets
 
 
 def _client_ip(request):
@@ -333,7 +393,9 @@ class EczaneViewSet(viewsets.ModelViewSet):
 class KioskViewSet(viewsets.ModelViewSet):
     """Kiosk CRUD (super admin) + /me/ (kiosk) + /regenerate-key/ (admin)."""
 
-    queryset = Kiosk.objects.select_related("eczane__il", "eczane__ilce").prefetch_related("eczane_atamalari__eczane").all()
+    queryset = Kiosk.objects.select_related("eczane__il", "eczane__ilce").prefetch_related(
+        "eczane_atamalari__eczane", "idle_audio_files"
+    ).all()
     serializer_class = KioskSerializer
     authentication_classes = [JWTAuthentication, KioskAppKeyAuthentication]
 
@@ -384,6 +446,185 @@ class KioskViewSet(viewsets.ModelViewSet):
             kiosk_mac=instance.mac_adresi,
             ip_adresi=_client_ip(self.request),
         )
+
+    @action(
+        detail=False,
+        methods=["get", "post"],
+        url_path="idle-audio-library",
+        authentication_classes=[JWTAuthentication],
+        permission_classes=[IsSuperAdmin],
+    )
+    def idle_audio_library(self, request):
+        """Merkezi, kiosklar arasinda tekrar kullanilabilen ses kutuphanesi."""
+        if request.method == "GET":
+            assets = KioskAudioAsset.objects.filter(aktif=True).order_by("original_name", "id")
+            return Response(KioskAudioAssetSerializer(assets, many=True).data)
+
+        uploads = request.FILES.getlist("files") or request.FILES.getlist("file")
+        if not uploads:
+            return Response({"detail": "En az bir ses dosyası zorunludur."}, status=status.HTTP_400_BAD_REQUEST)
+        if len(uploads) > 20:
+            return Response({"detail": "Tek seferde en fazla 20 ses dosyası yüklenebilir."}, status=status.HTTP_400_BAD_REQUEST)
+        validated = []
+        for uploaded in uploads:
+            content_type, error = _validate_idle_audio(uploaded)
+            if error:
+                return Response({"detail": f"{uploaded.name}: {error}"}, status=status.HTTP_400_BAD_REQUEST)
+            validated.append((uploaded, content_type))
+        try:
+            assets = _store_idle_audio_assets(validated, request.user)
+        except Exception:
+            logger.exception("Kiosk audio library upload failed")
+            return Response({"detail": "Ses dosyası depolama alanına yüklenemedi."}, status=500)
+        return Response(KioskAudioAssetSerializer(assets, many=True).data, status=status.HTTP_201_CREATED)
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="set-idle-audios",
+        authentication_classes=[JWTAuthentication],
+        permission_classes=[IsSuperAdmin],
+    )
+    def set_idle_audios(self, request, pk=None):
+        """Kutuphanedeki sesleri verilen sirayla kioska atar."""
+        audio_ids = request.data.get("audio_ids")
+        if not isinstance(audio_ids, list):
+            return Response({"detail": "audio_ids bir liste olmalıdır."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            normalized_ids = [int(value) for value in audio_ids]
+        except (TypeError, ValueError):
+            return Response({"detail": "audio_ids yalnızca sayısal kimlikler içermelidir."}, status=400)
+        if len(normalized_ids) != len(set(normalized_ids)):
+            return Response({"detail": "Aynı ses birden fazla kez seçilemez."}, status=400)
+        assets_by_id = {
+            asset.pk: asset for asset in KioskAudioAsset.objects.filter(pk__in=normalized_ids, aktif=True)
+        }
+        if len(assets_by_id) != len(normalized_ids):
+            return Response({"detail": "Seçilen seslerden biri bulunamadı veya pasif."}, status=400)
+
+        with transaction.atomic(), UnitOfWork(user=request.user) as uow:
+            kiosk = Kiosk.objects.select_for_update().get(pk=pk)
+            for assignment in KioskIdleAudio.objects.select_for_update().filter(kiosk=kiosk):
+                uow.delete(assignment)
+            for order, asset_id in enumerate(normalized_ids):
+                asset = assets_by_id[asset_id]
+                uow.add(KioskIdleAudio(
+                    kiosk=kiosk,
+                    audio_asset=asset,
+                    media_url=asset.media_url,
+                    object_key=asset.object_key,
+                    checksum=asset.checksum,
+                    original_name=asset.original_name,
+                    content_type=asset.content_type,
+                    sira=order,
+                ))
+            kiosk.idle_audio_enabled = bool(normalized_ids)
+            kiosk.idle_audio_media_url = ""
+            kiosk.idle_audio_object_key = ""
+            kiosk.idle_audio_checksum = ""
+            kiosk.idle_audio_original_name = ""
+            kiosk.idle_audio_content_type = ""
+            uow.update(kiosk, update_fields=[
+                "idle_audio_enabled", "idle_audio_media_url", "idle_audio_object_key",
+                "idle_audio_checksum", "idle_audio_original_name", "idle_audio_content_type",
+            ])
+        kiosk = self.get_queryset().get(pk=pk)
+        return Response(KioskSerializer(kiosk).data)
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="upload-idle-audio",
+        authentication_classes=[JWTAuthentication],
+        permission_classes=[IsSuperAdmin],
+    )
+    def upload_idle_audio(self, request, pk=None):
+        """Bir veya daha fazla idle sesini mevcut listenin sonuna ekler."""
+        uploads = request.FILES.getlist("files") or request.FILES.getlist("file")
+        if not uploads:
+            return Response({"detail": "En az bir ses dosyası zorunludur."}, status=status.HTTP_400_BAD_REQUEST)
+        if len(uploads) > 20:
+            return Response({"detail": "Tek seferde en fazla 20 ses dosyası yüklenebilir."}, status=status.HTTP_400_BAD_REQUEST)
+        validated = []
+        for uploaded in uploads:
+            content_type, error = _validate_idle_audio(uploaded)
+            if error:
+                return Response({"detail": f"{uploaded.name}: {error}"}, status=status.HTTP_400_BAD_REQUEST)
+            validated.append((uploaded, content_type))
+
+        kiosk: Kiosk = self.get_object()
+        try:
+            assets = _store_idle_audio_assets(validated, request.user, kiosk.pk)
+        except Exception:
+            logger.exception("Kiosk idle audio upload failed", extra={"kiosk_id": kiosk.pk})
+            return Response(
+                {"detail": "Ses dosyası depolama alanına yüklenemedi."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        with transaction.atomic(), UnitOfWork(user=request.user) as uow:
+            kiosk = Kiosk.objects.select_for_update().get(pk=kiosk.pk)
+            max_order = KioskIdleAudio.objects.filter(kiosk=kiosk).aggregate(value=Max("sira"))["value"]
+            next_order = 0 if max_order is None else max_order + 1
+            for offset, asset in enumerate(assets):
+                uow.add(KioskIdleAudio(
+                    kiosk=kiosk,
+                    audio_asset=asset,
+                    media_url=asset.media_url,
+                    object_key=asset.object_key,
+                    checksum=asset.checksum,
+                    original_name=asset.original_name,
+                    content_type=asset.content_type,
+                    sira=next_order + offset,
+                ))
+            kiosk.idle_audio_enabled = True
+            uow.update(kiosk, update_fields=["idle_audio_enabled"])
+        kayit_birak(
+            eylem=DenetimLogu.Eylem.GUNCELLE,
+            aktor=request.user,
+            hedef=kiosk,
+            ozet=f"Kiosk idle ses listesine {len(assets)} dosya eklendi: {kiosk.mac_adresi}",
+            kiosk_mac=kiosk.mac_adresi,
+            ip_adresi=_client_ip(request),
+        )
+        kiosk = self.get_queryset().get(pk=kiosk.pk)
+        return Response(KioskSerializer(kiosk).data, status=status.HTTP_200_OK)
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="remove-idle-audio",
+        authentication_classes=[JWTAuthentication],
+        permission_classes=[IsSuperAdmin],
+    )
+    def remove_idle_audio(self, request, pk=None):
+        """Tek sesi veya tum listeyi kaldirir; storage objelerini fiziksel silmez."""
+        kiosk: Kiosk = self.get_object()
+        audio_id = request.data.get("audio_id")
+        with transaction.atomic(), UnitOfWork(user=request.user) as uow:
+            kiosk = Kiosk.objects.select_for_update().get(pk=kiosk.pk)
+            files = KioskIdleAudio.objects.select_for_update().filter(kiosk=kiosk)
+            if audio_id not in (None, ""):
+                target = files.filter(pk=audio_id).first()
+                if target is None:
+                    return Response({"detail": "Ses dosyası bulunamadı."}, status=status.HTTP_404_NOT_FOUND)
+                uow.delete(target)
+            else:
+                for target in files:
+                    uow.delete(target)
+                kiosk.idle_audio_media_url = ""
+                kiosk.idle_audio_object_key = ""
+                kiosk.idle_audio_checksum = ""
+                kiosk.idle_audio_original_name = ""
+                kiosk.idle_audio_content_type = ""
+            if not KioskIdleAudio.objects.filter(kiosk=kiosk).exists() and not kiosk.idle_audio_object_key:
+                kiosk.idle_audio_enabled = False
+            uow.update(kiosk, update_fields=[
+                "idle_audio_enabled", "idle_audio_media_url", "idle_audio_object_key",
+                "idle_audio_checksum", "idle_audio_original_name", "idle_audio_content_type",
+            ])
+        kiosk = self.get_queryset().get(pk=kiosk.pk)
+        return Response(KioskSerializer(kiosk).data, status=status.HTTP_200_OK)
 
     @action(
         detail=True, methods=["post"], url_path="transfer",

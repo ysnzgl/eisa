@@ -17,10 +17,7 @@
 
 import { writable, get } from 'svelte/store';
 import { fetchIdleContents, fetchKioskInfo } from './api.js';
-
-const REFRESH_MS = 5 * 60 * 1000;
-const DWELL_MIN = 10000;
-const DWELL_MAX = 12000;
+import { deviceConfig, DEFAULT_DEVICE_CONFIG } from './deviceConfigStore.js';
 
 export const currentIdleContent = writable(null);
 export const eczaneAdi = writable('');
@@ -32,6 +29,7 @@ let lastShownId = null;
 let rotateTimer = null;
 let refreshTimer = null;
 let started = false;
+let configUnsubscribe = null;
 
 function shuffle(arr) {
   const a = arr.slice();
@@ -52,8 +50,11 @@ function refillBag() {
 }
 
 function dwellFor(item) {
+  const config = get(deviceConfig);
+  const dwellMin = (config.idle_content_min_seconds ?? DEFAULT_DEVICE_CONFIG.idle_content_min_seconds) * 1000;
+  const dwellMax = (config.idle_content_max_seconds ?? DEFAULT_DEVICE_CONFIG.idle_content_max_seconds) * 1000;
   const len = (item?.metin || '').length;
-  return Math.min(DWELL_MAX, Math.max(DWELL_MIN, DWELL_MIN + len * 27));
+  return Math.min(dwellMax, Math.max(dwellMin, dwellMin + len * 27));
 }
 
 function clearRotate() {
@@ -122,11 +123,24 @@ export function startIdleContent() {
     if (info?.kiosk_adi)  kioskId.set(info.kiosk_adi);
   });
   refresh();
-  refreshTimer = setInterval(refresh, REFRESH_MS);
+  configUnsubscribe = deviceConfig.subscribe((config) => {
+    if (!started) return;
+    if (refreshTimer) clearInterval(refreshTimer);
+    refreshTimer = setInterval(
+      refresh,
+      (config.idle_content_refresh_seconds ?? DEFAULT_DEVICE_CONFIG.idle_content_refresh_seconds) * 1000,
+    );
+    if (contents.length > 1) {
+      clearRotate();
+      rotateTimer = setTimeout(advance, dwellFor(get(currentIdleContent)));
+    }
+  });
 }
 
 export function stopIdleContent() {
   started = false;
   clearRotate();
   if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+  configUnsubscribe?.();
+  configUnsubscribe = null;
 }

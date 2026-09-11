@@ -63,6 +63,23 @@ export function mapKioskFromApi(k) {
     lastPing: k.son_goruldu,
     lastIp: k.last_ip ?? null,
     health: k.durum ?? null,
+    interactionTimeoutSeconds: k.interaction_timeout_seconds ?? 20,
+    idleContentMinSeconds: k.idle_content_min_seconds ?? 10,
+    idleContentMaxSeconds: k.idle_content_max_seconds ?? 12,
+    idleContentRefreshSeconds: k.idle_content_refresh_seconds ?? 300,
+    idleAudioDelaySeconds: k.idle_audio_delay_seconds ?? 1200,
+    idleAudioRepeatSeconds: k.idle_audio_repeat_seconds ?? 300,
+    idleAudioScheduleMode: k.idle_audio_schedule_mode ?? 'ALL_DAY',
+    idleAudioPlayOnDuty: k.idle_audio_play_on_duty === true,
+    idleAudioEnabled: k.idle_audio_enabled === true,
+    idleAudioUrl: k.idle_audio_media_url ?? '',
+    idleAudioOriginalName: k.idle_audio_original_name ?? '',
+    idleAudioFiles: Array.isArray(k.idle_audio_files) && k.idle_audio_files.length
+      ? k.idle_audio_files.map(file => ({
+          id: file.id, originalName: file.original_name, contentType: file.content_type, order: file.sira,
+          assetId: file.asset_id ?? file.id,
+        }))
+      : (k.idle_audio_original_name ? [{ id: null, originalName: k.idle_audio_original_name, order: 0 }] : []),
     assignments: (k.atama_gecmisi ?? []).map(a => ({
       id: a.id, pharmacyId: a.eczane, pharmacyName: a.eczane_adi,
       startedAt: a.baslangic_zamani, endedAt: a.bitis_zamani,
@@ -129,6 +146,15 @@ export async function updateKiosk(id, data) {
   if (data.mac !== undefined) payload.mac_adresi = data.mac;
   if (data.ad !== undefined) payload.ad = data.ad;
   if (data.isActive !== undefined) payload.aktif = data.isActive;
+  if (data.interactionTimeoutSeconds !== undefined) payload.interaction_timeout_seconds = data.interactionTimeoutSeconds;
+  if (data.idleContentMinSeconds !== undefined) payload.idle_content_min_seconds = data.idleContentMinSeconds;
+  if (data.idleContentMaxSeconds !== undefined) payload.idle_content_max_seconds = data.idleContentMaxSeconds;
+  if (data.idleContentRefreshSeconds !== undefined) payload.idle_content_refresh_seconds = data.idleContentRefreshSeconds;
+  if (data.idleAudioDelaySeconds !== undefined) payload.idle_audio_delay_seconds = data.idleAudioDelaySeconds;
+  if (data.idleAudioRepeatSeconds !== undefined) payload.idle_audio_repeat_seconds = data.idleAudioRepeatSeconds;
+  if (data.idleAudioScheduleMode !== undefined) payload.idle_audio_schedule_mode = data.idleAudioScheduleMode;
+  if (data.idleAudioPlayOnDuty !== undefined) payload.idle_audio_play_on_duty = data.idleAudioPlayOnDuty;
+  if (data.idleAudioEnabled !== undefined) payload.idle_audio_enabled = data.idleAudioEnabled;
   const { data: updated } = await http.patch(`/api/pharmacies/kiosks/${id}/`, payload);
   return mapKioskFromApi(updated);
 }
@@ -143,6 +169,42 @@ export async function deleteKiosk(id) {
 export async function resetKioskDeviceId(id) {
   const { data } = await http.post(`/api/pharmacies/kiosks/${id}/reset-device-id/`);
   return data;
+}
+
+export async function uploadKioskIdleAudio(id, files) {
+  const body = new FormData();
+  for (const file of files) body.append('files', file);
+  const { data } = await http.post(`/api/pharmacies/kiosks/${id}/upload-idle-audio/`, body);
+  return mapKioskFromApi(data);
+}
+
+export async function listKioskAudioLibrary() {
+  const { data } = await http.get('/api/pharmacies/kiosks/idle-audio-library/');
+  const items = Array.isArray(data) ? data : (data?.results ?? []);
+  return items.map(asset => ({
+    id: asset.id,
+    originalName: asset.original_name,
+    contentType: asset.content_type,
+    checksum: asset.checksum,
+  }));
+}
+
+export async function uploadKioskAudioLibrary(files) {
+  const body = new FormData();
+  for (const file of files) body.append('files', file);
+  const { data } = await http.post('/api/pharmacies/kiosks/idle-audio-library/', body);
+  return data.map(asset => ({ id: asset.id, originalName: asset.original_name, contentType: asset.content_type }));
+}
+
+export async function setKioskIdleAudios(id, audioIds) {
+  const { data } = await http.post(`/api/pharmacies/kiosks/${id}/set-idle-audios/`, { audio_ids: audioIds });
+  return mapKioskFromApi(data);
+}
+
+export async function removeKioskIdleAudio(id, audioId = null) {
+  const payload = audioId === null ? {} : { audio_id: audioId };
+  const { data } = await http.post(`/api/pharmacies/kiosks/${id}/remove-idle-audio/`, payload);
+  return mapKioskFromApi(data);
 }
 
 export async function transferKiosk(id, pharmacyId, reason = '') {

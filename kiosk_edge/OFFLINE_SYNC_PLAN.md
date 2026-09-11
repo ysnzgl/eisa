@@ -8,7 +8,7 @@
 
 Akis:
 1. Pull katalog: /api/kiosk/v1/catalog/
-2. Pull kiosk reklam + lookup: /api/kiosk/v1/sync/
+2. Pull kiosk reklam + lookup + cihaz ayarı/idle ses manifesti: /api/kiosk/v1/sync/
 3. Ping versiyon kontrolu: /api/kiosk/v1/ping/
 4. Playlist guncelleme: /api/kiosk/v1/playlist/?date=YYYY-MM-DD
 5. Push oturum outbox: /api/kiosk/v1/sessions/
@@ -17,6 +17,7 @@ Akis:
 ## 2) Veri Guncelligi Stratejisi
 
 - Katalog ve reklamlar periyodik pull ile yenilenir.
+- Cihaz-bazli is zamanlayicilari `device_config` ile `kiosk_device_config` tablosuna yazilir. Provisioning tamamlaninca tetiklenen ilk pull bu ayarlari ve varsa idle sesi de alir.
 - Playlist icin versiyon tabanli delta-sync kullanilir:
   - ping.playlist_version > local_version ise playlist yeniden cekilir.
 - Idempotency anahtari ile oturum push tekrarli gonderimde cift kayit olusmaz.
@@ -31,6 +32,10 @@ Akis:
 - Reklam medya dosyalari local diskte cache'lenir.
   - UI media_url olarak once lokal endpoint kullanir: /api/media/{assetType}/{assetId}
   - Lokal dosya yoksa remote_media_url fallback yapilir.
+- Kiosk idle ses listesi `kiosk_device_audio_files` tablosu ve ayri lokal dosyalar olarak cache'lenir:
+  - Indirme AppKey korumali merkezi medya proxy'sinden yapilir.
+  - SHA-256 dogrulanmadan aktif edilmez; gecici dosya atomik olarak asil dosyanin yerine alinir.
+  - Yeni listenin herhangi bir indirmesi basarisizsa son calisan liste korunur. UI yalniz lokal `/api/device-audio/{id}` endpoint'lerini kullanir.
 
 ## 4) Lokal Medya Saklama Kurallari
 
@@ -49,3 +54,4 @@ Akis:
   - Pull: 10-15 dk
   - Push: 1-5 dk
   - Ping: 30-60 sn
+- Bu teknik scheduler araliklari portal cihaz ayarlarina dahil degildir. Portal UI/is zamanlayicilarini yonetir: inaktivite (default 20 sn), idle icerik min/max (10/12 sn), refresh (300 sn), ilk idle ses beklemesi (1200 sn) ve sonraki sesler arasi bekleme (300 sn).

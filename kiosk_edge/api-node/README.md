@@ -28,6 +28,8 @@ npm run test:coverage
 
 ## Ortam Değişkenleri
 
+Node.js 22 veya üstü gereklidir. Node 24 kullanılan geliştirme ortamlarında `better-sqlite3` 13.x kullanılmalıdır; eski 11.x sürümü native kapanış hatasıyla edge sürecini durdurabilir.
+
 `.env.example` dosyasina bakin. Uretim ve gelistirme icin tum `EISA_*` degiskenleri buradadir.
 
 | Değişken | Varsayılan |
@@ -42,6 +44,8 @@ npm run test:coverage
 | `EISA_DEV_MODE` | `false` |
 | `EISA_HOST` | `127.0.0.1` |
 | `EISA_PORT` | `8765` |
+
+Yerel geliştirmede `kiosk_edge/api-node/.env` içindeki `EISA_CENTRAL_API_BASE=http://localhost:8000` kullanılmalıdır. Provisioning isteğinin görünmesi için edge API'nin ayrıca `npm run dev` ile 8765 portunda çalışıyor olması gerekir.
 
 Bootstrap akis:
 
