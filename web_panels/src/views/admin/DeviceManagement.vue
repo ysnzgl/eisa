@@ -1183,7 +1183,13 @@ async function copyAppKey() {
         @click.self="closeModal"
       >
         <Transition name="modal" appear>
-          <div v-if="modalOpen" id="pharmacy-modal" class="eisa-modal" :class="{ 'eisa-modal--big': modalMode === 'add' }">
+          <div
+            v-if="modalOpen"
+            id="pharmacy-modal"
+            class="eisa-modal"
+            :class="{ 'eisa-modal--big': modalMode === 'add' }"
+            :style="modalMode === 'edit' ? { maxWidth: '760px' } : {}"
+          >
             <div class="eisa-modal-header">
               <h3 class="eisa-modal-title">
                 {{ modalMode === 'add' ? 'Yeni Eczane Ekle' : 'Eczane Düzenle' }}

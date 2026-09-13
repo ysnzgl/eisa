@@ -77,6 +77,7 @@ urlpatterns = [
     path("api/kiosk/v1/", include("apps.kiosk_api.urls")),
     path("api/barkod-logo/", include("apps.barkod_logo.urls")),
     path("api/destek/", include("apps.destek.urls")),
+    path("api/is-takip/", include("apps.gorevler.urls")),
     path("api/announcements/", include("apps.announcements.urls")),
 ]
 

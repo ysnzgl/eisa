@@ -25,6 +25,7 @@ const routes = [
       { path: 'pharmacy-campaigns', component: () => import('../views/admin/PharmacyCampaigns.vue') },
       { path: 'barkod-logolar', component: () => import('../views/admin/BarkodLogoYonetimi.vue') },
       { path: 'destek', component: () => import('../views/admin/DestekYonetimi.vue') },
+      { path: 'is-takip', component: () => import('../views/admin/GorevYonetimi.vue') },
       { path: 'dooh/control-center', component: () => import('../views/admin/DoohControlCenter.vue') },
       { path: 'playlists',     component: () => import('../views/admin/PlaylistEditor.vue') },
       { path: 'pricing',       component: () => import('../views/admin/PricingMatrixConfigurator.vue') },

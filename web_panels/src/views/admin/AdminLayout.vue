@@ -59,6 +59,7 @@ const adminNavItems = [
   { to: '/admin/pharmacy-campaigns',         icon: 'fa-prescription-bottle-medical', label: 'Eczacı Ekran Sponsorluk' },
   { to: '/admin/barkod-logolar',             icon: 'fa-barcode',       label: 'Barkod Logo Sponsorluk' },
   { to: '/admin/destek',                     icon: 'fa-headset',       label: 'Görüş ve Destek', badgeKey: 'destekYeni' },
+  { to: '/admin/is-takip',                   icon: 'fa-list-check',    label: 'İş Takibi' },
   { to: '/admin/dooh/control-center',        icon: 'fa-gauge-high',    label: 'Kontrol Merkezi' },
   { to: '/admin/playlists',                  icon: 'fa-list-ol',       label: 'Gelişmiş Manuel Yayın' },
   { to: '/admin/pricing',                    icon: 'fa-coins',         label: 'Fiyat Matrisi' },

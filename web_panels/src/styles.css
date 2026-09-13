@@ -281,7 +281,7 @@ body {
     padding: 0.6rem 0.9rem;
     background: #fff;
     color: var(--text);
-    border: 1.5px solid var(--border);
+    border: 1px solid #D5DCE6;
     border-radius: 10px;
     font-size: 0.9rem;
     font-family: inherit;

@@ -62,6 +62,7 @@ INSTALLED_APPS = [
     "apps.kiosk_api",
     "apps.barkod_logo",
     "apps.destek",
+    "apps.gorevler",
     "apps.announcements",
 ]
 
