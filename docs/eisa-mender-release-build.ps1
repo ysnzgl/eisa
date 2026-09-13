@@ -215,17 +215,26 @@ rm -rf \
 find /build/api -type d -name .git -prune -exec rm -rf {} +
 find /build/api -type f \
   \( -name '.env' -o -name '.env.*' -o -name '*.db' \
-     -o -name '*.sqlite' -o -name '*.sqlite3' \) -delete
+     -o -name '*.db-*' -o -name '*.sqlite' -o -name '*.sqlite-*' \
+     -o -name '*.sqlite3' -o -name '*.sqlite3-*' \) -delete
 
 cd /build/api
 test -f package.json
 test -f package-lock.json
 test -f src/index.js
 
-echo "Native Node modulleri Debian 12 uzerinde kaynak koddan derleniyor."
+echo "Node bagimliliklari Debian 12 release ortamina kuruluyor."
 npm_config_build_from_source=true \
 npm_config_ignore_scripts=false \
 npm ci --omit=dev
+
+# better-sqlite3 13.x tum desteklenen platformlarin hazir ikililerini ayni
+# npm paketinde tasir. Bu release yalnizca Debian 12 x86_64 hedeflediginden
+# kullanilmayan Windows, macOS, ARM ve musl ikililerini payload'a alma.
+BETTER_SQLITE3_PREBUILDS="/build/api/node_modules/better-sqlite3/prebuilds"
+test -f "${BETTER_SQLITE3_PREBUILDS}/linux-x64.node"
+find "${BETTER_SQLITE3_PREBUILDS}" \
+  -type f -name '*.node' ! -name 'linux-x64.node' -delete
 
 echo "=== API RELEASE KOPYASI ==="
 cp -a /build/api/. /build/release/api/
@@ -243,7 +252,8 @@ rm -rf \
 find /build/ui-source -type d -name .git -prune -exec rm -rf {} +
 find /build/ui-source -type f \
   \( -name '.env' -o -name '.env.*' -o -name '*.db' \
-     -o -name '*.sqlite' -o -name '*.sqlite3' \) -delete
+     -o -name '*.db-*' -o -name '*.sqlite' -o -name '*.sqlite-*' \
+     -o -name '*.sqlite3' -o -name '*.sqlite3-*' \) -delete
 
 cd /build/ui-source
 test -f package.json
@@ -266,7 +276,8 @@ test "$(cat /build/release/VERSION)" = "${EISA_VERSION}"
 
 FORBIDDEN_PATH="$(find /build/release -type f \
   \( -name '.env' -o -name '.env.*' -o -name '*.db' \
-     -o -name '*.sqlite' -o -name '*.sqlite3' \) -print -quit)"
+     -o -name '*.db-*' -o -name '*.sqlite' -o -name '*.sqlite-*' \
+     -o -name '*.sqlite3' -o -name '*.sqlite3-*' \) -print -quit)"
 
 if [ -n "${FORBIDDEN_PATH}" ]; then
   echo "HATA: Yasakli dosya payload'a girdi: ${FORBIDDEN_PATH}" >&2
@@ -279,7 +290,7 @@ NATIVE_COUNT=0
 while IFS= read -r -d '' NATIVE_MODULE; do
   NATIVE_COUNT=$((NATIVE_COUNT + 1))
   echo "Native modul: ${NATIVE_MODULE}"
-  file "${NATIVE_MODULE}" | grep -F 'x86-64'
+  file "${NATIVE_MODULE}" | grep -E 'ELF 64-bit.*x86-64'
   ldd "${NATIVE_MODULE}"
 
   MAX_GLIBC="$(
@@ -302,9 +313,8 @@ done < <(find /build/release/api/node_modules -type f -name '*.node' -print0)
 
 test "${NATIVE_COUNT}" -ge 1
 
-BETTER_SQLITE3="$(find /build/release/api/node_modules \
-  -type f -name 'better_sqlite3.node' -print -quit)"
-test -n "${BETTER_SQLITE3}"
+BETTER_SQLITE3="/build/release/api/node_modules/better-sqlite3/prebuilds/linux-x64.node"
+test -f "${BETTER_SQLITE3}"
 
 echo "=== BETTER-SQLITE3 CALISMA TESTI ==="
 cd /build/release/api

@@ -11,7 +11,7 @@
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 # ── Stage 1: UI Build ────────────────────────────────────────────────
-FROM node:20-alpine AS ui-build
+FROM node:22.23.2-alpine AS ui-build
 
 WORKDIR /ui
 
@@ -27,7 +27,7 @@ RUN npm run build
 
 
 # ── Stage 2: API Dependencies ────────────────────────────────────────
-FROM node:20-alpine AS api-deps
+FROM node:22.23.2-alpine AS api-deps
 
 WORKDIR /api
 
@@ -39,7 +39,7 @@ RUN npm ci --omit=dev
 
 
 # ── Stage 3: Runner ──────────────────────────────────────────────────
-FROM node:20-alpine AS runner
+FROM node:22.23.2-alpine AS runner
 
 ENV NODE_ENV=production
 

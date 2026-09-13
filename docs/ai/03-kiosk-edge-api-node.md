@@ -56,7 +56,7 @@ Backend kapalı/erişilemezse:
 3. **Outbox pattern:** Session/impression logları lokal toplanır, batch olarak backend'e gönderilir
 4. **Provisioning:** Kiosk ilk açılışta backend'e kayıt olur, App Key alır
 
-**Mimari:** Node.js 20+, Fastify 5, better-sqlite3, node-cron scheduler
+**Mimari:** Node.js 22.23.2, Fastify 5, better-sqlite3, node-cron scheduler
 
 ---
 
@@ -339,7 +339,7 @@ API Node ve UI **tek container** içinde birlikte çalışır:
 
 **Özellikler:**
 - Multi-stage build (ui-build → api-deps → runner)
-- Alpine Linux + Node.js 20
+- Alpine Linux + Node.js 22.23.2
 - better-sqlite3 native derleme (python3/make/g++ build stage)
 - SQLite + media persistence: `/var/lib/eisa` volume
 

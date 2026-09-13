@@ -28,7 +28,7 @@ npm run test:coverage
 
 ## Ortam Değişkenleri
 
-Node.js 22 veya üstü gereklidir. Node 24 kullanılan geliştirme ortamlarında `better-sqlite3` 13.x kullanılmalıdır; eski 11.x sürümü native kapanış hatasıyla edge sürecini durdurabilir.
+Kiosk çalışma ve release build ortamı Node.js `22.23.2` kullanır; desteklenen major sürüm `22.x` ile sınırlıdır. `better-sqlite3` 13.x kullanılmalıdır; eski 11.x sürümü native kapanış hatasıyla edge sürecini durdurabilir.
 
 `.env.example` dosyasina bakin. Uretim ve gelistirme icin tum `EISA_*` degiskenleri buradadir.
 

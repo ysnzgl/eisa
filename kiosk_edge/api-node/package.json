@@ -14,7 +14,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "engines": {
-    "node": ">=22"
+    "node": "22.x"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",
