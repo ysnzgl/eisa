@@ -434,10 +434,9 @@ export async function pullFromCentral(db, settings, log = console) {
         }
       });
       tx(data);
-      
+
       // Re-enable FK checks
       db.exec('PRAGMA foreign_keys = ON');
-      tx(data);
       log.info?.(`PULL: ${(data.kategoriler || []).length} kategori, ${(data.etken_maddeler || []).length} etken madde, ${(data.danisma_kategorileri || []).length} danisma guncellendi`);
 
       // kiosk_meta alanlarını kaydet (provisioning dışı slot bilgisi burada dağıtılır)
@@ -1171,10 +1170,15 @@ export function startScheduler(db, settings, log = console) {
     const state = getProvisioningState(db);
     if (state !== 'APPROVED' || !hasAppKeyCredentials(db)) {
       log?.info?.({ event: 'provision_retry', state }, 'Provisioning retry tetiklendi');
-      await resolveRuntimeSettings(db, settings, log);
+      const provisionedSettings = await resolveRuntimeSettings(db, settings, log);
       // Bootstrap yeni tamamlandiysa pull + ping tetikle (15 dk bekleme olmadan).
       if (hasAppKeyCredentials(db)) {
         log?.info?.({ event: 'post_provision_pull' }, 'Provision sonrasi ilk veri + ping cekiliyor');
+        if (provisionedSettings.bootstrapDeviceConfig) {
+          await syncDeviceConfig(db, provisionedSettings.bootstrapDeviceConfig, provisionedSettings, log).catch((err) =>
+            log?.warn?.({ err: err?.message }, 'Provision sonrasi ses/config indirmesi basarisiz; full pull tekrar deneyecek'),
+          );
+        }
         await pullFromCentral(db, settings, log).catch((err) =>
           log?.warn?.({ err: err?.message }, 'Provision sonrasi pull basarisiz'),
         );

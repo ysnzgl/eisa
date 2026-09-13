@@ -39,6 +39,45 @@ import {
   commitBasariliBaski,
 } from './barkodLogoService.js';
 
+function sendAudioFile(req, reply, audio) {
+  const size = fs.statSync(audio.path).size;
+  const range = req.headers.range;
+  reply.header('Content-Type', audio.contentType);
+  reply.header('Accept-Ranges', 'bytes');
+  reply.header('Cache-Control', 'no-cache');
+
+  if (!range) {
+    reply.header('Content-Length', size);
+    return reply.send(fs.createReadStream(audio.path));
+  }
+
+  const match = /^bytes=(\d*)-(\d*)$/.exec(range);
+  if (!match || (!match[1] && !match[2])) {
+    return reply.code(416).header('Content-Range', `bytes */${size}`).send();
+  }
+  let start;
+  let end;
+  if (!match[1]) {
+    const suffixLength = Number.parseInt(match[2], 10);
+    if (!Number.isInteger(suffixLength) || suffixLength <= 0) {
+      return reply.code(416).header('Content-Range', `bytes */${size}`).send();
+    }
+    start = Math.max(0, size - suffixLength);
+    end = size - 1;
+  } else {
+    start = Number.parseInt(match[1], 10);
+    end = match[2] ? Number.parseInt(match[2], 10) : size - 1;
+  }
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || start >= size || end < start) {
+    return reply.code(416).header('Content-Range', `bytes */${size}`).send();
+  }
+  end = Math.min(end, size - 1);
+  reply.code(206);
+  reply.header('Content-Range', `bytes ${start}-${end}/${size}`);
+  reply.header('Content-Length', end - start + 1);
+  return reply.send(fs.createReadStream(audio.path, { start, end }));
+}
+
 /**
  * @param {object} opts
  * @param {import('better-sqlite3').Database} opts.db
@@ -325,7 +364,7 @@ export async function buildServer({ db, settings, logger }) {
 
     // Idempotency: ayni key daha once yerel QR ile kaydedilmis mi?
     const existingRow = db.prepare(
-      'SELECT payload, gonderilme_tarihi FROM oturum_outbox WHERE idempotency_anahtari = ? LIMIT 1'
+      'SELECT payload, olusturulma_tarihi, gonderilme_tarihi FROM oturum_outbox WHERE idempotency_anahtari = ? LIMIT 1'
     ).get(idempotencyAnahtari);
     if (existingRow) {
       const existingPayload = safeJson(existingRow.payload, {});
@@ -360,6 +399,7 @@ export async function buildServer({ db, settings, logger }) {
         }
         return reply.status(201).send({
           qr_kodu: existingPayload.qr_kodu,
+          qr_olusturulma_tarihi: existingPayload.olusturulma_tarihi || existingRow.olusturulma_tarihi || null,
           durum: 'kaydedildi',
           yazici_ok: printerOk,
           sync_durum: existingRow.gonderilme_tarihi ? 'gonderildi' : 'bekliyor',
@@ -549,6 +589,7 @@ export async function buildServer({ db, settings, logger }) {
 
     return reply.status(201).send({
       qr_kodu: qrKodu,
+      qr_olusturulma_tarihi: olusturulmaTarihi,
       durum: 'kaydedildi',
       yazici_ok: printerOk,
       sync_durum: 'bekliyor',
@@ -589,6 +630,22 @@ export async function buildServer({ db, settings, logger }) {
     if (!row) return fail(reply, 404, 'Kayit bulunamadi');
     return { sync_durum: row.gonderilme_tarihi ? 'gonderildi' : 'bekliyor' };
   });
+
+  app.get('/api/oturum/last-qr', async () => {
+    const row = db.prepare(
+      `SELECT payload, olusturulma_tarihi
+         FROM oturum_outbox
+        WHERE json_extract(payload, '$.qr_kodu') IS NOT NULL
+          AND json_extract(payload, '$.qr_kodu') <> ''
+        ORDER BY COALESCE(json_extract(payload, '$.olusturulma_tarihi'), olusturulma_tarihi) DESC,
+                 id DESC
+        LIMIT 1`
+    ).get();
+    if (!row) return { last_qr_created_at: null };
+    const payload = safeJson(row.payload, {});
+    return { last_qr_created_at: payload.olusturulma_tarihi || row.olusturulma_tarihi || null };
+  });
+
   // â”€â”€ reklamlar / DOOH assets (geriye dÃ¶nÃ¼k uyumluluk) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   app.get('/api/reklamlar/aktif', async () => {
     const creatives = db
@@ -613,20 +670,16 @@ export async function buildServer({ db, settings, logger }) {
   // Kiosk UI yalniz lokal, son basarili cihaz config snapshot'ini okur.
   app.get('/api/device-config', async () => getDeviceConfig(db));
 
-  app.get('/api/device-audio', async (_req, reply) => {
+  app.get('/api/device-audio', async (req, reply) => {
     const audio = getDeviceAudioFile(db);
     if (!audio) return reply.code(404).send({ error: 'Idle ses dosyasi hazir degil' });
-    reply.header('Content-Type', audio.contentType);
-    reply.header('Cache-Control', 'no-cache');
-    return reply.send(fs.createReadStream(audio.path));
+    return sendAudioFile(req, reply, audio);
   });
 
   app.get('/api/device-audio/:audioId', async (req, reply) => {
     const audio = getDeviceAudioFile(db, req.params.audioId);
     if (!audio) return reply.code(404).send({ error: 'Idle ses dosyasi hazir degil' });
-    reply.header('Content-Type', audio.contentType);
-    reply.header('Cache-Control', 'no-cache');
-    return reply.send(fs.createReadStream(audio.path));
+    return sendAudioFile(req, reply, audio);
   });
 
   // ── idle içerikleri (İçerik Yönetimi — başlık/metin) read-only ──────────────

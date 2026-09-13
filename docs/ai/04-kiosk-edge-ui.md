@@ -32,9 +32,10 @@
   - Kullanıcı verisi, QR içeriği, cevaplar, öneri listesi GÖNDERİLMEZ. Rate limit (15sn) ile aynı hata yüzlerce kez tetiklenmez. Detay: [docs/operations/logging.md](../operations/logging.md).
 - `kiosk_edge/ui/src/lib/ingredients.js` — Etken madde recommendation
 - `kiosk_edge/ui/src/lib/deviceConfigStore.js` — Lokal edge `GET /api/device-config` ayar cache'i; hata halinde son başarılı ayarı/defaultları korur
-- `kiosk_edge/ui/src/components/IdleAudio.svelte` + `lib/idleAudioController.js` — ilk sesi kesintisiz idle süresi dolunca, devamındaki sesleri tekrar aralığıyla sıralı/döngüsel çalar; etkileşimde anında keser ve çalarken köşede hoparlör göstergesi açar
+- `kiosk_edge/ui/src/components/IdleAudio.svelte` + `lib/idleAudioController.js` — sonuç ekranından idle'a dönmeden önce lokal DB'deki son QR zamanını tazeler; ilk süre dolmadıysa kalanını, dolmuşsa devam süresini bekleyip sesleri sıralı/döngüsel çalar. Etkileşimde çalan sesi anında keser fakat bekleyen sayacı ve dosya sırasını başa sarmaz.
 - `kiosk_edge/ui/src/components/IdleCountdownModal.svelte` — işlem ekranındaki inaktivite süresi bitince 5 saniyelik geri sayım gösterir; “Devam Et” idle dönüşünü iptal edip sayaç süresini yeniden başlatır.
-- `idleAudioController.js` ses başlamadan önce İstanbul saatini denetler: `BUSINESS_HOURS` yalnız 08:00–19:00; nöbet günü listede ve seçenek etkinse 24 saat; `ALL_DAY` her zaman çalar.
+- `idleAudioController.js` ses başlamadan önce İstanbul saatini denetler: `BUSINESS_HOURS` yalnız 08:00–19:00; nöbet günü listede ve seçenek etkinse 24 saat; `ALL_DAY` her zaman çalar. İlk ses beklemesi idle ekrana girişten değil, lokal DB'deki son QR kayıt zamanından (`/api/oturum/last-qr`) hesaplanır. Son QR'dan beri ilk süre aşılmışsa ilk bekleme yeniden başlatılmaz, devam süresi kurulur. Idle ekrandaki tekil dokunuş bekleyen timer'ı veya ses sırasını başa sarmaz.
+- Debug modda (`import.meta.env.DEV` veya `VITE_KIOSK_DEBUG=true`) idle ekranda sağ üstte "Sese kalan" sayacı görünür; kalan süreyi toplam saniye (`120 sn`, `119 sn`, ...) olarak her saniye günceller. Ses aktif değilse, mesai dışındaysa veya çalıyorsa durumu metin olarak gösterir.
 - `kiosk_edge/ui/src/components/Logo.svelte` — Tekrar kullanilabilir marka logosu (SVG):
   - `height` + `light` (koyu zeminde beyaz varyant) prop'lari. Tum "e-isa" yazilari bununla degistirildi.
   - Kaynak: `src/assets/eisa-logo.svg` (koyu metin) + `src/assets/eisa-logo-light.svg` (beyaz metin)
@@ -186,8 +187,8 @@
    - Yalnızca **sponsor fallback ekranında** görünür (gerçek kampanya medyası gösterilirken GÖRÜNMEZ)
 
 12. **IdleAudio.svelte** (2026-09-11)
-   - Yalnız `screen === 'idle'` iken ilk dosyayı kesintisiz bekleme süresi sonunda (default 20 dk) çalar; dosya bittikten sonra default 5 dk bekleyip sıradaki dosyaya geçer ve listenin sonunda başa döner.
-   - Pointer/klavye etkileşimi sesi ve hoparlör göstergesini anında kapatır; kullanıcı başka ekrandayken ses başlayamaz. Idle'dan çıkıp yeniden girilmesi yeni bir bekleme çevrimidir.
+   - Yalnız `screen === 'idle'` iken çalışır. Sonuçtan idle'a geçmeden önce son QR zamanı lokal DB'den tazelenir; ilk eşik dolmadıysa kalan süre, dolduysa devam süresi beklenir. QR oluşturma sırasında başlamış eski polling yanıtı yeni QR zamanını ezemez. Dosya bittikten sonra tekrar süresi beklenip sıradaki dosyaya geçilir ve listenin sonunda başa dönülür.
+   - Pointer/klavye etkileşimi çalan sesi ve hoparlör göstergesini anında kapatır; kullanıcı başka ekrandayken ses başlayamaz. Etkileşim bekleyen sayacı veya dosya sırasını sıfırlamaz.
    - `audio.play()` başarıyla başladıktan sonra sağ üst köşede mevcut e-isa kırmızı tasarım dilinde, içerik etkileşimini engellemeyen hoparlör ikonu görünür.
    - Chromium'un ilk kullanıcı etkileşimi olmadan sesli autoplay'i engellediği dağıtımlarda kiosk runtime `--autoplay-policy=no-user-gesture-required` ile başlatılmalıdır.
 

@@ -115,6 +115,7 @@ export async function submitSession({ ageRange, gender, oturumTipi, categorySlug
   return {
     qrCode:      data.qr_kodu,
     qrPayload:   data.qr_payload || data.qr_kodu,
+    qrCreatedAt: data.qr_olusturulma_tarihi || null,
     syncDurum:   data.sync_durum || (data.qr_kodu ? 'bekliyor' : null),
     devPreview:  !!data.dev_preview,
     baskiLogoUrl: data.barkod_logo_gorsel_url
@@ -126,6 +127,10 @@ export async function submitSession({ ageRange, gender, oturumTipi, categorySlug
 /** Backend'e gönderilme durumunu sorgular ('bekliyor' | 'gonderildi'). */
 export async function fetchSessionSyncStatus(idempotencyKey) {
   return _request(`${API_BASE}/api/oturum/sync-durum/${encodeURIComponent(idempotencyKey)}`, { timeoutMs: 3000 });
+}
+
+export async function fetchLastQrActivity() {
+  return _request(`${API_BASE}/api/oturum/last-qr`, { timeoutMs: 3000 });
 }
 
 // ── WiFi API ────────────────────────────────────────────────────────────────

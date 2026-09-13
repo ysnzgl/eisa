@@ -5,6 +5,19 @@
 
 ---
 
+## 2026-09-13
+
+### [Backend+WebPanel+Kiosk Edge/UI] Idle ses sürekliliği ve provision senkronizasyonu
+
+- Mesai içi ses penceresi İstanbul 08:00–19:00 olarak teyit edildi; 24 saat ve nöbet günü istisnası korundu.
+- Kiosk UI debug modunda idle ses için sağ üst "Sese kalan" sayacı eklendi (`DEV` veya `VITE_KIOSK_DEBUG=true`).
+- Idle ses sayacı her idle ekran açılışında lokal DB'deki son QR zamanını tazeler. İlk süre dolmadıysa kalanını, dolmuşsa 1 saniyelik yanlış tetik yerine cihazın devam süresini bekler; yeni QR oluşunca store anında ilk süreye güncellenir.
+- Sonuçtan ana ekrana dönüş, lokal DB uzlaşması tamamlanmadan idle ekranı etkinleştirmez; QR oluşturma öncesinde başlamış eski polling yanıtı da yeni QR zamanını ezemez.
+- Idle ekrandaki tekil dokunuşun ses çevrimini kalıcı bloke etmesi giderildi; ses çalmıyorken dokunuş bekleyen timer'ı değiştirmez, çalan sesi kestiğinde devam süresi sonunda sıradaki dosyaya geçer ve liste başa sarmaz.
+- Lokal ses endpoint'lerine `Content-Length`/byte-range desteği eklendi. Bootstrap `device_config` manifesti provision anında indirilir; ilk ve periyodik full pull aynı checksum doğrulamalı cache'i günceller.
+- Beş dakikalık `npm run dev:all` izlemesinde tüm servisler ayakta kaldı; edge başlangıcındaki yinelenen ping ve katalog pull'undaki çift transaction çağrısı kaldırıldı.
+- 16 dosyalı sıra ve API range testleri eklendi. Kiosk 25'te ters kayıtlı `ilk=300/devam=120 sn` verisi `ilk=120/devam=300 sn` olarak düzeltildi; lokal cache'te 16 ses doğrulandı.
+
 ## 2026-09-11
 
 ### Ses kütüphanesi yükleme ve dinleme

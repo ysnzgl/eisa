@@ -1,13 +1,19 @@
 <script>
-  import { onDestroy } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
   import { deviceConfig } from '../lib/deviceConfigStore.js';
   import { logger } from '../lib/logger.js';
-  import { createIdleAudioController } from '../lib/idleAudioController.js';
+  import { createIdleAudioController, formatIdleAudioDebugText } from '../lib/idleAudioController.js';
 
   export let active = false;
+  export let lastQrCreatedAt = null;
+
+  const showDebugCounter = import.meta.env.DEV || import.meta.env.VITE_KIOSK_DEBUG === 'true';
 
   let audioElement = null;
   let isPlaying = false;
+  let debugState = null;
+  let debugText = 'Kapalı';
+  let debugTimer = null;
 
   function stopElement() {
     if (audioElement) {
@@ -32,14 +38,39 @@
       }
     },
     stop: stopElement,
-    onPlayingChange: (value) => { isPlaying = value; },
+    onPlayingChange: (value) => {
+      isPlaying = value;
+      refreshDebugState();
+    },
   });
+
+  function refreshDebugState() {
+    if (!showDebugCounter) return;
+    debugState = controller.getDebugState();
+    debugText = formatIdleAudioDebugText(debugState);
+  }
 
   function onImmediateInteraction() {
     controller.interact();
+    refreshDebugState();
   }
 
-  $: controller.update(active, $deviceConfig);
+  $: {
+    controller.update(active, {
+      ...$deviceConfig,
+      idle_audio_last_qr_created_at: lastQrCreatedAt,
+    });
+    refreshDebugState();
+  }
+
+  onMount(() => {
+    if (!showDebugCounter) return undefined;
+    refreshDebugState();
+    debugTimer = window.setInterval(refreshDebugState, 1000);
+    return () => {
+      if (debugTimer) window.clearInterval(debugTimer);
+    };
+  });
 
   onDestroy(controller.destroy);
 </script>
@@ -59,10 +90,17 @@
   </div>
 {/if}
 
+{#if showDebugCounter && active}
+  <div class="idle-audio-debug-counter" aria-label="Sese kalan süre">
+    <span>Sese kalan</span>
+    <strong>{debugText}</strong>
+  </div>
+{/if}
+
 <style>
   .idle-audio-indicator {
     position: fixed;
-    top: 22px;
+    top: 78px;
     right: 22px;
     z-index: 10020;
     width: 48px;
@@ -79,6 +117,38 @@
   }
 
   .idle-audio-indicator i { font-size: 20px; }
+
+  .idle-audio-debug-counter {
+    position: fixed;
+    top: 18px;
+    right: 18px;
+    z-index: 10030;
+    min-width: 118px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    color: #fff;
+    background: rgba(15, 23, 42, 0.78);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.24);
+    pointer-events: none;
+    text-align: right;
+    backdrop-filter: blur(6px);
+  }
+
+  .idle-audio-debug-counter span {
+    display: block;
+    font-size: 10px;
+    line-height: 1.1;
+    color: rgba(255, 255, 255, 0.72);
+  }
+
+  .idle-audio-debug-counter strong {
+    display: block;
+    margin-top: 3px;
+    font-size: 18px;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
 
   @keyframes audioPulse {
     0%, 100% { transform: scale(1); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24); }

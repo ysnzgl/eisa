@@ -31,7 +31,8 @@
 **kiosklar**
 - id, eczane_id FK, ad, mac_adresi (unique), device_id (unique, nullable), uygulama_anahtari (unique), aktif, is_online, son_goruldu, last_playlist_version
 - Cihaz zamanlayıcıları: interaction_timeout_seconds (default 20), idle_content_min_seconds (10), idle_content_max_seconds (12), idle_content_refresh_seconds (300), idle_audio_delay_seconds (1200), idle_audio_repeat_seconds (300)
-- Ses zaman kuralı: `idle_audio_schedule_mode` (`ALL_DAY` default veya `BUSINESS_HOURS`) ve `idle_audio_play_on_duty` (default false). Sync, seçili eczanenin ileri 370 gün içindeki `idle_audio_duty_dates` listesini edge'e verir.
+- Ses zaman kuralı: `idle_audio_schedule_mode` (`ALL_DAY` default veya `BUSINESS_HOURS`, İstanbul 08:00–19:00) ve `idle_audio_play_on_duty` (default false). Sync, seçili eczanenin ileri 370 gün içindeki `idle_audio_duty_dates` listesini edge'e verir.
+- Lokal edge `GET /api/oturum/last-qr` cevabı `{ last_qr_created_at }` döner; UI idle ses ilk beklemesini son QR'lı `oturum_outbox` kaydının `olusturulma_tarihi` alanından hesaplar.
 - Idle ses: idle_audio_enabled (default false), idle_audio_media_url, idle_audio_object_key, idle_audio_checksum, idle_audio_original_name, idle_audio_content_type
 - **kiosk_audio_assets:** merkezi, tekrar kullanılabilir ses kütüphanesi (object_key unique, checksum, özgün ad, MIME, aktif). Dosyalar storage'da `kiosk-audio/` altında tutulur.
 - **kiosk_idle_audios:** kiosk_id + audio_asset_id FK, dağıtım snapshot alanları ve sira; unique(kiosk, sira). 0012 tek-dosya alanları geriye uyumluluk için korunur.

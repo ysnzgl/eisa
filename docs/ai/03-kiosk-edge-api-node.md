@@ -80,7 +80,9 @@ Backend kapalı/erişilemezse:
    - Eski `house_ads` KALDIRILDI (v15 idempotent migration `house_ads` tablosunu düşürür).
 
 4. **Cihaz ayarları + kiosk-bazlı idle ses:**
-   - `/api/kiosk/v1/sync/` içindeki `device_config`, `kiosk_device_config` singleton satırına uygulanır. Bootstrap onayından sonra yapılan ilk pull aynı akışı çalıştırır.
+   - Bootstrap onay yanıtındaki `device_config` hemen uygulanır ve ses dosyaları provision işlemi içinde indirilir. Ardından yapılan ilk full pull ve her periyodik `/api/kiosk/v1/sync/` aynı manifest/cache akışını tekrar çalıştırır.
+   - Başlangıç ping'i yalnız `startScheduler()` tarafından bir kez gönderilir; `index.js` aynı ping'i ikinci kez başlatmaz. Katalog pull transaction'ı da her payload için yalnız bir kez çalıştırılır.
+   - `/api/oturum/last-qr`, lokal `oturum_outbox` içindeki QR'lı son tamamlanmış kaydın `olusturulma_tarihi` değerini döner. Kiosk UI idle ses ilk beklemesini ekran geçişine göre değil bu DB zamanına göre hesaplar.
    - Etkin ve atanmış ses, AppKey başlığıyla merkezi medya proxy'sinden geçici dosyaya indirilir; SHA-256 doğrulanınca atomik olarak aktive edilir. Yeni indirme başarısızsa çalışan eski lokal dosya korunur.
    - Ses kapatıldığında lokal endpoint ses sunmaz. Teknik pull/push/ping/diagnostic scheduler periyotları portal cihaz ayarlarının kapsamı dışındadır.
 
@@ -284,7 +286,7 @@ Toplanan veriler `device_metadata` JSON alanı olarak `KioskProvisioningRequest`
 | `GET` | `/playlist?date=YYYY-MM-DD` | Günlük playlist JSON |
 | `GET` | `/api/idle-contents` | *(2026-08-16)* Aktif idle (bekleme) başlık/metin içerikleri (salt okunur; UI merkezi backend'e bağlanmaz) |
 | `GET` | `/api/device-config` | Lokal cache'teki cihaz iş zamanlayıcılarını ve hazırsa `/api/device-audio` URL'sini döndürür |
-| `GET` | `/api/device-audio/:audioId` | Etkin listede checksum doğrulanarak hazır edilmiş ilgili kiosk sesini lokal diskten sunar; aksi halde 404 (`/api/device-audio` ilk dosya için geriye uyumlu) |
+| `GET` | `/api/device-audio/:audioId` | Etkin listede checksum doğrulanarak hazır edilmiş ilgili kiosk sesini lokal diskten `Content-Length` ve byte-range desteğiyle sunar; aksi halde 404 (`/api/device-audio` ilk dosya için geriye uyumlu) |
 | `POST` | `/sessions` | Session log kaydı (outbox'a ekler) |
 | `POST` | `/ad-impressions` | Impression log kaydı (outbox'a ekler) |
 | `GET` | `/wifi-status` | WiFi bağlantı durumu (nmcli çağrısı, Linux) |

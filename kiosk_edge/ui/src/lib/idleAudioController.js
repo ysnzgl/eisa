@@ -9,14 +9,23 @@ export function isIdleAudioAllowed(config, now = new Date()) {
   return Number(parts.hour) >= 8 && Number(parts.hour) < 19;
 }
 
+export function formatIdleAudioDebugText(state) {
+  if (!state?.enabled || !state?.fileCount) return 'Kapalı';
+  if (!state.allowedNow) return 'Mesai dışı';
+  if (state.playing) return 'Çalıyor';
+  if (state.remainingSeconds === null || state.remainingSeconds === undefined) return '-- sn';
+  return `${Math.max(0, state.remainingSeconds)} sn`;
+}
+
 export function createIdleAudioController({ play, stop, onPlayingChange = () => {} }) {
   let timer = null;
+  let timerDueAt = null;
   let active = false;
-  let blockedByInteraction = false;
   let playing = false;
   let nextIndex = 0;
   let config = null;
-  let configKey = '';
+  let playlistKey = '';
+  let scheduleKey = '';
   let cycleToken = 0;
 
   function files() {
@@ -30,6 +39,7 @@ export function createIdleAudioController({ play, stop, onPlayingChange = () => 
   function clearTimer() {
     if (timer) clearTimeout(timer);
     timer = null;
+    timerDueAt = null;
   }
 
   function stopPlayback() {
@@ -41,15 +51,17 @@ export function createIdleAudioController({ play, stop, onPlayingChange = () => 
   }
 
   function canPlay() {
-    return active && !blockedByInteraction && config?.idle_audio?.enabled && files().length > 0;
+    return active && config?.idle_audio?.enabled && files().length > 0;
   }
 
   function schedule(delaySeconds) {
     clearTimer();
     if (!canPlay() || playing) return;
     const token = cycleToken;
+    timerDueAt = Date.now() + (Math.max(1, delaySeconds) * 1000);
     timer = setTimeout(async () => {
       timer = null;
+      timerDueAt = null;
       const playlist = files();
       if (!canPlay() || !playlist.length || token !== cycleToken) return;
       if (!isIdleAudioAllowed(config)) {
@@ -74,16 +86,30 @@ export function createIdleAudioController({ play, stop, onPlayingChange = () => 
     }, Math.max(1, delaySeconds) * 1000);
   }
 
-  function resetCycle({ block = false } = {}) {
+  function initialDelaySeconds() {
+    const configuredDelay = config?.idle_audio_delay_seconds || 1200;
+    const repeatDelay = config?.idle_audio_repeat_seconds || 300;
+    const lastQrCreatedAt = config?.idle_audio_last_qr_created_at;
+    const lastQrMs = lastQrCreatedAt ? Date.parse(lastQrCreatedAt) : Number.NaN;
+    if (!Number.isFinite(lastQrMs)) return configuredDelay;
+    const elapsedSeconds = Math.max(0, Math.floor((Date.now() - lastQrMs) / 1000));
+    if (elapsedSeconds < configuredDelay) return configuredDelay - elapsedSeconds;
+    return repeatDelay;
+  }
+
+  function stopCycle() {
     stopPlayback();
-    nextIndex = 0;
-    blockedByInteraction = block;
   }
 
   return {
     update(nextActive, nextConfig) {
       const nextFiles = Array.isArray(nextConfig?.idle_audio?.files) ? nextConfig.idle_audio.files : [];
-      const nextKey = JSON.stringify({
+      const nextPlaylistKey = JSON.stringify({
+        enabled: nextConfig?.idle_audio?.enabled,
+        files: nextFiles.map((item) => [item?.id, item?.media_url]),
+        legacyUrl: nextConfig?.idle_audio?.media_url,
+      });
+      const nextScheduleKey = JSON.stringify({
         enabled: nextConfig?.idle_audio?.enabled,
         files: nextFiles.map((item) => [item?.id, item?.media_url]),
         legacyUrl: nextConfig?.idle_audio?.media_url,
@@ -92,30 +118,51 @@ export function createIdleAudioController({ play, stop, onPlayingChange = () => 
         scheduleMode: nextConfig?.idle_audio_schedule_mode,
         playOnDuty: nextConfig?.idle_audio_play_on_duty,
         dutyDates: nextConfig?.idle_audio_duty_dates,
+        lastQrCreatedAt: nextConfig?.idle_audio_last_qr_created_at,
       });
       const activeChanged = active !== nextActive;
-      const configChanged = configKey !== nextKey;
+      const playlistChanged = playlistKey !== nextPlaylistKey;
+      const scheduleChanged = scheduleKey !== nextScheduleKey;
       active = nextActive;
       config = nextConfig;
-      configKey = nextKey;
+      playlistKey = nextPlaylistKey;
+      scheduleKey = nextScheduleKey;
+      if (playlistChanged) nextIndex = 0;
       if (!active) {
-        resetCycle();
+        stopCycle();
       } else if (activeChanged) {
-        resetCycle();
-        schedule(config?.idle_audio_delay_seconds || 1200);
-      } else if (configChanged && !blockedByInteraction) {
-        resetCycle();
-        schedule(config?.idle_audio_delay_seconds || 1200);
+        stopCycle();
+        schedule(initialDelaySeconds());
+      } else if (playlistChanged || scheduleChanged) {
+        stopCycle();
+        schedule(initialDelaySeconds());
       }
     },
     interact() {
-      if (active) resetCycle({ block: true });
+      if (!active || !playing) return;
+      // Idle ekrandaki tek bir dokunus ses dongusunu kalici olarak susturmasin.
+      // Gercek ekran gecisi update(false, ...) ile zamanlayiciyi zaten kapatir;
+      // bekleyen timer dokunustan etkilenmez. Calan ses kesilirse siradaki dosya
+      // normal devam araligindan sonra calar ve liste basi sifirlanmaz.
+      stopCycle();
+      schedule(config?.idle_audio_repeat_seconds || 300);
     },
     ended() {
       if (!playing) return;
       playing = false;
       onPlayingChange(false);
       schedule(config?.idle_audio_repeat_seconds || 300);
+    },
+    getDebugState(now = Date.now()) {
+      const playlist = files();
+      return {
+        active,
+        enabled: config?.idle_audio?.enabled === true,
+        fileCount: playlist.length,
+        playing,
+        allowedNow: isIdleAudioAllowed(config),
+        remainingSeconds: timerDueAt === null ? null : Math.max(0, Math.ceil((timerDueAt - now) / 1000)),
+      };
     },
     destroy: stopPlayback,
   };

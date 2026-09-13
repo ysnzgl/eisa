@@ -1,4 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { buildServer } from '../src/server.js';
 import { makeMemoryDb, fakeSettings } from './helpers.js';
 import { CROCKFORD_QR_RE } from '../src/qrGen.js';
@@ -59,6 +62,34 @@ describe('Kiosk API (Turkce sema)', () => {
     const r = await app.inject({ method: 'GET', url: '/health' });
     expect(r.statusCode).toBe(200);
     expect(r.json()).toEqual({ status: 'ok' });
+  });
+
+  it('GET /api/device-audio/:id byte range ile ses dosyasi sunar', async () => {
+    const audioPath = path.join(os.tmpdir(), `eisa-audio-${process.pid}-${Date.now()}.wav`);
+    fs.writeFileSync(audioPath, Buffer.from('0123456789'));
+    try {
+      await app.inject({ method: 'GET', url: '/api/device-config' });
+      db.prepare('UPDATE kiosk_device_config SET idle_audio_enabled=1 WHERE id=1').run();
+      db.prepare(`
+        INSERT INTO kiosk_device_audio_files
+          (audio_id, playback_order, source_url, local_path, status, content_type)
+        VALUES ('one', 0, 'https://central/audio.wav', ?, 'ready', 'audio/wav')
+      `).run(audioPath);
+
+      const full = await app.inject({ method: 'GET', url: '/api/device-audio/one' });
+      expect(full.statusCode).toBe(200);
+      expect(full.headers['content-length']).toBe('10');
+      expect(full.headers['accept-ranges']).toBe('bytes');
+
+      const partial = await app.inject({
+        method: 'GET', url: '/api/device-audio/one', headers: { range: 'bytes=2-5' },
+      });
+      expect(partial.statusCode).toBe(206);
+      expect(partial.headers['content-range']).toBe('bytes 2-5/10');
+      expect(partial.body).toBe('2345');
+    } finally {
+      fs.rmSync(audioPath, { force: true });
+    }
   });
 
   it('GET /api/kategoriler aktif olanlari doner', async () => {
@@ -224,6 +255,37 @@ describe('Kiosk API (Turkce sema)', () => {
     });
     expect(r.statusCode).toBe(200);
     expect(r.json().bulundu).toBe(true);
+  });
+
+  it('GET /api/oturum/last-qr son QR kayit zamanini doner', async () => {
+    db.prepare(
+      'INSERT INTO oturum_outbox (idempotency_anahtari, payload, olusturulma_tarihi) VALUES (?, ?, ?)'
+    ).run('abandoned', JSON.stringify({
+      idempotency_anahtari: 'abandoned',
+      qr_kodu: null,
+      tamamlandi: false,
+      olusturulma_tarihi: '2026-09-13T10:30:00.000Z',
+    }), '2026-09-13T10:30:00.000Z');
+    db.prepare(
+      'INSERT INTO oturum_outbox (idempotency_anahtari, payload, olusturulma_tarihi) VALUES (?, ?, ?)'
+    ).run('qr-old', JSON.stringify({
+      idempotency_anahtari: 'qr-old',
+      qr_kodu: 'AB12CD34',
+      tamamlandi: true,
+      olusturulma_tarihi: '2026-09-13T10:00:00.000Z',
+    }), '2026-09-13T10:00:00.000Z');
+    db.prepare(
+      'INSERT INTO oturum_outbox (idempotency_anahtari, payload, olusturulma_tarihi) VALUES (?, ?, ?)'
+    ).run('qr-new', JSON.stringify({
+      idempotency_anahtari: 'qr-new',
+      qr_kodu: 'CD34EF56',
+      tamamlandi: true,
+      olusturulma_tarihi: '2026-09-13T10:20:00.000Z',
+    }), '2026-09-13T10:20:00.000Z');
+
+    const r = await app.inject({ method: 'GET', url: '/api/oturum/last-qr' });
+    expect(r.statusCode).toBe(200);
+    expect(r.json()).toEqual({ last_qr_created_at: '2026-09-13T10:20:00.000Z' });
   });
 
   it('GET /api/reklamlar/aktif aktif reklami doner', async () => {

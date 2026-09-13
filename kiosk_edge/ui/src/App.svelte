@@ -3,6 +3,7 @@
   import { getRecommendations, recsToIngredientList } from './lib/ingredients.js';
   import { fetchCategories, fetchQuestions, fetchDanismaCategories, submitSession, fetchWifiStatus, fetchSessionSyncStatus } from './lib/api.js';
   import { deviceConfig, startDeviceConfig, stopDeviceConfig } from './lib/deviceConfigStore.js';
+  import { markQrCreated, qrActivity, refreshQrActivity, startQrActivity, stopQrActivity } from './lib/qrActivityStore.js';
   import {
     screen,
     selectedAge, selectedSex,
@@ -28,6 +29,9 @@
   import IdleCountdownModal from './components/IdleCountdownModal.svelte';
 
   let resultScreenRef = null;
+
+  // Idle ekran her acildiginda sayac lokal DB'deki en son QR kaydiyla uzlastirilir.
+  $: if ($screen === 'idle') refreshQrActivity();
 
   // ── Sahte oturum (fake session) yasam dongusu + global inaktivite ────────
   // Kategori seciminde bir id atanir; oturum QR uretildiginde (tamamlandi) veya
@@ -64,7 +68,7 @@
       clearIdleCountdown();
       // Kullanıcı devam etmedi: varsa terk edilmiş oturumu kapat ve idle'a dön.
       await finalizeAbandonedSession();
-      resetToIdle();
+      await resetToIdle();
     }, 1000);
   }
 
@@ -76,7 +80,7 @@
   async function returnToIdleAfterCountdown() {
     clearIdleCountdown();
     await finalizeAbandonedSession();
-    resetToIdle();
+    await resetToIdle();
   }
 
   // Aktif (ama tamamlanmamis) bir anket oturumu varsa terk edilmis olarak
@@ -120,6 +124,7 @@
   // Bağlantı yoksa doğrudan wifi_setup ekranı gösterilir.
   onMount(async () => {
     startDeviceConfig();
+    startQrActivity();
     window.addEventListener('pointerdown', onUserActivity, { passive: true });
     window.addEventListener('keydown', onUserActivity);
     try {
@@ -135,13 +140,14 @@
 
   onDestroy(() => {
     stopDeviceConfig();
+    stopQrActivity();
     clearInactivity();
     clearIdleCountdown();
     window.removeEventListener('pointerdown', onUserActivity);
     window.removeEventListener('keydown', onUserActivity);
   });
 
-  function resetToIdle() {
+  async function resetToIdle() {
     clearInactivity();
     clearIdleCountdown();
     sessionId = null;
@@ -155,6 +161,9 @@
     currentAnswers.set([]);
     result.set(null);
     danismaCategories.set([]);
+    // IdleAudio aktif olmadan once son QR zamani lokal DB ile kesinlestirilir;
+    // boylece eski timer tek frame bile gorunmez.
+    await refreshQrActivity();
     goTo('idle');
   }
 
@@ -250,7 +259,8 @@
 
     const recs = getRecommendations(qs, answers, age ?? '18-25', sex ?? 'M');
     const ingredientList = recsToIngredientList(recs);
-    const { qrCode, qrPayload, syncDurum, baskiLogoUrl, devPreview } = await doSubmitSession(cat?.slug ?? '', false, ingredientList, completed);
+    const { qrCode, qrPayload, qrCreatedAt, syncDurum, baskiLogoUrl, devPreview } = await doSubmitSession(cat?.slug ?? '', false, ingredientList, completed);
+    if (qrCode) markQrCreated(qrCreatedAt);
     // QR olmasa bile sonuç ekranına geç; ResultScreen kendi mesajını gösterir.
     // syncDurum='hata' ise ResultScreen sarı ünlem gösterir.
     const firstRec = recs[0];
@@ -308,12 +318,13 @@
     sessionId = (crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`);
     sessionFinalized = false;
     sessionSubmitting = true;
-    let qrCode, qrPayload, syncDurum, baskiLogoUrl, devPreview;
+    let qrCode, qrPayload, qrCreatedAt, syncDurum, baskiLogoUrl, devPreview;
     try {
-      ({ qrCode, qrPayload, syncDurum, baskiLogoUrl, devPreview } = await doSubmitConsult(cat?.slug ?? cat?.ad ?? ''));
+      ({ qrCode, qrPayload, qrCreatedAt, syncDurum, baskiLogoUrl, devPreview } = await doSubmitConsult(cat?.slug ?? cat?.ad ?? ''));
     } finally {
       sessionSubmitting = false;
     }
+    if (qrCode) markQrCreated(qrCreatedAt);
     sessionFinalized = true; // Danışma hemen tamamlanır
     result.set({
       label:          'Danışma talebi gönderildi',
@@ -446,7 +457,7 @@
        arasi gecerken ayni <video> DOM instance'i KORUNUR (remount/reload yok);
        yalniz mode/CSS degisir. -->
   <span class="v-badge">v{version}</span>
-  <IdleAudio active={$screen === 'idle'} />
+  <IdleAudio active={$screen === 'idle'} lastQrCreatedAt={$qrActivity.lastQrCreatedAt} />
   <div class="ad-strip-host"
        class:ad-strip-host--fullscreen={$screen === 'idle'}
        class:ad-strip-host--hidden={$screen === 'wifi_setup'}>

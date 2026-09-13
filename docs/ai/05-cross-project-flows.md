@@ -136,11 +136,13 @@ SuperAdmin (web_panels/DeviceManagement.vue)
       + tüm dosyalarda SHA-256 kontrolü
       + liste snapshot'ını atomik lokal aktivasyon
   → kiosk_edge/ui: GET /api/device-config
-  → yalnız screen=idle ve kesintisiz idle_audio_delay_seconds dolduysa ilk GET /api/device-audio/{id}
+  → sonuçtan idle'a geçmeden önce GET /api/oturum/last-qr ile son QR zamanını tazele; eski polling yanıtlarının yeni QR zamanını ezmesini engelle
+  → ilk süre dolmadıysa `idle_audio_delay_seconds - geçen süre`; dolduysa `idle_audio_repeat_seconds` bekle → ilk GET /api/device-audio/{id}
   → ses bitince idle_audio_repeat_seconds bekle → sıradaki dosya; liste sonunda başa dön
   → ses zamanı: 24 saat veya İstanbul 08:00–19:00; nöbetlerde çal seçiliyse girilmiş nöbet gününde 24 saat
+  → zaman referansı idle'a dönüş değil lokal DB'deki son QR kaydıdır; yeni QR store'u da anında günceller
   → audio.play() başarılı → köşede hoparlör ikonu
-  → pointerdown/keydown veya idle'dan çıkış → sesi ve ikonu anında kapat
+  → idle'dan çıkış → sesi ve ikonu anında kapat; idle'da kalınan pointerdown/keydown → çalan sesi keser ama bekleyen timer'ı ve dosya sırasını başa sarmaz
 ```
 
 Varsayılanlar: işlem ekranı inaktivitesi 20 sn, idle içerik 10–12 sn, içerik refresh 300 sn, ilk idle ses beklemesi 1200 sn (20 dk), sonraki sesler arası bekleme 300 sn (5 dk). Ses varsayılan olarak kapalıdır. Kampanya ve teknik edge scheduler süreleri bu akışın dışındadır.

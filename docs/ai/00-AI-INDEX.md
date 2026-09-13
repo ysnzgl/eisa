@@ -1,6 +1,6 @@
 # AI Context Index — e-isa Project
 
-**Son güncelleme:** 2026-09-11
+**Son güncelleme:** 2026-09-13
 **Amaç:** Token-ekonomik AI context; kod yapısını hızlı anlamak ve geliştirmelerde doğru noktadan başlamak.
 
 ---

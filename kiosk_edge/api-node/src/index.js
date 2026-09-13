@@ -2,16 +2,22 @@
 import { settings } from './config.js';
 import { openDb, closeDb } from './db.js';
 import { buildServer } from './server.js';
-import { startScheduler, stopScheduler, pullFromCentral, pingAndSyncPlaylist, pingAndSyncManifest } from './scheduler.js';
+import { startScheduler, stopScheduler, pullFromCentral } from './scheduler.js';
 import { resolveRuntimeSettings, hasAppKeyCredentials } from './provisioning.js';
 import { recordDiagnostic } from './diagnosticOutbox.js';
 import { recordKioskEvent } from './kioskEventOutbox.js';
+import { syncDeviceConfig } from './deviceConfig.js';
 
 const db = openDb(settings.sqlitePath, {
   outboxMaxRows: settings.outboxMaxRows,
   diagnosticMaxRows: settings.diagnosticMaxRows,
 });
 const runtimeSettings = await resolveRuntimeSettings(db, settings, console);
+if (runtimeSettings.bootstrapDeviceConfig) {
+  await syncDeviceConfig(db, runtimeSettings.bootstrapDeviceConfig, runtimeSettings, console).catch((err) =>
+    console.warn({ event: 'bootstrap_device_config_failed', err: err?.message }, 'Provision ses/config indirmesi basarisiz; ilk pull tekrar deneyecek'),
+  );
+}
 
 const app = await buildServer({ db, settings: runtimeSettings });
 startScheduler(db, runtimeSettings, app.log);
@@ -23,18 +29,13 @@ recordKioskEvent(db, {
   message: 'Kiosk uygulamasi basladi',
 });
 
-// Provision tamamlandiysa (app_key mevcut) her restart'ta hemen pull + ping yap.
+// Provision tamamlandiysa (app_key mevcut) her restart'ta hemen pull yap.
+// Ilk ping startScheduler tarafindan tek kez tetiklenir.
 // Provision henuz yok/beklemede ise scheduler'daki provision retry tetikleyecek.
 if (hasAppKeyCredentials(db)) {
   app.log.info({ event: 'startup_pull_triggered' }, 'Provision tamam — baslangicta veri cekiliyor');
   pullFromCentral(db, runtimeSettings, app.log).catch((err) =>
     app.log.warn({ event: 'startup_pull_failed', err: err?.message }, 'Baslangic pull basarisiz, scheduler tekrar deneyecek'),
-  );
-  const pingFn = runtimeSettings.doohKioskAck
-    ? () => pingAndSyncManifest(db, runtimeSettings, app.log)
-    : () => pingAndSyncPlaylist(db, runtimeSettings, app.log);
-  pingFn().catch((err) =>
-    app.log.warn({ event: 'startup_ping_failed', err: err?.message }, 'Baslangic ping basarisiz'),
   );
 }
 

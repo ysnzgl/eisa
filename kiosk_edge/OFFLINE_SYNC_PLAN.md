@@ -17,7 +17,7 @@ Akis:
 ## 2) Veri Guncelligi Stratejisi
 
 - Katalog ve reklamlar periyodik pull ile yenilenir.
-- Cihaz-bazli is zamanlayicilari `device_config` ile `kiosk_device_config` tablosuna yazilir. Provisioning tamamlaninca tetiklenen ilk pull bu ayarlari ve varsa idle sesi de alir.
+- Cihaz-bazli is zamanlayicilari `device_config` ile `kiosk_device_config` tablosuna yazilir. Provisioning onay yanitindaki manifest hemen uygulanip sesler indirilir; ilk full pull ve sonraki periyodik pull'lar ayni cache'i uzlastirir.
 - Playlist icin versiyon tabanli delta-sync kullanilir:
   - ping.playlist_version > local_version ise playlist yeniden cekilir.
 - Idempotency anahtari ile oturum push tekrarli gonderimde cift kayit olusmaz.

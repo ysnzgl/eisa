@@ -293,6 +293,9 @@ export async function resolveRuntimeSettings(db, baseSettings, log = console) {
       // App Key alındıktan hemen sonra device_id'yi backend'e bağla (ilk enrollment denemesi).
       // Basarısız olursa scheduler pull döngüsünde yeniden denenir.
       applyStoredIdentity();
+      // Bootstrap yanitindaki ilk cihaz/ses manifestini cagrana tasir. Boylece
+      // provision tamamlandigi anda dosyalar full pull periyodunu beklemeden iner.
+      runtime.bootstrapDeviceConfig = result.data.device_config || null;
       await enrollDeviceId(db, runtime, log);
 
     } else if (result.status === 'PENDING_APPROVAL') {
