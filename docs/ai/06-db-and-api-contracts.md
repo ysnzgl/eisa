@@ -66,6 +66,17 @@
 - id, talep_id FK destek_talepler (CASCADE), yorum_metni (max 1000)
 - BaseModel alanları (olusturan = yorum yazarı)
 
+### İş Takibi (Admin-only) *(new 2026-09-13)*
+
+**gorevler**
+- id, baslik (max 200), icerik (max 2000), durum (`YENI|INCELENIYOR|YAPILDI|YAPILMADI`), atanan_kullanici_id FK users_eisauser (nullable, PROTECT, yalnız superadmin)
+- BaseModel alanları
+- `db_table`: `gorevler`
+
+**Erişim/Kullanım**
+- Yalnız Süper Adminler erişir; eczacı ve diğer rol kullanıcıları yok
+- Düzenleme popup'ı ve liste görünümü admin panel standart `eisa-field` / `eisa-panel` kalıbını kullanır
+
 ### Destek API Sözleşmesi *(2026-08-15)*
 
 **GET `/api/destek/parametreler/`** — Auth: JWT (any)
@@ -97,6 +108,21 @@
 
 **GET `/api/destek/talepler/yeni-sayisi/`** — Auth: JWT (IsSuperAdmin)
 - Response: `{sayi: <int>}`
+
+### İş Takibi API Sözleşmesi *(2026-09-13)*
+
+**GET `/api/is-takip/gorevler/`** — Auth: JWT (IsSuperAdmin)
+- Query params: `durum`, `atanan_kullanici_id`, `q`
+- Response: `[{id, baslik, icerik, durum, durum_ad, atanan_kullanici_id, atanan_kullanici_adi, atanan_kullanici_username, olusturan_adi, olusturulma_tarihi, guncellenme_tarihi}]`
+
+**POST `/api/is-takip/gorevler/`** — Auth: JWT (IsSuperAdmin)
+- Request: `{baslik, icerik, durum?, atanan_kullanici_id?}`
+- Validasyon: atanan kullanıcı aktif süper admin olmalı; varsayılan durum `YENI`
+- Response 201: aynı serializer alanları
+
+**PATCH `/api/is-takip/gorevler/{id}/`** — Auth: JWT (IsSuperAdmin)
+- Request: aynı alanların güncellenebilir kısmı
+- Response 200: aynı serializer alanları
 
 ### Announcements and Duty *(2026-08-18)*
 

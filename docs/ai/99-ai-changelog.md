@@ -7,6 +7,12 @@
 
 ## 2026-09-13
 
+### [Backend+WebPanel] Admin-only İş Takibi ve ortak form stili düzeltmeleri
+
+- `apps.gorevler` eklendi; Süper Admin erişimli iç iş takibi modeli ve API'si oluşturuldu (`/api/is-takip/gorevler/`). Alanlar: başlık, içerik, durum, atanacak kullanıcı.
+- Web panelde `/admin/is-takip` rotası ve `GorevYonetimi.vue` eklendi; görünüm ana dashboard KPI kartlarına yakın tutuldu, edit popup kompaktlaştırıldı.
+- Ortak `eisa-field` stiline hafif border eklendi; Eczane & Cihaz ekranındaki eczane düzenleme popup'ı daraltıldı, iş takibi popup'ı da aynı kompakt modal yaklaşımını kullanıyor.
+
 ### [Backend+WebPanel+Kiosk Edge/UI] Idle ses sürekliliği ve provision senkronizasyonu
 
 - Mesai içi ses penceresi İstanbul 08:00–19:00 olarak teyit edildi; 24 saat ve nöbet günü istisnası korundu.

@@ -25,6 +25,7 @@
 - `web_panels/src/views/admin/DoohControlCenter.vue` â€” DOOH izleme merkezi
 - `web_panels/src/views/admin/PlaylistEditor.vue` â€” Playlist dÃ¼zenleme
 - `web_panels/src/views/admin/ContentManagement.vue` — "İçerik Yönetimi" (route `/admin/content-management`): IdleScreenContent CRUD; başlık/metin idle içerik (2026-08-16). Eski `HouseAdManagement.vue` (`/admin/house-ads`) KALDIRILDI.
+- `web_panels/src/views/admin/GorevYonetimi.vue` — Admin-only İş Takibi (route `/admin/is-takip`); başlık/içerik/durum/atanan admin, ortak KPI kartları ve shared field styles ile kompakt modal
 - `web_panels/src/composables/useKioskRolloutStatus.js` â€” Kiosk rollout durum hesabÄ± (tek merkezi kaynak)
 - `web_panels/src/views/pharmacist/QrScan.vue` â€” QR tarama
 - `web_panels/src/views/admin/Dashboard.vue` â€” Admin dashboard
@@ -61,6 +62,7 @@
 8. Dashboard analytics (kampanya performansÄ±, session Ã¶zeti)
 9. **Barkod Logo Yönetimi** *(2026-08-11)* — `/admin/barkod-logolar`, `BarkodLogoYonetimi.vue`. DOOH'dan bağımsız. Logo oluştur/düzenle/pasifleştir; PNG yükle (336×336, ≤1MB); kiosk hedefleme; günlük limit. DELETE yok.
 10. **Görüş ve Destek** *(2026-08-15)* — Admin: `/admin/destek` → `DestekYonetimi.vue`; Eczacı: `/pharmacist/destek` → `DestekTalepleri.vue`. Admin menüsünde Yeni sayısı badge'i.
+11. **İş Takibi** *(2026-09-13)* — Admin-only `/admin/is-takip` → `GorevYonetimi.vue`. Ana dashboard KPI diline uyumlu `eisa-stats` kartları kullanır; `eisa-field` ortak stile bağlanır, düzenleme popup'ı kompakt tutulur.
 
 ---
 
@@ -86,6 +88,7 @@
 - `/admin/pricing` â†’ `PricingMatrixConfigurator.vue` (FiyatlandÄ±rma matrisi)
 - `/admin/users` → `UserManagement.vue` (Kullanıcı CRUD)
 - `/admin/destek` → `DestekYonetimi.vue` *(2026-08-15)* (Görüş ve Destek Yönetimi)
+- `/admin/is-takip` → `GorevYonetimi.vue` *(2026-09-13)* (Admin-only iş takibi; başlık/içerik/durum/atanan admin)
 
 **Pharmacist routes (`/pharmacist/*`):**
 - `/pharmacist` → `Dashboard.vue`

@@ -28,6 +28,7 @@
 - `backend/apps/analytics/models.py` — OturumLogu/PlayLog models
 - `backend/apps/barkod_logo/` — Barkod Logo Yönetimi *(2026-08-11, DOOH'dan bağımsız)*
 - `backend/apps/destek/` — Görüş ve Destek (ticket) sistemi *(2026-08-15)*
+- `backend/apps/gorevler/` — Admin-only İş Takibi (başlık/içerik/durum/atanan admin) *(2026-09-13)*
 - `backend/apps/announcements/models.py` — Genel/sistem duyurusu, occurrence okuma ve nöbet ay/gün modelleri
 - `backend/apps/announcements/services.py` — Europe/Istanbul recurrence ve sabit nöbet uyarısı kuralları
 - `backend/apps/announcements/views.py` — Admin, eczacı aktif duyuru ve nöbet takvimi endpoint'leri
@@ -83,6 +84,7 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 | `/api/destek/talepler/{id}/yorum-ekle/` | `DestekTalebiViewSet.yorum_ekle` | JWT | Yorum ekle; durum otomatik geçişi |
 | `/api/destek/talepler/{id}/durum-degistir/` | `DestekTalebiViewSet.durum_degistir` | JWT (SuperAdmin) | Admin durum değişikliği |
 | `/api/destek/talepler/yeni-sayisi/` | `DestekTalebiViewSet.yeni_sayisi` | JWT (SuperAdmin) | YENI sayısı (badge) |
+| `/api/is-takip/gorevler/` | `GorevViewSet` (list/create/update) | JWT (SuperAdmin) | İç iş takibi; başlık, içerik, durum, atanan admin |
 | `/api/announcements/admin/` | `AdminAnnouncementViewSet` | JWT (SuperAdmin) | Genel duyuru CRUD; sistem duyurusunda sınırlı PATCH |
 | `/api/announcements/me/active/` | `ActiveAnnouncementsView` | JWT (Eczacı) | Bugünkü hedeflenmiş occurrence ve sistem uyarıları |
 | `/api/announcements/{id}/read/` | `MarkAnnouncementReadView` | JWT (Eczacı) | Bugünkü occurrence için okundu kaydı |
@@ -115,6 +117,11 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 ### Core (`apps.core`)
 - `BaseModel`: olusturulma_tarihi, olusturan, guncellenme_tarihi, guncelleyen, surum (tüm iş modellerinin base'i)
 - `LookupModel`: id + BaseModel (tüm lookup'ların base'i)
+
+### İş Takibi (`apps.gorevler`)
+- `Gorev`: `baslik`, `icerik`, `durum` (`YENI|INCELENIYOR|YAPILDI|YAPILMADI`), `atanan_kullanici` (yalnız superadmin), BaseModel alanları
+- `db_table`: `gorevler`
+- Liste/detay API'si yalnız `IsSuperAdmin` ile açılır; `atanan_kullanici` alanı kullanıcı yönetiminden gelen aktif süper adminlerle sınırlıdır
 
 ### Lookups (`apps.lookups`)
 - `Il`: Şehirler
