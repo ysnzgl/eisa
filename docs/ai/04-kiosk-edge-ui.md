@@ -110,7 +110,7 @@
 1. **IdleScreen.svelte** (cekici / attractor ekrani)
    - Uygulama acilir acilmaz DOGRUDAN bu ekran gosterilir; ayri bir "normal idle" bekleme ekrani YOKTUR (kaldirildi).
    - Gercek reklam (playlist/kampanya) varsa gorseller arasinda gecis yapar (`MediaView`); reklam YOKKEN `<AdPromo large />` (donen "Bu Alana Reklam Verebilirsiniz").
-   - Ust-orta'da logo (beyaz) + "Baslamak icin dokunun" overlay (`ss-overlay-text`).
+   - Ust-orta'da açık renk cam kart üzerinde koyu logo overlay'i (`ss-overlay-text`) bulunur; bu kart hem beyaz fallback hem kampanya medyası üzerinde okunur.
    - Dokunma → `demographics` screen.
 
 2. **DemographicsScreen.svelte**
@@ -163,7 +163,7 @@
    - Marka logosu (SVG). Props: `height`, `light` (koyu zeminde beyaz), `class`. Kaynak: `assets/eisa-logo.svg` + `eisa-logo-light.svg`
 
 10. **AdPromo.svelte**
-   - Reklam yokken donen "Bu Alana Reklam Verebilirsiniz" tasarimi (konik isik halkasi + megafon + shimmer baslik + logo). `large` prop tam-ekran (attractor) varyanti
+   - Reklam yokken donen "Bu Alana Reklam Verebilirsiniz" tasarimi (konik isik halkasi + megafon + shimmer baslik + logo). `large` prop tam-ekran (attractor) varyantıdır; bu varyant beyaz/açık zemin ve koyu gri + e-isa kırmızısı kontrast kullanır. Alt banttaki küçük varyant mevcut koyu tasarımı korur.
    - **Dekoratif kalp atışı animasyonu (2026-08-16):** `large` varyantinda merkezde HeartbeatAnimation component görünür
      - `HeartbeatAnimation.svelte` ayrı modüler widget olarak oluşturuldu
    - **Idle içerik gösterimi (2026-08-16):** `large` varyantı, mevcut heartbeat/sponsor tasarımının üstüne katmanlanmış olarak `idleContentStore`'dan gelen aktif idle içeriğini gösterir:
@@ -177,7 +177,7 @@
 11. **HeartbeatAnimation.svelte** (2026-08-16)
    - Sponsor fallback ekranı için dekoratif kalp atışı animasyonu
    - **3 pikli kalp atışı:** Küçük-BÜYÜK-küçük (ortadaki diğerlerinin 2 katı büyüklükte)
-   - **Beyaz renk:** Tüm animasyon beyaz (#fff), gradient ve halkalar
+     - Koyu zemin için beyaz görünüm korunur; beyaz idle fallback'te `onLight` ile gradient, çizgi ve halkalar e-isa kırmızısına döner.
    - **Gülen yüz (smile curve):** Kalp atışının hemen altında bezier eğrisi (Q220,130 Q260,150 Q300,130)
    - Eş merkezli beyaz halkalar (merkezden dışa yayılıp saydamlaşma, 2.8sn döngü)
    - Merkez beyaz glow + pulse

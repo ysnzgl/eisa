@@ -5,6 +5,12 @@
 
 ---
 
+## 2026-09-14
+
+### [Kiosk UI] Idle ekranı beyaz marka tasarımına geçirildi
+
+- Reklamsız tam ekran idle fallback beyaz/açık zemine alındı; EKG, CTA, karşılama ve sponsor kartı koyu gri + e-isa kırmızısı kontrastla yeniden uyarlandı. Üst logo açık cam kartta koyu varyanta geçti; kampanya oynatımı ve alt banttaki koyu `AdPromo` tasarımı değişmedi. Kiosk UI 67 test ve production build ile doğrulandı.
+
 ## 2026-09-13
 
 ### [Backend+WebPanel] Admin-only İş Takibi ve ortak form stili düzeltmeleri

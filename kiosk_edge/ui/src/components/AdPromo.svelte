@@ -112,7 +112,7 @@
       {/if}
   <!-- Dekoratif kalp atışı animasyonu + idle içerik (yalnız large varyantında) -->
 
-  <HeartbeatAnimation />
+  <HeartbeatAnimation onLight={large} />
   {#if large}
     <div class="idle-layer" aria-hidden="true">
       <div class="welcome-block">
@@ -147,7 +147,7 @@
     <div class="ad-promo-text">
       <span class="ad-promo-title">Bu Alana Sponsor Olabilirsiniz</span>
       <span class="ad-promo-sub">
-        <Logo height={large ? "50px" : "25px"} light class="ad-promo-logo" />
+        <Logo height={large ? "50px" : "25px"} light={!large} class="ad-promo-logo" />
         <span>Sponsorluk Ağı · Eczane Ekranında Markanız</span>
       </span>
     </div>
@@ -261,11 +261,31 @@
   /* ── Buyuk (ekran koruyucu) varyant ── */
   .ad-promo--large {
     padding-bottom: 48px;
+    background:
+      radial-gradient(circle at 50% 39%, rgba(177, 18, 27, 0.08), transparent 28%),
+      radial-gradient(circle at 10% 8%, rgba(15, 143, 138, 0.07), transparent 24%),
+      linear-gradient(180deg, #ffffff 0%, #fffafa 58%, #f9fafb 100%);
+  }
+  .ad-promo--large .ad-promo-glow {
+    background: conic-gradient(
+      from 0deg,
+      transparent 0deg,
+      rgba(177, 18, 27, 0) 65deg,
+      rgba(177, 18, 27, 0.12) 120deg,
+      rgba(15, 143, 138, 0.08) 180deg,
+      rgba(177, 18, 27, 0.12) 240deg,
+      transparent 305deg,
+      transparent 360deg
+    );
+    opacity: 0.62;
   }
   .ad-promo--large .ad-promo-card {
     gap: 26px;
     padding: 28px 48px;
     border-radius: 22px;
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid rgba(177, 18, 27, 0.16);
+    box-shadow: 0 18px 45px rgba(82, 18, 24, 0.14);
   }
   .ad-promo--large .ad-promo-badge {
     width: 95px;
@@ -274,10 +294,17 @@
   }
   .ad-promo--large .ad-promo-title {
     font-size: 50px;
+    background: linear-gradient(90deg, #111827 0%, #b1121b 48%, #111827 100%);
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
   }
   .ad-promo--large .ad-promo-sub {
     font-size: 22px;
     gap: 10px;
+    color: #596273;
   }
 
   @keyframes ad-promo-spin {
@@ -335,6 +362,10 @@
     color: rgba(154, 166, 189, 0.6);
     pointer-events: none;
     z-index: 1;
+  }
+
+  .ad-promo--large .ad-promo-kiosk-name {
+    color: rgba(55, 65, 81, 0.58);
   }
 
   /* Hareket azaltilmasi tercih edilirse animasyonlari sakinlestir */
@@ -414,6 +445,43 @@
     white-space: nowrap;
   }
 
+  .ad-promo--large .ai-assistant-text {
+    background: linear-gradient(
+      135deg,
+      #111827 0%,
+      #4b5563 26%,
+      #b1121b 50%,
+      #4b5563 74%,
+      #111827 100%
+    );
+    background-size: 300% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 8px 18px rgba(177, 18, 27, 0.12));
+    animation: ai-label-glow-light 2.8s ease-in-out infinite;
+  }
+
+  @keyframes ai-label-glow-light {
+    0%,
+    100% {
+      background-position: 200% 0;
+      opacity: 0.82;
+      filter: drop-shadow(0 6px 12px rgba(177, 18, 27, 0.1));
+    }
+    26% {
+      background-position: 50% 0;
+      opacity: 1;
+      filter: drop-shadow(0 10px 24px rgba(177, 18, 27, 0.2));
+    }
+    50% {
+      background-position: -50% 0;
+      opacity: 0.9;
+      filter: drop-shadow(0 7px 16px rgba(177, 18, 27, 0.14));
+    }
+  }
+
   /* Peak %26: heartbeat gradient merkezi (x=300) pika ulaştığı gerçek an */
   @keyframes ai-label-glow {
     0% {
@@ -488,6 +556,11 @@
     /* animation: welcome-fade-up 600ms 100ms cubic-bezier(0.22, 1, 0.36, 1) both; */
   }
 
+  .ad-promo--large .welcome-name {
+    color: #1f2937;
+    text-shadow: 0 3px 16px rgba(17, 24, 39, 0.12);
+  }
+
   .welcome-hos {
     font-size: clamp(40px, 5vw, 100px);
     font-weight: 900;
@@ -510,6 +583,22 @@
     /* animation:
       welcome-fade-up 600ms 200ms cubic-bezier(0.22, 1, 0.36, 1) both,
       welcome-hos-shine 2.4s 800ms ease-in-out infinite; */
+  }
+
+  .ad-promo--large .welcome-hos {
+    background: linear-gradient(
+      135deg,
+      #7f1d1d 0%,
+      #b1121b 36%,
+      #e0444c 62%,
+      #7f1d1d 100%
+    );
+    background-size: 300% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 8px 18px rgba(177, 18, 27, 0.18));
   }
 
   .welcome-tagline {
@@ -598,6 +687,16 @@
     -webkit-backdrop-filter: blur(4px);
   }
 
+  .ad-promo--large .idle-title {
+    color: #1f2937;
+    text-shadow: none;
+    border-color: rgba(177, 18, 27, 0.72);
+    box-shadow:
+      0 16px 38px rgba(82, 18, 24, 0.12),
+      inset 0 0 24px rgba(177, 18, 27, 0.035);
+    background: rgba(255, 255, 255, 0.88);
+  }
+
   .idle-text {
     position: absolute;
     top: 63.5%;
@@ -683,6 +782,10 @@
     filter: drop-shadow(0 0 8px rgba(109, 105, 105, 0.7));
     animation: idle-finger-press 1.6s ease-in-out infinite;
   }
+  .ad-promo--large .idle-cta-finger i {
+    color: #b1121b;
+    filter: drop-shadow(0 7px 12px rgba(177, 18, 27, 0.24));
+  }
   .idle-cta-ring {
     position: absolute;
     top: 0px;
@@ -694,6 +797,9 @@
     border: 2.5px solid rgba(211, 197, 198, 0.8);
     opacity: 0;
     animation: idle-cta-ripple 1.6s ease-out infinite;
+  }
+  .ad-promo--large .idle-cta-ring {
+    border-color: rgba(177, 18, 27, 0.52);
   }
   .idle-cta-ring--2 {
     animation-delay: 0.55s;

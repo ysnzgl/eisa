@@ -1,15 +1,21 @@
 <script>
+  /** Beyaz idle zemini üzerinde marka renkli görünüm. */
+  export let onLight = false;
   export let puls =
     "M0,100 L120,100 L140,70 L152,130 L164,100 L184,100 L200,50 L212,150 L224,100 L268,100 L294,210 L300,190 L306,10 L332,100 L376,100 L388,50 L400,150 L412,100 L436,100 L448,70 L460,130 L472,100 L600,100";
 </script>
 
-<div class="heartbeat-animation" aria-hidden="true">
+<div
+  class="heartbeat-animation"
+  class:heartbeat-animation--on-light={onLight}
+  aria-hidden="true"
+>
   <svg
     class="heartbeat-svg"
     viewBox="0 0 600 240"
     xmlns="http://www.w3.org/2000/svg"
   >
-    <!-- Arka plan EKG çizgisi (düşük opaklık, beyaz) - 5 pik -->
+    <!-- Arka plan EKG çizgisi (düşük opaklık) -->
     <path
       class="heartbeat-baseline"
       d={puls}
@@ -28,14 +34,22 @@
       stroke-linecap="round"
     />
 
-    <!-- Gradient tanımlama (beyaz) -->
+    <!-- Koyu zeminde beyaz, açık zeminde marka kırmızısı gradient. -->
     <defs>
       <linearGradient id="heartbeat-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-        <stop offset="0%" stop-color="rgba(255, 255, 255, 0)" />
-        <stop offset="30%" stop-color="rgba(255, 255, 255, 0.6)" />
-        <stop offset="50%" stop-color="rgba(255, 255, 255, 1)" />
-        <stop offset="70%" stop-color="rgba(255, 255, 255, 0.6)" />
-        <stop offset="100%" stop-color="rgba(255, 255, 255, 0)" />
+        {#if onLight}
+          <stop offset="0%" stop-color="rgba(177, 18, 27, 0)" />
+          <stop offset="30%" stop-color="rgba(177, 18, 27, 0.58)" />
+          <stop offset="50%" stop-color="rgba(177, 18, 27, 1)" />
+          <stop offset="70%" stop-color="rgba(224, 68, 76, 0.62)" />
+          <stop offset="100%" stop-color="rgba(177, 18, 27, 0)" />
+        {:else}
+          <stop offset="0%" stop-color="rgba(255, 255, 255, 0)" />
+          <stop offset="30%" stop-color="rgba(255, 255, 255, 0.6)" />
+          <stop offset="50%" stop-color="rgba(255, 255, 255, 1)" />
+          <stop offset="70%" stop-color="rgba(255, 255, 255, 0.6)" />
+          <stop offset="100%" stop-color="rgba(255, 255, 255, 0)" />
+        {/if}
       </linearGradient>
     </defs>
   </svg>
@@ -78,7 +92,11 @@
   }
 
   .heartbeat-baseline {
-    /* Sabit arka plan çizgisi */
+    /* Sabit arka plan çizgisi. */
+  }
+
+  .heartbeat-animation--on-light .heartbeat-baseline {
+    stroke: rgba(177, 18, 27, 0.2);
   }
 
   .heartbeat-pulse {
@@ -127,6 +145,10 @@
     border: 2px solid rgba(255, 255, 255, 0.5);
     border-radius: 50%;
     pointer-events: none;
+  }
+
+  .heartbeat-animation--on-light .heartbeat-ring {
+    border-color: rgba(177, 18, 27, 0.34);
   }
 
   .heartbeat-ring--1 {
@@ -187,6 +209,15 @@
       rgba(255, 255, 255, 0) 70%
     );
     animation: heartbeat-glow-pulse 2.8s ease-in-out infinite;
+  }
+
+  .heartbeat-animation--on-light .heartbeat-center-glow {
+    background: radial-gradient(
+      circle,
+      rgba(177, 18, 27, 0.16) 0%,
+      rgba(224, 68, 76, 0.07) 42%,
+      rgba(177, 18, 27, 0) 72%
+    );
   }
 
   @keyframes heartbeat-glow-pulse {

@@ -180,6 +180,9 @@
     align-items: center;
     justify-content: center;
   }
+  .player--fullscreen {
+    background: #ffffff;
+  }
   .player--strip {
     border-top: 3px solid #B1121B;
   }

@@ -20,26 +20,8 @@
   tabindex="0"
   on:keydown={(e) => e.key === 'Enter' && handleTap()}
 >
-  <!-- Metin okunurlugu icin hafif ust/alt scrim (arkadaki video uzerinde). -->
-  <div class="ss-scrim" aria-hidden="true"></div>
-
   <!-- Logo + CTA -->
   <div class="ss-overlay-text">
-    <Logo height="100px" light class="ss-logo-img" />
+    <Logo height="100px" class="ss-logo-img" />
   </div>
 </div>
-
-<style>
-  .ss-scrim {
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(
-      to bottom,
-      rgba(0, 0, 0, 0.38) 0%,
-      rgba(0, 0, 0, 0) 26%,
-      rgba(0, 0, 0, 0) 72%,
-      rgba(0, 0, 0, 0.38) 100%
-    );
-    pointer-events: none;
-  }
-</style>
