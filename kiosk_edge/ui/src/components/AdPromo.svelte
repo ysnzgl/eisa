@@ -10,6 +10,7 @@
   import Logo from "./Logo.svelte";
   import HeartbeatAnimation from "./HeartbeatAnimation.svelte";
   import { currentIdleContent, eczaneAdi, kioskId } from "../lib/idleContentStore.js";
+  import { normalizeIdleIcon } from "../lib/idleIcon.js";
 
   /** Buyuk kart boyutu icin true (idle/attractor kullanimi). */
   export let large = false;
@@ -123,11 +124,9 @@
       {#if idle}
         {#key titleKey}
           <div class="idle-title-block">
-            {#if idle.ikon}
-              <div class="idle-kategori-ikon">
-                <i class="fa-solid {idle.ikon}"></i>
-              </div>
-            {/if}
+            <div class="idle-kategori-ikon">
+              <i class="fa-solid {normalizeIdleIcon(idle.ikon || idle.kategori_ikon)}"></i>
+            </div>
             <div class="idle-title">
               <span class="idle-text-inner">{typedText}</span><span
                 class="idle-caret"
@@ -655,11 +654,21 @@
   }
 
   .idle-kategori-ikon {
-    font-size: 72px;
-    color: #e0444c;
+    width: 112px;
+    height: 112px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 58px;
+    color: #ffffff;
+    background: #ed1c24;
     line-height: 1;
-    filter: drop-shadow(0 0 18px rgba(224, 68, 76, 0.65));
-    text-shadow: 0 0 32px rgba(224, 68, 76, 0.4);
+    border: 6px solid rgba(237, 28, 36, 0.14);
+    background-clip: padding-box;
+    box-shadow:
+      0 14px 30px rgba(177, 18, 27, 0.22),
+      0 0 0 1px rgba(237, 28, 36, 0.12);
   }
 
   .idle-title {

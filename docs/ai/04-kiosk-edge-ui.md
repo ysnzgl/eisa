@@ -168,6 +168,7 @@
      - `HeartbeatAnimation.svelte` ayrı modüler widget olarak oluşturuldu
    - **Idle içerik gösterimi (2026-08-16):** `large` varyantı, mevcut heartbeat/sponsor tasarımının üstüne katmanlanmış olarak `idleContentStore`'dan gelen aktif idle içeriğini gösterir:
      - **Başlık**: heartbeat halkasının üstünde, fade + hafif yukarı giriş
+     - **Kategori ikonu**: edge `ikon` veya merkez `kategori_ikon` alanı kabul edilir; `fa-solid fa-*` değeri glif sınıfına normalize edilir. Kategori/ikon olmayan içerikte `fa-heart-pulse` fallback'i gösterilir. İkon beyaz glifli, logo kırmızısı dairesel rozet içindedir.
      - **Metin**: heartbeat'in altında, tek seferlik daktilo (typewriter) efekti (`requestAnimationFrame`, 3.5–4.5sn, biten yazıda kaybolan yanıp sönen kırmızı imleç; `prefers-reduced-motion` → metin anında tam görünür)
      - **SABİT CTA** "Size özel öneriler için DOKUNUN" (DOKUNUN e-isa kırmızısı + light-sweep, aşağı basan kırmızı işaret parmağı ikonu + iki ripple halkası; `pointer-events:none`, `aria-hidden`). CTA idle içerik olmasa da `large`'da her zaman görünür.
      - Heartbeat içerik/typewriter değişiminde YENİDEN mount edilmez.
@@ -177,7 +178,7 @@
 11. **HeartbeatAnimation.svelte** (2026-08-16)
    - Sponsor fallback ekranı için dekoratif kalp atışı animasyonu
    - **3 pikli kalp atışı:** Küçük-BÜYÜK-küçük (ortadaki diğerlerinin 2 katı büyüklükte)
-     - Koyu zemin için beyaz görünüm korunur; beyaz idle fallback'te `onLight` ile gradient, çizgi ve halkalar e-isa kırmızısına döner.
+     - Koyu zemin için beyaz görünüm korunur; beyaz idle fallback'te `onLight` ile gradient, sabit çizgi, halkalar ve merkez glow logo kırmızısına (`#ed1c24`) döner.
    - **Gülen yüz (smile curve):** Kalp atışının hemen altında bezier eğrisi (Q220,130 Q260,150 Q300,130)
    - Eş merkezli beyaz halkalar (merkezden dışa yayılıp saydamlaşma, 2.8sn döngü)
    - Merkez beyaz glow + pulse

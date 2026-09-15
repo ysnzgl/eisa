@@ -122,9 +122,20 @@ const audioPreviewLoading = ref(false);
 let audioPreviewRequest = 0;
 function stopAudioPreview() {
   audioPreviewRequest += 1;
-  if (audioPreviewUrl.value) URL.revokeObjectURL(audioPreviewUrl.value);
+  const previousUrl = audioPreviewUrl.value;
   audioPreviewUrl.value = '';
+  // Oynatici DOM'dan kalkmadan kaynagi iptal etmek gecikmis error olayi uretebilir.
+  if (previousUrl) nextTick(() => URL.revokeObjectURL(previousUrl));
   audioPreviewLoading.value = false;
+}
+function onAudioPreviewError(event) {
+  const player = event.target;
+  if (!audioPreviewUrl.value || player.getAttribute('src') !== audioPreviewUrl.value) return;
+  const code = player.error?.code;
+  if (code === 1) return; // Onceki oynatimin kullanici tarafindan iptali.
+  toast.error(code === 3 ? 'Ses dosyası çözümlenemedi.' : code === 4
+    ? 'Ses biçimi desteklenmiyor veya tarayıcı ses kaynağını engelliyor.'
+    : 'Ses oynatılamadı. Dinle düğmesiyle yeniden deneyin.');
 }
 onBeforeUnmount(stopAudioPreview);
 async function listenToAudio(asset) {
@@ -1517,7 +1528,7 @@ async function copyAppKey() {
                 <div v-else-if="!kioskAudioLibraryLoading" class="audio-empty"><i class="fa-solid fa-headphones"></i><strong>İlk sesinizi ekleyin</strong><span>Yüklediğiniz sesler burada listelenecek.</span></div>
                 <div v-if="audioPreviewUrl" class="audio-preview">
                   <p>{{ audioPreviewName }}</p>
-                  <audio :key="audioPreviewUrl" :src="audioPreviewUrl" controls autoplay style="width:100%;" @error="toast.error('Ses oynatılamadı.')"></audio>
+                  <audio :key="audioPreviewUrl" :src="audioPreviewUrl" controls autoplay style="width:100%;" @error="onAudioPreviewError"></audio>
                 </div>
                 <div class="audio-upload-panel">
                 <label class="audio-upload-picker">

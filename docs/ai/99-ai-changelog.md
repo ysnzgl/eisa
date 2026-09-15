@@ -7,6 +7,14 @@
 
 ## 2026-09-14
 
+### [Portal] Ses önizlemesi kontrolü
+
+- Yerel 16 aktif ses storage'dan okunup checksum ile doğrulandı; örnek preview yanıtı 200/audio-wav ve dosyayla aynı. Önizleme presigned URL kullanmıyor. Yayın CSP'sine blob medya izni eklendi; eski oynatıcı kaynağının erken iptalinden doğabilecek yanıltıcı hata bildirimi düzeltildi. Yayın CSP değişikliği portal yeniden dağıtıldığında uygulanır.
+
+### [Kiosk UI] Idle heartbeat ve içerik ikon görünürlüğü
+
+- Beyaz idle ekrandaki heartbeat çizgisi, hareketli pulse, halkalar ve glow logo kırmızısına (`#ed1c24`) geçirildi. İçerik ikonları `ikon`/`kategori_ikon` alanlarını ve tam Font Awesome sınıflarını normalize ediyor; kategori atanmamış veya ikonsuz mesajlarda `fa-heart-pulse` fallback'i gösteriliyor. İkon, kontrastlı kırmızı dairesel rozet olarak yeniden biçimlendirildi; iki regresyon testi eklendi.
+
 ### [Kiosk UI] Idle ekranı beyaz marka tasarımına geçirildi
 
 - Reklamsız tam ekran idle fallback beyaz/açık zemine alındı; EKG, CTA, karşılama ve sponsor kartı koyu gri + e-isa kırmızısı kontrastla yeniden uyarlandı. Üst logo açık cam kartta koyu varyanta geçti; kampanya oynatımı ve alt banttaki koyu `AdPromo` tasarımı değişmedi. Kiosk UI 67 test ve production build ile doğrulandı.

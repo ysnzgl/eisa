@@ -426,6 +426,8 @@ window.EISA_API_BASE_URL = 'http://localhost:8000';
 
 ### DeviceManagement — cihaz zamanlayıcıları ve idle ses *(2026-09-11)*
 
+Ses önizlemesi süreli S3 URL'si kullanmaz: yetkili backend proxy'si object key üzerinden dosyayı okur; portal blob URL üretir. Yayın Nginx CSP'sinde `media-src 'self' blob:` zorunludur. Eski blob URL oynatıcı DOM'dan kaldırıldıktan sonra serbest bırakılır; eski kaynağın gecikmiş hata olayları gösterilmez.
+
 Düzenleme açılışında cihaz detay API'sinden güncel ayarlar alınır; ses süreleri yuvarlanmaz (tam dakika değilse Sn seçili gelir). Kütüphane Tümünü Seç / Seçimi Temizle sunar. Doğrulama hataları Güncelle yanında da görünür; kütüphane yüklemesi cihaz ayarlarını kaydetme butonunu kilitlemez.
 
 Ses kütüphanesi kart satırları, seçili sayısı/sırası, Dinle düğmesi ve ayrı oynatıcıyla sunulur. Dosya seçimi ikonlu alan ve belirgin kırmızı Kütüphaneye Ekle düğmesi kullanır; stiller yalnız bu bileşene scoped uygulanır.

@@ -38,11 +38,11 @@
     <defs>
       <linearGradient id="heartbeat-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
         {#if onLight}
-          <stop offset="0%" stop-color="rgba(177, 18, 27, 0)" />
-          <stop offset="30%" stop-color="rgba(177, 18, 27, 0.58)" />
-          <stop offset="50%" stop-color="rgba(177, 18, 27, 1)" />
-          <stop offset="70%" stop-color="rgba(224, 68, 76, 0.62)" />
-          <stop offset="100%" stop-color="rgba(177, 18, 27, 0)" />
+          <stop offset="0%" stop-color="rgba(237, 28, 36, 0)" />
+          <stop offset="30%" stop-color="rgba(237, 28, 36, 0.68)" />
+          <stop offset="50%" stop-color="#ed1c24" />
+          <stop offset="70%" stop-color="rgba(237, 28, 36, 0.68)" />
+          <stop offset="100%" stop-color="rgba(237, 28, 36, 0)" />
         {:else}
           <stop offset="0%" stop-color="rgba(255, 255, 255, 0)" />
           <stop offset="30%" stop-color="rgba(255, 255, 255, 0.6)" />
@@ -96,7 +96,7 @@
   }
 
   .heartbeat-animation--on-light .heartbeat-baseline {
-    stroke: rgba(177, 18, 27, 0.2);
+    stroke: rgba(237, 28, 36, 0.42);
   }
 
   .heartbeat-pulse {
@@ -148,7 +148,7 @@
   }
 
   .heartbeat-animation--on-light .heartbeat-ring {
-    border-color: rgba(177, 18, 27, 0.34);
+    border-color: rgba(237, 28, 36, 0.52);
   }
 
   .heartbeat-ring--1 {
@@ -214,9 +214,9 @@
   .heartbeat-animation--on-light .heartbeat-center-glow {
     background: radial-gradient(
       circle,
-      rgba(177, 18, 27, 0.16) 0%,
-      rgba(224, 68, 76, 0.07) 42%,
-      rgba(177, 18, 27, 0) 72%
+      rgba(237, 28, 36, 0.22) 0%,
+      rgba(237, 28, 36, 0.1) 42%,
+      rgba(237, 28, 36, 0) 72%
     );
   }
 
