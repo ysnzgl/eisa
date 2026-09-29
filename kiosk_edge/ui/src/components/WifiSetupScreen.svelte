@@ -3,6 +3,8 @@
   import ScreenHeader from './ScreenHeader.svelte';
   import { fetchWifiNetworks, connectToWifi, fetchWifiStatus } from '../lib/api.js';
   import { logger } from '../lib/logger.js';
+  import { t } from '../lib/i18n.js';
+  import { get } from 'svelte/store';
 
   const dispatch = createEventDispatcher();
   const MAX_PASSWORD_LENGTH = 128;
@@ -65,9 +67,9 @@
 
     try {
       networks = await fetchWifiNetworks();
-      if (!networks.length) scanError = 'Çevrede Wi-Fi ağı bulunamadı.';
+      if (!networks.length) scanError = get(t)('wifi.noNetworks');
     } catch (err) {
-      scanError = err.userMessage ?? 'Ağ taraması başarısız oldu.';
+      scanError = err.userMessage ?? get(t)('wifi.scanFailed');
     } finally {
       scanning = false;
     }
@@ -165,7 +167,7 @@
       await connectToWifi(targetSsid, password || undefined);
     } catch (err) {
       connectFailed = true;
-      originalError = err.userMessage ?? 'Bağlantı kurulamadı. Şifreyi kontrol edin.';
+      originalError = err.userMessage ?? get(t)('wifi.connectFailed');
       connectDiagnostic = err.status ? `HTTP ${err.status}` : (err.name || 'NetworkError');
     }
 
@@ -227,26 +229,26 @@
   <div class="wifi-topbar">
     <div class="connection-badge">
       <i class="fa-solid fa-wifi"></i>
-      Bağlantı kurulumu
+      {$t('wifi.connectionSetup')}
     </div>
     <ScreenHeader
       height="100px"
-      subtitle="Devam etmek için kullanmak istediğiniz Wi-Fi ağını seçin."
+      subtitle={$t('wifi.headerSubtitle')}
     />
   </div>
 
   <section class="network-card" class:network-card--compact={Boolean(selectedNet)} aria-labelledby="network-title">
     <div class="section-heading">
       <div>
-        <h1 id="network-title">Kullanılabilir ağlar</h1>
-        <p>{scanning ? 'Yakındaki ağlar aranıyor…' : `${networks.length} ağ bulundu`}</p>
+        <h1 id="network-title">{$t('wifi.availableNetworks')}</h1>
+        <p>{scanning ? $t('wifi.scanning') : $t('wifi.networksFound', { n: networks.length })}</p>
       </div>
       <button
         type="button"
         class="icon-button"
         on:click={scan}
         disabled={scanning || connecting}
-        aria-label="Ağları yeniden tara"
+        aria-label={$t('wifi.rescan')}
       >
         <i class="fa-solid fa-arrows-rotate" class:fa-spin={scanning}></i>
       </button>
@@ -256,14 +258,14 @@
       {#if scanning}
         <div class="status-state">
           <i class="fa-solid fa-circle-notch fa-spin"></i>
-          <strong>Ağlar taranıyor</strong>
-          <span>Lütfen kısa bir süre bekleyin.</span>
+          <strong>{$t('wifi.scanningTitle')}</strong>
+          <span>{$t('wifi.scanningHint')}</span>
         </div>
       {:else if scanError}
         <div class="status-state status-state--error">
           <i class="fa-solid fa-triangle-exclamation"></i>
           <strong>{scanError}</strong>
-          <button type="button" class="retry-button" on:click={scan}>Tekrar dene</button>
+          <button type="button" class="retry-button" on:click={scan}>{$t('wifi.retry')}</button>
         </div>
       {:else}
         <ul class="wifi-list" aria-label="Wi-Fi ağları">
@@ -313,7 +315,7 @@
         </div>
         <span class="security-label">
           <i class="fa-solid {selectedNet.secured ? 'fa-lock' : 'fa-lock-open'}"></i>
-          {selectedNet.secured ? 'Şifreli' : 'Açık ağ'}
+          {selectedNet.secured ? $t('wifi.secured') : $t('wifi.open')}
         </span>
       </div>
 
@@ -325,7 +327,7 @@
             id="wifi-password"
             type={showPassword ? 'text' : 'password'}
             value={password}
-            placeholder="Wi-Fi şifresini girin"
+            placeholder={$t('wifi.passwordPlaceholder')}
             class="password-input"
             autocomplete="off"
             autocapitalize="off"
@@ -417,17 +419,17 @@
       {:else}
         <div class="open-network-note">
           <i class="fa-solid fa-circle-info"></i>
-          Bu ağ parola istemiyor. Bağlanarak devam edebilirsiniz.
+          {$t('wifi.noPasswordNeeded')}
         </div>
       {/if}
 
       <button type="button" class="connect-button" on:click={connect} disabled={!canConnect}>
         {#if connecting}
           <i class="fa-solid fa-circle-notch fa-spin"></i>
-          Bağlantı kuruluyor…
+          {$t('wifi.connectingState')}
         {:else}
           <i class="fa-solid fa-wifi"></i>
-          Ağa bağlan
+          {$t('wifi.doConnect')}
         {/if}
       </button>
     </section>
@@ -435,7 +437,7 @@
 
   <p class="wifi-footer-note">
     <i class="fa-solid fa-shield-halved"></i>
-    Ağ parolanız yalnızca bağlantı kurulurken kullanılır.
+    {$t('wifi.passwordHint')}
   </p>
 </div>
 

@@ -48,7 +48,7 @@ const importing    = ref(false);
 const deleteTarget = ref(null);
 const deleting     = ref(false);
 
-const empty = () => ({ baslik: '', metin: '', aktif: true, kategori: null });
+const empty = () => ({ baslik: '', baslik_en: '', metin: '', metin_en: '', aktif: true, kategori: null });
 const form = reactive(empty());
 
 const baslikLen = computed(() => (form.baslik || '').length);
@@ -163,7 +163,9 @@ function openEdit(item) {
   editingId.value = item.id;
   Object.assign(form, { 
     baslik: item.baslik, 
+    baslik_en: item.baslik_en || '',
     metin: item.metin, 
+    metin_en: item.metin_en || '',
     aktif: item.aktif,
     kategori: item.kategori || null,
   });
@@ -183,7 +185,9 @@ function validate() {
   if (metin.length > METIN_MAX)   { toast.warning(`Metin en fazla ${METIN_MAX} karakter olabilir.`); return null; }
   return { 
     baslik, 
+    baslik_en: (form.baslik_en || '').trim(),
     metin, 
+    metin_en: (form.metin_en || '').trim(),
     aktif: form.aktif,
     kategori: form.kategori || null,
   };
@@ -548,6 +552,16 @@ function fmtDate(iso) {
                 </div>
 
                 <div class="eisa-form-row eisa-form-row-full">
+                  <label class="eisa-field-label">Başlık (İngilizce)</label>
+                  <input
+                    v-model="form.baslik_en"
+                    class="eisa-field"
+                    :maxlength="BASLIK_MAX"
+                    placeholder="e.g. Start Your Day With a Balanced Breakfast (optional)"
+                  />
+                </div>
+
+                <div class="eisa-form-row eisa-form-row-full">
                   <label class="eisa-field-label">Kategori</label>
                   <select v-model="form.kategori" class="eisa-field">
                     <option :value="null">Kategori seçilmedi</option>
@@ -569,6 +583,21 @@ function fmtDate(iso) {
                     rows="4"
                     placeholder="Kısa, bilgilendirici bir metin girin."
                   ></textarea>
+                </div>
+
+                <div class="eisa-form-row eisa-form-row-full">
+                  <label class="eisa-field-label">Metin (İngilizce)</label>
+                  <textarea
+                    v-model="form.metin_en"
+                    class="eisa-field cm-textarea"
+                    :maxlength="METIN_MAX"
+                    rows="3"
+                    placeholder="English idle text (optional)."
+                  ></textarea>
+                  <p class="cm-note" style="margin-top:6px;">
+                    <i class="fa-solid fa-language"></i>
+                    Boş bırakılırsa kioskta İngilizce dilde Türkçe metin gösterilir.
+                  </p>
                 </div>
 
                 <div class="eisa-form-row eisa-form-row-full">

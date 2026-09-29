@@ -8,13 +8,13 @@ from .models import Cevap, Danisma, EtkenMadde, Kategori, Soru, SoruEtkenMadde
 class CevapSerializer(serializers.ModelSerializer):
     class Meta:
         model = Cevap
-        fields = ["id", "metin", "agirlik"]
+        fields = ["id", "metin", "metin_en", "agirlik"]
 
 
 class CevapWriteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Cevap
-        fields = ["id", "soru", "metin", "agirlik"]
+        fields = ["id", "soru", "metin", "metin_en", "agirlik"]
 
 
 class EtkenMaddeSerializer(serializers.ModelSerializer):
@@ -49,7 +49,7 @@ class SoruSerializer(serializers.ModelSerializer):
     class Meta:
         model = Soru
         fields = [
-            "id", "kategori", "metin", "sira", "cevaplar",
+            "id", "kategori", "metin", "metin_en", "sira", "cevaplar",
             "hedef_cinsiyet", "hedef_yas_araliklari", "hedef_etken_maddeler",
         ]
         read_only_fields = ("id",)
@@ -59,7 +59,7 @@ class KategoriSerializer(serializers.ModelSerializer):
     class Meta:
         model = Kategori
         fields = [
-            "id", "ad", "slug", "ikon", "aktif",
+            "id", "ad", "ad_en", "slug", "ikon", "aktif",
             "hedef_cinsiyet", "hedef_yas_araliklari",
             "bagli_kategori",
         ]
@@ -70,7 +70,7 @@ class DanismaSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Danisma
-        fields = ["id", "ad", "slug", "ikon", "aktif", "ust_kategori", "ust_kategori_ad", "sira"]
+        fields = ["id", "ad", "ad_en", "slug", "ikon", "aktif", "ust_kategori", "ust_kategori_ad", "sira"]
 
 
 class SoruDetayliSerializer(serializers.ModelSerializer):
@@ -111,7 +111,7 @@ class SoruDetayliSerializer(serializers.ModelSerializer):
     class Meta:
         model = Soru
         fields = [
-            "id", "metin", "sira",
+            "id", "metin", "metin_en", "sira",
             "hedef_cinsiyet", "hedef_yas_araliklari", "hedef_etken_maddeler",
             "eslesme_kurallari",
         ]
@@ -125,7 +125,7 @@ class KategoriSyncSerializer(serializers.ModelSerializer):
     class Meta:
         model = Kategori
         fields = [
-            "id", "ad", "slug", "ikon", "sorular",
+            "id", "ad", "ad_en", "slug", "ikon", "sorular",
             "hedef_cinsiyet", "hedef_yas_araliklari",
             "bagli_kategori",
         ]
@@ -143,4 +143,4 @@ class DanismaSyncSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Danisma
-        fields = ["id", "ad", "slug", "ikon", "ust_kategori", "sira", "alt_kategoriler"]
+        fields = ["id", "ad", "ad_en", "slug", "ikon", "ust_kategori", "sira", "alt_kategoriler"]

@@ -24,7 +24,7 @@
 - `web_panels/src/views/admin/CampaignWizard.vue` â€” Kampanya yÃ¶netimi (6 adÄ±mlÄ± wizard)
 - `web_panels/src/views/admin/DoohControlCenter.vue` â€” DOOH izleme merkezi
 - `web_panels/src/views/admin/PlaylistEditor.vue` â€” Playlist dÃ¼zenleme
-- `web_panels/src/views/admin/ContentManagement.vue` — "İçerik Yönetimi" (route `/admin/content-management`): IdleScreenContent CRUD; başlık/metin idle içerik (2026-08-16). Eski `HouseAdManagement.vue` (`/admin/house-ads`) KALDIRILDI.
+- `web_panels/src/views/admin/ContentManagement.vue` — "İçerik Yönetimi" (route `/admin/content-management`): IdleScreenContent CRUD; başlık/metin idle içerik (2026-08-16). **TR/EN:** Başlık (İngilizce)/Metin (İngilizce) opsiyonel alanları *(2026-09-29)* — boş bırakılırsa kioskta İngilizce dilde Türkçe metin gösterilir. Eski `HouseAdManagement.vue` (`/admin/house-ads`) KALDIRILDI.
 - `web_panels/src/views/admin/GorevYonetimi.vue` — Admin-only İş Takibi (route `/admin/is-takip`); başlık/içerik/durum/atanan admin, ortak KPI kartları ve shared field styles ile kompakt modal
 - `web_panels/src/composables/useKioskRolloutStatus.js` â€” Kiosk rollout durum hesabÄ± (tek merkezi kaynak)
 - `web_panels/src/views/pharmacist/QrScan.vue` â€” QR tarama
@@ -78,8 +78,8 @@
 - `/admin` â†’ `Dashboard.vue`
 - `/admin/devices` â†’ `DeviceManagement.vue` (Eczane/Kiosk CRUD)
 - `/admin/devices/pending` â†’ `PendingDevices.vue` (Onay Bekleyen Cihazlar â€” 2026-07-14)
-- `/admin/medical-logic` â†’ `MedicalLogic.vue` (Kategori/Soru/EtkenMadde CRUD)
-- `/admin/danisma` â†’ `DanismaYonetimi.vue` (DanÄ±ÅŸma kategorileri CRUD)
+- `/admin/medical-logic` â†’ `MedicalLogic.vue` (Kategori/Soru/EtkenMadde CRUD; **TR/EN:** Kategori Adı (İngilizce) + Soru Metni (İngilizce) opsiyonel alanları — 2026-09-29)
+- `/admin/danisma` â†’ `DanismaYonetimi.vue` (DanÄ±ÅŸma kategorileri CRUD; **TR/EN:** Kategori Adı (İngilizce) opsiyonel alanı — 2026-09-29)
 - `/admin/campaigns` → `CampaignWizard.vue` (Kiosk Kampanyaları — 6 adımlı wizard; Step 2: iki medya alanı hem image hem video: Bekleme/İşlem ekranı. **2026-08-09:** active_media_url video desteği eklendi; video thumbnail video kartı gösteriyor.)
 - `/admin/kiosk-activities` → `KioskActivities.vue` (Kiosk Hareketleri: QR/Oturum, Kampanya Gösterimleri, Kiosk Olayları, **Yayın Akışı** — 2026-08-09)
 - `/admin/pharmacy-campaigns` → `PharmacyCampaigns.vue` *(2026-07-31)* (Eczacı Paneli Kampanyaları — bağımsız CRUD)

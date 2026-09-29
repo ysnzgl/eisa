@@ -1,5 +1,6 @@
 <script>
   import { createEventDispatcher } from 'svelte';
+  import { t } from '../lib/i18n.js';
 
   export let remaining = 5;
   const dispatch = createEventDispatcher();
@@ -8,13 +9,13 @@
 <div class="idle-countdown-backdrop" role="presentation">
   <dialog class="idle-countdown-modal" open aria-labelledby="idle-countdown-title">
     <div class="idle-countdown-icon" aria-hidden="true"><i class="fa-solid fa-clock"></i></div>
-    <h2 id="idle-countdown-title">İşleminiz devam ediyor mu?</h2>
-    <p>İşleminiz <strong>{remaining}</strong> saniye içinde ana ekrana dönecek.</p>
+    <h2 id="idle-countdown-title">{$t('idleCountdown.title')}</h2>
+    <p>{@html $t('idleCountdown.body', { n: `<strong>${remaining}</strong>` })}</p>
     <button type="button" on:click={() => dispatch('continue')}>
       <i class="fa-solid fa-hand-pointer"></i>
-      Devam Et
+      {$t('idleCountdown.continue')}
     </button>
-    <button type="button" class="idle-countdown-return" on:click={() => dispatch('returnToIdle')}>Ana ekrana dön</button>
+    <button type="button" class="idle-countdown-return" on:click={() => dispatch('returnToIdle')}>{$t('idleCountdown.return')}</button>
   </dialog>
 </div>
 
@@ -40,7 +41,7 @@
   .idle-countdown-icon { color: #b1121b; font-size: 2rem; margin-bottom: 0.75rem; }
   h2 { margin: 0; font-size: 1.35rem; }
   p { margin: 0.65rem 0 1.4rem; color: #4b5563; font-size: 1rem; }
-  p strong { color: #b1121b; font-size: 1.25em; }
+  p :global(strong) { color: #b1121b; font-size: 1.25em; }
   button {
     width: 100%; min-height: 52px; border: 0; border-radius: 0.55rem;
     color: white; background: #b1121b; font: inherit; font-weight: 700; cursor: pointer;

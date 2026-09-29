@@ -504,9 +504,21 @@ class IdleScreenContent(BaseModel):
         max_length=250,
         help_text="Idle ekrani basligi (duz metin, en fazla 250 karakter).",
     )
+    baslik_en = models.CharField(
+        max_length=250,
+        blank=True,
+        default="",
+        help_text="Ingilizce idle basligi. Bos = kioskta Turkce basliga geri doner.",
+    )
     metin = models.CharField(
         max_length=1000,
         help_text="Idle ekrani metni (duz metin, en fazla 500 karakter).",
+    )
+    metin_en = models.CharField(
+        max_length=1000,
+        blank=True,
+        default="",
+        help_text="Ingilizce idle metni. Bos = kioskta Turkce metne geri doner.",
     )
     aktif = models.BooleanField(
         default=True,

@@ -110,16 +110,17 @@ Backend kapalı/erişilemezse:
 **ÖNEMLİ:** SQLite schema'sında FOREIGN KEY constraint'leri YOK (2026-07-07 itibarıyla kaldırıldı). Backend veri bütünlüğünü zaten sağladığı için offline-first SQLite'da gereksiz kontroller kaldırıldı. Tüm `REFERENCES` clause'ları silinmiş, `PRAGMA foreign_keys` komutları temizlenmiş.
 
 **Kategori/Soru/Danışma:**
-- `kategoriler`: id, slug, ad, ikon, bagli_kategori_id (INTEGER, FK YOK), hedef_cinsiyet_id (INTEGER, FK YOK), aktif, hedef_cinsiyetler JSON, hedef_yas_araliklari JSON
-- `sorular`: id, kategori_id (INTEGER NOT NULL, FK YOK), metin, sira, hedef_cinsiyet_id (INTEGER, FK YOK), hedef_cinsiyetler JSON, hedef_yas_araliklari JSON, eslesme_kurallari JSON
-- `cevaplar`: id, soru_id (INTEGER NOT NULL, FK YOK), metin, sira
+- `kategoriler`: id, slug, ad, **ad_en** *(2026-09-29, TR/EN; boş = Türkçe'ye döner)*, ikon, bagli_kategori_id (INTEGER, FK YOK), hedef_cinsiyet_id (INTEGER, FK YOK), aktif, hedef_cinsiyetler JSON, hedef_yas_araliklari JSON
+- `sorular`: id, kategori_id (INTEGER NOT NULL, FK YOK), metin, **metin_en**, sira, hedef_cinsiyet_id (INTEGER, FK YOK), hedef_cinsiyetler JSON, hedef_yas_araliklari JSON, eslesme_kurallari JSON
+- `cevaplar`: id, soru_id (INTEGER NOT NULL, FK YOK), metin, **metin_en**, sira
 - `cevap_etken_madde`: cevap_id (FK YOK), etken_madde_id (FK YOK), aktif
 - `etken_maddeler`: id, ad, slug, aktif
-- `danisma_kategorileri`: id, slug, ad, ikon, ust_kategori_id (INTEGER, FK YOK), aktif
+- `danisma_kategorileri`: id, slug, ad, **ad_en**, ikon, ust_kategori_id (INTEGER, FK YOK), aktif
+- **Dil (i18n):** `_en` kolonları additive/idempotent eklendi; SCHEMA_VERSION **değişmez** → kiosk cache sıfırlanmaz. `scheduler.js` upsert'leri backend `_en` alanlarını yazar; `server.js` read endpoint'leri (`/api/kategoriler`, `/api/kategoriler/:slug/sorular`, `/api/danisma-kategorileri`, `/api/idle-contents`) `_en` döner. UI `$localize` seçili dile göre alan seçer.
 
 **Playlist/Creative:**
 - `creatives`: id, campaign_id, media_url, **active_media_url** (v12 eklendi, DEFAULT ''), duration_seconds, name, type (creative), checksum
-- `idle_contents` *(2026-08-16, v15)*: id, baslik, metin, aktif, guncellenme_tarihi — aktif idle (bekleme) başlık/metin içerikleri; `GET /api/idle-contents` bunu döner. Eski `house_ads` tablosu v15 migration ile düşürüldü.
+- `idle_contents` *(2026-08-16, v15)*: id, baslik, **baslik_en** *(2026-09-29, TR/EN)*, metin, **metin_en**, kategori_id, ikon, aktif, guncellenme_tarihi — aktif idle (bekleme) başlık/metin içerikleri; `GET /api/idle-contents` bunu (​`_en` dahil) döner. Eski `house_ads` tablosu v15 migration ile düşürüldü.
 - `playlists`: id, target_date, target_hour, version, items JSON
 - `playlist_items`: playlist_id, asset_type, asset_id, duration_seconds, playback_order
 

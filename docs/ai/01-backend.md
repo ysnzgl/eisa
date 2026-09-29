@@ -157,12 +157,13 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 - Migrations: `barkod_logo/0001_initial`, `barkod_logo/0002_alter_*`, `analytics/0014_oturumlogu_barkod_logo`
 
 ### Products (`apps.products`)
-- `Kategori`: Şikayet kategorisi (ad, slug, ikon, hedef_cinsiyet, hedef_yas_araliklari M2M, bagli_kategori self-FK)
-- `Danisma`: Eczacıya danışma kategorisi (ad, slug, ikon, ust_kategori self-FK)
-- `Soru`: Kategori sorular (kategori FK, metin, sira, hedef_cinsiyet, hedef_yas_araliklari M2M, hedef_etken_maddeler M2M)
-- `Cevap`: Soru cevapları (soru FK, metin, sira)
+- `Kategori`: Şikayet kategorisi (ad, **ad_en** *(2026-09-29, TR/EN)*, slug, ikon, hedef_cinsiyet, hedef_yas_araliklari M2M, bagli_kategori self-FK)
+- `Danisma`: Eczacıya danışma kategorisi (ad, **ad_en**, slug, ikon, ust_kategori self-FK)
+- `Soru`: Kategori sorular (kategori FK, metin, **metin_en**, sira, hedef_cinsiyet, hedef_yas_araliklari M2M, hedef_etken_maddeler M2M)
+- `Cevap`: Soru cevapları (soru FK, metin, **metin_en**, sira)
 - `CevapEtkenMadde`: Cevap ile etken madde ilişkisi (cevap FK, etken_madde FK, aktif)
 - `EtkenMadde`: Etken madde (ad, slug, aktif)
+- **Dil (i18n):** `_en` alanları boşsa kiosk Türkçe alana geri döner. Migration `products/0013_add_english_translations`. Catalog/sync + admin serializer'lar `_en`'i yayınlar; kiosk edge SQLite'ta karşılık gelen `_en` kolonları tutulur.
 
 ### Announcements (`apps.announcements`) *(2026-08-18)*
 - `Announcement`: `GENERAL|SYSTEM`; başlık, mesaj, aksiyon etiketi, seviye ve aktiflik. Genel kayıtlar `ONCE|DAILY|WEEKLY|MONTHLY`, tarih aralığı, aylık mod ve `ALL|PROVINCE|DISTRICT|PHARMACY` hedefi taşır.
@@ -183,7 +184,7 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 - `KioskDesiredBundle`: [Faz 1] Monoton desired_bundle_version (Faz 5'te aktif)
 - `Playlist`: Kiosk için üretilmiş playlist (kiosk FK, target_date, target_hour [Istanbul yereli], loop_duration_seconds, version; unique kiosk+date+hour)
 - `PlaylistItem`: Playlist öğeleri (playlist FK, creative FK [creative-only, house_ad kaldırıldı — migration 0027; `clean()` creative zorunlu], playback_order, estimated_start_offset_seconds [saat-mutlak 0..3599])
-- `IdleScreenContent` *(2026-08-16)*: Bekleme ekranı başlık/metin idle içeriği — "İçerik Yönetimi" (id BigAutoField, `baslik` [CharField≤100, zorunlu], `metin` [CharField≤300, zorunlu], `aktif` [bool default True], olusturulma/guncellenme_tarihi). Tablo `dooh_idle_screen_contents`. Medya/HTML YOK, düz metin. Eski `HouseAd` modeli kaldırıldı (migration 0027, tablo `dooh_house_ads` düşürüldü).
+- `IdleScreenContent` *(2026-08-16)*: Bekleme ekranı başlık/metin idle içeriği — "İçerik Yönetimi" (id BigAutoField, `baslik` [CharField≤100, zorunlu], **`baslik_en`** *(2026-09-29, TR/EN, blank)*, `metin` [CharField≤300, zorunlu], **`metin_en`** *(blank)*, `aktif` [bool default True], olusturulma/guncellenme_tarihi). Tablo `dooh_idle_screen_contents`. Boş `_en` → kioskta Türkçe alana döner (migration 0029). Medya/HTML YOK, düz metin. Eski `HouseAd` modeli kaldırıldı (migration 0027, tablo `dooh_house_ads` düşürüldü).
 - `PlayLog`: Reklam gösterim logu (kiosk FK, creative FK nullable [house_ad FK kaldırıldı — migration 0027], played_at, duration_played, play_event_id [nullable UUID K5])
 - `PharmacyCampaign` *(2026-07-31, 2026-08-01)*: Eczacı paneli kampanyası (id UUID, name, media_url, object_key, start_at, end_at, duration_seconds [izin: 15/30/60], is_active, target_pharmacies M2M Eczane, target_iller M2M Il, target_ilceler M2M Ilce). Feed: OR mantığıyla; hiç hedefi olmayan feed'e girmez. Migration 0022+0024.
 

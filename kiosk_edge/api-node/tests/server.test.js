@@ -123,6 +123,46 @@ describe('Kiosk API (Turkce sema)', () => {
     expect(r.statusCode).toBe(404);
   });
 
+  it('GET /api/kategoriler ad_en (TR/EN) alanini doner', async () => {
+    db.prepare("UPDATE kategoriler SET ad_en = 'Energy' WHERE id = 1").run();
+    const r = await app.inject({ method: 'GET', url: '/api/kategoriler' });
+    expect(r.statusCode).toBe(200);
+    expect(r.json()[0].ad_en).toBe('Energy');
+  });
+
+  it('GET /api/kategoriler ad_en bos ise bos string doner', async () => {
+    const r = await app.inject({ method: 'GET', url: '/api/kategoriler' });
+    expect(r.json()[0].ad_en).toBe('');
+  });
+
+  it('GET /api/kategoriler/:slug/sorular metin_en (TR/EN) doner', async () => {
+    db.prepare("UPDATE sorular SET metin_en = 'Are you tired?' WHERE id = 1").run();
+    const r = await app.inject({
+      method: 'GET',
+      url: '/api/kategoriler/enerji/sorular',
+    });
+    expect(r.statusCode).toBe(200);
+    const qs = r.json();
+    expect(qs[0].metin_en).toBe('Are you tired?');
+    expect(qs[1].metin_en).toBe('');
+  });
+
+  it('GET /api/danisma-kategorileri ad_en doner', async () => {
+    db.prepare("UPDATE danisma_kategorileri SET ad_en = 'Prescription Consultation' WHERE id = 10").run();
+    const r = await app.inject({ method: 'GET', url: '/api/danisma-kategorileri' });
+    expect(r.statusCode).toBe(200);
+    expect(r.json()[0].ad_en).toBe('Prescription Consultation');
+  });
+
+  it('GET /api/idle-contents baslik_en/metin_en doner', async () => {
+    db.prepare("UPDATE idle_contents SET baslik_en = 'Info', metin_en = 'Eat balanced.' WHERE id = 1").run();
+    const r = await app.inject({ method: 'GET', url: '/api/idle-contents' });
+    expect(r.statusCode).toBe(200);
+    const list = r.json();
+    expect(list[0].baslik_en).toBe('Info');
+    expect(list[0].metin_en).toBe('Eat balanced.');
+  });
+
   it('POST /api/oturum/gonder terk edilmis oturum outbox\'a yazar', async () => {
     // Abandoned sessions (tamamlandi=false) don't need backend QR.
     const r = await app.inject({

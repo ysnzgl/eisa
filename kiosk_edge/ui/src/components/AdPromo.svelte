@@ -7,10 +7,12 @@
   // altta metin (daktilo) + sabit CTA. Başlık/metin idle içeriklerinden gelir
   // (İçerik Yönetimi). İçerik yoksa yalnız heartbeat + CTA + sponsor gösterilir.
   import { onDestroy } from "svelte";
+  import { get } from "svelte/store";
   import Logo from "./Logo.svelte";
   import HeartbeatAnimation from "./HeartbeatAnimation.svelte";
   import { currentIdleContent, eczaneAdi, kioskId } from "../lib/idleContentStore.js";
   import { normalizeIdleIcon } from "../lib/idleIcon.js";
+  import { t, language, localize } from "../lib/i18n.js";
 
   /** Buyuk kart boyutu icin true (idle/attractor kullanimi). */
   export let large = false;
@@ -63,6 +65,12 @@
     rafId = requestAnimationFrame(step);
   }
 
+  // Secili dile gore idle metnini secer (metin_en doluysa ve dil en ise onu).
+  function localizedMetin(val) {
+    if (!val) return "";
+    return get(localize)(val, "metin");
+  }
+
   function onContent(val) {
     if (!large) return;
 
@@ -79,13 +87,22 @@
       return;
     }
 
-    startTyping(val.metin || "");
+    startTyping(localizedMetin(val));
   }
 
   const unsub = currentIdleContent.subscribe(onContent);
+  // Dil degisince mevcut idle icerigini yeni dilde yeniden daktilo et.
+  let _langInit = true;
+  const unsubLang = language.subscribe(() => {
+    if (_langInit) { _langInit = false; return; }
+    if (!large || !idle) return;
+    titleKey += 1;
+    startTyping(localizedMetin(idle));
+  });
   onDestroy(() => {
     cancelTyping();
     unsub();
+    unsubLang();
   });
 </script>
 
@@ -97,7 +114,7 @@
   <span class="ad-promo-glow" aria-hidden="true"></span>
   {#if large}
  <div class="ai-assistant-label" style="top:18%">
-        <span class="ai-assistant-text">SİZE UYGUN ÖNERİLER İÇİN</span>
+        <span class="ai-assistant-text">{$t('idle.cta')}</span>
       </div>
       <div class="idle-cta" style="top:23%">
         <!-- <span class="idle-cta-line1">Takviye Önerileri için</span> -->
@@ -107,7 +124,7 @@
             <span class="idle-cta-ring"></span>
             <span class="idle-cta-ring idle-cta-ring--2"></span>
           </span>
-          <b>DOKUNUN</b>
+          <b>{$t('idle.touch')}</b>
         </span>
       </div>
       {/if}
@@ -117,8 +134,8 @@
   {#if large}
     <div class="idle-layer" aria-hidden="true">
       <div class="welcome-block">
-        <div class="welcome-name">{$eczaneAdi || "Eczanemize"}</div>
-        <div class="welcome-hos">HOŞGELDİNİZ</div>
+        <div class="welcome-name">{$eczaneAdi || $t('idle.defaultPharmacy')}</div>
+        <div class="welcome-hos">{$t('idle.welcome')}</div>
       </div>
 
       {#if idle}
@@ -144,10 +161,10 @@
       <i class="fa-solid fa-bullhorn"></i>
     </div>
     <div class="ad-promo-text">
-      <span class="ad-promo-title">Bu Alana Sponsor Olabilirsiniz</span>
+      <span class="ad-promo-title">{$t('idle.sponsorTitle')}</span>
       <span class="ad-promo-sub">
         <Logo height={large ? "50px" : "25px"} light={!large} class="ad-promo-logo" />
-        <span>Sponsorluk Ağı · Eczane Ekranında Markanız</span>
+        <span>{$t('idle.sponsorSub')}</span>
       </span>
     </div>
   </div>

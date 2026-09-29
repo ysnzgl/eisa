@@ -3,8 +3,16 @@
   import { result } from '../stores/kiosk.js';
   import Logo from './Logo.svelte';
   import { fetchSessionSyncStatus } from '../lib/api.js';
+  import { t, localize } from '../lib/i18n.js';
 
   const dispatch = createEventDispatcher();
+
+  // Sonuc basligi dil degisiminde yeniden hesaplanir (kategori adi $localize ile).
+  $: resultLabel = $result?.labelType === 'consult'
+    ? $t('result.consultLabel')
+    : $result?.labelType === 'recommendation'
+      ? $t('result.recommendationLabel', { name: $localize($result?.category) })
+      : ($result?.label ?? '');
 
   let qrCanvas = null;
   let syncDurum = null;
@@ -50,7 +58,7 @@
   <div class="result-header">
     <Logo height="100px" />
     {#if syncDurum === 'bekliyor' || syncDurum === 'hata'}
-      <span class="sync-warn" title="Sunucuya henüz gönderilemedi">
+      <span class="sync-warn" title={$t('result.syncWarn')}>
         <i class="fa-solid fa-triangle-exclamation"></i>
       </span>
     {/if}
@@ -68,7 +76,7 @@
         {:else}
           <i class="fa-solid fa-leaf text-success"></i>
         {/if}
-        {$result?.label ?? ''}
+        {resultLabel}
       </div>
       {#if $result?.recs?.length}
         {@const firstRec = $result.recs[0]}
@@ -81,14 +89,14 @@
           <div class="ingredient-note">
             <div class="ingredient-note-title">
               <i class="fa-solid fa-info-circle"></i>
-              Bir seçenek ekranda, diğerleri eczacınızda!
+              {$t('result.oneOnScreen')}
             </div>
             <button 
               class="ingredient-btn"
               on:click={() => showOtherIngredients = !showOtherIngredients}
             >
               <i class="fa-solid fa-{showOtherIngredients ? 'chevron-up' : 'chevron-down'}"></i>
-              Diğer etken maddeler için tıklayınız
+              {$t('result.otherIngredients')}
             </button>
             {#if showOtherIngredients && $result?.recs?.length > 1}
               <div class="other-ingredients">
@@ -108,7 +116,7 @@
     <div class="result-card" style="text-align:center;">
       <p class="qr-heading">
         <i class="fa-solid fa-ticket text-success"></i>
-        Lütfen Fişinizi/QR kodunuzu Eczacınıza gösterin. <br />
+        {$t('result.qrHeading')} <br />
       </p>
       {#if $result?.qrCode}
         <div class="qr-box">
@@ -116,15 +124,15 @@
         </div>
         <p class="qr-code-text">{$result.qrCode}</p>
       {:else}
-        <p style="color:#6B7280; font-size:14px; margin:12px 0;">QR kodu oluşturulamadı. Lütfen eczacıya danışın.</p>
+        <p style="color:#6B7280; font-size:14px; margin:12px 0;">{$t('result.qrFailed')}</p>
       {/if}
-      <p class="qr-note">Öneriler için profesyonellere danışın. Yapay zeka tarafından üretilmiş yanıtlarda hata olabilir.</p>
+      <p class="qr-note">{$t('result.qrNote')}</p>
     </div>
 
     {#if $result?.devPreview}
       <div class="receipt-preview">
         <p class="receipt-preview-label">
-          <i class="fa-solid fa-print"></i> Termal fiş önizlemesi
+          <i class="fa-solid fa-print"></i> {$t('result.receiptPreview')}
         </p>
         <div class="receipt-paper">
           {#if $result?.baskiLogoUrl}
@@ -132,8 +140,8 @@
           {:else}
             <p class="receipt-eisa">e-ISA</p>
           {/if}
-          <p class="receipt-text">Sağlıklı günler diler</p>
-          <p class="receipt-text" style="font-size:11px; color:#9ca3af;">— QR kodu yazıcıdan çıkar —</p>
+          <p class="receipt-text">{$t('result.receiptHealthy')}</p>
+          <p class="receipt-text" style="font-size:11px; color:#9ca3af;">{$t('result.receiptQrNote')}</p>
           <p class="receipt-text" style="font-size:11px; margin-top:2px;">{$result.qrCode}</p>
         </div>
       </div>
@@ -142,10 +150,10 @@
 
   <div class="d-flex flex-column gap-2 mt-3">
     <button class="btn-touch btn-secondary-touch" on:click={() => dispatch('newComplaint')}>
-      <i class="fa-solid fa-rotate-left"></i> Başka Bir Şikayet Seç
+      <i class="fa-solid fa-rotate-left"></i> {$t('result.newComplaint')}
     </button>
     <button class="btn-touch btn-primary-touch" on:click={() => dispatch('done')}>
-      <i class="fa-solid fa-house"></i> Ana Sayfaya Dön
+      <i class="fa-solid fa-house"></i> {$t('result.home')}
     </button>
   </div>
 </div>

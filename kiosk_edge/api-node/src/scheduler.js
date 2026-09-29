@@ -106,6 +106,7 @@ function upsertKategori(db, c) {
     id: c.id,
     slug: c.slug,
     ad: c.ad,
+    ad_en: c.ad_en || '',
     ikon: c.ikon || 'fa-circle',
     bagli_kategori_id: c.bagli_kategori ?? null,
     hedef_cinsiyet_id: hedefCinsiyetId,
@@ -116,7 +117,7 @@ function upsertKategori(db, c) {
   if (exists) {
     db.prepare(
       `UPDATE kategoriler
-          SET slug=@slug, ad=@ad, ikon=@ikon,
+          SET slug=@slug, ad=@ad, ad_en=@ad_en, ikon=@ikon,
               bagli_kategori_id=@bagli_kategori_id, aktif=@aktif,
               hedef_cinsiyet_id=@hedef_cinsiyet_id,
               hedef_cinsiyetler=@hedef_cinsiyetler,
@@ -127,8 +128,8 @@ function upsertKategori(db, c) {
   } else {
     db.prepare(
       `INSERT INTO kategoriler
-         (id, slug, ad, ikon, bagli_kategori_id, hedef_cinsiyet_id, aktif, hedef_cinsiyetler, hedef_yas_araliklari)
-       VALUES (@id, @slug, @ad, @ikon, @bagli_kategori_id, @hedef_cinsiyet_id, @aktif,
+         (id, slug, ad, ad_en, ikon, bagli_kategori_id, hedef_cinsiyet_id, aktif, hedef_cinsiyetler, hedef_yas_araliklari)
+       VALUES (@id, @slug, @ad, @ad_en, @ikon, @bagli_kategori_id, @hedef_cinsiyet_id, @aktif,
                @hedef_cinsiyetler, @hedef_yas_araliklari)`,
     ).run(params);
   }
@@ -138,16 +139,17 @@ function upsertKategori(db, c) {
 
 function upsertDanismaKategori(db, d) {
   db.prepare(
-    `INSERT INTO danisma_kategorileri (id, slug, ad, ikon, ust_kategori_id, aktif, sira)
-     VALUES (@id, @slug, @ad, @ikon, @ust_kategori_id, @aktif, @sira)
+    `INSERT INTO danisma_kategorileri (id, slug, ad, ad_en, ikon, ust_kategori_id, aktif, sira)
+     VALUES (@id, @slug, @ad, @ad_en, @ikon, @ust_kategori_id, @aktif, @sira)
      ON CONFLICT(id) DO UPDATE SET
-       slug=excluded.slug, ad=excluded.ad, ikon=excluded.ikon,
+       slug=excluded.slug, ad=excluded.ad, ad_en=excluded.ad_en, ikon=excluded.ikon,
        ust_kategori_id=excluded.ust_kategori_id, aktif=excluded.aktif, sira=excluded.sira,
        guncellenme_tarihi=strftime('%Y-%m-%dT%H:%M:%fZ','now')`,
   ).run({
     id: d.id,
     slug: d.slug,
     ad: d.ad,
+    ad_en: d.ad_en || '',
     ikon: d.ikon || 'fa-comments',
     ust_kategori_id: d.ust_kategori ?? null,
     aktif: d.aktif === false ? 0 : 1,
@@ -164,6 +166,7 @@ function upsertSoru(db, q, kategoriId) {
     kategori_id: kategoriId,
     seed_id: q.seed_id || `q_${q.id}`,
     metin: q.metin ?? q.text ?? '',
+    metin_en: q.metin_en ?? '',
     sira: q.sira ?? q.priority ?? 0,
     eslesme_kurallari: JSON.stringify(q.eslesme_kurallari ?? q.match_rules ?? []),
     hedef_cinsiyet_id: hedefCinsiyetId,
@@ -172,7 +175,7 @@ function upsertSoru(db, q, kategoriId) {
   };
   if (exists) {
     db.prepare(
-      `UPDATE sorular SET kategori_id=@kategori_id, metin=@metin, sira=@sira,
+      `UPDATE sorular SET kategori_id=@kategori_id, metin=@metin, metin_en=@metin_en, sira=@sira,
               eslesme_kurallari=@eslesme_kurallari,
               hedef_cinsiyet_id=@hedef_cinsiyet_id,
               hedef_cinsiyetler=@hedef_cinsiyetler,
@@ -183,9 +186,9 @@ function upsertSoru(db, q, kategoriId) {
   } else {
     db.prepare(
       `INSERT INTO sorular
-         (id, kategori_id, seed_id, metin, sira, eslesme_kurallari,
+         (id, kategori_id, seed_id, metin, metin_en, sira, eslesme_kurallari,
           hedef_cinsiyet_id, hedef_cinsiyetler, hedef_yas_araliklari)
-       VALUES (@id, @kategori_id, @seed_id, @metin, @sira, @eslesme_kurallari,
+       VALUES (@id, @kategori_id, @seed_id, @metin, @metin_en, @sira, @eslesme_kurallari,
                @hedef_cinsiyet_id, @hedef_cinsiyetler, @hedef_yas_araliklari)`,
     ).run(params);
   }
@@ -196,12 +199,12 @@ function upsertSoru(db, q, kategoriId) {
 
 function upsertCevap(db, a, soruId) {
   const exists = db.prepare('SELECT id FROM cevaplar WHERE id = ?').get(a.id);
-  const params = { id: a.id, soru_id: soruId, metin: a.metin ?? '', agirlik: a.agirlik ?? 0 };
+  const params = { id: a.id, soru_id: soruId, metin: a.metin ?? '', metin_en: a.metin_en ?? '', agirlik: a.agirlik ?? 0 };
   if (exists) {
-    db.prepare('UPDATE cevaplar SET metin=@metin, agirlik=@agirlik WHERE id=@id').run(params);
+    db.prepare('UPDATE cevaplar SET metin=@metin, metin_en=@metin_en, agirlik=@agirlik WHERE id=@id').run(params);
   } else {
     db.prepare(
-      'INSERT INTO cevaplar (id, soru_id, metin, agirlik) VALUES (@id, @soru_id, @metin, @agirlik)',
+      'INSERT INTO cevaplar (id, soru_id, metin, metin_en, agirlik) VALUES (@id, @soru_id, @metin, @metin_en, @agirlik)',
     ).run(params);
   }
 }
@@ -314,11 +317,13 @@ function upsertCreative(db, c) {
 
 function upsertIdleContent(db, c) {
   db.prepare(
-    `INSERT INTO idle_contents (id, baslik, metin, kategori_id, ikon, aktif, guncellenme_tarihi)
-     VALUES (@id, @baslik, @metin, @kategori_id, @ikon, 1, @updated_at)
+    `INSERT INTO idle_contents (id, baslik, baslik_en, metin, metin_en, kategori_id, ikon, aktif, guncellenme_tarihi)
+     VALUES (@id, @baslik, @baslik_en, @metin, @metin_en, @kategori_id, @ikon, 1, @updated_at)
      ON CONFLICT(id) DO UPDATE SET
        baslik=excluded.baslik,
+       baslik_en=excluded.baslik_en,
        metin=excluded.metin,
+       metin_en=excluded.metin_en,
        kategori_id=excluded.kategori_id,
        ikon=excluded.ikon,
        aktif=1,
@@ -326,7 +331,9 @@ function upsertIdleContent(db, c) {
   ).run({
     id: Number(c.id),
     baslik: c.baslik || '',
+    baslik_en: c.baslik_en || '',
     metin: c.metin || '',
+    metin_en: c.metin_en || '',
     kategori_id: Number.isFinite(Number(c.kategori_id)) ? Number(c.kategori_id) : null,
     ikon: c.kategori_ikon || '',
     updated_at: c.updated_at || new Date().toISOString(),

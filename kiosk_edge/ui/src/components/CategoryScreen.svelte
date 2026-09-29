@@ -2,6 +2,7 @@
   import { createEventDispatcher, onMount, onDestroy } from 'svelte';
   import { allCategories, visibleCategories, catsLoading } from '../stores/kiosk.js';
   import ScreenHeader from './ScreenHeader.svelte';
+  import { t, localize } from '../lib/i18n.js';
 
   const dispatch = createEventDispatcher();
 
@@ -19,7 +20,7 @@
   function onCardClick(cat) {
     if (hasChildren(cat)) {
       stack = [...stack, parentId];
-      titleStack = [...titleStack, cat.ad];
+      titleStack = [...titleStack, cat];
       parentId = cat.id;
       scrollEl?.scrollTo({ top: 0 });
       measureOverflow();
@@ -41,7 +42,6 @@
   }
 
   $: currentTitle = titleStack.length ? titleStack[titleStack.length - 1] : null;
-
   // ── Overflow göstergesi ──────────────────────────────────────────────
   let scrollEl = null;
   let hasOverflow = false;
@@ -85,19 +85,19 @@
 
 <div class="screen">
   <ScreenHeader />
-  <span class="screen-badge">Adım 2 / 3 — Şikayet Seçimi</span>
+  <span class="screen-badge">{$t('category.step')}</span>
   <h2 class="screen-title">
-    {#if currentTitle}{currentTitle} — alt başlık seçin{:else}Şikayet türünüzü seçin{/if}
+    {#if currentTitle}{$t('category.subTitle', { name: $localize(currentTitle) })}{:else}{$t('category.title')}{/if}
   </h2>
 
   {#if $catsLoading}
     <div class="loading-spinner flex-grow-1">
       <div class="spinner-ring"></div>
-      <span>Kategoriler yükleniyor…</span>
+      <span>{$t('category.loading')}</span>
     </div>
   {:else if levelCategories.length === 0}
     <div class="loading-spinner flex-grow-1">
-      <span>Bu başlık altında kategori bulunamadı.</span>
+      <span>{$t('category.empty')}</span>
     </div>
   {:else}
     <div class="scroll-wrap">
@@ -106,7 +106,7 @@
           {#each levelCategories as cat (cat.id)}
             <button class="cat-card" on:click={() => onCardClick(cat)}>
               <i class="fa-solid {cat.ikon}"></i>
-              <h3>{cat.ad}</h3>
+              <h3>{$localize(cat)}</h3>
             </button>
           {/each}
         </div>
@@ -115,7 +115,7 @@
         <div class="scroll-fade"></div>
         <div class="scroll-hint-badge">
           <i class="fa-solid fa-angles-down scroll-hint-icon"></i>
-          Daha fazla seçenek
+          {$t('common.moreOptions')}
         </div>
         <div class="scroll-pos-bar" style="height:{scrollRatio*100}%"></div>
       {/if}
@@ -124,7 +124,7 @@
 
   <div class="mt-auto pt-3">
     <button class="btn-touch btn-primary-touch" on:click={goBack}>
-      <i class="fa-solid fa-arrow-left"></i>Geri
+      <i class="fa-solid fa-arrow-left"></i>{$t('common.back')}
     </button>
   </div>
 </div>

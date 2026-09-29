@@ -13,6 +13,7 @@ export function makeMemoryDb() {
 
     CREATE TABLE kategoriler (
       id INTEGER PRIMARY KEY, slug TEXT NOT NULL UNIQUE, ad TEXT NOT NULL,
+      ad_en TEXT NOT NULL DEFAULT '',
       ikon TEXT NOT NULL DEFAULT 'fa-circle',
       bagli_kategori_id INTEGER REFERENCES kategoriler(id),
       hedef_cinsiyet_id INTEGER REFERENCES cinsiyetler(id),
@@ -26,7 +27,7 @@ export function makeMemoryDb() {
     CREATE TABLE sorular (
       id INTEGER PRIMARY KEY,
       kategori_id INTEGER NOT NULL REFERENCES kategoriler(id),
-      seed_id TEXT, metin TEXT NOT NULL,
+      seed_id TEXT, metin TEXT NOT NULL, metin_en TEXT NOT NULL DEFAULT '',
       sira INTEGER NOT NULL DEFAULT 0, eslesme_kurallari TEXT NOT NULL DEFAULT '[]',
       hedef_cinsiyet_id INTEGER REFERENCES cinsiyetler(id),
       surum INTEGER NOT NULL DEFAULT 1,
@@ -37,7 +38,7 @@ export function makeMemoryDb() {
 
     CREATE TABLE cevaplar (
       id INTEGER PRIMARY KEY, soru_id INTEGER NOT NULL REFERENCES sorular(id) ON DELETE CASCADE,
-      metin TEXT NOT NULL, agirlik INTEGER NOT NULL DEFAULT 0);
+      metin TEXT NOT NULL, metin_en TEXT NOT NULL DEFAULT '', agirlik INTEGER NOT NULL DEFAULT 0);
 
     CREATE TABLE etken_maddeler (
       id INTEGER PRIMARY KEY, ad TEXT NOT NULL UNIQUE, aciklama TEXT NOT NULL DEFAULT '',
@@ -75,7 +76,9 @@ export function makeMemoryDb() {
     CREATE TABLE idle_contents (
       id INTEGER PRIMARY KEY,
       baslik TEXT NOT NULL DEFAULT '',
+      baslik_en TEXT NOT NULL DEFAULT '',
       metin TEXT NOT NULL DEFAULT '',
+      metin_en TEXT NOT NULL DEFAULT '',
       kategori_id INTEGER,
       ikon TEXT NOT NULL DEFAULT '',
       aktif INTEGER NOT NULL DEFAULT 1,
@@ -120,9 +123,11 @@ export function makeMemoryDb() {
       id INTEGER PRIMARY KEY,
       slug TEXT NOT NULL UNIQUE,
       ad TEXT NOT NULL,
+      ad_en TEXT NOT NULL DEFAULT '',
       ikon TEXT NOT NULL DEFAULT 'fa-comments',
       ust_kategori_id INTEGER,
       aktif INTEGER NOT NULL DEFAULT 1,
+      sira INTEGER NOT NULL DEFAULT 100,
       olusturulma_tarihi TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
       guncellenme_tarihi TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')));
 

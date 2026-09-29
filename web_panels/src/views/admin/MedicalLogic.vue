@@ -36,7 +36,7 @@ const loadingCats  = ref(true);
 const catModalOpen  = ref(false);
 const catModalMode  = ref('add');        // 'add' | 'edit'
 const catTarget     = ref(null);
-const EMPTY_CAT = () => ({ name: '', icon: 'fa-solid fa-pills', target_gender: null, target_age_ranges: [], bagli_kategori: null });
+const EMPTY_CAT = () => ({ name: '', name_en: '', icon: 'fa-solid fa-pills', target_gender: null, target_age_ranges: [], bagli_kategori: null });
 const catForm       = ref(EMPTY_CAT());
 const catFormIsRoot = ref(true);         // Ana kategori mi? (bagli_kategori === null)
 const catFormError  = ref('');
@@ -54,6 +54,7 @@ function openAddCategory(parentId = null) {
 function openEditCategory(cat) {
   catForm.value = {
     name:             cat.name,
+    name_en:          cat.name_en ?? '',
     icon:             cat.icon || 'fa-solid fa-pills',
     target_gender:    cat.target_gender ?? null,
     target_age_ranges: [...(cat.target_age_ranges ?? [])],
@@ -105,7 +106,7 @@ const expandedQId      = ref(null);      // Açık olan soru ID'si
 // Soru CRUD
 const qModalOpen  = ref(false);
 const qModalMode  = ref('add');          // 'add' | 'edit'
-const qForm       = ref({ text: '', order: 0, target_gender: null, target_age_ranges: [] });
+const qForm       = ref({ text: '', text_en: '', order: 0, target_gender: null, target_age_ranges: [] });
 const qTarget     = ref(null);
 const qSaving     = ref(false);
 const qFormError  = ref('');
@@ -153,7 +154,7 @@ function toggleQuestion(id) {
 
 //  Soru CRUD 
 function openAddQuestion() {
-  qForm.value    = { text: '', order: questions.value.length, target_gender: null, target_age_ranges: [] };
+  qForm.value    = { text: '', text_en: '', order: questions.value.length, target_gender: null, target_age_ranges: [] };
   qFormError.value = '';
   qModalMode.value = 'add';
   qTarget.value    = null;
@@ -163,6 +164,7 @@ function openAddQuestion() {
 function openEditQuestion(q) {
   qForm.value    = {
     text:              q.text,
+    text_en:           q.text_en ?? '',
     order:             q.order ?? 0,
     target_gender:     q.target_gender ?? null,
     target_age_ranges: [...(q.target_age_ranges ?? [])],
@@ -180,6 +182,7 @@ async function saveQuestion() {
   try {
     const payload = {
       text:              qForm.value.text.trim(),
+      text_en:           (qForm.value.text_en ?? '').trim(),
       order:             qForm.value.order,
       target_gender:     qForm.value.target_gender,
       target_age_ranges: qForm.value.target_age_ranges,
@@ -666,6 +669,19 @@ const iconPickerOpen = ref(false);
                     <p class="mt-1 text-[10px] text-gray-500">1'den başlar. Kategori içinde benzersiz olmalı.</p>
                   </div>
                 </div>
+                <!-- Soru Metni (İngilizce) -->
+                <div class="grid grid-cols-4 gap-3">
+                  <div class="col-span-3">
+                    <label class="drawer-label mb-2 block">Soru Metni (İngilizce)</label>
+                    <textarea
+                      v-model="qForm.text_en"
+                      rows="2"
+                      placeholder="English question text (optional)…"
+                      class="drawer-input w-full resize-none"
+                    ></textarea>
+                    <p class="mt-1 text-[10px] text-gray-500">Boş bırakılırsa kioskta İngilizce dilde Türkçe metin gösterilir.</p>
+                  </div>
+                </div>
                 <!-- Hedef Cinsiyet -->
                 <div>
                   <label class="block text-xs font-semibold text-gray-600 mb-2">Hedef Cinsiyet</label>
@@ -782,6 +798,14 @@ const iconPickerOpen = ref(false);
                     placeholder="Örn: Enerji & Yorgunluk"
                     class="drawer-input w-full"
                   />
+                  <label class="block text-xs font-semibold text-gray-600 mb-2 mt-3">Kategori Adı (İngilizce)</label>
+                  <input
+                    v-model="catForm.name_en"
+                    type="text"
+                    placeholder="e.g. Energy & Fatigue (optional)"
+                    class="drawer-input w-full"
+                  />
+                  <p class="mt-1 text-[10px] text-gray-500">Boş bırakılırsa kioskta İngilizce dilde Türkçe ad gösterilir.</p>
                 </div>
                 <div>
                   <label class="block text-xs font-semibold text-gray-600 mb-1.5">İkon Seç</label>

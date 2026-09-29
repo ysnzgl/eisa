@@ -127,6 +127,7 @@ function initSchema(db, options = {}) {
       id                   INTEGER PRIMARY KEY,
       slug                 TEXT    NOT NULL UNIQUE,
       ad                   TEXT    NOT NULL,
+      ad_en                TEXT    NOT NULL DEFAULT '',
       ikon                 TEXT    NOT NULL DEFAULT 'fa-circle',
       bagli_kategori_id    INTEGER,
       hedef_cinsiyet_id    INTEGER,
@@ -142,6 +143,7 @@ function initSchema(db, options = {}) {
       id                 INTEGER PRIMARY KEY,
       slug               TEXT    NOT NULL UNIQUE,
       ad                 TEXT    NOT NULL,
+      ad_en              TEXT    NOT NULL DEFAULT '',
       ikon               TEXT    NOT NULL DEFAULT 'fa-comments',
       ust_kategori_id    INTEGER,
       aktif              INTEGER NOT NULL DEFAULT 1,
@@ -154,6 +156,7 @@ function initSchema(db, options = {}) {
       kategori_id          INTEGER NOT NULL,
       seed_id              TEXT,
       metin                TEXT    NOT NULL,
+      metin_en             TEXT    NOT NULL DEFAULT '',
       sira                 INTEGER NOT NULL DEFAULT 0,
       eslesme_kurallari    TEXT    NOT NULL DEFAULT '[]',
       hedef_cinsiyet_id    INTEGER,
@@ -168,6 +171,7 @@ function initSchema(db, options = {}) {
       id      INTEGER PRIMARY KEY,
       soru_id INTEGER NOT NULL,
       metin   TEXT    NOT NULL,
+      metin_en TEXT   NOT NULL DEFAULT '',
       agirlik INTEGER NOT NULL DEFAULT 0
     );
 
@@ -212,7 +216,9 @@ function initSchema(db, options = {}) {
     CREATE TABLE IF NOT EXISTS idle_contents (
       id                 INTEGER PRIMARY KEY,
       baslik             TEXT    NOT NULL DEFAULT '',
+      baslik_en          TEXT    NOT NULL DEFAULT '',
       metin              TEXT    NOT NULL DEFAULT '',
+      metin_en           TEXT    NOT NULL DEFAULT '',
       kategori_id        INTEGER,
       ikon               TEXT    NOT NULL DEFAULT '',
       aktif              INTEGER NOT NULL DEFAULT 1,
@@ -486,6 +492,30 @@ function initSchema(db, options = {}) {
   }
   if (!idleCols.includes('ikon')) {
     db.exec("ALTER TABLE idle_contents ADD COLUMN ikon TEXT NOT NULL DEFAULT ''");
+  }
+
+  // Ingilizce ceviri kolonlari — additive/idempotent, SCHEMA_VERSION degismez
+  // (kiosk cache'i sifirlanmaz). Bos = kioskta Turkce alana geri doner.
+  const kategoriCols = db.prepare("PRAGMA table_info(kategoriler)").all().map((c) => c.name);
+  if (!kategoriCols.includes('ad_en')) {
+    db.exec("ALTER TABLE kategoriler ADD COLUMN ad_en TEXT NOT NULL DEFAULT ''");
+  }
+  if (!danismaCols.includes('ad_en')) {
+    db.exec("ALTER TABLE danisma_kategorileri ADD COLUMN ad_en TEXT NOT NULL DEFAULT ''");
+  }
+  const soruCols = db.prepare("PRAGMA table_info(sorular)").all().map((c) => c.name);
+  if (!soruCols.includes('metin_en')) {
+    db.exec("ALTER TABLE sorular ADD COLUMN metin_en TEXT NOT NULL DEFAULT ''");
+  }
+  const cevapCols = db.prepare("PRAGMA table_info(cevaplar)").all().map((c) => c.name);
+  if (!cevapCols.includes('metin_en')) {
+    db.exec("ALTER TABLE cevaplar ADD COLUMN metin_en TEXT NOT NULL DEFAULT ''");
+  }
+  if (!idleCols.includes('baslik_en')) {
+    db.exec("ALTER TABLE idle_contents ADD COLUMN baslik_en TEXT NOT NULL DEFAULT ''");
+  }
+  if (!idleCols.includes('metin_en')) {
+    db.exec("ALTER TABLE idle_contents ADD COLUMN metin_en TEXT NOT NULL DEFAULT ''");
   }
 
   installOutboxFifoTriggers(db, outboxMaxRows);

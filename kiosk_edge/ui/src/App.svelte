@@ -27,6 +27,7 @@
   import WifiSetupScreen    from './components/WifiSetupScreen.svelte';
   import IdleAudio          from './components/IdleAudio.svelte';
   import IdleCountdownModal from './components/IdleCountdownModal.svelte';
+  import LanguageToggle     from './components/LanguageToggle.svelte';
 
   let resultScreenRef = null;
 
@@ -265,7 +266,8 @@
     // syncDurum='hata' ise ResultScreen sarı ünlem gösterir.
     const firstRec = recs[0];
     result.set({
-      label:          `Önerilen Etken Maddeler — ${cat?.ad ?? ''}`,
+      labelType:      'recommendation',
+      category:       cat ?? null,
       recs,
       ana:            firstRec?.primary    ?? '—',
       destek:         firstRec?.supportive ?? '',
@@ -327,7 +329,8 @@
     if (qrCode) markQrCreated(qrCreatedAt);
     sessionFinalized = true; // Danışma hemen tamamlanır
     result.set({
-      label:          'Danışma talebi gönderildi',
+      labelType:      'consult',
+      category:       cat ?? null,
       ana:            cat?.ad ?? cat,
       destek:         'Eczacınız sizi bekliyor — QR kodu okutunuz.',
       isSensitive:    true,
@@ -413,6 +416,7 @@
 </script>
 
 <div class="kiosk">
+  <LanguageToggle />
   {#if $screen === 'wifi_setup'}
     <!-- WiFi Kurulum: internet yoksa ilk ekran -->
     <WifiSetupScreen on:connected={() => goTo('idle')} />

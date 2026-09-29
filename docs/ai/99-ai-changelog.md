@@ -5,7 +5,21 @@
 
 ---
 
-## 2026-09-14
+## 2026-09-29
+
+### [Backend+Kiosk Edge/UI] Kiosk TR/EN çift dil desteği (i18n)
+
+- Kiosk kullanıcı arayüzüne köşe dil butonu (TR/EN) eklendi; seçim `localStorage` (`kiosk_lang`) ile kalıcı. Yeni `kiosk_edge/ui/src/lib/i18n.js` sabit metin sözlüğü (`$t`) ve DB içeriği için dil seçici (`$localize`) sağlar; `components/LanguageToggle.svelte` sabit köşe butonu.
+- Tüm kiosk ekranlarındaki sabit metinler i18n'e taşındı (Welcome/Demographics/Category/Consult/Question/Result/IdleCountdown/AdPromo/Wifi). Sonuç başlığı dil değişiminde reaktif; AdPromo idle içeriği dil değişince yeniden daktilo edilir.
+- Backend DB düzeyinde çeviri alanları eklendi: `products.Kategori.ad_en`, `products.Danisma.ad_en`, `products.Soru.metin_en`, `products.Cevap.metin_en` (migration 0013); `campaigns.IdleScreenContent.baslik_en/metin_en` (migration 0029). Boş `_en` → kioskta Türkçe alana geri döner. Serializer'lar (catalog/sync + admin) bu alanları yayınlar.
+- Kiosk edge SQLite'a additive/idempotent `_en` kolonları eklendi (SCHEMA_VERSION değişmez → cache sıfırlanmaz); scheduler upsert'leri ve read endpoint'leri `_en` taşır. Doğrulama: UI build OK, api-node 175 test OK, backend products/kiosk_api/campaigns testleri OK; idle ekranında TR↔EN görsel test yapıldı.
+
+### [WebPanel+Test] TR/EN içerik editörü ve test kapsamı
+
+- Web panel içerik yönetimine İngilizce alanlar eklendi: `MedicalLogic.vue` (Kategori Adı EN + Soru Metni EN), `DanismaYonetimi.vue` (Kategori Adı EN), `ContentManagement.vue` (Başlık EN + Metin EN). `services/algorithm.js` `_en` alanlarını çift yönlü eşler (name_en↔ad_en, text_en↔metin_en, danisma ad_en). Boş EN → kioskta Türkçe fallback.
+- IdleScreenContent serializer'ına `baslik_en`/`metin_en` uzunluk doğrulayıcıları (100/300) eklendi.
+- Testler eklendi: kiosk UI `src/lib/i18n.test.js` ($t/$localize/toggle/localStorage), api-node `_en` read endpoint testleri (kategori/soru/danışma/idle), backend `apps/products/tests/test_i18n_translations.py` (catalog + admin serializer _en) ve `test_idle_screen_content.py` IC-10..IC-12 (_en CRUD/sync/limit), web panel `algorithm_i18n.test.js` (_en mapping). Doğrulama: UI 91 test OK, api-node 180 test OK, web_panels 75 test OK, backend hedef testleri 50 OK; tüm build'ler yeşil.
+
 
 ### [Portal] Ses önizlemesi kontrolü
 

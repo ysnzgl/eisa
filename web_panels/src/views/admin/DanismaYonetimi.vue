@@ -46,7 +46,7 @@ onMounted(reload);
 const catModalOpen  = ref(false);
 const catModalMode  = ref('add');     // 'add' | 'edit'
 const catTarget     = ref(null);
-const EMPTY_CAT = () => ({ ad: '', ikon: 'fa-solid fa-comments', aktif: true, ust_kategori: null, sira: 100 });
+const EMPTY_CAT = () => ({ ad: '', ad_en: '', ikon: 'fa-solid fa-comments', aktif: true, ust_kategori: null, sira: 100 });
 const catForm       = ref(EMPTY_CAT());
 const catFormIsRoot = ref(true);
 const catFormError  = ref('');
@@ -64,6 +64,7 @@ function openAddCategory(ustKategoriId = null) {
 function openEditCategory(item) {
   catForm.value = {
     ad:           item.ad,
+    ad_en:        item.ad_en ?? '',
     ikon:         item.ikon || 'fa-solid fa-comments',
     aktif:        item.aktif,
     ust_kategori: item.ust_kategori ?? null,
@@ -328,6 +329,14 @@ const iconPickerOpen = ref(false);
                     placeholder="Örn: Kadın Sağlığı"
                     class="drawer-input w-full"
                   />
+                  <label class="block text-xs font-semibold text-gray-600 mb-2 mt-3">Kategori Adı (İngilizce)</label>
+                  <input
+                    v-model="catForm.ad_en"
+                    type="text"
+                    placeholder="e.g. Women's Health (optional)"
+                    class="drawer-input w-full"
+                  />
+                  <p class="mt-1 text-[10px] text-gray-500">Boş bırakılırsa kioskta İngilizce dilde Türkçe ad gösterilir.</p>
                 </div>
                 <div>
                   <label class="block text-xs font-semibold text-gray-600 mb-1.5">İkon Seç</label>

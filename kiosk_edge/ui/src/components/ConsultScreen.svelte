@@ -2,6 +2,7 @@
   import { createEventDispatcher, onMount, onDestroy } from 'svelte';
   import { danismaCategories, danismaLoading, selectedDanismaParent } from '../stores/kiosk.js';
   import ScreenHeader from './ScreenHeader.svelte';
+  import { t, localize } from '../lib/i18n.js';
 
   const dispatch = createEventDispatcher();
 
@@ -60,26 +61,26 @@
 </script>
 
 <div class="screen">
-  <ScreenHeader subtitle="Eczaciniza Danisin" />
+  <ScreenHeader subtitle={$t('consult.subtitle')} />
 
-  <h2 class="screen-title">Danisma konunuzu secin</h2>
+  <h2 class="screen-title">{$t('consult.title')}</h2>
 
   {#if $danismaLoading}
     <div class="loading-spinner flex-grow-1">
       <div class="spinner-ring"></div>
-      <span>Yukleniyor...</span>
+      <span>{$t('common.loading')}</span>
     </div>
   {:else if activeParent}
     <div class="scroll-wrap">
       <div class="cat-grid-scroll" bind:this={scrollEl}>
         <p class="screen-subtitle mb-3">
-          <i class="fa-solid {activeParent.ikon} me-2"></i>{activeParent.ad}
+          <i class="fa-solid {activeParent.ikon} me-2"></i>{$localize(activeParent)}
         </p>
         <div class="cat-grid">
           {#each sortedAlt as child (child.id)}
             <button class="cat-card" on:click={() => selectChild(child)}>
               <i class="fa-solid {child.ikon || 'fa-circle'}"></i>
-              <h3>{child.ad}</h3>
+              <h3>{$localize(child)}</h3>
             </button>
           {/each}
         </div>
@@ -88,7 +89,7 @@
         <div class="scroll-fade"></div>
         <div class="scroll-hint-badge">
           <i class="fa-solid fa-angles-down scroll-hint-icon"></i>
-          Daha fazla seceneğ
+          {$t('common.moreOptions')}
         </div>
         <div class="scroll-pos-bar" style="height:{scrollRatio*100}%"></div>
       {/if}
@@ -96,7 +97,7 @@
   {:else}
     {#if $danismaCategories.length === 0}
       <div class="cat-grid-scroll d-flex align-items-center justify-content-center text-center text-secondary">
-        <p class="mb-0">Danisma kategorisi tanimlanmamis.</p>
+        <p class="mb-0">{$t('consult.empty')}</p>
       </div>
     {:else}
       <div class="scroll-wrap">
@@ -105,7 +106,7 @@
             {#each sortedCategories as cat (cat.id)}
               <button class="cat-card" on:click={() => selectParent(cat)}>
                 <i class="fa-solid {cat.ikon}"></i>
-                <h3>{cat.ad}</h3>
+                <h3>{$localize(cat)}</h3>
               </button>
             {/each}
           </div>
@@ -114,7 +115,7 @@
           <div class="scroll-fade"></div>
           <div class="scroll-hint-badge">
             <i class="fa-solid fa-angles-down scroll-hint-icon"></i>
-            Daha fazla seceneg
+            {$t('common.moreOptions')}
           </div>
           <div class="scroll-pos-bar" style="height:{scrollRatio*100}%"></div>
         {/if}
@@ -125,11 +126,11 @@
   <div class="mt-auto pt-3 d-flex gap-2">
     {#if activeParent}
       <button class="btn-touch btn-primary-touch" on:click={backToParents}>
-        <i class="fa-solid fa-arrow-left"></i> Geri
+        <i class="fa-solid fa-arrow-left"></i> {$t('common.back')}
       </button>
     {:else}
       <button class="btn-touch btn-primary-touch" on:click={() => dispatch('back')}>
-        <i class="fa-solid fa-arrow-left"></i> Geri
+        <i class="fa-solid fa-arrow-left"></i> {$t('common.back')}
       </button>
     {/if}
   </div>

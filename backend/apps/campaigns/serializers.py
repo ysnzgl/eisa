@@ -235,7 +235,7 @@ class IdleScreenContentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = IdleScreenContent
-        fields = ["id", "baslik", "metin", "aktif", "kategori", "created_at", "updated_at"]
+        fields = ["id", "baslik", "baslik_en", "metin", "metin_en", "aktif", "kategori", "created_at", "updated_at"]
         read_only_fields = ("id", "created_at", "updated_at")
 
     def validate_baslik(self, value: str) -> str:
@@ -252,6 +252,18 @@ class IdleScreenContentSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Metin zorunludur.")
         if len(value) > 300:
             raise serializers.ValidationError("Metin en fazla 300 karakter olabilir.")
+        return value
+
+    def validate_baslik_en(self, value: str) -> str:
+        value = (value or "").strip()
+        if len(value) > 100:
+            raise serializers.ValidationError("Ingilizce baslik en fazla 100 karakter olabilir.")
+        return value
+
+    def validate_metin_en(self, value: str) -> str:
+        value = (value or "").strip()
+        if len(value) > 300:
+            raise serializers.ValidationError("Ingilizce metin en fazla 300 karakter olabilir.")
         return value
 
 
@@ -353,7 +365,7 @@ class KioskIdleContentSyncSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = IdleScreenContent
-        fields = ["id", "baslik", "metin", "aktif", "kategori_id", "kategori_ikon", "updated_at"]
+        fields = ["id", "baslik", "baslik_en", "metin", "metin_en", "aktif", "kategori_id", "kategori_ikon", "updated_at"]
 
     def get_kategori_ikon(self, obj):
         return obj.kategori.ikon if obj.kategori_id and obj.kategori else None

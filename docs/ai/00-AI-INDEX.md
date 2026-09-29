@@ -112,6 +112,7 @@ SuperAdmin → web_panels duyuru yönetimi → `/api/announcements/admin/` → g
 - **BarkodLogo:** Kiosk fiş baskısında e-ISA başlığının yerini alan logo (UUID PK, ad, media_url, checksum, baslangic/bitis_zamani, aktif, gunluk_baski_limiti, hedef_kiosklar M2M). DOOH sisteminden bağımsız. Backend: `apps.barkod_logo`. Kiosk: `barkodLogoService.js`.
 - **OturumLogu:** KVKK uyumlu anonim kullanıcı session (yaş aralığı, cinsiyet, kategori, QR kodu, tamamlanma durumu, **barkod_logo FK** *(2026-08-11)*).
 - **PlayLog:** Reklam gösterim kanıtı / proof-of-play (creative_id, played_at, duration_played; playlist creative-only)
+- **Dil / i18n:** Kiosk UI TR/EN çift dil *(2026-09-29)*. Sabit metinler `i18n.js` (`$t`); DB içeriği `_en` alanlarıyla (`Kategori.ad_en`, `Soru.metin_en`, `Danisma.ad_en`, `Cevap.metin_en`, `IdleScreenContent.baslik_en/metin_en`). Köşe `LanguageToggle` butonu, seçim `localStorage`. Boş `_en` → Türkçe fallback.
 - **Kiosk:** Fiziksel cihaz (mac_adresi, uygulama_anahtari, eczane, aktif/online durumu) ve cihaz-bazlı UI zamanlayıcı/ses listesi. Sesler provisioning sonrası ilk sync'te edge'e indirilir; ilk ses idle gecikmesi sonunda, devamındakiler etkileşime kadar tekrar aralığıyla sırayla çalınır.
 - **Eczane:** Kiosk'un bulunduğu fiziksel lokasyon (il/ilçe, sahip, telefon)
 - **Announcement:** Genel veya sabit sistem duyurusu; genel duyurular recurrence/hedefleme taşır, sistem duyuruları benzersiz `system_key` ile korunur

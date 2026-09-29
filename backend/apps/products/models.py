@@ -12,6 +12,10 @@ class Kategori(BaseModel):
     """Sikayet kategorisi (Uyku, Enerji, Bagisiklik vb.)"""
 
     ad = models.CharField(max_length=200, unique=True)
+    ad_en = models.CharField(
+        max_length=200, blank=True, default="",
+        help_text="Ingilizce kategori adi. Bos = kioskta Turkce ada geri doner.",
+    )
     slug = models.SlugField(unique=True)
     ikon = models.CharField(max_length=64, default="fa-circle")
     aktif = models.BooleanField(default=True)
@@ -49,6 +53,10 @@ class Danisma(BaseModel):
     """
 
     ad = models.CharField(max_length=200, unique=True)
+    ad_en = models.CharField(
+        max_length=200, blank=True, default="",
+        help_text="Ingilizce danisma kategori adi. Bos = kioskta Turkce ada geri doner.",
+    )
     slug = models.SlugField(unique=True)
     ikon = models.CharField(max_length=64, default="fa-comments")
     aktif = models.BooleanField(default=True)
@@ -78,6 +86,10 @@ class Soru(BaseModel):
         Kategori, on_delete=models.CASCADE, related_name="sorular"
     )
     metin = models.TextField()
+    metin_en = models.TextField(
+        blank=True, default="",
+        help_text="Ingilizce soru metni. Bos = kioskta Turkce metne geri doner.",
+    )
     sira = models.PositiveSmallIntegerField(default=1)
 
     hedef_cinsiyet = models.ForeignKey(
@@ -109,6 +121,10 @@ class Soru(BaseModel):
 class Cevap(BaseModel):
     soru = models.ForeignKey(Soru, on_delete=models.CASCADE, related_name="cevaplar")
     metin = models.CharField(max_length=255)
+    metin_en = models.CharField(
+        max_length=255, blank=True, default="",
+        help_text="Ingilizce cevap metni. Bos = kioskta Turkce metne geri doner.",
+    )
     agirlik = models.IntegerField(default=0)
 
     class Meta:

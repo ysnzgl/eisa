@@ -128,9 +128,9 @@ class QrDataMigrationIntegrationTest(TransactionTestCase):
             #   hedef_cinsiyet_id, ad, bagli_kategori_id
             cur.execute(
                 "INSERT INTO kategoriler"
-                " (ad, slug, ikon, aktif, surum,"
+                " (ad, ad_en, slug, ikon, aktif, surum,"
                 "  olusturulma_tarihi, guncellenme_tarihi)"
-                " VALUES ('Mig Kategori','mig-kat','fa-pill',1,1,"
+                " VALUES ('Mig Kategori','','mig-kat','fa-pill',1,1,"
                 "         datetime('now'), datetime('now'))"
             )
             kat_id = cur.lastrowid

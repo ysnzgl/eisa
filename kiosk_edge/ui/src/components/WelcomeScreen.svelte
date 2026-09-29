@@ -1,6 +1,7 @@
 <script>
   import { createEventDispatcher } from 'svelte';
   import ScreenHeader from './ScreenHeader.svelte';
+  import { t } from '../lib/i18n.js';
 
   const dispatch = createEventDispatcher();
 </script>
@@ -9,26 +10,26 @@
   <ScreenHeader />
 
   <div class="flex-grow-1 d-flex flex-column justify-content-center">
-    <h2 class="screen-title text-center">Nasıl Yardımcı Olabilirim?</h2>
+    <h2 class="screen-title text-center">{$t('welcome.title')}</h2>
     <div class="d-flex flex-column gap-3">
       <button class="btn-touch btn-secondary-touch btn-main-touch" on:click={() => dispatch('flowA')}>
         <i class="fa-solid fa-hand-pointer"></i>
-        Şikayetimi Seç &amp; Soruları Cevapla
-        <span class="btn-sub">Size uygun takviye önerisini alın ve QR fişinizi oluşturun.</span>
+        {$t('welcome.flowA')}
+        <span class="btn-sub">{$t('welcome.flowASub')}</span>
       </button>
 
-      <div class="or-divider">VEYA</div>
+      <div class="or-divider">{$t('welcome.or')}</div>
 
       <button class="btn-touch btn-primary-touch btn-main-touch" on:click={() => dispatch('flowConsult')}>
         <i class="fa-solid fa-comments"></i>
-        Eczacınıza Özel Danışın
-        <span class="btn-sub">Kişisel konularınızı gizlilik içinde paylaşabilirsiniz.</span>
+        {$t('welcome.flowConsult')}
+        <span class="btn-sub">{$t('welcome.flowConsultSub')}</span>
       </button>
     </div>
   </div>
 
   <div class="footer-note">
     <i class="fa-solid fa-shield-halved"></i>
-    Bu sistem marka önermez. Verileriniz anonim tutulur.
+    {$t('welcome.footer')}
   </div>
 </div>

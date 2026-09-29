@@ -241,7 +241,7 @@ export async function buildServer({ db, settings, logger }) {
   app.get('/api/kategoriler', async () => {
     const rows = db
       .prepare(
-        `SELECT id, slug, ad, ikon, bagli_kategori_id, aktif,
+        `SELECT id, slug, ad, ad_en, ikon, bagli_kategori_id, aktif,
                 hedef_cinsiyet_id, hedef_cinsiyetler, hedef_yas_araliklari
            FROM kategoriler WHERE aktif = 1 ORDER BY id`,
       )
@@ -254,6 +254,7 @@ export async function buildServer({ db, settings, logger }) {
         id: r.id,
         slug: r.slug,
         ad: r.ad,
+        ad_en: r.ad_en || '',
         ikon: r.ikon,
         bagli_kategori_id: r.bagli_kategori_id ?? null,
         hedef_cinsiyet: r.hedef_cinsiyet_id ?? null,
@@ -266,7 +267,7 @@ export async function buildServer({ db, settings, logger }) {
   app.get('/api/danisma-kategorileri', async () => {
     const rows = db
       .prepare(
-        `SELECT id, slug, ad, ikon, ust_kategori_id, aktif, sira
+        `SELECT id, slug, ad, ad_en, ikon, ust_kategori_id, aktif, sira
            FROM danisma_kategorileri WHERE aktif = 1 ORDER BY COALESCE(sira, 100), id`,
       )
       .all();
@@ -275,11 +276,12 @@ export async function buildServer({ db, settings, logger }) {
       id: parent.id,
       slug: parent.slug,
       ad: parent.ad,
+      ad_en: parent.ad_en || '',
       ikon: parent.ikon,
       sira: parent.sira ?? 100,
       alt_kategoriler: rows
         .filter((r) => r.ust_kategori_id === parent.id)
-        .map((c) => ({ id: c.id, slug: c.slug, ad: c.ad, ikon: c.ikon, sira: c.sira ?? 100 })),
+        .map((c) => ({ id: c.id, slug: c.slug, ad: c.ad, ad_en: c.ad_en || '', ikon: c.ikon, sira: c.sira ?? 100 })),
     }));
   });
 
@@ -290,7 +292,7 @@ export async function buildServer({ db, settings, logger }) {
 
     const rows = db
       .prepare(
-        `SELECT id, seed_id, metin, sira, eslesme_kurallari,
+        `SELECT id, seed_id, metin, metin_en, sira, eslesme_kurallari,
                 hedef_cinsiyet_id, hedef_cinsiyetler, hedef_yas_araliklari
            FROM sorular WHERE kategori_id = ? ORDER BY sira`,
       )
@@ -302,6 +304,7 @@ export async function buildServer({ db, settings, logger }) {
         id: r.id,
         seed_id: r.seed_id,
         metin: r.metin,
+        metin_en: r.metin_en || '',
         sira: r.sira,
         eslesme_kurallari: safeJson(r.eslesme_kurallari, []),
         hedef_cinsiyet: r.hedef_cinsiyet_id ?? null,
@@ -687,7 +690,7 @@ export async function buildServer({ db, settings, logger }) {
   app.get('/api/idle-contents', async () => {
     const rows = db
       .prepare(
-        `SELECT id, baslik, metin, kategori_id, ikon, aktif, guncellenme_tarihi
+        `SELECT id, baslik, baslik_en, metin, metin_en, kategori_id, ikon, aktif, guncellenme_tarihi
            FROM idle_contents
           WHERE aktif = 1
           ORDER BY guncellenme_tarihi DESC`,
@@ -696,7 +699,9 @@ export async function buildServer({ db, settings, logger }) {
     return rows.map((r) => ({
       id: r.id,
       baslik: r.baslik,
+      baslik_en: r.baslik_en || '',
       metin: r.metin,
+      metin_en: r.metin_en || '',
       kategori_id: r.kategori_id ?? null,
       ikon: r.ikon || '',
       aktif: !!r.aktif,

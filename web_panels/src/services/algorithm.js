@@ -41,6 +41,7 @@ function mapCategoryFromApi(c) {
   return {
     id: c.id,
     name: c.ad,
+    name_en: c.ad_en ?? '',
     slug: c.slug,
     icon: c.ikon,
     is_active: c.aktif,
@@ -53,6 +54,7 @@ function mapCategoryFromApi(c) {
 function mapCategoryToApi(data) {
   const out = {};
   if (data.name         !== undefined) out.ad                  = data.name;
+  if (data.name_en      !== undefined) out.ad_en               = data.name_en;
   if (data.slug         !== undefined) out.slug                = data.slug;
   if (data.icon !== undefined && data.icon !== '') out.ikon = data.icon;
   if (data.is_active    !== undefined) out.aktif               = data.is_active;
@@ -79,6 +81,7 @@ function mapQuestionFromApi(q) {
     id: q.id,
     category_id: q.kategori,
     text: q.metin,
+    text_en: q.metin_en ?? '',
     order: q.sira,
     target_gender: q.hedef_cinsiyet ?? null,
     target_age_ranges: q.hedef_yas_araliklari ?? [],
@@ -161,6 +164,7 @@ export async function createQuestion(categoryId, data) {
   const payload = {
     kategori: categoryId,
     metin: data.text,
+    metin_en: data.text_en ?? '',
     sira: data.order ?? 0,
     hedef_cinsiyet: data.target_gender ?? null,
     hedef_yas_araliklari: data.target_age_ranges ?? [],
@@ -177,6 +181,7 @@ export async function createQuestion(categoryId, data) {
 export async function updateQuestion(id, data) {
   const payload = {};
   if (data.text              !== undefined) payload.metin                = data.text;
+  if (data.text_en           !== undefined) payload.metin_en             = data.text_en;
   if (data.order             !== undefined) payload.sira                 = data.order;
   if (data.target_gender     !== undefined) payload.hedef_cinsiyet       = data.target_gender;
   if (data.target_age_ranges !== undefined) payload.hedef_yas_araliklari = data.target_age_ranges;
@@ -273,6 +278,7 @@ function mapDanismaFromApi(d) {
   return {
     id: d.id,
     ad: d.ad,
+    ad_en: d.ad_en ?? '',
     slug: d.slug,
     ikon: d.ikon,
     aktif: d.aktif,
@@ -304,6 +310,7 @@ export async function createDanisma(data) {
   }
   const payload = {
     ad: data.ad,
+    ad_en: data.ad_en ?? '',
     slug: data.slug,
     ikon: data.ikon ?? 'fa-comments',
     aktif: data.aktif ?? true,
@@ -318,6 +325,7 @@ export async function createDanisma(data) {
 export async function updateDanisma(id, data) {
   const payload = {};
   if (data.ad          !== undefined) payload.ad           = data.ad;
+  if (data.ad_en       !== undefined) payload.ad_en        = data.ad_en;
   if (data.slug        !== undefined) payload.slug         = data.slug;
   if (data.ikon        !== undefined) payload.ikon         = data.ikon;
   if (data.aktif       !== undefined) payload.aktif        = data.aktif;

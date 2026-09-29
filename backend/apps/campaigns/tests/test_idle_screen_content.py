@@ -133,3 +133,61 @@ def test_ic08_kiosk_sync_only_active(kiosk_client):
 def test_ic09_house_ad_model_removed():
     with pytest.raises(ImportError):
         from apps.campaigns.models import HouseAd  # noqa: F401
+
+
+# ─── IC-10 / IC-11 / IC-12 TR/EN ceviri ──────────────────────────────────────
+
+@pytest.mark.django_db
+def test_ic10_admin_create_with_en(admin_client):
+    base = "/api/campaigns/v2/idle-contents/"
+    r = admin_client.post(
+        base,
+        {"baslik": "Kahvalti", "baslik_en": "Breakfast", "metin": "Dengeli beslenin.", "metin_en": "Eat balanced."},
+        format="json",
+    )
+    assert r.status_code in (200, 201), r.content
+    body = r.json()
+    assert body["baslik_en"] == "Breakfast"
+    assert body["metin_en"] == "Eat balanced."
+    obj = IdleScreenContent.objects.get(pk=body["id"])
+    assert obj.baslik_en == "Breakfast"
+    assert obj.metin_en == "Eat balanced."
+
+
+@pytest.mark.django_db
+def test_ic10b_en_optional_defaults_empty(admin_client):
+    base = "/api/campaigns/v2/idle-contents/"
+    r = admin_client.post(base, {"baslik": "Kahvalti", "metin": "Dengeli beslenin."}, format="json")
+    assert r.status_code in (200, 201), r.content
+    body = r.json()
+    assert body["baslik_en"] == ""
+    assert body["metin_en"] == ""
+
+
+@pytest.mark.django_db
+def test_ic11_kiosk_sync_includes_en(kiosk_client):
+    IdleScreenContent.objects.create(
+        baslik="Aktif", baslik_en="Active", metin="Gorunur", metin_en="Visible", aktif=True
+    )
+    r = kiosk_client.get("/api/kiosk/v1/sync/")
+    assert r.status_code == 200
+    contents = r.json()["idle_contents"]
+    assert len(contents) == 1
+    assert contents[0]["baslik_en"] == "Active"
+    assert contents[0]["metin_en"] == "Visible"
+
+
+@pytest.mark.django_db
+def test_ic12_en_length_limits():
+    ser = IdleScreenContentSerializer(
+        data={"baslik": "b", "metin": "m", "baslik_en": "x" * 101}
+    )
+    assert not ser.is_valid()
+    assert "baslik_en" in ser.errors
+
+    ser2 = IdleScreenContentSerializer(
+        data={"baslik": "b", "metin": "m", "metin_en": "x" * 301}
+    )
+    assert not ser2.is_valid()
+    assert "metin_en" in ser2.errors
+
