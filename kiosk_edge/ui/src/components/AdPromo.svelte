@@ -439,10 +439,11 @@
 
   .ai-assistant-text {
     display: inline-block;
-    /* 1080px'de 64px; küçük viewport'larda sığacak şekilde ölçeklenir */
-    font-size: min(58px, 6vw);
+    max-width: 96vw;
+    /* Bilingual (TR/EN) tek satırda sığar: 1080px dikey ekranda EN metni taşmaz */
+    font-size: clamp(30px, 4.1vw, 44px);
     font-weight: 900;
-    letter-spacing: min(4px, 0.37vw);
+    letter-spacing: min(2px, 0.18vw);
     text-transform: uppercase;
     background: linear-gradient(
       135deg,
