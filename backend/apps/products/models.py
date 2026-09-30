@@ -87,7 +87,7 @@ class Soru(BaseModel):
     )
     metin = models.TextField()
     metin_en = models.TextField(
-        blank=True, default="",
+        null=True, blank=True, default="",
         help_text="Ingilizce soru metni. Bos = kioskta Turkce metne geri doner.",
     )
     sira = models.PositiveSmallIntegerField(default=1)
@@ -122,7 +122,7 @@ class Cevap(BaseModel):
     soru = models.ForeignKey(Soru, on_delete=models.CASCADE, related_name="cevaplar")
     metin = models.CharField(max_length=255)
     metin_en = models.CharField(
-        max_length=255, blank=True, default="",
+        max_length=255, null=True, blank=True, default="",
         help_text="Ingilizce cevap metni. Bos = kioskta Turkce metne geri doner.",
     )
     agirlik = models.IntegerField(default=0)

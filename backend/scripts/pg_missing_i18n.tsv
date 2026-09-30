@@ -1,0 +1,284 @@
+table	id	field	tr_text
+kategoriler	1	ad_en	Enerji & Halsizlik
+kategoriler	2	ad_en	Uyku Desteği
+kategoriler	3	ad_en	Göz Sağlığı
+kategoriler	4	ad_en	Saç & Tırnak Problemleri
+kategoriler	5	ad_en	Eklem & Kas Problemleri
+kategoriler	6	ad_en	Spor & Aktif Yaşam Desteği
+kategoriler	7	ad_en	Stres ve Kaygı Yönetimi
+kategoriler	8	ad_en	Odak & Konsantrasyon
+kategoriler	9	ad_en	Kilo Yönetimi
+kategoriler	10	ad_en	Sindirim Problemleri
+kategoriler	11	ad_en	Çocuk Gelişimi & Problemleri
+kategoriler	12	ad_en	Kadın Desteği
+kategoriler	13	ad_en	Erkek Desteği
+kategoriler	14	ad_en	Cilt Problemleri
+kategoriler	15	ad_en	Kalp ve Damar Desteği
+kategoriler	16	ad_en	Karaciğer & Detoks
+kategoriler	17	ad_en	Alerji Yönetimi
+kategoriler	18	ad_en	Genel Sağlık & Korunma
+kategoriler	19	ad_en	Bağışıklık Güçlendirme
+kategoriler	20	ad_en	Ekran Yorgunluğu ve Kuruluk
+kategoriler	21	ad_en	İleri Yaş Görme Koruması
+kategoriler	22	ad_en	Mevsimsel ve Strese Bağlı Dökülme
+kategoriler	23	ad_en	Yıpranmış Saç ve Kırılgan Tırnak
+kategoriler	24	ad_en	Genetik ve Hormonal Dökülme
+kategoriler	25	ad_en	Erkek Saç Güçlendirme
+kategoriler	26	ad_en	Osteoporoz (Kemik Erimesi) Korunma
+kategoriler	27	ad_en	Eklem Ağrıları ve Kıkırdak (Kireçlenme)
+kategoriler	28	ad_en	Enerji ve Yağ Yakımı
+kategoriler	29	ad_en	Kas Gelişimi ve Toparlanma
+kategoriler	30	ad_en	İştah ve Kilo Alımı
+kategoriler	31	ad_en	Bağışıklık
+kategoriler	32	ad_en	Büyüme ve Gelişim
+kategoriler	33	ad_en	Odaklanma ve Okul
+kategoriler	34	ad_en	Menopoz Dönemi
+kategoriler	35	ad_en	Hamilelik & Laktasyon
+kategoriler	36	ad_en	Regl & PMS Dönemi
+kategoriler	37	ad_en	Prostat Sağlığı
+kategoriler	38	ad_en	Performans & Enerji
+kategoriler	39	ad_en	Egzema & Hassasiyet (Bariyer)
+kategoriler	40	ad_en	Anti-Aging & Parlaklık
+kategoriler	41	ad_en	Akne ve Sebum Kontrolü
+kategoriler	42	ad_en	Karaciğer Yağlanması
+kategoriler	43	ad_en	Detoks
+kategoriler	44	ad_en	Kas Ağrıları ve Kramplar
+kategoriler	45	ad_en	Skar (İz) ve Doku Onarımı
+danisma_kategorileri	1	ad_en	Cinsel Sağlık
+danisma_kategorileri	2	ad_en	Şiddetli İshal / Bulantı
+danisma_kategorileri	3	ad_en	Hemoroid (Basur)
+danisma_kategorileri	4	ad_en	Aşırı Ter / Vücut Kokusu
+danisma_kategorileri	5	ad_en	Yoğun Saç Dökülmesi
+danisma_kategorileri	6	ad_en	Mantar / Egzama Şikayeti
+sorular	1	metin_en	Sabahları uykunuzu almış olsanız bile yataktan bitkin ve yorgun mu uyanıyorsunuz?
+sorular	2	metin_en	Özellikle öğleden sonraları yemekten sonra ani bir enerji çekilmesi ve uyku hali yaşıyor musunuz?
+sorular	3	metin_en	Bu fiziksel yorgunluğa zihinsel bulanıklık veya odaklanma güçlüğü eşlik ediyor mu?
+sorular	4	metin_en	Düzenli olarak kullandığınız bir ilaç veya kontrol altında tuttuğunuz kronik bir sağlık durumunuz var mı?
+sorular	5	metin_en	Yatağa girdiğinizde zihninizi susturamayıp uykuya dalmakta 20 dakikadan fazla zorlanıyor musunuz?
+sorular	6	metin_en	Geceleri sık sık uyanıyor ve kesintisiz uyku uyuyamadığınızı hissediyor musunuz?
+sorular	7	metin_en	Sabahları uyandığınızda kendinizi hiç dinlenmemiş ve kaslarınız katılaşmış gibi mi buluyorsunuz?
+sorular	8	metin_en	Düzenli olarak kullandığınız bir uyku veya psikiyatri ilacı var mı?
+sorular	9	metin_en	Gün içinde bilgisayar veya telefon ekranına bakmaktan gözlerinizde kuruluk, yanma ve batma oluyor mu?
+sorular	10	metin_en	Akşam saatlerine doğru odaklanma güçlüğü veya hafif bulanık görme yaşıyor musunuz?
+sorular	11	metin_en	Işığa karşı hassasiyet veya göz çevresinde kronik bir yorgunluk ağrısı var mı?
+sorular	12	metin_en	Düzenli kullandığınız reçeteli bir göz damlası veya aktif göz enfeksiyonunuz var mı?
+sorular	13	metin_en	Yaşla birlikte görme keskinliğinizde veya gece sürüşlerinde azalma fark ediyor musunuz?
+sorular	14	metin_en	Ailenizde sarı nokta (makula dejenerasyonu) veya katarakt öyküsü bulunuyor mu?
+sorular	15	metin_en	Göz yorgunluğuna ek olarak genel bir antioksidan desteğine ihtiyacınız var mı?
+sorular	16	metin_en	Teşhis edilmiş göz tansiyonu (glokom) veya diyabete bağlı göz rahatsızlığınız var mı?
+sorular	17	metin_en	Son dönemde yaşadığınız yoğun stres veya diyet sonrası saçlarınızda ani bir dökülme başladı mı?
+sorular	18	metin_en	Dökülme daha çok genel bir seyrelme ve banyo/tarama sırasında koparak dökülme şeklinde mi?
+sorular	19	metin_en	Cildinizde kuruluk, solgunluk veya genel bir enerji düşüklüğü bu duruma eşlik ediyor mu?
+sorular	20	metin_en	Yakın zamanda tiroid (guatr) testi veya demir/ferritin ölçümü yaptırdınız mı?
+sorular	21	metin_en	Saçlarınız işlem (boya/ısı) görmekten dolayı canlılığını yitirip cansızlaştı mı?
+sorular	22	metin_en	Tırnaklarınızda çabuk kırılma, kat kat soyulma veya beyaz lekeler sıkça oluşuyor mu?
+sorular	23	metin_en	Cildinizde de genel bir esneklik kaybı ve nemsizlik olduğunu düşünüyor musunuz?
+sorular	24	metin_en	Herhangi bir mantar enfeksiyonu tedavisi veya ağır ilaç kullanımınız oldu mu?
+sorular	25	metin_en	Saçlarınızda özellikle tepe ve şakak bölgelerinde (kadın tipi) açılmalar mı fark ediyorsunuz?
+sorular	26	metin_en	Ailenizde genetik saç dökülmesi (kellik) veya kadınlarda PCOS (polikistik over) öyküsü var mı?
+sorular	27	metin_en	Saç derinizde aşırı yağlanma veya sivilcelenme problemi yaşıyor musunuz?
+sorular	28	metin_en	Hormon dengeleyici bir ilaç veya aktif tansiyon tedavisi görüyor musunuz?
+sorular	29	metin_en	Tepe veya şakak bölgesinde belirgin bir seyrelme ve saç teli incelmesi fark ediyor musunuz?
+sorular	30	metin_en	Saç derinizde gün içinde yoğun yağlanma, kaşıntı veya sivilcelenme oluyor mu?
+sorular	31	metin_en	Saçlarınızdaki dökülme hızı son 6 ayda ivme kazandı mı ve ailenizde (baba/dede tarafı) kellik öyküsü var mı?
+sorular	32	metin_en	Dökülme dışında, idrar yaparken zorlanma veya sık idrara çıkma gibi farklı bir şikayetiniz var mı?
+sorular	33	metin_en	Özellikle menopoz/andropoz sonrası dönemde misiniz veya ailenizde erken yaşta kemik erimesi öyküsü var mı?
+sorular	34	metin_en	Son zamanlarda boyunuzda kısalma hissi veya sırt/bel bölgenizde kronikleşen sızılar yaşıyor musunuz?
+sorular	35	metin_en	Günlük beslenmenizde süt ürünleri ve kalsiyum kaynaklarını yetersiz mi tüketiyorsunuz?
+sorular	36	metin_en	Doktor tarafından yazılmış mevcut bir aktif kemik erimesi ilacı kullanıyor musunuz?
+sorular	37	metin_en	Dizlerinizde, omuzlarınızda veya parmaklarınızda hareket ederken ağrı, batma veya çıtırdama oluyor mu?
+sorular	38	metin_en	Özellikle sabahları uyandığınızda eklemlerinizde uzun süren bir tutukluk/sertlik var mı?
+sorular	39	metin_en	Bu ağrılar merdiven inip çıkarken veya uzun süre oturduktan sonra kalkarken artıyor mu?
+sorular	40	metin_en	Romatoid artrit gibi iltihaplı bir romatizma tanınız veya kortizon kullanımınız var mı?
+sorular	41	metin_en	Düzenli egzersiz yapıyor ve antrenman performansınızı, dayanıklılığınızı artırmak mı istiyorsunuz?
+sorular	42	metin_en	Spor sürecinde kilo verme ve inatçı yağları yakma sürecinizin yavaşladığını hissediyor musunuz?
+sorular	43	metin_en	Antrenman öncesi odaklanma ve enerji seviyenizde düşüklük (isteksizlik) yaşıyor musunuz?
+sorular	44	metin_en	Kronik bir kalp rahatsızlığınız var mı veya düzenli tansiyon ilacı kullanıyor musunuz?
+sorular	45	metin_en	Spor sonrasında kas ağrılarınız (hamlık) çok uzun sürüyor ve geç toparlanıyor musunuz?
+sorular	46	metin_en	Antrenman esnasında veya sonrasında bacaklarınızda kas krampları veya kasılmalar oluşuyor mu?
+sorular	47	metin_en	Hedefiniz kas kütlenizi artırmak ve yoğun antrenman sonrası yıkımı engellemek mi?
+sorular	48	metin_en	Böbrek veya karaciğer fonksiyonlarınızda bilinen bir hassasiyet/hastalık var mı?
+sorular	49	metin_en	Günlük hayatın koşturmacasında kendinizi sürekli gergin, huzursuz ve diken üstünde hissediyor musunuz?
+sorular	50	metin_en	Yoğun stres anlarında midenize kramplar giriyor veya sindirim düzeniniz bozuluyor mu?
+sorular	51	metin_en	Geceleri kafanızdaki yapılacak işler listesini susturmakta zorlanıyor musunuz?
+sorular	52	metin_en	Kalp ritim bozukluğunuz veya düzenli kullandığınız tansiyon ilacınız var mı?
+sorular	53	metin_en	Son zamanlarda basit isimleri, eşyaların yerini sıkça unutmaya başladınız mı?
+sorular	54	metin_en	Ekran başında çalışırken veya bir şey okurken dikkatiniz birkaç dakika içinde dağılıyor mu?
+sorular	55	metin_en	Zihninizde sürekli puslu bir hava (beyin sisi) ve algı yavaşlığı hissediyor musunuz?
+sorular	56	metin_en	Nörolojik bir tanı aldınız mı veya DEHB tedavisi görüyor musunuz?
+sorular	57	metin_en	Özellikle akşam saatlerinde veya stresli anlarda durdurulamaz tatlı krizleri yaşıyor musunuz?
+sorular	58	metin_en	Vücudunuzda, özellikle el ve ayak bileklerinizde sabahları yoğun ödem ve şişlik oluyor mu?
+sorular	59	metin_en	Yemeklerden hemen sonra üzerinize ani bir ağırlık ve uyku çökmesi yaşanıyor mu?
+sorular	60	metin_en	İnsülin direnci, diyabet veya guatr (tiroid tembelliği) tanınız var mı?
+sorular	61	metin_en	Yemeklerden hemen sonra midenizde veya bağırsaklarınızda şiddetli şişkinlik ve gaz oluşuyor mu?
+sorular	62	metin_en	Tuvalet alışkanlıklarınızda kronik kabızlık veya düzensizlik yönünde bir problem var mı?
+sorular	63	metin_en	Son 6 ay içinde yoğun veya tekrarlayan bir antibiyotik tedavisi gördünüz mü?
+sorular	64	metin_en	Doktor tarafından konulmuş Çölyak tanısı veya ileri derece glüten hassasiyetiniz var mı?
+sorular	65	metin_en	Çocuğunuz sofraya oturmak istemiyor ve yemek seçme konusunda aşırı inatçı davranıyor mu?
+sorular	66	metin_en	Yaşıtlarına göre kilo alımı, boy gelişimi veya fiziksel direnci zayıf mı kalıyor?
+sorular	67	metin_en	Sık sık karın ağrısı, gaz veya sindirim sistemi düzensizliği yaşıyor mu?
+sorular	68	metin_en	Çocuğunuzun bilinen bir gıda alerjisi veya kronik bağırsak hassasiyeti var mı?
+sorular	69	metin_en	Çocuğunuz kreş veya okul döneminde akranlarına kıyasla çok daha sık mı hastalanıyor?
+sorular	70	metin_en	Hastalık süreçlerini çok ağır geçiriyor ve iyileşmesi haftaları buluyor mu?
+sorular	71	metin_en	Gün içinde sürekli bir halsizlik, keyifsizlik ve çabuk yorulma gözlemliyor musunuz?
+sorular	72	metin_en	Çocuğunuzun düzenli kullandığı bir astım, alerji veya kortizon ilacı var mı?
+sorular	73	metin_en	Çocuğunuzun boy uzama hızı ve kemik gelişimi persentil değerlerinin gerisinde mi kalıyor?
+sorular	74	metin_en	Kas ve iskelet sistemini desteklemek, boy gelişimine katkıda bulunmak için takviye mi arıyorsunuz?
+sorular	75	metin_en	Günlük beslenmesinde kalsiyum kaynaklarını (süt, yoğurt, peynir) yeterli düzeyde tüketmiyor mu?
+sorular	76	metin_en	Çocuğunuzda teşhis edilmiş bir büyüme hormonu eksikliği veya genetik kronik hastalık var mı?
+sorular	77	metin_en	Çocuğunuz ders çalışırken veya ödev yaparken odaklanmakta çok ciddi zorluk yaşıyor mu?
+sorular	78	metin_en	Öğrendiklerini çok çabuk unutma, dikkat dağınıklığı veya okula karşı isteksizlik var mı?
+sorular	79	metin_en	Bu odaklanma problemine aşırı hareketlilik, hırçınlık veya uykuya geçiş zorluğu eşlik ediyor mu?
+sorular	80	metin_en	Pedagog veya psikiyatrist tarafından konulmuş DEHB tanısı veya ilaç tedavisi var mı?
+sorular	81	metin_en	Gün içinde aniden gelen ateş basmaları, gece terlemeleri ve çarpıntı yaşam kalitenizi düşürüyor mu?
+sorular	82	metin_en	Ruh halinizde ani dalgalanmalar, gerginlik, uykusuzluk veya nedensiz kaygılar başladı mı?
+sorular	83	metin_en	Kemik sızıları, eklem ağrıları veya ciltte aşırı kuruma ve sarkma fark ediyor musunuz?
+sorular	84	metin_en	Hormon replasman tedavisi görüyor musunuz veya ailede meme kanseri öyküsü var mı?
+sorular	85	metin_en	Hamilelik veya emzirme döneminde olup gebeliğe bağlı halsizlik ve mide bulantısı yaşıyor musunuz?
+sorular	86	metin_en	Doktorunuz tarafından saptanmış bir demir, ferritin veya kan eksikliği tablonuz var mı?
+sorular	87	metin_en	Gün içinde enerjinizin çok çabuk tükenmesi ve bacak krampları yaşıyor musunuz?
+sorular	88	metin_en	Şu an kaçıncı gebelik haftasındasınız ve gebelik şekeriniz saptandı mı?
+sorular	89	metin_en	Regl öncesi dönemde aşırı sinirlilik, tatlı krizleri, göğüs hassasiyeti ve şişkinlik oluyor mu?
+sorular	90	metin_en	Regl dönemleriniz yoğun ağrılı, kramplı ve aşırı kanamalı mı geçiyor?
+sorular	91	metin_en	Kan kaybına bağlı olarak bu dönemlerde aşırı halsizlik ve baş dönmesi yaşıyor musunuz?
+sorular	92	metin_en	Jinekolojik bir kist (PCOS, çikolata kisti) var mı veya düzenli doğum kontrol hapı kullanıyor musunuz?
+sorular	93	metin_en	Geceleri uykunuzdan uyanıp sık sık idrara çıkma ihtiyacı hissediyor musunuz?
+sorular	94	metin_en	İdrar yaparken kesik kesik gelme, zorlanma veya mesanenin tam boşalmama hissi var mı?
+sorular	95	metin_en	Buna bağlı olarak gün içinde sıvı tüketmekten çekindiğiniz veya sosyal hayatınızın kısıtlandığı oluyor mu?
+sorular	96	metin_en	Ürolog tarafından konulmuş BPH (iyi huylu prostat büyümesi) tanısı veya ilaç kullanımı var mı?
+sorular	97	metin_en	Günlük iş temposunda veya fiziksel aktivitelerde gücünüzün yetersiz kaldığını hissediyor musunuz?
+sorular	98	metin_en	Motivasyon eksikliği, kronik yorgunluk ve sabahları yataktan isteksiz kalkma var mı?
+sorular	99	metin_en	Yoğun iş stresiyle birlikte uyku kalitenizde ve kas gücünüzde azalma saptadınız mı?
+sorular	100	metin_en	Düzenli olarak kullandığınız bir kalp, damar veya tansiyon ilacınız var mı?
+sorular	101	metin_en	Cildinizde özellikle stresli dönemlerde artan, kaşıntılı, kızarık ve pullanan (egzama vb.) döküntüler yaşıyor musunuz?
+sorular	102	metin_en	Dış etkenlere (soğuk, rüzgar, kozmetik) karşı cildinizin bariyerinin zayıfladığını ve aşırı hassaslaştığını hissediyor musunuz?
+sorular	103	metin_en	Bu cilt hassasiyetine gaz, şişkinlik veya düzensiz tuvalet alışkanlığı gibi sindirim (bağırsak) sorunları eşlik ediyor mu?
+sorular	104	metin_en	Aktif olarak kortizonlu krem, bağışıklık baskılayıcı ilaç veya güçlü bir alerji ilacı kullanıyor musunuz?
+sorular	105	metin_en	Cildinizde ince çizgilerin derinleştiğini, elastikiyetin azaldığını ve sarkmaya (yerçekimine) karşı direncini kaybettiğini fark ediyor musunuz?
+sorular	106	metin_en	Aynaya baktığınızda cildinizin o eski canlı, nemli ve parlak (glass skin) görünümünü yitirip matlaştığını düşünüyor musunuz?
+sorular	107	metin_en	Yaşlanma belirtilerine ek olarak güneş lekeleri, renk eşitsizlikleri veya cilt tonunda bölgesel kararmalar var mı?
+sorular	108	metin_en	Yakın zamanda medikal estetik (lazer, altın iğne, derin peeling vb.) bir işlem yaptırdınız mı?
+sorular	109	metin_en	Özellikle çene, boyun veya yanak bölgesinde hormonal dalgalanmalara veya strese bağlı inatçı sivilceler (yetişkin aknesi) çıkarıyor musunuz?
+sorular	110	metin_en	Bu sivilceler genellikle deri altında, ağrılı, iltihaplı seyreden ve geçtikten sonra kırmızı/kahverengi leke bırakan türden mi?
+sorular	111	metin_en	Gün içinde cildinizde aşırı yağlanma (sebum artışı) ve beslenmenizde durduramadığınız tatlı/karbonhidrat krizleri oluyor mu?
+sorular	112	metin_en	Doktor kontrolünde ağır bir akne ilacı (Roaccutane vb.) veya düzenli antibiyotik tedavisi görüyor musunuz?
+sorular	113	metin_en	Doktor kontrolünde tansiyon veya kolesterol dengesizliği uyarısı aldınız mı?
+sorular	114	metin_en	Ailenizde veya birinci derece akrabalarınızda erken yaşta kalp rahatsızlığı öyküsü var mı?
+sorular	115	metin_en	Hafif tempolu yürüyüşlerde veya merdiven çıkarken göğüste sıkışma veya nefes darlığı oluyor mu?
+sorular	116	metin_en	Aktif olarak sigara veya yoğun alkol tüketim alışkanlığınız bulunuyor mu?
+sorular	121	metin_en	Mevsim geçişlerinde durdurulamayan hapşırma, burun akıntısı ve göz yaşarması yaşıyor musunuz?
+sorular	122	metin_en	Alerjik reaksiyonlar sırasında nefes alıp vermede zorluk veya hırıltı oluşuyor mu?
+sorular	123	metin_en	Cildinizde belirli dönemlerde nedensiz kaşıntılar, kızarıklıklar veya döküntüler saptıyor musunuz?
+sorular	124	metin_en	Evde beslediğiniz bir evcil hayvan veya bilinen ağır bir toz/polen alerjiniz var mı?
+sorular	125	metin_en	Belirli bir şikayetiniz olmasa da hücre yaşlanmasını geciktirmek ve vücudunuzu garantiye almak mı istiyorsunuz?
+sorular	126	metin_en	Şehir hayatının getirdiği hava kirliliği, stres ve düzensiz beslenmeye karşı antioksidan kalkan arıyor musunuz?
+sorular	127	metin_en	Gün içinde yeterince güneş ışığı alamayan kapalı ofis ortamlarında mı çalışıyorsunuz?
+sorular	128	metin_en	Yılda bir kez düzenli check-up yaptırır mısınız veya bilinen kronik bir organ yetmezliğiniz var mı?
+sorular	129	metin_en	Yıl içinde 3'ten fazla nezle, grip veya farenjit gibi solunum yolu enfeksiyonu geçiriyor musunuz?
+sorular	130	metin_en	Enfeksiyon kapmasanız bile mevsim dönüşlerinde kendinizi aşırı kırgın ve halsiz hissediyor musunuz?
+sorular	131	metin_en	Kalabalık, toplu taşıma veya kapalı ofis gibi riskli ortamlarda uzun saatler kalıyor musunuz?
+sorular	132	metin_en	Mevcut durumda koruyucu olarak aldığınız herhangi bir bağışıklık takviyesi var mı?
+sorular	135	metin_en	Bel çevrenizde yağlanma veya fazla kilonuz olduğunu düşünüyor musunuz?
+sorular	136	metin_en	Şekerli içecekler, tatlılar ve işlenmiş gıdaları sık tüketiyor musunuz?
+sorular	137	metin_en	Haftada en az 150 dakika düzenli yürüyüş veya egzersiz yapıyor musunuz?
+sorular	138	metin_en	Uzman kontrolünde yüksek kolesterol, yüksek trigliserid, insülin direnci, diyabet veya yüksek tansiyon nedeniyle takip ediliyor musunuz?
+sorular	139	metin_en	Son 3 ay içerisinde düzenli olarak alkol tükettiniz mi veya karaciğerinizi zorlayabilecek düzeyde alkol kullandığınızı düşünüyor musunuz?
+sorular	140	metin_en	Her gün düzenli olarak reçeteli ilaç kullanıyor veya aynı anda birden fazla
+sorular	141	metin_en	Günlük beslenmenizde paketli gıdalar, kızartmalar veya işlenmiş karbonhidratlar ağırlıklı mı?
+sorular	142	metin_en	Uzman kontrolünde karaciğer sağlığını etkileyebilecek kronik bir hastalığınız veya uzun süreli takip gerektiren bir sağlık probleminiz var mı?
+sorular	143	metin_en	Kaslarınızda sık sık ağrı, gerginlik, sertlik ya da kramp yaşıyor musunuz?
+sorular	144	metin_en	Kas şikâyetleriniz daha çok gece uykuda, fiziksel aktivite sonrasında veya uzun süre hareketsiz kaldığınızda mı ortaya çıkıyor?
+sorular	145	metin_en	Kas ağrılarınıza gün içinde genel yorgunluk, halsizlik veya kaslarda güçsüzlük hissi eşlik ediyor mu?
+sorular	146	metin_en	Ağrınız aniden mi başladı; uyuşma, belirgin şişlik, ateş veya reçeteli kas gevşetici kullanımı var mı?
+sorular	147	metin_en	Cildinizde ameliyat, kesik, yanık veya akne sonrasında kalan belirgin bir yara izi var mı?
+sorular	148	metin_en	İzinizde renk değişikliği (kızarıklık/koyulaşma) veya çöküntü/kabarıklık şeklinde bir doku bozulması var mı?
+sorular	149	metin_en	İz bölgesinde kuruluk, gerginlik veya kaşıntı hissediyor musunuz?
+sorular	150	metin_en	İz bölgesi henüz kapanmamış, kanamalı, akıntılı veya enfekte durumda mı?
+dooh_idle_screen_contents	1	baslik_en	-
+dooh_idle_screen_contents	2	baslik_en	-
+dooh_idle_screen_contents	3	baslik_en	-
+dooh_idle_screen_contents	4	baslik_en	-
+dooh_idle_screen_contents	5	baslik_en	-
+dooh_idle_screen_contents	6	baslik_en	-
+dooh_idle_screen_contents	7	baslik_en	-
+dooh_idle_screen_contents	8	baslik_en	-
+dooh_idle_screen_contents	9	baslik_en	-
+dooh_idle_screen_contents	10	baslik_en	-
+dooh_idle_screen_contents	11	baslik_en	-
+dooh_idle_screen_contents	12	baslik_en	-
+dooh_idle_screen_contents	13	baslik_en	-
+dooh_idle_screen_contents	14	baslik_en	-
+dooh_idle_screen_contents	15	baslik_en	-
+dooh_idle_screen_contents	16	baslik_en	-
+dooh_idle_screen_contents	17	baslik_en	-
+dooh_idle_screen_contents	18	baslik_en	-
+dooh_idle_screen_contents	19	baslik_en	-
+dooh_idle_screen_contents	20	baslik_en	-
+dooh_idle_screen_contents	21	baslik_en	-
+dooh_idle_screen_contents	22	baslik_en	-
+dooh_idle_screen_contents	23	baslik_en	-
+dooh_idle_screen_contents	24	baslik_en	-
+dooh_idle_screen_contents	25	baslik_en	-
+dooh_idle_screen_contents	26	baslik_en	-
+dooh_idle_screen_contents	27	baslik_en	-
+dooh_idle_screen_contents	28	baslik_en	-
+dooh_idle_screen_contents	29	baslik_en	-
+dooh_idle_screen_contents	30	baslik_en	-
+dooh_idle_screen_contents	31	baslik_en	-
+dooh_idle_screen_contents	32	baslik_en	-
+dooh_idle_screen_contents	33	baslik_en	-
+dooh_idle_screen_contents	34	baslik_en	-
+dooh_idle_screen_contents	35	baslik_en	-
+dooh_idle_screen_contents	36	baslik_en	-
+dooh_idle_screen_contents	37	baslik_en	-
+dooh_idle_screen_contents	38	baslik_en	-
+dooh_idle_screen_contents	39	baslik_en	-
+dooh_idle_screen_contents	40	baslik_en	-
+dooh_idle_screen_contents	41	baslik_en	-
+dooh_idle_screen_contents	42	baslik_en	-
+dooh_idle_screen_contents	43	baslik_en	-
+dooh_idle_screen_contents	44	baslik_en	-
+dooh_idle_screen_contents	1	metin_en	Sabah Uyandığınızda Hâlâ Yorgun Musunuz?
+dooh_idle_screen_contents	2	metin_en	Ekrana Uzun Süre Baktığınızda Gözleriniz Yoruluyor Mu?
+dooh_idle_screen_contents	3	metin_en	Akşamları Tatlı İsteğiniz Neden Artıyor?
+dooh_idle_screen_contents	4	metin_en	Gün İçinde Kendinizi Neden Sürekli Gergin Hissediyorsunuz?
+dooh_idle_screen_contents	5	metin_en	Saçlarınız Son Zamanlarda Neden Daha Fazla Dökülüyor?
+dooh_idle_screen_contents	6	metin_en	Çocuğunuz Neden Sık Sık Hastalanıyor?
+dooh_idle_screen_contents	7	metin_en	Yemeklerden Sonra Neden Şişkinlik Hissediyorsunuz?
+dooh_idle_screen_contents	8	metin_en	Tansiyonunuzu En Son Ne Zaman Kontrol Ettiniz?
+dooh_idle_screen_contents	9	metin_en	Gece Yatağa Girdiğinizde Uykuya Dalmakta Zorlanıyor Musunuz?
+dooh_idle_screen_contents	10	metin_en	Merdiven Çıkarken Dizleriniz Neden Zorlanıyor?
+dooh_idle_screen_contents	11	metin_en	Mevsim Değişince Neden Sürekli Hapşırıyorsunuz?
+dooh_idle_screen_contents	12	metin_en	Dikkatinizi Toplamak Neden Eskisinden Daha Zor?
+dooh_idle_screen_contents	13	metin_en	Regl Döneminiz Neden Günlük Hayatınızı Zorluyor?
+dooh_idle_screen_contents	14	metin_en	Karaciğerinizin Sağlığını En Son Ne Zaman Kontrol Ettiniz?
+dooh_idle_screen_contents	15	metin_en	Tırnaklarınız Eskisine Göre Daha Kolay Mı Kırılıyor?
+dooh_idle_screen_contents	16	metin_en	Kilonuzu Kontrol Etmekte Neden Zorlanıyorsunuz?
+dooh_idle_screen_contents	17	metin_en	Geceleri Tuvalete Kalkmanızın Nedeni Ne Olabilir?
+dooh_idle_screen_contents	18	metin_en	Çocuğunuz Ders Başında Dikkatini Toplamakta Zorlanıyor Mu?
+dooh_idle_screen_contents	19	metin_en	Akşama Doğru Görüşünüz Neden Bulanıklaşıyor?
+dooh_idle_screen_contents	20	metin_en	Hastalık Sonrası Neden Kendinize Gelmekte Zorlanıyorsunuz?
+dooh_idle_screen_contents	21	metin_en	Spor Yapmanıza Rağmen Performansınız Neden Artmıyor?
+dooh_idle_screen_contents	22	metin_en	Cildiniz Son Zamanlarda Neden Daha Hassas?
+dooh_idle_screen_contents	23	metin_en	Gün İçinde Enerjiniz Neden Birden Düşüyor?
+dooh_idle_screen_contents	24	metin_en	Çocuğunuzun Boy Ve Kilo Gelişimi Hakkında Merakınız Var Mı?
+dooh_idle_screen_contents	25	metin_en	Kafanızdaki Düşünceleri Susturmakta Zorlanıyor Musunuz?
+dooh_idle_screen_contents	26	metin_en	Sindirim Sisteminiz Size Sık Sık Rahatsızlık Veriyor Mu?
+dooh_idle_screen_contents	27	metin_en	Kalbinizin Sağlığı Hakkında Ne Kadar Bilginiz Var?
+dooh_idle_screen_contents	28	metin_en	Regl Döneminde Kendinizi Neden Daha Yorgun Hissediyorsunuz?
+dooh_idle_screen_contents	29	metin_en	Sabahları Dinlenmiş Uyanamadığınızı Hissediyor Musunuz?
+dooh_idle_screen_contents	30	metin_en	Çocuğunuz Hastalandığında Neden Uzun Sürede Toparlanıyor?
+dooh_idle_screen_contents	31	metin_en	Cildinizde Kuruluk Ve Kızarıklık Neden Artıyor?
+dooh_idle_screen_contents	32	metin_en	Antrenmandan Sonra Neden Uzun Süre Yorgun Hissediyorsunuz?
+dooh_idle_screen_contents	33	metin_en	Son Zamanlarda Daha Unutkan Olduğunuzu Fark Ettiniz Mi?
+dooh_idle_screen_contents	34	metin_en	Günlük Alışkanlıklarınız Karaciğerinizi Etkiliyor Olabilir Mi?
+dooh_idle_screen_contents	35	metin_en	Burun Akıntınız Günlük Hayatınızı Zorluyor Mu?
+dooh_idle_screen_contents	36	metin_en	Sürekli Yorgunluğunuzun Nedeni Vitamin Eksikliği Olabilir Mi?
+dooh_idle_screen_contents	37	metin_en	Gece Terlemeleri Uykunuzu Bölüyor Mu?
+dooh_idle_screen_contents	38	metin_en	Çocuğunuz Neden Bazı Yiyecekleri Sürekli Reddediyor?
+dooh_idle_screen_contents	39	metin_en	Hastalık Sonrası Neden Kendinize Gelmekte Zorlanıyorsunuz?
+dooh_idle_screen_contents	40	metin_en	Yürürken Veya Merdiven Çıkarken Dizleriniz Sizi Zorluyor Mu?
+dooh_idle_screen_contents	41	metin_en	Son Zamanlarda Neden Daha Sık Hastalanıyorsunuz?
+dooh_idle_screen_contents	42	metin_en	Hangi Vitamin Ve Minerallere İhtiyacınız Var Merak Ediyor Musunuz?
+dooh_idle_screen_contents	43	metin_en	Cildinizde Kuruluk, Kızarıklık Veya Sivilce Sorunları Yaşıyor Musunuz?
+dooh_idle_screen_contents	44	metin_en	Sürekli Yorgun Hissetmenizin Nedeni Vitamin Eksikliği Olabilir Mi?

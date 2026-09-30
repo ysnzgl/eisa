@@ -1,0 +1,1012 @@
+﻿60 objects imported automatically (use -v 2 for details).
+
+{
+  "kategoriler": [
+    [
+      1,
+      "Enerji & Halsizlik"
+    ],
+    [
+      2,
+      "Uyku Deste─şi"
+    ],
+    [
+      3,
+      "G├Âz Sa─şl─▒─ş─▒"
+    ],
+    [
+      4,
+      "Sa├ğ & T─▒rnak Problemleri"
+    ],
+    [
+      5,
+      "Eklem & Kas Problemleri"
+    ],
+    [
+      6,
+      "Spor & Aktif Ya┼şam Deste─şi"
+    ],
+    [
+      7,
+      "Stres ve Kayg─▒ Y├Ânetimi"
+    ],
+    [
+      8,
+      "Odak & Konsantrasyon"
+    ],
+    [
+      9,
+      "Kilo Y├Ânetimi"
+    ],
+    [
+      10,
+      "Sindirim Problemleri"
+    ],
+    [
+      11,
+      "├çocuk Geli┼şimi & Problemleri"
+    ],
+    [
+      12,
+      "Kad─▒n Deste─şi"
+    ],
+    [
+      13,
+      "Erkek Deste─şi"
+    ],
+    [
+      14,
+      "Cilt Problemleri"
+    ],
+    [
+      15,
+      "Kalp ve Damar Deste─şi"
+    ],
+    [
+      16,
+      "Karaci─şer & Detoks"
+    ],
+    [
+      17,
+      "Alerji Y├Ânetimi"
+    ],
+    [
+      18,
+      "Genel Sa─şl─▒k & Korunma"
+    ],
+    [
+      19,
+      "Ba─ş─▒┼ş─▒kl─▒k G├╝├ğlendirme"
+    ],
+    [
+      20,
+      "Ekran Yorgunlu─şu ve Kuruluk"
+    ],
+    [
+      21,
+      "─░leri Ya┼ş G├Ârme Korumas─▒"
+    ],
+    [
+      22,
+      "Mevsimsel ve Strese Ba─şl─▒ D├Âk├╝lme"
+    ],
+    [
+      23,
+      "Y─▒pranm─▒┼ş Sa├ğ ve K─▒r─▒lgan T─▒rnak"
+    ],
+    [
+      24,
+      "Genetik ve Hormonal D├Âk├╝lme"
+    ],
+    [
+      25,
+      "Erkek Sa├ğ G├╝├ğlendirme"
+    ],
+    [
+      26,
+      "Osteoporoz (Kemik Erimesi) Korunma"
+    ],
+    [
+      27,
+      "Eklem A─şr─▒lar─▒ ve K─▒k─▒rdak (Kire├ğlenme)"
+    ],
+    [
+      28,
+      "Enerji ve Ya─ş Yak─▒m─▒"
+    ],
+    [
+      29,
+      "Kas Geli┼şimi ve Toparlanma"
+    ],
+    [
+      30,
+      "─░┼ştah ve Kilo Al─▒m─▒"
+    ],
+    [
+      31,
+      "Ba─ş─▒┼ş─▒kl─▒k"
+    ],
+    [
+      32,
+      "B├╝y├╝me ve Geli┼şim"
+    ],
+    [
+      33,
+      "Odaklanma ve Okul"
+    ],
+    [
+      34,
+      "Menopoz D├Ânemi"
+    ],
+    [
+      35,
+      "Hamilelik & Laktasyon"
+    ],
+    [
+      36,
+      "Regl & PMS D├Ânemi"
+    ],
+    [
+      37,
+      "Prostat Sa─şl─▒─ş─▒"
+    ],
+    [
+      38,
+      "Performans & Enerji"
+    ],
+    [
+      39,
+      "Egzema & Hassasiyet (Bariyer)"
+    ],
+    [
+      40,
+      "Anti-Aging & Parlakl─▒k"
+    ],
+    [
+      41,
+      "Akne ve Sebum Kontrol├╝"
+    ],
+    [
+      42,
+      "Karaci─şer Ya─şlanmas─▒"
+    ],
+    [
+      43,
+      "Detoks"
+    ],
+    [
+      44,
+      "Kas A─şr─▒lar─▒ ve Kramplar"
+    ],
+    [
+      45,
+      "Skar (─░z) ve Doku Onar─▒m─▒"
+    ]
+  ],
+  "danisma_kategorileri": [
+    [
+      1,
+      "Cinsel Sa─şl─▒k"
+    ],
+    [
+      2,
+      "┼Şiddetli ─░shal / Bulant─▒"
+    ],
+    [
+      3,
+      "Hemoroid (Basur)"
+    ],
+    [
+      4,
+      "A┼ş─▒r─▒ Ter / V├╝cut Kokusu"
+    ],
+    [
+      5,
+      "Yo─şun Sa├ğ D├Âk├╝lmesi"
+    ],
+    [
+      6,
+      "Mantar / Egzama ┼Şikayeti"
+    ]
+  ],
+  "sorular": [
+    [
+      1,
+      "Sabahlar─▒ uykunuzu alm─▒┼ş olsan─▒z bile yataktan bitkin ve yorgun mu uyan─▒yorsunuz?"
+    ],
+    [
+      2,
+      "├ûzellikle ├Â─şleden sonralar─▒ yemekten sonra ani bir enerji ├ğekilmesi ve uyku hali ya┼ş─▒yor musunuz?"
+    ],
+    [
+      3,
+      "Bu fiziksel yorgunlu─şa zihinsel bulan─▒kl─▒k veya odaklanma g├╝├ğl├╝─ş├╝ e┼şlik ediyor mu?"
+    ],
+    [
+      4,
+      "D├╝zenli olarak kulland─▒─ş─▒n─▒z bir ila├ğ veya kontrol alt─▒nda tuttu─şunuz kronik bir sa─şl─▒k durumunuz var m─▒?"
+    ],
+    [
+      5,
+      "Yata─şa girdi─şinizde zihninizi susturamay─▒p uykuya dalmakta 20 dakikadan fazla zorlan─▒yor musunuz?"
+    ],
+    [
+      6,
+      "Geceleri s─▒k s─▒k uyan─▒yor ve kesintisiz uyku uyuyamad─▒─ş─▒n─▒z─▒ hissediyor musunuz?"
+    ],
+    [
+      7,
+      "Sabahlar─▒ uyand─▒─ş─▒n─▒zda kendinizi hi├ğ dinlenmemi┼ş ve kaslar─▒n─▒z kat─▒la┼şm─▒┼ş gibi mi buluyorsunuz?"
+    ],
+    [
+      8,
+      "D├╝zenli olarak kulland─▒─ş─▒n─▒z bir uyku veya psikiyatri ilac─▒ var m─▒?"
+    ],
+    [
+      9,
+      "G├╝n i├ğinde bilgisayar veya telefon ekran─▒na bakmaktan g├Âzlerinizde kuruluk, yanma ve batma oluyor mu?"
+    ],
+    [
+      10,
+      "Ak┼şam saatlerine do─şru odaklanma g├╝├ğl├╝─ş├╝ veya hafif bulan─▒k g├Ârme ya┼ş─▒yor musunuz?"
+    ],
+    [
+      11,
+      "I┼ş─▒─şa kar┼ş─▒ hassasiyet veya g├Âz ├ğevresinde kronik bir yorgunluk a─şr─▒s─▒ var m─▒?"
+    ],
+    [
+      12,
+      "D├╝zenli kulland─▒─ş─▒n─▒z re├ğeteli bir g├Âz damlas─▒ veya aktif g├Âz enfeksiyonunuz var m─▒?"
+    ],
+    [
+      13,
+      "Ya┼şla birlikte g├Ârme keskinli─şinizde veya gece s├╝r├╝┼şlerinde azalma fark ediyor musunuz?"
+    ],
+    [
+      14,
+      "Ailenizde sar─▒ nokta (makula dejenerasyonu) veya katarakt ├Âyk├╝s├╝ bulunuyor mu?"
+    ],
+    [
+      15,
+      "G├Âz yorgunlu─şuna ek olarak genel bir antioksidan deste─şine ihtiyac─▒n─▒z var m─▒?"
+    ],
+    [
+      16,
+      "Te┼şhis edilmi┼ş g├Âz tansiyonu (glokom) veya diyabete ba─şl─▒ g├Âz rahats─▒zl─▒─ş─▒n─▒z var m─▒?"
+    ],
+    [
+      17,
+      "Son d├Ânemde ya┼şad─▒─ş─▒n─▒z yo─şun stres veya diyet sonras─▒ sa├ğlar─▒n─▒zda ani bir d├Âk├╝lme ba┼şlad─▒ m─▒?"
+    ],
+    [
+      18,
+      "D├Âk├╝lme daha ├ğok genel bir seyrelme ve banyo/tarama s─▒ras─▒nda koparak d├Âk├╝lme ┼şeklinde mi?"
+    ],
+    [
+      19,
+      "Cildinizde kuruluk, solgunluk veya genel bir enerji d├╝┼ş├╝kl├╝─ş├╝ bu duruma e┼şlik ediyor mu?"
+    ],
+    [
+      20,
+      "Yak─▒n zamanda tiroid (guatr) testi veya demir/ferritin ├Âl├ğ├╝m├╝ yapt─▒rd─▒n─▒z m─▒?"
+    ],
+    [
+      21,
+      "Sa├ğlar─▒n─▒z i┼şlem (boya/─▒s─▒) g├Ârmekten dolay─▒ canl─▒l─▒─ş─▒n─▒ yitirip cans─▒zla┼şt─▒ m─▒?"
+    ],
+    [
+      22,
+      "T─▒rnaklar─▒n─▒zda ├ğabuk k─▒r─▒lma, kat kat soyulma veya beyaz lekeler s─▒k├ğa olu┼şuyor mu?"
+    ],
+    [
+      23,
+      "Cildinizde de genel bir esneklik kayb─▒ ve nemsizlik oldu─şunu d├╝┼ş├╝n├╝yor musunuz?"
+    ],
+    [
+      24,
+      "Herhangi bir mantar enfeksiyonu tedavisi veya a─ş─▒r ila├ğ kullan─▒m─▒n─▒z oldu mu?"
+    ],
+    [
+      25,
+      "Sa├ğlar─▒n─▒zda ├Âzellikle tepe ve ┼şakak b├Âlgelerinde (kad─▒n tipi) a├ğ─▒lmalar m─▒ fark ediyorsunuz?"
+    ],
+    [
+      26,
+      "Ailenizde genetik sa├ğ d├Âk├╝lmesi (kellik) veya kad─▒nlarda PCOS (polikistik over) ├Âyk├╝s├╝ var m─▒?"
+    ],
+    [
+      27,
+      "Sa├ğ derinizde a┼ş─▒r─▒ ya─şlanma veya sivilcelenme problemi ya┼ş─▒yor musunuz?"
+    ],
+    [
+      28,
+      "Hormon dengeleyici bir ila├ğ veya aktif tansiyon tedavisi g├Âr├╝yor musunuz?"
+    ],
+    [
+      29,
+      "Tepe veya ┼şakak b├Âlgesinde belirgin bir seyrelme ve sa├ğ teli incelmesi fark ediyor musunuz?"
+    ],
+    [
+      30,
+      "Sa├ğ derinizde g├╝n i├ğinde yo─şun ya─şlanma, ka┼ş─▒nt─▒ veya sivilcelenme oluyor mu?"
+    ],
+    [
+      31,
+      "Sa├ğlar─▒n─▒zdaki d├Âk├╝lme h─▒z─▒ son 6 ayda ivme kazand─▒ m─▒ ve ailenizde (baba/dede taraf─▒) kellik ├Âyk├╝s├╝ var m─▒?"
+    ],
+    [
+      32,
+      "D├Âk├╝lme d─▒┼ş─▒nda, idrar yaparken zorlanma veya s─▒k idrara ├ğ─▒kma gibi farkl─▒ bir ┼şikayetiniz var m─▒?"
+    ],
+    [
+      33,
+      "├ûzellikle menopoz/andropoz sonras─▒ d├Ânemde misiniz veya ailenizde erken ya┼şta kemik erimesi ├Âyk├╝s├╝ var m─▒?"
+    ],
+    [
+      34,
+      "Son zamanlarda boyunuzda k─▒salma hissi veya s─▒rt/bel b├Âlgenizde kronikle┼şen s─▒z─▒lar ya┼ş─▒yor musunuz?"
+    ],
+    [
+      35,
+      "G├╝nl├╝k beslenmenizde s├╝t ├╝r├╝nleri ve kalsiyum kaynaklar─▒n─▒ yetersiz mi t├╝ketiyorsunuz?"
+    ],
+    [
+      36,
+      "Doktor taraf─▒ndan yaz─▒lm─▒┼ş mevcut bir aktif kemik erimesi ilac─▒ kullan─▒yor musunuz?"
+    ],
+    [
+      37,
+      "Dizlerinizde, omuzlar─▒n─▒zda veya parmaklar─▒n─▒zda hareket ederken a─şr─▒, batma veya ├ğ─▒t─▒rdama oluyor mu?"
+    ],
+    [
+      38,
+      "├ûzellikle sabahlar─▒ uyand─▒─ş─▒n─▒zda eklemlerinizde uzun s├╝ren bir tutukluk/sertlik var m─▒?"
+    ],
+    [
+      39,
+      "Bu a─şr─▒lar merdiven inip ├ğ─▒karken veya uzun s├╝re oturduktan sonra kalkarken art─▒yor mu?"
+    ],
+    [
+      40,
+      "Romatoid artrit gibi iltihapl─▒ bir romatizma tan─▒n─▒z veya kortizon kullan─▒m─▒n─▒z var m─▒?"
+    ],
+    [
+      41,
+      "D├╝zenli egzersiz yap─▒yor ve antrenman performans─▒n─▒z─▒, dayan─▒kl─▒l─▒─ş─▒n─▒z─▒ art─▒rmak m─▒ istiyorsunuz?"
+    ],
+    [
+      42,
+      "Spor s├╝recinde kilo verme ve inat├ğ─▒ ya─şlar─▒ yakma s├╝recinizin yava┼şlad─▒─ş─▒n─▒ hissediyor musunuz?"
+    ],
+    [
+      43,
+      "Antrenman ├Âncesi odaklanma ve enerji seviyenizde d├╝┼ş├╝kl├╝k (isteksizlik) ya┼ş─▒yor musunuz?"
+    ],
+    [
+      44,
+      "Kronik bir kalp rahats─▒zl─▒─ş─▒n─▒z var m─▒ veya d├╝zenli tansiyon ilac─▒ kullan─▒yor musunuz?"
+    ],
+    [
+      45,
+      "Spor sonras─▒nda kas a─şr─▒lar─▒n─▒z (haml─▒k) ├ğok uzun s├╝r├╝yor ve ge├ğ toparlan─▒yor musunuz?"
+    ],
+    [
+      46,
+      "Antrenman esnas─▒nda veya sonras─▒nda bacaklar─▒n─▒zda kas kramplar─▒ veya kas─▒lmalar olu┼şuyor mu?"
+    ],
+    [
+      47,
+      "Hedefiniz kas k├╝tlenizi art─▒rmak ve yo─şun antrenman sonras─▒ y─▒k─▒m─▒ engellemek mi?"
+    ],
+    [
+      48,
+      "B├Âbrek veya karaci─şer fonksiyonlar─▒n─▒zda bilinen bir hassasiyet/hastal─▒k var m─▒?"
+    ],
+    [
+      49,
+      "G├╝nl├╝k hayat─▒n ko┼şturmacas─▒nda kendinizi s├╝rekli gergin, huzursuz ve diken ├╝st├╝nde hissediyor musunuz?"
+    ],
+    [
+      50,
+      "Yo─şun stres anlar─▒nda midenize kramplar giriyor veya sindirim d├╝zeniniz bozuluyor mu?"
+    ],
+    [
+      51,
+      "Geceleri kafan─▒zdaki yap─▒lacak i┼şler listesini susturmakta zorlan─▒yor musunuz?"
+    ],
+    [
+      52,
+      "Kalp ritim bozuklu─şunuz veya d├╝zenli kulland─▒─ş─▒n─▒z tansiyon ilac─▒n─▒z var m─▒?"
+    ],
+    [
+      53,
+      "Son zamanlarda basit isimleri, e┼şyalar─▒n yerini s─▒k├ğa unutmaya ba┼şlad─▒n─▒z m─▒?"
+    ],
+    [
+      54,
+      "Ekran ba┼ş─▒nda ├ğal─▒┼ş─▒rken veya bir ┼şey okurken dikkatiniz birka├ğ dakika i├ğinde da─ş─▒l─▒yor mu?"
+    ],
+    [
+      55,
+      "Zihninizde s├╝rekli puslu bir hava (beyin sisi) ve alg─▒ yava┼şl─▒─ş─▒ hissediyor musunuz?"
+    ],
+    [
+      56,
+      "N├Ârolojik bir tan─▒ ald─▒n─▒z m─▒ veya DEHB tedavisi g├Âr├╝yor musunuz?"
+    ],
+    [
+      57,
+      "├ûzellikle ak┼şam saatlerinde veya stresli anlarda durdurulamaz tatl─▒ krizleri ya┼ş─▒yor musunuz?"
+    ],
+    [
+      58,
+      "V├╝cudunuzda, ├Âzellikle el ve ayak bileklerinizde sabahlar─▒ yo─şun ├Âdem ve ┼şi┼şlik oluyor mu?"
+    ],
+    [
+      59,
+      "Yemeklerden hemen sonra ├╝zerinize ani bir a─ş─▒rl─▒k ve uyku ├ğ├Âkmesi ya┼şan─▒yor mu?"
+    ],
+    [
+      60,
+      "─░ns├╝lin direnci, diyabet veya guatr (tiroid tembelli─şi) tan─▒n─▒z var m─▒?"
+    ],
+    [
+      61,
+      "Yemeklerden hemen sonra midenizde veya ba─ş─▒rsaklar─▒n─▒zda ┼şiddetli ┼şi┼şkinlik ve gaz olu┼şuyor mu?"
+    ],
+    [
+      62,
+      "Tuvalet al─▒┼şkanl─▒klar─▒n─▒zda kronik kab─▒zl─▒k veya d├╝zensizlik y├Ân├╝nde bir problem var m─▒?"
+    ],
+    [
+      63,
+      "Son 6 ay i├ğinde yo─şun veya tekrarlayan bir antibiyotik tedavisi g├Ârd├╝n├╝z m├╝?"
+    ],
+    [
+      64,
+      "Doktor taraf─▒ndan konulmu┼ş ├ç├Âlyak tan─▒s─▒ veya ileri derece gl├╝ten hassasiyetiniz var m─▒?"
+    ],
+    [
+      65,
+      "├çocu─şunuz sofraya oturmak istemiyor ve yemek se├ğme konusunda a┼ş─▒r─▒ inat├ğ─▒ davran─▒yor mu?"
+    ],
+    [
+      66,
+      "Ya┼ş─▒tlar─▒na g├Âre kilo al─▒m─▒, boy geli┼şimi veya fiziksel direnci zay─▒f m─▒ kal─▒yor?"
+    ],
+    [
+      67,
+      "S─▒k s─▒k kar─▒n a─şr─▒s─▒, gaz veya sindirim sistemi d├╝zensizli─şi ya┼ş─▒yor mu?"
+    ],
+    [
+      68,
+      "├çocu─şunuzun bilinen bir g─▒da alerjisi veya kronik ba─ş─▒rsak hassasiyeti var m─▒?"
+    ],
+    [
+      69,
+      "├çocu─şunuz kre┼ş veya okul d├Âneminde akranlar─▒na k─▒yasla ├ğok daha s─▒k m─▒ hastalan─▒yor?"
+    ],
+    [
+      70,
+      "Hastal─▒k s├╝re├ğlerini ├ğok a─ş─▒r ge├ğiriyor ve iyile┼şmesi haftalar─▒ buluyor mu?"
+    ],
+    [
+      71,
+      "G├╝n i├ğinde s├╝rekli bir halsizlik, keyifsizlik ve ├ğabuk yorulma g├Âzlemliyor musunuz?"
+    ],
+    [
+      72,
+      "├çocu─şunuzun d├╝zenli kulland─▒─ş─▒ bir ast─▒m, alerji veya kortizon ilac─▒ var m─▒?"
+    ],
+    [
+      73,
+      "├çocu─şunuzun boy uzama h─▒z─▒ ve kemik geli┼şimi persentil de─şerlerinin gerisinde mi kal─▒yor?"
+    ],
+    [
+      74,
+      "Kas ve iskelet sistemini desteklemek, boy geli┼şimine katk─▒da bulunmak i├ğin takviye mi ar─▒yorsunuz?"
+    ],
+    [
+      75,
+      "G├╝nl├╝k beslenmesinde kalsiyum kaynaklar─▒n─▒ (s├╝t, yo─şurt, peynir) yeterli d├╝zeyde t├╝ketmiyor mu?"
+    ],
+    [
+      76,
+      "├çocu─şunuzda te┼şhis edilmi┼ş bir b├╝y├╝me hormonu eksikli─şi veya genetik kronik hastal─▒k var m─▒?"
+    ],
+    [
+      77,
+      "├çocu─şunuz ders ├ğal─▒┼ş─▒rken veya ├Âdev yaparken odaklanmakta ├ğok ciddi zorluk ya┼ş─▒yor mu?"
+    ],
+    [
+      78,
+      "├û─şrendiklerini ├ğok ├ğabuk unutma, dikkat da─ş─▒n─▒kl─▒─ş─▒ veya okula kar┼ş─▒ isteksizlik var m─▒?"
+    ],
+    [
+      79,
+      "Bu odaklanma problemine a┼ş─▒r─▒ hareketlilik, h─▒r├ğ─▒nl─▒k veya uykuya ge├ği┼ş zorlu─şu e┼şlik ediyor mu?"
+    ],
+    [
+      80,
+      "Pedagog veya psikiyatrist taraf─▒ndan konulmu┼ş DEHB tan─▒s─▒ veya ila├ğ tedavisi var m─▒?"
+    ],
+    [
+      81,
+      "G├╝n i├ğinde aniden gelen ate┼ş basmalar─▒, gece terlemeleri ve ├ğarp─▒nt─▒ ya┼şam kalitenizi d├╝┼ş├╝r├╝yor mu?"
+    ],
+    [
+      82,
+      "Ruh halinizde ani dalgalanmalar, gerginlik, uykusuzluk veya nedensiz kayg─▒lar ba┼şlad─▒ m─▒?"
+    ],
+    [
+      83,
+      "Kemik s─▒z─▒lar─▒, eklem a─şr─▒lar─▒ veya ciltte a┼ş─▒r─▒ kuruma ve sarkma fark ediyor musunuz?"
+    ],
+    [
+      84,
+      "Hormon replasman tedavisi g├Âr├╝yor musunuz veya ailede meme kanseri ├Âyk├╝s├╝ var m─▒?"
+    ],
+    [
+      85,
+      "Hamilelik veya emzirme d├Âneminde olup gebeli─şe ba─şl─▒ halsizlik ve mide bulant─▒s─▒ ya┼ş─▒yor musunuz?"
+    ],
+    [
+      86,
+      "Doktorunuz taraf─▒ndan saptanm─▒┼ş bir demir, ferritin veya kan eksikli─şi tablonuz var m─▒?"
+    ],
+    [
+      87,
+      "G├╝n i├ğinde enerjinizin ├ğok ├ğabuk t├╝kenmesi ve bacak kramplar─▒ ya┼ş─▒yor musunuz?"
+    ],
+    [
+      88,
+      "┼Şu an ka├ğ─▒nc─▒ gebelik haftas─▒ndas─▒n─▒z ve gebelik ┼şekeriniz saptand─▒ m─▒?"
+    ],
+    [
+      89,
+      "Regl ├Âncesi d├Ânemde a┼ş─▒r─▒ sinirlilik, tatl─▒ krizleri, g├Â─ş├╝s hassasiyeti ve ┼şi┼şkinlik oluyor mu?"
+    ],
+    [
+      90,
+      "Regl d├Ânemleriniz yo─şun a─şr─▒l─▒, krampl─▒ ve a┼ş─▒r─▒ kanamal─▒ m─▒ ge├ğiyor?"
+    ],
+    [
+      91,
+      "Kan kayb─▒na ba─şl─▒ olarak bu d├Ânemlerde a┼ş─▒r─▒ halsizlik ve ba┼ş d├Ânmesi ya┼ş─▒yor musunuz?"
+    ],
+    [
+      92,
+      "Jinekolojik bir kist (PCOS, ├ğikolata kisti) var m─▒ veya d├╝zenli do─şum kontrol hap─▒ kullan─▒yor musunuz?"
+    ],
+    [
+      93,
+      "Geceleri uykunuzdan uyan─▒p s─▒k s─▒k idrara ├ğ─▒kma ihtiyac─▒ hissediyor musunuz?"
+    ],
+    [
+      94,
+      "─░drar yaparken kesik kesik gelme, zorlanma veya mesanenin tam bo┼şalmama hissi var m─▒?"
+    ],
+    [
+      95,
+      "Buna ba─şl─▒ olarak g├╝n i├ğinde s─▒v─▒ t├╝ketmekten ├ğekindi─şiniz veya sosyal hayat─▒n─▒z─▒n k─▒s─▒tland─▒─ş─▒ oluyor mu?"
+    ],
+    [
+      96,
+      "├£rolog taraf─▒ndan konulmu┼ş BPH (iyi huylu prostat b├╝y├╝mesi) tan─▒s─▒ veya ila├ğ kullan─▒m─▒ var m─▒?"
+    ],
+    [
+      97,
+      "G├╝nl├╝k i┼ş temposunda veya fiziksel aktivitelerde g├╝c├╝n├╝z├╝n yetersiz kald─▒─ş─▒n─▒ hissediyor musunuz?"
+    ],
+    [
+      98,
+      "Motivasyon eksikli─şi, kronik yorgunluk ve sabahlar─▒ yataktan isteksiz kalkma var m─▒?"
+    ],
+    [
+      99,
+      "Yo─şun i┼ş stresiyle birlikte uyku kalitenizde ve kas g├╝c├╝n├╝zde azalma saptad─▒n─▒z m─▒?"
+    ],
+    [
+      100,
+      "D├╝zenli olarak kulland─▒─ş─▒n─▒z bir kalp, damar veya tansiyon ilac─▒n─▒z var m─▒?"
+    ],
+    [
+      101,
+      "Cildinizde ├Âzellikle stresli d├Ânemlerde artan, ka┼ş─▒nt─▒l─▒, k─▒zar─▒k ve pullanan (egzama vb.) d├Âk├╝nt├╝ler ya┼ş─▒yor musunuz?"
+    ],
+    [
+      102,
+      "D─▒┼ş etkenlere (so─şuk, r├╝zgar, kozmetik) kar┼ş─▒ cildinizin bariyerinin zay─▒flad─▒─ş─▒n─▒ ve a┼ş─▒r─▒ hassasla┼şt─▒─ş─▒n─▒ hissediyor musunuz?"
+    ],
+    [
+      103,
+      "Bu cilt hassasiyetine gaz, ┼şi┼şkinlik veya d├╝zensiz tuvalet al─▒┼şkanl─▒─ş─▒ gibi sindirim (ba─ş─▒rsak) sorunlar─▒ e┼şlik ediyor mu?"
+    ],
+    [
+      104,
+      "Aktif olarak kortizonlu krem, ba─ş─▒┼ş─▒kl─▒k bask─▒lay─▒c─▒ ila├ğ veya g├╝├ğl├╝ bir alerji ilac─▒ kullan─▒yor musunuz?"
+    ],
+    [
+      105,
+      "Cildinizde ince ├ğizgilerin derinle┼şti─şini, elastikiyetin azald─▒─ş─▒n─▒ ve sarkmaya (yer├ğekimine) kar┼ş─▒ direncini kaybetti─şini fark ediyor musunuz?"
+    ],
+    [
+      106,
+      "Aynaya bakt─▒─ş─▒n─▒zda cildinizin o eski canl─▒, nemli ve parlak (glass skin) g├Âr├╝n├╝m├╝n├╝ yitirip matla┼şt─▒─ş─▒n─▒ d├╝┼ş├╝n├╝yor musunuz?"
+    ],
+    [
+      107,
+      "Ya┼şlanma belirtilerine ek olarak g├╝ne┼ş lekeleri, renk e┼şitsizlikleri veya cilt tonunda b├Âlgesel kararmalar var m─▒?"
+    ],
+    [
+      108,
+      "Yak─▒n zamanda medikal estetik (lazer, alt─▒n i─şne, derin peeling vb.) bir i┼şlem yapt─▒rd─▒n─▒z m─▒?"
+    ],
+    [
+      109,
+      "├ûzellikle ├ğene, boyun veya yanak b├Âlgesinde hormonal dalgalanmalara veya strese ba─şl─▒ inat├ğ─▒ sivilceler (yeti┼şkin aknesi) ├ğ─▒kar─▒yor musunuz?"
+    ],
+    [
+      110,
+      "Bu sivilceler genellikle deri alt─▒nda, a─şr─▒l─▒, iltihapl─▒ seyreden ve ge├ğtikten sonra k─▒rm─▒z─▒/kahverengi leke b─▒rakan t├╝rden mi?"
+    ],
+    [
+      111,
+      "G├╝n i├ğinde cildinizde a┼ş─▒r─▒ ya─şlanma (sebum art─▒┼ş─▒) ve beslenmenizde durduramad─▒─ş─▒n─▒z tatl─▒/karbonhidrat krizleri oluyor mu?"
+    ],
+    [
+      112,
+      "Doktor kontrol├╝nde a─ş─▒r bir akne ilac─▒ (Roaccutane vb.) veya d├╝zenli antibiyotik tedavisi g├Âr├╝yor musunuz?"
+    ],
+    [
+      113,
+      "Doktor kontrol├╝nde tansiyon veya kolesterol dengesizli─şi uyar─▒s─▒ ald─▒n─▒z m─▒?"
+    ],
+    [
+      114,
+      "Ailenizde veya birinci derece akrabalar─▒n─▒zda erken ya┼şta kalp rahats─▒zl─▒─ş─▒ ├Âyk├╝s├╝ var m─▒?"
+    ],
+    [
+      115,
+      "Hafif tempolu y├╝r├╝y├╝┼şlerde veya merdiven ├ğ─▒karken g├Â─ş├╝ste s─▒k─▒┼şma veya nefes darl─▒─ş─▒ oluyor mu?"
+    ],
+    [
+      116,
+      "Aktif olarak sigara veya yo─şun alkol t├╝ketim al─▒┼şkanl─▒─ş─▒n─▒z bulunuyor mu?"
+    ],
+    [
+      121,
+      "Mevsim ge├ği┼şlerinde durdurulamayan hap┼ş─▒rma, burun ak─▒nt─▒s─▒ ve g├Âz ya┼şarmas─▒ ya┼ş─▒yor musunuz?"
+    ],
+    [
+      122,
+      "Alerjik reaksiyonlar s─▒ras─▒nda nefes al─▒p vermede zorluk veya h─▒r─▒lt─▒ olu┼şuyor mu?"
+    ],
+    [
+      123,
+      "Cildinizde belirli d├Ânemlerde nedensiz ka┼ş─▒nt─▒lar, k─▒zar─▒kl─▒klar veya d├Âk├╝nt├╝ler sapt─▒yor musunuz?"
+    ],
+    [
+      124,
+      "Evde besledi─şiniz bir evcil hayvan veya bilinen a─ş─▒r bir toz/polen alerjiniz var m─▒?"
+    ],
+    [
+      125,
+      "Belirli bir ┼şikayetiniz olmasa da h├╝cre ya┼şlanmas─▒n─▒ geciktirmek ve v├╝cudunuzu garantiye almak m─▒ istiyorsunuz?"
+    ],
+    [
+      126,
+      "┼Şehir hayat─▒n─▒n getirdi─şi hava kirlili─şi, stres ve d├╝zensiz beslenmeye kar┼ş─▒ antioksidan kalkan ar─▒yor musunuz?"
+    ],
+    [
+      127,
+      "G├╝n i├ğinde yeterince g├╝ne┼ş ─▒┼ş─▒─ş─▒ alamayan kapal─▒ ofis ortamlar─▒nda m─▒ ├ğal─▒┼ş─▒yorsunuz?"
+    ],
+    [
+      128,
+      "Y─▒lda bir kez d├╝zenli check-up yapt─▒r─▒r m─▒s─▒n─▒z veya bilinen kronik bir organ yetmezli─şiniz var m─▒?"
+    ],
+    [
+      129,
+      "Y─▒l i├ğinde 3'ten fazla nezle, grip veya farenjit gibi solunum yolu enfeksiyonu ge├ğiriyor musunuz?"
+    ],
+    [
+      130,
+      "Enfeksiyon kapmasan─▒z bile mevsim d├Ân├╝┼şlerinde kendinizi a┼ş─▒r─▒ k─▒rg─▒n ve halsiz hissediyor musunuz?"
+    ],
+    [
+      131,
+      "Kalabal─▒k, toplu ta┼ş─▒ma veya kapal─▒ ofis gibi riskli ortamlarda uzun saatler kal─▒yor musunuz?"
+    ],
+    [
+      132,
+      "Mevcut durumda koruyucu olarak ald─▒─ş─▒n─▒z herhangi bir ba─ş─▒┼ş─▒kl─▒k takviyesi var m─▒?"
+    ],
+    [
+      135,
+      "Bel ├ğevrenizde ya─şlanma veya fazla kilonuz oldu─şunu d├╝┼ş├╝n├╝yor musunuz?"
+    ],
+    [
+      136,
+      "┼Şekerli i├ğecekler, tatl─▒lar ve i┼şlenmi┼ş g─▒dalar─▒ s─▒k t├╝ketiyor musunuz?"
+    ],
+    [
+      137,
+      "Haftada en az 150 dakika d├╝zenli y├╝r├╝y├╝┼ş veya egzersiz yap─▒yor musunuz?"
+    ],
+    [
+      138,
+      "Uzman kontrol├╝nde y├╝ksek kolesterol, y├╝ksek trigliserid, ins├╝lin direnci, diyabet veya y├╝ksek tansiyon nedeniyle takip ediliyor musunuz?"
+    ],
+    [
+      139,
+      "Son 3 ay i├ğerisinde d├╝zenli olarak alkol t├╝kettiniz mi veya karaci─şerinizi zorlayabilecek d├╝zeyde alkol kulland─▒─ş─▒n─▒z─▒ d├╝┼ş├╝n├╝yor musunuz?"
+    ],
+    [
+      140,
+      "Her g├╝n d├╝zenli olarak re├ğeteli ila├ğ kullan─▒yor veya ayn─▒ anda birden fazla"
+    ],
+    [
+      141,
+      "G├╝nl├╝k beslenmenizde paketli g─▒dalar, k─▒zartmalar veya i┼şlenmi┼ş karbonhidratlar a─ş─▒rl─▒kl─▒ m─▒?"
+    ],
+    [
+      142,
+      "Uzman kontrol├╝nde karaci─şer sa─şl─▒─ş─▒n─▒ etkileyebilecek kronik bir hastal─▒─ş─▒n─▒z veya uzun s├╝reli takip gerektiren bir sa─şl─▒k probleminiz var m─▒?"
+    ],
+    [
+      143,
+      "Kaslar─▒n─▒zda s─▒k s─▒k a─şr─▒, gerginlik, sertlik ya da kramp ya┼ş─▒yor musunuz?"
+    ],
+    [
+      144,
+      "Kas ┼şik├óyetleriniz daha ├ğok gece uykuda, fiziksel aktivite sonras─▒nda veya uzun s├╝re hareketsiz kald─▒─ş─▒n─▒zda m─▒ ortaya ├ğ─▒k─▒yor?"
+    ],
+    [
+      145,
+      "Kas a─şr─▒lar─▒n─▒za g├╝n i├ğinde genel yorgunluk, halsizlik veya kaslarda g├╝├ğs├╝zl├╝k hissi e┼şlik ediyor mu?"
+    ],
+    [
+      146,
+      "A─şr─▒n─▒z aniden mi ba┼şlad─▒; uyu┼şma, belirgin ┼şi┼şlik, ate┼ş veya re├ğeteli kas gev┼şetici kullan─▒m─▒ var m─▒?"
+    ],
+    [
+      147,
+      "Cildinizde ameliyat, kesik, yan─▒k veya akne sonras─▒nda kalan belirgin bir yara izi var m─▒?"
+    ],
+    [
+      148,
+      "─░zinizde renk de─şi┼şikli─şi (k─▒zar─▒kl─▒k/koyula┼şma) veya ├ğ├Âk├╝nt├╝/kabar─▒kl─▒k ┼şeklinde bir doku bozulmas─▒ var m─▒?"
+    ],
+    [
+      149,
+      "─░z b├Âlgesinde kuruluk, gerginlik veya ka┼ş─▒nt─▒ hissediyor musunuz?"
+    ],
+    [
+      150,
+      "─░z b├Âlgesi hen├╝z kapanmam─▒┼ş, kanamal─▒, ak─▒nt─▒l─▒ veya enfekte durumda m─▒?"
+    ]
+  ],
+  "idle_contents": [
+    {
+      "id": 1,
+      "baslik": "-",
+      "metin": "Sabah Uyand─▒─ş─▒n─▒zda H├ól├ó Yorgun Musunuz?"
+    },
+    {
+      "id": 2,
+      "baslik": "-",
+      "metin": "Ekrana Uzun S├╝re Bakt─▒─ş─▒n─▒zda G├Âzleriniz Yoruluyor Mu?"
+    },
+    {
+      "id": 3,
+      "baslik": "-",
+      "metin": "Ak┼şamlar─▒ Tatl─▒ ─░ste─şiniz Neden Art─▒yor?"
+    },
+    {
+      "id": 4,
+      "baslik": "-",
+      "metin": "G├╝n ─░├ğinde Kendinizi Neden S├╝rekli Gergin Hissediyorsunuz?"
+    },
+    {
+      "id": 5,
+      "baslik": "-",
+      "metin": "Sa├ğlar─▒n─▒z Son Zamanlarda Neden Daha Fazla D├Âk├╝l├╝yor?"
+    },
+    {
+      "id": 6,
+      "baslik": "-",
+      "metin": "├çocu─şunuz Neden S─▒k S─▒k Hastalan─▒yor?"
+    },
+    {
+      "id": 7,
+      "baslik": "-",
+      "metin": "Yemeklerden Sonra Neden ┼Şi┼şkinlik Hissediyorsunuz?"
+    },
+    {
+      "id": 8,
+      "baslik": "-",
+      "metin": "Tansiyonunuzu En Son Ne Zaman Kontrol Ettiniz?"
+    },
+    {
+      "id": 9,
+      "baslik": "-",
+      "metin": "Gece Yata─şa Girdi─şinizde Uykuya Dalmakta Zorlan─▒yor Musunuz?"
+    },
+    {
+      "id": 10,
+      "baslik": "-",
+      "metin": "Merdiven ├ç─▒karken Dizleriniz Neden Zorlan─▒yor?"
+    },
+    {
+      "id": 11,
+      "baslik": "-",
+      "metin": "Mevsim De─şi┼şince Neden S├╝rekli Hap┼ş─▒r─▒yorsunuz?"
+    },
+    {
+      "id": 12,
+      "baslik": "-",
+      "metin": "Dikkatinizi Toplamak Neden Eskisinden Daha Zor?"
+    },
+    {
+      "id": 13,
+      "baslik": "-",
+      "metin": "Regl D├Âneminiz Neden G├╝nl├╝k Hayat─▒n─▒z─▒ Zorluyor?"
+    },
+    {
+      "id": 14,
+      "baslik": "-",
+      "metin": "Karaci─şerinizin Sa─şl─▒─ş─▒n─▒ En Son Ne Zaman Kontrol Ettiniz?"
+    },
+    {
+      "id": 15,
+      "baslik": "-",
+      "metin": "T─▒rnaklar─▒n─▒z Eskisine G├Âre Daha Kolay M─▒ K─▒r─▒l─▒yor?"
+    },
+    {
+      "id": 16,
+      "baslik": "-",
+      "metin": "Kilonuzu Kontrol Etmekte Neden Zorlan─▒yorsunuz?"
+    },
+    {
+      "id": 17,
+      "baslik": "-",
+      "metin": "Geceleri Tuvalete Kalkman─▒z─▒n Nedeni Ne Olabilir?"
+    },
+    {
+      "id": 18,
+      "baslik": "-",
+      "metin": "├çocu─şunuz Ders Ba┼ş─▒nda Dikkatini Toplamakta Zorlan─▒yor Mu?"
+    },
+    {
+      "id": 19,
+      "baslik": "-",
+      "metin": "Ak┼şama Do─şru G├Âr├╝┼ş├╝n├╝z Neden Bulan─▒kla┼ş─▒yor?"
+    },
+    {
+      "id": 20,
+      "baslik": "-",
+      "metin": "Hastal─▒k Sonras─▒ Neden Kendinize Gelmekte Zorlan─▒yorsunuz?"
+    },
+    {
+      "id": 21,
+      "baslik": "-",
+      "metin": "Spor Yapman─▒za Ra─şmen Performans─▒n─▒z Neden Artm─▒yor?"
+    },
+    {
+      "id": 22,
+      "baslik": "-",
+      "metin": "Cildiniz Son Zamanlarda Neden Daha Hassas?"
+    },
+    {
+      "id": 23,
+      "baslik": "-",
+      "metin": "G├╝n ─░├ğinde Enerjiniz Neden Birden D├╝┼ş├╝yor?"
+    },
+    {
+      "id": 24,
+      "baslik": "-",
+      "metin": "├çocu─şunuzun Boy Ve Kilo Geli┼şimi Hakk─▒nda Merak─▒n─▒z Var M─▒?"
+    },
+    {
+      "id": 25,
+      "baslik": "-",
+      "metin": "Kafan─▒zdaki D├╝┼ş├╝nceleri Susturmakta Zorlan─▒yor Musunuz?"
+    },
+    {
+      "id": 26,
+      "baslik": "-",
+      "metin": "Sindirim Sisteminiz Size S─▒k S─▒k Rahats─▒zl─▒k Veriyor Mu?"
+    },
+    {
+      "id": 27,
+      "baslik": "-",
+      "metin": "Kalbinizin Sa─şl─▒─ş─▒ Hakk─▒nda Ne Kadar Bilginiz Var?"
+    },
+    {
+      "id": 28,
+      "baslik": "-",
+      "metin": "Regl D├Âneminde Kendinizi Neden Daha Yorgun Hissediyorsunuz?"
+    },
+    {
+      "id": 29,
+      "baslik": "-",
+      "metin": "Sabahlar─▒ Dinlenmi┼ş Uyanamad─▒─ş─▒n─▒z─▒ Hissediyor Musunuz?"
+    },
+    {
+      "id": 30,
+      "baslik": "-",
+      "metin": "├çocu─şunuz Hastaland─▒─ş─▒nda Neden Uzun S├╝rede Toparlan─▒yor?"
+    },
+    {
+      "id": 31,
+      "baslik": "-",
+      "metin": "Cildinizde Kuruluk Ve K─▒zar─▒kl─▒k Neden Art─▒yor?"
+    },
+    {
+      "id": 32,
+      "baslik": "-",
+      "metin": "Antrenmandan Sonra Neden Uzun S├╝re Yorgun Hissediyorsunuz?"
+    },
+    {
+      "id": 33,
+      "baslik": "-",
+      "metin": "Son Zamanlarda Daha Unutkan Oldu─şunuzu Fark Ettiniz Mi?"
+    },
+    {
+      "id": 34,
+      "baslik": "-",
+      "metin": "G├╝nl├╝k Al─▒┼şkanl─▒klar─▒n─▒z Karaci─şerinizi Etkiliyor Olabilir Mi?"
+    },
+    {
+      "id": 35,
+      "baslik": "-",
+      "metin": "Burun Ak─▒nt─▒n─▒z G├╝nl├╝k Hayat─▒n─▒z─▒ Zorluyor Mu?"
+    },
+    {
+      "id": 36,
+      "baslik": "-",
+      "metin": "S├╝rekli Yorgunlu─şunuzun Nedeni Vitamin Eksikli─şi Olabilir Mi?"
+    },
+    {
+      "id": 37,
+      "baslik": "-",
+      "metin": "Gece Terlemeleri Uykunuzu B├Âl├╝yor Mu?"
+    },
+    {
+      "id": 38,
+      "baslik": "-",
+      "metin": "├çocu─şunuz Neden Baz─▒ Yiyecekleri S├╝rekli Reddediyor?"
+    },
+    {
+      "id": 39,
+      "baslik": "-",
+      "metin": "Hastal─▒k Sonras─▒ Neden Kendinize Gelmekte Zorlan─▒yorsunuz?"
+    },
+    {
+      "id": 40,
+      "baslik": "-",
+      "metin": "Y├╝r├╝rken Veya Merdiven ├ç─▒karken Dizleriniz Sizi Zorluyor Mu?"
+    },
+    {
+      "id": 41,
+      "baslik": "-",
+      "metin": "Son Zamanlarda Neden Daha S─▒k Hastalan─▒yorsunuz?"
+    },
+    {
+      "id": 42,
+      "baslik": "-",
+      "metin": "Hangi Vitamin Ve Minerallere ─░htiyac─▒n─▒z Var Merak Ediyor Musunuz?"
+    },
+    {
+      "id": 43,
+      "baslik": "-",
+      "metin": "Cildinizde Kuruluk, K─▒zar─▒kl─▒k Veya Sivilce Sorunlar─▒ Ya┼ş─▒yor Musunuz?"
+    },
+    {
+      "id": 44,
+      "baslik": "-",
+      "metin": "S├╝rekli Yorgun Hissetmenizin Nedeni Vitamin Eksikli─şi Olabilir Mi?"
+    }
+  ]
+}

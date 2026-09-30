@@ -46,7 +46,7 @@
 4. FiyatlandÄ±rma matrisi konfigÃ¼rasyonu (PricingMatrixConfigurator)
 4. Kategori/Soru/Etken Madde/DanÄ±ÅŸma yÃ¶netimi (MedicalLogic, DanismaYonetimi)
 5. Eczane/Kiosk cihaz yÃ¶netimi (DeviceManagement)
-   - Kiosk izleme: MAC adresi, Uygulama AnahtarÄ±, durum, son ping
+   - Kiosk izleme: MAC adresi, Uygulama AnahtarÄ±, durum, son ping, build numarası
    - Kiosk dÃ¼zenleme: Ad, MAC adresi, Aktif/Pasif durumu gÃ¼ncellenebilir
    - Uygulama AnahtarÄ±: Salt okunur (backend tarafÄ±ndan otomatik Ã¼retilir)
    - Kopyalama Ã¶zelliÄŸi: Uygulama AnahtarÄ± yanÄ±nda kopyala butonu (clipboard API, toast notification)

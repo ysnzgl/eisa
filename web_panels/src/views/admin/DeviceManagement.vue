@@ -1060,6 +1060,10 @@ async function copyAppKey() {
                     <p style="font-size:0.65rem;color:#9CA3AF;margin-bottom:0.15rem;">IP Adresi</p>
                      <p style="font-size:0.75rem;font-family:'DM Mono',monospace;color:#374151;font-weight:500;word-break:break-all;">{{ kiosk.lastIp || '—' }}</p>
                   </div>
+                  <div>
+                    <p style="font-size:0.65rem;color:#9CA3AF;margin-bottom:0.15rem;">Build Numarası</p>
+                     <p style="font-size:0.75rem;font-family:'DM Mono',monospace;color:#374151;font-weight:600;word-break:break-all;">{{ kiosk.buildNumber || '—' }}</p>
+                  </div>
                 </div>
               </div>
               <div class="eisa-kiosk-card-footer">
@@ -1619,6 +1623,7 @@ async function copyAppKey() {
                 <div class="eisa-detail-row"><span>MAC Adresi:</span><code>{{ kioskDetailTarget.mac || '—' }}</code></div>
                 <div class="eisa-detail-row"><span>IP Adresi:</span><code>{{ kioskDetailTarget.lastIp || '—' }}</code></div>
                 <div class="eisa-detail-row"><span>Son Ping:</span>{{ formatPing(kioskDetailTarget.lastPing) }}</div>
+                <div class="eisa-detail-row"><span>Build Numarası:</span><code>{{ kioskDetailTarget.buildNumber || '—' }}</code></div>
                 <div class="eisa-detail-row"><span>Uygulama Anahtarı:</span><code>{{ kioskDetailTarget.appKey || '—' }}</code></div>
               </div>
 

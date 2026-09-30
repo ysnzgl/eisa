@@ -1,10 +1,12 @@
 {
   "name": "eisa-kiosk-ui",
   "version": "0.1.0",
+  "buildNumber": "260930.2",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "prebuild": "node scripts/bump-build-number.mjs",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1 --port 5173",
     "test": "vitest",

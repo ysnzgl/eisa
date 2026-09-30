@@ -69,12 +69,27 @@ logger = logging.getLogger(__name__)
 KIOSK_ONLINE_ESIGI = timedelta(minutes=5)
 
 
+def _normalize_build_number(raw: str) -> str:
+    """Kiosk build numarasini guvenli/limitli stringe indirger."""
+    value = (raw or "").strip()
+    if not value:
+        return ""
+    return value[:64]
+
+
 def _update_last_seen(kiosk: "Kiosk", request) -> None:
     """Heartbeat guncelleme + audit log (ortak)."""
     now = timezone.now()
     previous = kiosk.son_goruldu
-    Kiosk.objects.filter(pk=kiosk.pk).update(son_goruldu=now)
+    build_number = _normalize_build_number(request.headers.get("X-Kiosk-Build-Number", ""))
+    updates = {"son_goruldu": now}
+    if build_number and build_number != (kiosk.kiosk_build_number or ""):
+        updates["kiosk_build_number"] = build_number
+
+    Kiosk.objects.filter(pk=kiosk.pk).update(**updates)
     kiosk.son_goruldu = now
+    if "kiosk_build_number" in updates:
+        kiosk.kiosk_build_number = build_number
     if previous is None or (now - previous) > KIOSK_ONLINE_ESIGI:
         try:
             fwd = request.META.get("HTTP_X_FORWARDED_FOR", "")

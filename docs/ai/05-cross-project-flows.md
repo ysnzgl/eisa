@@ -45,7 +45,7 @@ kiosk_edge/api-node (WARN/ERROR/CRITICAL event)
   → SQLite diagnostic_outbox (bounded: 5000 satir, 7 gun, FIFO)
   → scheduler.pushDiagnostics (varsayilan 120 sn)
   → POST /api/kiosk/v1/diagnostics/  { items: [{level, event, message, context, correlation_id, occurred_at}] }
-    Header: Authorization: AppKey <app_key> + X-Kiosk-MAC + X-Correlation-ID
+    Header: Authorization: AppKey <app_key> + X-Kiosk-MAC + X-Kiosk-Build-Number + X-Correlation-ID
   → Backend: kiosk auth + rate limit + allow-list; sanitize eder; DB'ye YAZMAZ
   → Backend: JSON log stdout (`logger=eisa.kiosk.diagnostic`)
   → Response 202 { accepted, rejected, errors, accepted_keys } → outbox kayitlari silinir

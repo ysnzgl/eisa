@@ -129,7 +129,7 @@ Backend kapalı/erişilemezse:
 - `reklam_gosterim_outbox`: id, payload JSON, olusturulma_tarihi, gonderilme_tarihi (null = pending)
 
 **Meta:**
-- `kiosk_meta`: key, value (kiosk_app_key, kiosk_id, pharmacy_id, playlist_version, last_sync_at, provisioning_state, registration_id, **last_barkod_logo_id** *(2026-08-11)*)
+- `kiosk_meta`: key, value (kiosk_app_key, kiosk_id, pharmacy_id, playlist_version, last_sync_at, provisioning_state, registration_id, **kiosk_build_number**, **last_barkod_logo_id** *(2026-08-11)*)
 - `kiosk_device_config`: singleton cihaz ayarı; etkileşim/idle içerik, ilk ses gecikmesi/tekrar aralığı, ses zaman kuralı ve nöbet günlerini tutar. `kiosk_device_audio_files` sıralı ses manifestini, checksum'ları ve lokal hazır dosyaları tutar; eski tek-dosya cache'i idempotent olarak `legacy` satırına taşınır. Additive oluşturma/kolon kontrolü schema version yükseltip kiosk cache'ini sıfırlamaz.
 - `media_cache`: asset_id, asset_type, source_url, source_checksum (backend'den: sha256:<hex>), file_checksum (raw hex, downloadToFile), local_path, status, error_message, synced_at
   - *(v15)* `asset_type='house_ad'` satırları migration ile silinir; kampanya creative cache'i etkilenmez.
@@ -195,8 +195,9 @@ REJECTED          → admin reddetti; normal API'lere erisim engellenir
 4. Aksi halde `POST /api/kiosk/v1/bootstrap/` → 200 APPROVED (`app_key`) / 202 PENDING / 403 REJECTED.
 5. APPROVED yanıtında `app_key`, `kiosk_id`, `pharmacy_id` → `kiosk_meta`'ya yazılır.
 6. Sonraki tüm operasyonel isteklerde `Authorization: AppKey <app_key>` + `X-Kiosk-MAC` kullanılır.
+7. Build/sürüm izleme için runtime'da `EISA_BUILD_NUMBER` (fallback: `kiosk_edge/ui/package.json` `version`, ardından `APP_VERSION`) kiosk_meta'ya yazılır ve tüm merkezi isteklere `X-Kiosk-Build-Number` olarak eklenir.
 
-**Credential okuma:** `getAuthHeaders(db)` her istekte `kiosk_app_key` + `kiosk_mac`'i SQLite'tan okur → provision sonrası process restart gerekmez (freeze/stale sorunu yok).
+**Credential okuma:** `getAuthHeaders(db)` her istekte `kiosk_app_key` + `kiosk_mac` (+ varsa `kiosk_build_number`) değerlerini SQLite'tan okur → provision sonrası process restart gerekmez (freeze/stale sorunu yok).
 
 **401/403 davranışı (2026-07-20):**
 - `handle401Error` / `handle403Error` App Key'i **silmez**; secret loglanmaz (yalnız `has_app_key` bool); başka auth fallback yapılmaz; doğal scheduler aralığında backoff uygulanır.

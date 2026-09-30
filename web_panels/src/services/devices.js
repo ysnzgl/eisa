@@ -62,6 +62,7 @@ export function mapKioskFromApi(k) {
     isActive: k.aktif !== false,
     lastPing: k.son_goruldu,
     lastIp: k.last_ip ?? null,
+    buildNumber: k.kiosk_build_number ?? null,
     health: k.durum ?? null,
     interactionTimeoutSeconds: k.interaction_timeout_seconds ?? 20,
     idleContentMinSeconds: k.idle_content_min_seconds ?? 10,

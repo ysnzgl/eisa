@@ -14,7 +14,7 @@
     danismaCategories, danismaLoading,
   } from './stores/kiosk.js';
 
-  import { version } from '../package.json';
+  import { buildNumber, version } from '../package.json';
 
   import IdleScreen         from './components/IdleScreen.svelte';
   import DemographicsScreen from './components/DemographicsScreen.svelte';
@@ -460,7 +460,7 @@
   <!-- Kalici medya oynaticisi: idle'da fullscreen, oturumda strip. Ekranlar
        arasi gecerken ayni <video> DOM instance'i KORUNUR (remount/reload yok);
        yalniz mode/CSS degisir. -->
-  <span class="v-badge">v{version}</span>
+  <span class="v-badge">v{buildNumber || version}</span>
   <IdleAudio active={$screen === 'idle'} lastQrCreatedAt={$qrActivity.lastQrCreatedAt} />
   <div class="ad-strip-host"
        class:ad-strip-host--fullscreen={$screen === 'idle'}

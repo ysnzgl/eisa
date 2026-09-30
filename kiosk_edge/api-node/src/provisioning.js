@@ -253,6 +253,14 @@ export async function resolveRuntimeSettings(db, baseSettings, log = console) {
   }
   runtime.deviceId = deviceId;
 
+  // Build/surum numarasi kiosk_meta'ya yazilir ve tum merkezi cagrilarda header olarak tasinir.
+  const buildNumber = String(runtime.buildNumber || runtime.appVersion || '').trim();
+  if (buildNumber) {
+    const clippedBuildNumber = buildNumber.slice(0, 64);
+    setMeta(db, 'kiosk_build_number', clippedBuildNumber);
+    runtime.buildNumber = clippedBuildNumber;
+  }
+
   const applyStoredIdentity = () => {
     runtime.kioskAppKey = getMeta(db, 'kiosk_app_key');
     runtime.kioskId     = parseIntSafe(getMeta(db, 'kiosk_id'));
@@ -332,11 +340,15 @@ export function getAuthHeaders(db) {
   const appKey = getMeta(db, 'kiosk_app_key');
   const mac = getMeta(db, 'kiosk_mac');
   const deviceId = getMeta(db, 'device_id');
+  const buildNumber = getMeta(db, 'kiosk_build_number');
   if (appKey && mac) {
     headers['Authorization'] = `AppKey ${appKey}`;
     headers['X-Kiosk-MAC']   = mac;
     if (deviceId) {
       headers['X-Kiosk-Device-ID'] = deviceId;
+    }
+    if (buildNumber) {
+      headers['X-Kiosk-Build-Number'] = buildNumber;
     }
   }
   return headers;

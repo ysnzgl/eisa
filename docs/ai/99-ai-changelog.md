@@ -7,6 +7,13 @@
 
 ## 2026-09-29
 
+### [Backend+Kiosk Edge+WebPanel] Kiosk build numarası takibi
+
+- Kiosk edge merkezi API çağrılarında `X-Kiosk-Build-Number` gönderir. Değer `EISA_BUILD_NUMBER` (fallback: `APP_VERSION`) üzerinden belirlenir ve SQLite `kiosk_meta.kiosk_build_number` içinde tutulur.
+- Backend `KioskAppKeyAuthentication` heartbeat güncellemesinde bu header'ı alıp `Kiosk.kiosk_build_number` alanına yazar (migration `pharmacies/0016_kiosk_build_number.py`).
+- Admin `DeviceManagement` ekranında kiosk kartı ve detay modalına build numarası eklendi; hangi kioskta hangi sürüm çalışıyor görünür hale geldi.
+- AI dokümanları (`00/01/02/03/05/06`) sözleşme ve akış değişiklikleriyle güncellendi.
+
 ### [Backend+Kiosk Edge/UI] Kiosk TR/EN çift dil desteği (i18n)
 
 - Kiosk kullanıcı arayüzüne köşe dil butonu (TR/EN) eklendi; seçim `localStorage` (`kiosk_lang`) ile kalıcı. Yeni `kiosk_edge/ui/src/lib/i18n.js` sabit metin sözlüğü (`$t`) ve DB içeriği için dil seçici (`$localize`) sağlar; `components/LanguageToggle.svelte` sabit köşe butonu.

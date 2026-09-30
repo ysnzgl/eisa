@@ -134,7 +134,7 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 
 ### Pharmacies (`apps.pharmacies`)
 - `Eczane`: Eczane (il/ilce, ad, sahip, telefon, aktif)
-- `Kiosk`: Kiosk cihaz (eczane FK, mac_adresi, **device_id** (UUID, unique, nullable), uygulama_anahtari, aktif, is_online, son_goruldu, last_playlist_version). Cihaz-bazlı iş zamanlayıcıları: `interaction_timeout_seconds` (20), `idle_content_min_seconds` (10), `idle_content_max_seconds` (12), `idle_content_refresh_seconds` (300), ilk ses `idle_audio_delay_seconds` (1200) ve sonraki sesler `idle_audio_repeat_seconds` (300). Idle ses kuralı `idle_audio_schedule_mode` (`BUSINESS_HOURS`: 08:00–19:00 İstanbul, `ALL_DAY`: 24 saat) ve `idle_audio_play_on_duty` ile belirlenir; nöbet işareti mesai içi kuralında nöbet gününü 24 saatlik istisna yapar. `idle_audio_enabled` listeyi açıp kapatır; dosyalar sıralı `KioskIdleAudio` kayıtlarıdır. device_id ilk enrollment'ta tek-seferlik bağlanır, değiştirilemez.
+- `Kiosk`: Kiosk cihaz (eczane FK, mac_adresi, **device_id** (UUID, unique, nullable), uygulama_anahtari, aktif, is_online, son_goruldu, last_playlist_version, **kiosk_build_number**). Cihaz-bazlı iş zamanlayıcıları: `interaction_timeout_seconds` (20), `idle_content_min_seconds` (10), `idle_content_max_seconds` (12), `idle_content_refresh_seconds` (300), ilk ses `idle_audio_delay_seconds` (1200) ve sonraki sesler `idle_audio_repeat_seconds` (300). Idle ses kuralı `idle_audio_schedule_mode` (`BUSINESS_HOURS`: 08:00–19:00 İstanbul, `ALL_DAY`: 24 saat) ve `idle_audio_play_on_duty` ile belirlenir; nöbet işareti mesai içi kuralında nöbet gününü 24 saatlik istisna yapar. `idle_audio_enabled` listeyi açıp kapatır; dosyalar sıralı `KioskIdleAudio` kayıtlarıdır. device_id ilk enrollment'ta tek-seferlik bağlanır, değiştirilemez.
 - `KioskEczaneAtama`: Kiosk/eczane, başlangıç-bitiş zamanı, neden ve taşıyan admin. `bitis_zamani IS NULL` için kiosk başına partial unique constraint vardır; `Kiosk.eczane` yalnız güncel pointer'dır.
 - `KioskProvisioningRequest`: Kayıtsız kiosk onay talebi (UUID pk, mac_adresi, **device_id** (max 36, partial-unique non-empty), hostname, device_metadata JSON, status PENDING/APPROVED/REJECTED, last_seen_at, request_count, approved_by/at, rejected_by/at, rejection_reason, kiosk FK nullable). Onay anında `device_id` `Kiosk.device_id`'ye aktarılır. **Raw fleet_key/provision_secret saklanmaz.**
 
@@ -232,6 +232,7 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 ### Kiosk Authentication
 Tek yöntem:
 - **App-Key + MAC:** `KioskAppKeyAuthentication` (HTTP header `Authorization: AppKey <app_key>`, `X-Kiosk-MAC`)
+- **Build takibi:** kiosk edge tüm merkezi çağrılarda `X-Kiosk-Build-Number` header'ı gönderir; auth katmanı `kiosk_build_number` alanını günceller.
 
 Kiosk provisioning (bootstrap):
 1. `POST /api/kiosk/v1/bootstrap/` → Fleet Key + HMAC doğrulaması

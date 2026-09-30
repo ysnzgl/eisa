@@ -1,5 +1,8 @@
 // Kiosk konfigürasyonu — environment veya .env dosyasından okur.
 import 'dotenv/config';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 function readBool(value, fallback) {
   if (value === undefined || value === null || value === '') return fallback;
@@ -19,6 +22,21 @@ function readList(value) {
     .filter(Boolean);
 }
 
+function readUiPackageVersion() {
+  try {
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const uiPackagePath = path.resolve(here, '../../ui/package.json');
+    const raw = fs.readFileSync(uiPackagePath, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (typeof parsed?.buildNumber === 'string' && parsed.buildNumber.trim()) {
+      return parsed.buildNumber.trim();
+    }
+    return typeof parsed?.version === 'string' ? parsed.version.trim() : '';
+  } catch {
+    return '';
+  }
+}
+
 const central = process.env.EISA_CENTRAL_API_BASE || 'https://api.eisa.com.tr';
 const devMode = readBool(process.env.EISA_DEV_MODE, false);
 
@@ -32,6 +50,8 @@ const kioskProvisioningSecret = process.env.EISA_KIOSK_PROVISIONING_SECRET || pr
 const serviceName = process.env.SERVICE_NAME || 'eisa-kiosk-api';
 const appEnv      = process.env.APP_ENV || process.env.EISA_ENVIRONMENT || (devMode ? 'development' : 'production');
 const appVersion  = process.env.APP_VERSION || '0.0.0';
+const kioskUiVersion = readUiPackageVersion();
+const buildNumber = process.env.EISA_BUILD_NUMBER || process.env.KIOSK_BUILD_NUMBER || kioskUiVersion || appVersion;
 const logLevel    = (process.env.LOG_LEVEL || process.env.EISA_LOG_LEVEL || (devMode ? 'debug' : 'info')).toLowerCase();
 const logFormat   = (process.env.LOG_FORMAT || 'json').toLowerCase();
 const prettyLogs  = devMode && logFormat !== 'json';
@@ -61,6 +81,7 @@ export const settings = Object.freeze({
   serviceName,
   appEnv,
   appVersion,
+  buildNumber,
   logLevel,
   logFormat,
   pretty:                   prettyLogs,

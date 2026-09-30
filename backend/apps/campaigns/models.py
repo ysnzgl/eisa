@@ -507,6 +507,7 @@ class IdleScreenContent(BaseModel):
     baslik_en = models.CharField(
         max_length=250,
         blank=True,
+        null=True,
         default="",
         help_text="Ingilizce idle basligi. Bos = kioskta Turkce basliga geri doner.",
     )
@@ -516,6 +517,7 @@ class IdleScreenContent(BaseModel):
     )
     metin_en = models.CharField(
         max_length=1000,
+        null=True,
         blank=True,
         default="",
         help_text="Ingilizce idle metni. Bos = kioskta Turkce metne geri doner.",

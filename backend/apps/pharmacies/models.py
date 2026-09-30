@@ -61,6 +61,10 @@ class Kiosk(BaseModel):
     son_goruldu = models.DateTimeField(null=True, blank=True)
     is_online = models.BooleanField(default=False)
     last_playlist_version = models.PositiveIntegerField(null=True, blank=True)
+    kiosk_build_number = models.CharField(
+        max_length=64, blank=True, default="",
+        help_text="Kiosk edge'in merkeziye bildirdigi anlasilir build/surum numarasi.",
+    )
 
     # ── Cihaz-bazli davranis ayarlari ───────────────────────────────────────
     # Varsayilanlar mevcut kiosk UI davranisini bire bir korur.

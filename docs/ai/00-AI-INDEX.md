@@ -113,7 +113,7 @@ SuperAdmin → web_panels duyuru yönetimi → `/api/announcements/admin/` → g
 - **OturumLogu:** KVKK uyumlu anonim kullanıcı session (yaş aralığı, cinsiyet, kategori, QR kodu, tamamlanma durumu, **barkod_logo FK** *(2026-08-11)*).
 - **PlayLog:** Reklam gösterim kanıtı / proof-of-play (creative_id, played_at, duration_played; playlist creative-only)
 - **Dil / i18n:** Kiosk UI TR/EN çift dil *(2026-09-29)*. Sabit metinler `i18n.js` (`$t`); DB içeriği `_en` alanlarıyla (`Kategori.ad_en`, `Soru.metin_en`, `Danisma.ad_en`, `Cevap.metin_en`, `IdleScreenContent.baslik_en/metin_en`). Köşe `LanguageToggle` butonu, seçim `localStorage`. Boş `_en` → Türkçe fallback.
-- **Kiosk:** Fiziksel cihaz (mac_adresi, uygulama_anahtari, eczane, aktif/online durumu) ve cihaz-bazlı UI zamanlayıcı/ses listesi. Sesler provisioning sonrası ilk sync'te edge'e indirilir; ilk ses idle gecikmesi sonunda, devamındakiler etkileşime kadar tekrar aralığıyla sırayla çalınır.
+- **Kiosk:** Fiziksel cihaz (mac_adresi, uygulama_anahtari, eczane, aktif/online durumu) ve cihaz-bazlı UI zamanlayıcı/ses listesi. Sesler provisioning sonrası ilk sync'te edge'e indirilir; ilk ses idle gecikmesi sonunda, devamındakiler etkileşime kadar tekrar aralığıyla sırayla çalınır. Build/sürüm takibi için kiosk her merkezi çağrıda `X-Kiosk-Build-Number` gönderir; backend `kiosk_build_number` alanında saklar.
 - **Eczane:** Kiosk'un bulunduğu fiziksel lokasyon (il/ilçe, sahip, telefon)
 - **Announcement:** Genel veya sabit sistem duyurusu; genel duyurular recurrence/hedefleme taşır, sistem duyuruları benzersiz `system_key` ile korunur
 - **PharmacyDutyMonth/Day:** Eczanenin ay bazlı nöbet günü veya “nöbetim yok” beyanı

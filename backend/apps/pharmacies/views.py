@@ -817,6 +817,7 @@ class KioskViewSet(viewsets.ModelViewSet):
                 "is_online": bool(k.son_goruldu and k.son_goruldu >= threshold),
                 "son_goruldu": k.son_goruldu.isoformat() if k.son_goruldu else None,
                 "last_playlist_version": k.last_playlist_version,
+                "kiosk_build_number": k.kiosk_build_number,
                 "aktif": k.aktif,
             }
             for k in kiosks

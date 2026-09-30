@@ -29,7 +29,7 @@
 - olusturulma_tarihi, olusturan, guncellenme_tarihi, guncelleyen, surum
 
 **kiosklar**
-- id, eczane_id FK, ad, mac_adresi (unique), device_id (unique, nullable), uygulama_anahtari (unique), aktif, is_online, son_goruldu, last_playlist_version
+- id, eczane_id FK, ad, mac_adresi (unique), device_id (unique, nullable), uygulama_anahtari (unique), aktif, is_online, son_goruldu, last_playlist_version, kiosk_build_number
 - Cihaz zamanlayıcıları: interaction_timeout_seconds (default 20), idle_content_min_seconds (10), idle_content_max_seconds (12), idle_content_refresh_seconds (300), idle_audio_delay_seconds (1200), idle_audio_repeat_seconds (300)
 - Ses zaman kuralı: `idle_audio_schedule_mode` (`ALL_DAY` default veya `BUSINESS_HOURS`, İstanbul 08:00–19:00) ve `idle_audio_play_on_duty` (default false). Sync, seçili eczanenin ileri 370 gün içindeki `idle_audio_duty_dates` listesini edge'e verir.
 - Lokal edge `GET /api/oturum/last-qr` cevabı `{ last_qr_created_at }` döner; UI idle ses ilk beklemesini son QR'lı `oturum_outbox` kaydının `olusturulma_tarihi` alanından hesaplar.
@@ -374,7 +374,9 @@ Namespace `/api/kiosk/v1/` (backend `apps/kiosk_api/`). **Tek auth contract'ı**
 Authorization: AppKey <APP_KEY>
 X-Kiosk-MAC:   <NORMALIZED_MAC>   # AA:BB:CC:DD:EE:FF
 X-Kiosk-Device-ID: <DEVICE_UUID>  # zorunlu (device_id set edildiyse)
+X-Kiosk-Build-Number: <BUILD_LABEL>  # örn: 2026.09.29+prod.17
 ```
+- Backend `kiosk_build_number` alanı bu header'dan güncellenir; admin panel cihaz ekranında görünür.
 - **401** — App Key/MAC eksik veya App Key/MAC çifti geçersiz; device_id eksik/uyumsuz (`code`: `app_key_missing|mac_missing|device_id_missing|device_id_mismatch|app_key_invalid|app_key_malformed`)
 - **403** — kiosk pasif/onaysız veya eczaneye bağlı değil (`code`: `kiosk_inactive|kiosk_unlinked`)
 - Başka auth turleri operasyonel endpoint'lerde **reddedilir**. URL'de kiosk ID **yoktur**; kiosk `request.kiosk` (auth context) üzerinden belirlenir.
