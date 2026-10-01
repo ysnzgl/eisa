@@ -352,9 +352,12 @@ class EczaneViewSet(viewsets.ModelViewSet):
         return [IsSuperAdmin()]
 
     def perform_create(self, serializer):
+        sozlesme_data = serializer.validated_data.pop("sozlesme", None)
         instance = Eczane(**serializer.validated_data)
         with UnitOfWork(user=self.request.user) as uow:
             uow.add(instance)
+            if sozlesme_data:
+                self._create_sozlesme(uow, instance, sozlesme_data)
         serializer.instance = instance
         kayit_birak(
             eylem=DenetimLogu.Eylem.OLUSTUR,
@@ -364,8 +367,22 @@ class EczaneViewSet(viewsets.ModelViewSet):
             ip_adresi=_client_ip(self.request),
         )
 
+    def _create_sozlesme(self, uow, eczane, sozlesme_data):
+        """Eczane ile birlikte gelen sözleşmeyi aynı transaction'da oluşturur."""
+        from apps.abonelik.models import Sozlesme
+        from apps.abonelik.serializers import SozlesmeSerializer
+
+        payload = {**sozlesme_data, "eczane": eczane.pk}
+        ser = SozlesmeSerializer(data=payload)
+        ser.is_valid(raise_exception=True)
+        data = dict(ser.validated_data)
+        data["eczane"] = eczane
+        uow.add(Sozlesme(**data))
+
+
     def perform_update(self, serializer):
         instance: Eczane = serializer.instance
+        serializer.validated_data.pop("sozlesme", None)
         for k, v in serializer.validated_data.items():
             setattr(instance, k, v)
         with UnitOfWork(user=self.request.user) as uow:

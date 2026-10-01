@@ -79,6 +79,7 @@ urlpatterns = [
     path("api/destek/", include("apps.destek.urls")),
     path("api/is-takip/", include("apps.gorevler.urls")),
     path("api/announcements/", include("apps.announcements.urls")),
+    path("api/abonelik/", include("apps.abonelik.urls")),
 ]
 
 # Swagger / ReDoc yalnızca geliştirme ortamında

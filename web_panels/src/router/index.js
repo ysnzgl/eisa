@@ -29,6 +29,7 @@ const routes = [
       { path: 'dooh/control-center', component: () => import('../views/admin/DoohControlCenter.vue') },
       { path: 'playlists',     component: () => import('../views/admin/PlaylistEditor.vue') },
       { path: 'pricing',       component: () => import('../views/admin/PricingMatrixConfigurator.vue') },
+      { path: 'abonelik',      component: () => import('../views/admin/AbonelikYonetimi.vue') },
       { path: 'users',         component: () => import('../views/admin/UserManagement.vue') },
       { path: 'announcements', component: () => import('../views/admin/AnnouncementManagement.vue') },
     ]
@@ -43,6 +44,7 @@ const routes = [
       { path: 'announcements', component: () => import('../views/pharmacist/Announcements.vue') },
       { path: 'duty', component: () => import('../views/pharmacist/DutyCalendar.vue') },
       { path: 'qr', component: () => import('../views/pharmacist/QrScan.vue') },
+      { path: 'hesabim', component: () => import('../views/pharmacist/HesabimOdemeler.vue') },
       { path: 'destek', component: () => import('../views/pharmacist/DestekTalepleri.vue') }
     ]
   }
@@ -57,6 +59,10 @@ router.beforeEach((to) => {
   if (!required) return true;
   if (!auth.isAuthenticated) return { path: '/login' };
   if (!required.includes(auth.role)) return { path: '/login' };
+  // Panel kısıtlı eczacı yalnız Hesabım ve Ödemeler'e erişebilir.
+  if (auth.role === 'pharmacist' && auth.panelKisitli && to.path !== '/pharmacist/hesabim') {
+    return { path: '/pharmacist/hesabim' };
+  }
   return true;
 });
 

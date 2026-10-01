@@ -30,6 +30,7 @@ class Command(BaseCommand):
         from apscheduler.triggers.interval import IntervalTrigger
         from django_apscheduler.jobstores import DjangoJobStore
 
+        from apps.abonelik.jobs import gunluk_faturalandirma
         from apps.campaigns.jobs import drain_queue, mark_kiosks_offline, nightly_generate
 
         scheduler = BlockingScheduler(timezone="UTC")
@@ -68,6 +69,19 @@ class Command(BaseCommand):
             jobstore="default",
             replace_existing=True,
             misfire_grace_time=60,
+        )
+
+        # ─── Job 4: Abonelik faturalandırma (her gün 02:00 UTC) ───────────
+        # Kullanım bedeli + cihaz taksiti üretimi + gecikmiş fatura işaretleme.
+        # İdempotent; aynı gün tekrar çalışsa da mükerrer fatura oluşmaz.
+        scheduler.add_job(
+            gunluk_faturalandirma,
+            trigger=CronTrigger(hour=2, minute=0),
+            id="gunluk_faturalandirma",
+            name="Abonelik Faturalandırma",
+            jobstore="default",
+            replace_existing=True,
+            misfire_grace_time=3600,
         )
 
         # Graceful shutdown

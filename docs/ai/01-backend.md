@@ -32,6 +32,9 @@
 - `backend/apps/announcements/models.py` — Genel/sistem duyurusu, occurrence okuma ve nöbet ay/gün modelleri
 - `backend/apps/announcements/services.py` — Europe/Istanbul recurrence ve sabit nöbet uyarısı kuralları
 - `backend/apps/announcements/views.py` — Admin, eczacı aktif duyuru ve nöbet takvimi endpoint'leri
+- `backend/apps/abonelik/` — Abonelik/sözleşme, cihaz taksit ve kullanım bedeli faturalandırma + erişim kilidi *(2026-10-01)*
+- `backend/apps/abonelik/services.py` — Faturalandırma üretimi, ödeme, gecikme/erişim kuralları (GRACE_DAYS=7)
+- `backend/apps/abonelik/jobs.py` — `gunluk_faturalandirma` (scheduler, her gün 02:00 UTC)
 
 ---
 
@@ -88,6 +91,20 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 | `/api/announcements/admin/` | `AdminAnnouncementViewSet` | JWT (SuperAdmin) | Genel duyuru CRUD; sistem duyurusunda sınırlı PATCH |
 | `/api/announcements/me/active/` | `ActiveAnnouncementsView` | JWT (Eczacı) | Bugünkü hedeflenmiş occurrence ve sistem uyarıları |
 | `/api/announcements/{id}/read/` | `MarkAnnouncementReadView` | JWT (Eczacı) | Bugünkü occurrence için okundu kaydı |
+| `/api/abonelik/sozlesmeler/` | `SozlesmeViewSet` | JWT (SuperAdmin) | Sözleşme CRUD (12/24/36 ay + öteleme) |
+| `/api/abonelik/sozlesmeler/{id}/cihaz-plani/` | `SozlesmeViewSet.cihaz_plani` | JWT (SuperAdmin) | Cihaz ödeme planı upsert (PUT) |
+| `/api/abonelik/sozlesmeler/{id}/uzat/` | `SozlesmeViewSet.uzat` | JWT (SuperAdmin) | Sözleşme uzatma (standart ay / demo gün) |
+| `/api/abonelik/sozlesmeler/{id}/gecmis/` | `SozlesmeViewSet.gecmis` | JWT (SuperAdmin) | Uzatma tarihçesi + eczane sözleşme zinciri |
+| `/api/abonelik/talepler/` | `SozlesmeTalebiViewSet` | JWT (SuperAdmin) | Sözleşme talepleri (+`{id}/karar/`, `bekleyen-sayisi/`) |
+| `/api/abonelik/odemeler/` | `OdemelerView` | JWT (SuperAdmin) | Ödeme geçmişi (tarihçe) |
+| `/api/abonelik/taleplerim/` | `TaleplerimView` | JWT (Eczacı) | Kendi talepleri (GET+POST) |
+| `/api/abonelik/odemelerim/` | `OdemelerimView` | JWT (Eczacı) | Kendi ödeme geçmişi |
+| `/api/abonelik/hareketlerim/` | `HareketlerimView` | JWT (Eczacı) | Sözleşme hareketleri (tarihçe) |
+| `/api/abonelik/faturalar/` | `FaturaViewSet` | JWT (SuperAdmin) | Tüm faturalar (filtre: eczane, durum) |
+| `/api/abonelik/faturalar/{id}/ode/` | `FaturaViewSet.ode` | JWT (SuperAdmin) | Manuel tahsilat işaretleme |
+| `/api/abonelik/hesabim/` | `HesabimView` | JWT (Eczacı) | Sözleşme + cari borç özeti + erişim durumu |
+| `/api/abonelik/faturalarim/` | `FaturalarimView` | JWT (Eczacı) | Kendi eczanesinin faturaları |
+| `/api/abonelik/faturalarim/{id}/ode/` | `FaturaOdeView` | JWT (Eczacı) | Kendi faturasını öder (mock tahsilat) |
 | `/api/announcements/duty/` | `DutyCalendarView` | JWT (Eczacı) | Ay bazlı nöbet günü / nöbetim yok kaydı |
 | `/api/analytics/sessions/{id}/mark-reviewed/` | `OturumLoguMarkReviewedView` | JWT (Eczacı) | Tarihsel eczane scope'unda idempotent `BEKLIYOR -> INCELENDI` |
 | `/api/analytics/dashboard-series/` | `DashboardSeriesView` | JWT (Admin/Eczacı) | İstanbul zamanıyla aylık/haftalık etkileşim ve satış serileri |
@@ -119,7 +136,7 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 - `LookupModel`: id + BaseModel (tüm lookup'ların base'i)
 
 ### İş Takibi (`apps.gorevler`)
-- `Gorev`: `baslik`, `icerik`, `durum` (`YENI|INCELENIYOR|YAPILDI|YAPILMADI`), `atanan_kullanici` (yalnız superadmin), BaseModel alanları
+- `Gorev`: `baslik`, sınırsız uzun metin `icerik` (`TextField`), `durum` (`YENI|INCELENIYOR|YAPILDI|YAPILMADI`), `atanan_kullanici` (yalnız superadmin), BaseModel alanları
 - `db_table`: `gorevler`
 - Liste/detay API'si yalnız `IsSuperAdmin` ile açılır; `atanan_kullanici` alanı kullanıcı yönetiminden gelen aktif süper adminlerle sınırlıdır
 
@@ -209,6 +226,14 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 ### Audit (`apps.audit`)
 - `AuditLog`: Model değişiklik loglama (model_type, object_id, action, user FK, timestamp, old_values JSON, new_values JSON)
 
+### Abonelik (`apps.abonelik`) *(new 2026-10-01)*
+- `Sozlesme`: Eczane hizmet sözleşmesi (eczane FK PROTECT, **tur [DEMO/STANDART]**, sozlesme_tipi_ay [12/24/36, standartta], **demo_gun [1..30, demo'da]**, baslangic_tarihi, oteleme_ay, aylik_kullanim_bedeli [def 3900], durum [**AKTIF/IPTAL** — girişte AKTIF, iptalde IPTAL], **ek_ay_toplam/ek_gun_toplam** [uzatma birikimi], **onceki_sozlesme FK self** [tarihçe zinciri], notlar). Türetilen: `toplam_ay`, `toplam_gun`, `bitis_tarihi` (demo: gün, standart: ay), `kalan_gun`, **`suresi_doldu`** (AKTIF & bitiş geçmiş), **`etkin_durum` [AKTIF/SURESI_DOLDU/IPTAL]** (türetilir — ayrı "tamamlandı" durumu YOK).
+- `SozlesmeUzatma`: Sözleşme uzatma tarihçesi (sozlesme FK CASCADE, ek_ay/ek_gun, neden, audit). Standart=ay, demo=gün; demo toplamı 30 günü aşamaz.
+- `SozlesmeTalebi`: Eczacı sözleşme talebi (eczane FK, talep_tipi [YENI/UZATMA/IPTAL], durum [BEKLIYOR/ONAYLANDI/REDDEDILDI], hedef_sozlesme FK, istenen_tur/istenen_tip_ay/istenen_demo_gun/ek_ay/ek_gun, aciklama, red_nedeni, karar_veren, olusan_sozlesme). Admin onayında uygulanır.
+- `CihazOdemePlani`: Cihaz taksit planı (sozlesme OneToOne CASCADE, pesin_fiyat, vade_farki_orani [%], taksit_sayisi [1/4/8/12], baslangic_tarihi, durum). Türetilen: `toplam_tutar = pesin*(1+vade/100)`, `taksit_tutari = toplam / taksit_sayisi`. **Kural:** taksit_sayisi != 1 (peşin değil) iken vade_farki_orani > 0 zorunlu (serializer validasyonu).
+- `Fatura`: Cariye borç kalemi (eczane FK PROTECT, sozlesme/cihaz_plani FK SET_NULL, tip [KULLANIM_BEDELI/CIHAZ_TAKSIT], donem [YYYY-MM], taksit_no nullable, tutar, vade_tarihi, durum [BEKLIYOR/ODENDI/GECIKTI/IPTAL], odenme_tarihi, aciklama). Partial unique constraint: taksit_no dolu iken (eczane,tip,donem,taksit_no); NULL iken (eczane,tip,donem) — idempotent üretim.
+- `Odeme`: Tahsilat kaydı (fatura FK CASCADE, tutar, yontem [KREDI_KARTI/OTOMATIK_CEKIM/MANUEL], odeme_tarihi). Mock; gerçek gateway çağrısı yok — tek entegrasyon noktası `services.ode_fatura`.
+
 ---
 
 ## Kategori, Reklam, Kiosk, Log/Session İle İlgili Backend Mantığı
@@ -279,6 +304,20 @@ Notlar (QR contract, 2026-07-20):
 5. Hedef ayda en az bir `PharmacyDutyDay` veya `has_no_duty=true` varsa uyarı üretilmez. Aksiyon URL'si backend tarafından hedef ay query'siyle sabit üretilir.
 6. Admin sistem duyurusunda yalnız `title`, `message`, `action_label`, `severity`, `active` alanlarını değiştirebilir; sistem duyurusu DELETE 405 döner.
 7. Session detayındaki normalize etken madde satırları, kiosk öneri JSON snapshot'ı ile karşılaştırılarak additive `source=RECOMMENDED|PHARMACIST_ADDED` alanını döndürür; bu ayrım için şema değişikliği gerekmez.
+
+### Abonelik / Faturalandırma Akışı *(2026-10-01)*
+1. SuperAdmin → web_panels AbonelikYonetimi → `POST /api/abonelik/sozlesmeler/` → `Sozlesme` (12/24/36 ay + öteleme ayı). Öteleme her ay sözleşme sonuna eklenir (vade kaydırma): örn. 24 + 6 = 30 ay.
+2. Opsiyonel cihaz planı → `PUT /api/abonelik/sozlesmeler/{id}/cihaz-plani/` → `CihazOdemePlani` (peşin + vade farkı → 4/8 eşit taksit).
+3. Scheduler `gunluk_faturalandirma` (her gün 02:00 UTC, `apps/campaigns/.../run_scheduler.py`) üç idempotent adım çalıştırır:
+   - `faturala_kullanim_bedeli`: AKTIF sözleşmelerde öteleme bittikten (`kullanim_bedeli_baslangic`) sözleşme bitişine kadar, içinde bulunulan dönemin kullanım bedeli faturası.
+   - `faturala_cihaz_taksit`: Ayın ilk haftasında (vade ayın 7'si) sıradaki cihaz taksiti; ayda tek taksit, taksit sayısı dolunca plan TAMAMLANDI.
+   - `guncelle_gecikmis_faturalar`: Vade + `GRACE_DAYS` (7) geçmiş BEKLIYOR faturaları GECIKTI yapar.
+4. Eczacı `GET /api/abonelik/hesabim/` ile borç/erişim/**panel_kisitli** durumunu, `POST /api/abonelik/faturalarim/{id}/ode/` ile "Ödeme Yap" (mock) tahsilatını yapar → fatura ODENDI. Ayrıca `odemelerim/`, `hareketlerim/`, `taleplerim/` (GET+POST) eczacıya açık.
+5. **Kısıtlı panel (hard-block değil):** `services.panel_kisitli(eczane_id)→(bool, neden [SOZLESME_YOK|ODEME_GECIKTI])`. Login/refresh 403 KALDIRILDI — eczacı her zaman girer; aktif sözleşmesi yoksa veya ödeme gecikmişse yalnız "Hesabım ve Ödemeler" erişilebilir. Backend enforcement: `IsEczaciPanelAcik` (eczacı+açık) ve `PanelAcikVeyaAdmin` (admin veya açık eczacı) izinleri. Uygulandığı yerler: analytics (`IsEczaci` alias→`IsEczaciPanelAcik`), destek create, announcements duty write. Açık kalan: abonelik hesabım/faturalarım/talep, announcements me/active + read, auth, users/me.
+6. **Demo/Sözleşmesizlik:** Demo bir sözleşme türüdür (`tur=DEMO`). `eczane_demo_modunda()` = aktif sözleşme DEMO. **Yeni eczane oluştururken sözleşme zorunlu**: `POST /api/pharmacies/` nested write-only `sozlesme`; `EczaneViewSet.perform_create` tek UoW. `EczaneSerializer` liste rozetleri: `aktif_sozlesme {tur, bitis_tarihi, kalan_gun}` + `odeme_durumu [DEMO/GECIKTI/BEKLEYEN/GUNCEL/YOK]`.
+7. **Uzatma:** `POST .../uzat/` (standart ek_ay, demo ek_gun; demo cap 30); `GET .../gecmis/` uzatmalar + zincir. Kullanım bedeli faturalaması yalnız `tur=STANDART`.
+8. **Sözleşme talepleri:** `SozlesmeTalebi` (YENI/UZATMA/IPTAL, BEKLIYOR→ONAYLANDI/REDDEDILDI). Eczacı `taleplerim/` ile açar; admin `talepler/` listeler + `{id}/karar/` ile onaylar/reddeder. Onayda: YENI→`Sozlesme` oluşur, UZATMA→`uzat_sozlesme`, IPTAL→hedef durum IPTAL. `talepler/bekleyen-sayisi/` badge.
+9. **Uyarı sistem duyuruları:** İki yeni `system_key` — `PAYMENT_DUE_SOON` (açık fatura vadesine ≤3 gün) ve `CONTRACT_EXPIRING` (aktif sözleşme kalan_gun 0..7). `announcements/services.system_context` abonelik'e bakar; mevcut günlük zorunlu-okuma mekanizması (ödeme/uzatma yapılana kadar her gün tekrar).
 
 ---
 

@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.uow import UnitOfWork
-from apps.pharmacies.permissions import IsEczaci, IsSuperAdmin
+from apps.pharmacies.permissions import IsEczaci, IsEczaciPanelAcik, IsSuperAdmin
 
 from .models import Announcement, AnnouncementRead, PharmacyDutyMonth
 from .duty import save_duty_month
@@ -93,7 +93,7 @@ class MarkAnnouncementReadView(APIView):
 
 
 class DutyCalendarView(APIView):
-    permission_classes = [IsEczaci]
+    permission_classes = [IsEczaciPanelAcik]
 
     @staticmethod
     def parse_month(raw):

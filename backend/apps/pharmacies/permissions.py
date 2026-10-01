@@ -57,3 +57,39 @@ class IsKioskOrAuthenticated(BasePermission):
 
 # Geriye donuk uyumluluk takma adlari
 IsPharmacist = IsEczaci
+
+
+def _eczaci_panel_kisitli(user) -> bool:
+    """Eczacının paneli kısıtlı mı (sözleşmesiz veya ödeme gecikmiş)?"""
+    from apps.abonelik.services import panel_kisitli
+
+    kisitli, _ = panel_kisitli(getattr(user, "eczane_id", None))
+    return kisitli
+
+
+class IsEczaciPanelAcik(BasePermission):
+    """Eczaci + paneli kısıtlı DEĞİL (sözleşme/ödeme durumu uygun)."""
+
+    message = "Sözleşme veya ödeme durumunuz nedeniyle bu bölüm kısıtlanmıştır."
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not (user and isinstance(user, Kullanici) and user.rol == Kullanici.Rol.ECZACI):
+            return False
+        return not _eczaci_panel_kisitli(user)
+
+
+class PanelAcikVeyaAdmin(BasePermission):
+    """SuperAdmin her zaman; eczaci yalnızca paneli açıkken."""
+
+    message = "Sözleşme veya ödeme durumunuz nedeniyle bu bölüm kısıtlanmıştır."
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not (user and isinstance(user, Kullanici)):
+            return False
+        if user.rol == Kullanici.Rol.SUPERADMIN:
+            return True
+        if user.rol == Kullanici.Rol.ECZACI:
+            return not _eczaci_panel_kisitli(user)
+        return False

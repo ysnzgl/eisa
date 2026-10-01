@@ -124,6 +124,7 @@ class CookieTokenRefreshView(APIView):
             serializer.is_valid(raise_exception=True)
         except TokenError as exc:
             raise InvalidToken(exc.args[0])
+
         validated = serializer.validated_data
         response = Response(status=status.HTTP_204_NO_CONTENT)
         _set_access_cookie(response, validated["access"])

@@ -5,6 +5,64 @@
 
 ---
 
+## 2026-10-01
+
+### [Backend+WebPanel] İş takibi uzun içerik desteği
+
+- `Gorev.icerik` alanındaki 2.000 karakter sınırı kaldırıldı; PostgreSQL `text`/Django `TextField` ile uygulama seviyesinde sınırsız uzun metin kabul edilir (`gorevler/0002`).
+- İş düzenleme modalı 960 px'e genişletildi; içerik editörü büyütüldü, dikey yeniden boyutlandırma, paragraf/satır sonu koruma, kelime sarma ve canlı karakter sayısı eklendi. Liste kısa önizlemeyi korur.
+- 2.000 karakteri aşan içeriğin API ve veritabanında eksiksiz saklandığını doğrulayan regresyon testi eklendi. Doğrulama: görev API testleri 5/5 geçti, migration kontrolü temiz ve web panel production build'i başarılı.
+
+## 2026-10-01
+
+## 2026-10-01
+
+## 2026-10-01
+
+### [Backend+WebPanel] Abonelik: kısıtlı panel, sözleşme talepleri, ödeme/uyarı sistemi
+
+- **Kısıtlı panel (hard-block değil):** login/refresh 403 kaldırıldı. `services.panel_kisitli(eczane_id)→(bool, SOZLESME_YOK|ODEME_GECIKTI)`. Sözleşmesiz/ödemesi gecikmiş eczacı giriş yapar ama yalnız "Hesabım ve Ödemeler"i görür. Backend: `IsEczaciPanelAcik`/`PanelAcikVeyaAdmin` (analytics alias, destek create, duty write). Frontend: AdminLayout nav filtresi + router guard (`auth.panelKisitli`).
+- **Sözleşme talepleri:** `SozlesmeTalebi` (YENI/UZATMA/IPTAL, admin onaylı). Eczacı Hesabım'dan talep açar; admin AbonelikYonetimi "Talepler" sekmesinden onay/red (onayda uygulanır). Migration `0005`. Admin nav'ında bekleyen talep badge.
+- **Israrlı uyarılar + sistem duyuruları:** Hesabım'da bitiş≤7g / ödeme≤3g kalıcı uyarı bantları. İki yeni `system_key` (`PAYMENT_DUE_SOON`, `CONTRACT_EXPIRING`) `system_context`'te abonelik'e bakar; günlük zorunlu-okuma (ödeme/uzatma yapılana kadar). announcements migration `0003` seed.
+- **Ödeme tarihçesi:** eczacı `odemelerim/` + admin `odemeler/` (mevcut `Odeme` + mark-paid). Sözleşme hareketleri `hareketlerim/` (sözleşme/uzatma/talep/ödeme birleşik).
+- **Demo flag:** demo sözleşmede sol menüde DEMO rozeti (`hesabim.demo`).
+- Testler: abonelik 48; analytics/announcements/destek/pharmacies fixture'larına aktif sözleşme eklendi (panel kısıtı orthogonal — analytics conftest bypass). Tüm suitler yeşil, frontend build yeşil. Docs 01/02/06 güncellendi.
+
+### [Backend+WebPanel] Abonelik: sözleşme durumu AKTIF/IPTAL (tamamlandı türetilir)
+
+- `Sozlesme.Durum` sadeleştirildi: **AKTIF | IPTAL** (TASLAK ve TAMAMLANDI kaldırıldı). Girişte AKTIF, iptalde IPTAL. "Tamamlandı/süresi doldu" artık stored değil; bitiş tarihinden türetilir: `suresi_doldu` (bool) + `etkin_durum` (`AKTIF|SURESI_DOLDU|IPTAL`).
+- `uzat_sozlesme`: iptal edilmiş sözleşme uzatılamaz (400); süresi dolmuş AKTIF sözleşme uzatılınca bitiş ileri taşınır (durum değişmez). Reaktivasyon mantığı kaldırıldı.
+- Migration `0004`: durum choices alter + legacy TASLAK/TAMAMLANDI → AKTIF veri taşıması. Frontend `SozlesmeForm` durum seçenekleri AKTIF/IPTAL; AbonelikYonetimi tablo/geçmiş `etkin_durum` bazlı renkli rozet (Aktif/Süresi Doldu/İptal).
+- Testler: abonelik 39 geçti (etkin_durum, süresi doldu, iptal uzatılamaz). Build yeşil. Docs 01/06 güncellendi.
+
+### [Backend+WebPanel] Abonelik: sözleşme türleri, tarihçe/uzatma ve eczane entegrasyonu
+
+- **Demo artık sözleşme türü** (`Sozlesme.tur = DEMO|STANDART`). Demo gün bazlı (`demo_gun` 1–30), kullanım bedeli faturalanmaz, erişim kilitlenmez. `eczane_demo_modunda()` = aktif sözleşme DEMO. "Sözleşmesiz eczane" ayrı durum (badge kırmızı `Sözleşme yok`).
+- **Sözleşmesiz eczane olmayacak:** `POST /api/pharmacies/` gövdesine write-only `sozlesme` nesnesi; `EczaneViewSet.perform_create` Eczane + Sozlesme'yi tek UoW transaction'ında oluşturur. Ortak `SozlesmeForm.vue` bileşeni DeviceManagement "Yeni Eczane" ve AbonelikYonetimi modallarında.
+- **Tarihçe + uzatma:** `SozlesmeUzatma` modeli + `ek_ay_toplam/ek_gun_toplam` denormalize birikim + `onceki_sozlesme` zinciri. `POST sozlesmeler/{id}/uzat/` (standart ay / demo gün, demo cap 30), `GET .../gecmis/`. Migration `0003`.
+- **Eczane listesi rozetleri:** `EczaneSerializer` `aktif_sozlesme {tur, bitis_tarihi, kalan_gun}` + `odeme_durumu [DEMO/GECIKTI/BEKLEYEN/GUNCEL/YOK]`. DeviceManagement tablosunda tür·kalan gün ve ödeme durumu renkli `eisa-pill` rozetleri + satır "Sözleşmeler" butonu (`/admin/abonelik?eczane=`).
+- Kullanım bedeli faturalaması yalnız `tur=STANDART`. Testler: abonelik 35 geçti (demo, uzatma cap, nested oluşturma, badge alanları, uzat/geçmiş API). Frontend build yeşil.
+- Docs: `01-backend`, `02-web-panels`, `06-db-and-api-contracts` güncellendi.
+
+### [Backend+WebPanel] Abonelik: demo modu, taksit matrisi ve panel tasarımı
+
+- **Demo aşaması:** `services.eczane_demo_modunda()` — eczanenin AKTIF/TAMAMLANDI sözleşmesi yoksa demo; faturalandırma ve erişim kilidi uygulanmaz. `hesabim` yanıtı `demo` alanı döner; eczacı paneli demo bilgilendirme kartı gösterir.
+- **Cihaz taksit matrisi:** `CihazOdemePlani.taksit_sayisi` 1/4/8/12 (migration `0002`). Peşin (1) dışında `vade_farki_orani > 0` zorunlu — serializer validasyonu + frontend guard (kaydet kilidi + uyarı).
+- **Panel tasarımı:** `AbonelikYonetimi.vue` ve `HesabimOdemeler.vue` ortak `style.css` sınıflarına taşındı (eisa-page/panel/stats/table/pill/modal/form-grid/field/error-banner); sayfa içi `<style scoped>` kaldırıldı. Modallar `Teleport` ile body'e taşındı.
+- Testler: `test_billing.py` 23 geçti (demo modu + taksit/vade validasyonu eklendi). Frontend build yeşil.
+- Docs: `01-backend`, `06-db-and-api-contracts` güncellendi.
+
+### [Backend+WebPanel] Abonelik, faturalandırma ve erişim kilidi
+
+- Yeni `apps/abonelik`: `Sozlesme` (12/24/36 ay + kullanım bedeli öteleme/vade kaydırma; öteleme her ay bitişe eklenir), `CihazOdemePlani` (peşin + vade farkı → 4/8 eşit taksit), `Fatura` (KULLANIM_BEDELI/CIHAZ_TAKSIT, dönem/taksit bazlı partial-unique idempotent üretim), `Odeme` (mock tahsilat). Migration `abonelik/0001_initial`.
+- `services.py`: `faturala_kullanim_bedeli` (öteleme sonrası → sözleşme bitişine kadar), `faturala_cihaz_taksit` (ayın ilk haftası, ayda tek taksit), `guncelle_gecikmis_faturalar` (vade+GRACE_DAYS=7 → GECIKTI), `ode_fatura`, `eczane_erisim_kapali`. Scheduler `gunluk_faturalandirma` job'ı `run_scheduler.py`'a eklendi (02:00 UTC).
+- Erişim kilidi: `core_api/auth_views.py` login (obtain) **ve** token refresh, ödenmemiş fatura vade+7 geçen eczacıyı 403 `_ERISIM_KAPALI_MESAJ` ile bloklar; kiosk cihazları etkilenmez. `Login.vue` 403 `detail` mesajını gösterir.
+- API `/api/abonelik/`: admin `sozlesmeler` (CRUD + `cihaz-plani` PUT), `faturalar` (+`ode`); eczacı `hesabim`, `faturalarim` (+`{id}/ode`). Frontend `services/abonelik.js`, admin `AbonelikYonetimi.vue` (`/admin/abonelik`), eczacı `HesabimOdemeler.vue` (`/pharmacist/hesabim`), AdminLayout nav + router kayıtları.
+- Testler: `apps/abonelik/tests/test_billing.py` (16 geçti — vade kaydırma, öteleme, cihaz taksit matrisi, idempotency, gecikme, erişim kilidi, ödeme). Frontend build yeşil.
+- AI dokümanları güncellendi: `00-AI-INDEX`, `01-backend`, `02-web-panels`, `06-db-and-api-contracts`.
+
+---
+
 ## 2026-09-29
 
 ### [Backend+Kiosk Edge+WebPanel] Kiosk build numarası takibi

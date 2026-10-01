@@ -24,7 +24,7 @@ from core_api.cookie_jwt import JWTCookieAuthentication as JWTAuthentication
 
 from apps.core.uow import UnitOfWork
 from apps.lookups.models import Cinsiyet, YasAraligi
-from apps.pharmacies.permissions import IsEczaci, IsSuperAdmin
+from apps.pharmacies.permissions import IsEczaciPanelAcik as IsEczaci, IsSuperAdmin
 from apps.products.models import Kategori
 
 from .models import OturumLogu, OturumOnerilenEtkenMadde

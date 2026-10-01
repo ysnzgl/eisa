@@ -20,21 +20,39 @@ async function logout() {
 const isAdmin      = computed(() => auth.role === 'superadmin');
 const isPharmacist = computed(() => auth.role === 'pharmacist');
 
-const navBadges = reactive({ destekYeni: 0, bekleyenCihazlar: 0 });
+const navBadges = reactive({ destekYeni: 0, bekleyenCihazlar: 0, bekleyenTalepler: 0 });
+// Eczacı abonelik durumu (demo / panel kısıtı) — nav görünürlüğünü belirler.
+const billing = reactive({ demo: false, panelKisitli: false, loaded: false });
 
 async function fetchNavBadges() {
   if (!isAdmin.value) return;
   try {
-    const [destekResult, pendingRequests] = await Promise.all([
+    const [destekResult, pendingRequests, talepResult] = await Promise.all([
       http.get('/api/destek/talepler/yeni-sayisi/', { __silent: true }),
       listProvisioningRequests({ status: 'PENDING' }),
+      http.get('/api/abonelik/talepler/bekleyen-sayisi/', { __silent: true }),
     ]);
     navBadges.destekYeni = destekResult.data.sayi ?? 0;
     navBadges.bekleyenCihazlar = pendingRequests.length;
+    navBadges.bekleyenTalepler = talepResult.data.sayi ?? 0;
   } catch { /* badge hatası kullanıcıyı engellemesin */ }
 }
 
-onMounted(fetchNavBadges);
+async function fetchBilling() {
+  if (!isPharmacist.value) return;
+  try {
+    const { data } = await http.get('/api/abonelik/hesabim/', { __silent: true });
+    billing.demo = !!data.demo;
+    billing.panelKisitli = !!data.panel_kisitli;
+    auth.setBilling({ demo: billing.demo, panelKisitli: billing.panelKisitli });
+    // Kısıtlıysa ve Hesabım dışında bir yerdeyse Hesabım'a yönlendir.
+    if (billing.panelKisitli && router.currentRoute.value.path !== '/pharmacist/hesabim') {
+      router.replace('/pharmacist/hesabim');
+    }
+  } catch { /* sessiz */ } finally { billing.loaded = true; }
+}
+
+onMounted(() => { fetchNavBadges(); fetchBilling(); });
 
 function handleNavBadgeRefresh() {
   fetchNavBadges();
@@ -63,6 +81,7 @@ const adminNavItems = [
   { to: '/admin/dooh/control-center',        icon: 'fa-gauge-high',    label: 'Kontrol Merkezi' },
   { to: '/admin/playlists',                  icon: 'fa-list-ol',       label: 'Gelişmiş Manuel Yayın' },
   { to: '/admin/pricing',                    icon: 'fa-coins',         label: 'Fiyat Matrisi' },
+  { to: '/admin/abonelik',                   icon: 'fa-file-invoice-dollar', label: 'Abonelik ve Ödeme', badgeKey: 'bekleyenTalepler' },
   { to: '/admin/users',                      icon: 'fa-user-gear',     label: 'Kullanıcı Yönetimi' },
   { to: '/admin/announcements',              icon: 'fa-bell',          label: 'Duyuru Yönetimi' },
 ];
@@ -71,13 +90,21 @@ const pharmacistNavItems = [
    { to: '/pharmacist',          exact: true, icon: 'fa-house',      label: 'Ana Sayfa' },
    { to: '/pharmacist/kiosk-activities',      icon: 'fa-display',    label: 'Kiosk Hareketleri' },
    { to: '/pharmacist/qr',                    icon: 'fa-qrcode',     label: 'QR Okutma' },
+   { to: '/pharmacist/hesabim',               icon: 'fa-file-invoice-dollar', label: 'Hesabım ve Ödemeler' },
    { to: '/pharmacist/destek',                icon: 'fa-headset',    label: 'Görüş ve Destek' },
    { to: '/pharmacist/announcements',         icon: 'fa-bullhorn', label: 'Duyurular' },
    { to: '/pharmacist/duty',                  icon: 'fa-calendar-days', label: 'Nöbet Takvimi' },
 
 ];
 
-const navItems   = computed(() => isAdmin.value ? adminNavItems : pharmacistNavItems);
+// Panel kısıtlıysa (sözleşmesiz/ödeme gecikmiş) eczacı yalnız Hesabım'ı görür.
+const navItems = computed(() => {
+  if (isAdmin.value) return adminNavItems;
+  if (billing.panelKisitli) {
+    return pharmacistNavItems.filter((item) => item.to === '/pharmacist/hesabim');
+  }
+  return pharmacistNavItems;
+});
 const brandSub   = computed(() => isAdmin.value ? 'Yönetici Paneli' : 'Eczacı Paneli');
 const roleLabel  = computed(() => isAdmin.value ? 'Süper Admin' : 'Eczacı');
 </script>
@@ -88,6 +115,9 @@ const roleLabel  = computed(() => isAdmin.value ? 'Süper Admin' : 'Eczacı');
       <div class="brand">
         <img :src="logoUrl" alt="E-ISA logo" />        
         <p class="brand-sub">{{ brandSub }}</p>
+        <span v-if="isPharmacist && billing.demo" class="eisa-pill eisa-pill-warning" style="margin-top:.4rem;">
+          <i class="fa-solid fa-flask"></i> DEMO
+        </span>
       </div>
 
       <nav class="nav">

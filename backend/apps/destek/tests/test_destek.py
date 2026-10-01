@@ -11,6 +11,17 @@ from apps.pharmacies.models import Eczane, Kiosk
 Kullanici = get_user_model()
 
 
+def _aktif_sozlesme(eczane):
+    """Panel kısıtı olmaması için eczaneye aktif sözleşme ekler."""
+    import datetime as _dt
+
+    from apps.abonelik.models import Sozlesme
+    Sozlesme.objects.create(
+        eczane=eczane, tur=Sozlesme.Tur.STANDART, sozlesme_tipi_ay=24,
+        baslangic_tarihi=_dt.date.today(), durum=Sozlesme.Durum.AKTIF,
+    )
+
+
 # ─── Seed helper ──────────────────────────────────────────────────────────────
 
 @pytest.fixture(autouse=True)
@@ -30,14 +41,18 @@ def api():
 def eczane_a(db):
     il, _ = Il.objects.get_or_create(ad="Istanbul")
     ilce, _ = Ilce.objects.get_or_create(il=il, ad="Kadikoy")
-    return Eczane.objects.create(ad="Eczane A", il=il, ilce=ilce)
+    eczane = Eczane.objects.create(ad="Eczane A", il=il, ilce=ilce)
+    _aktif_sozlesme(eczane)
+    return eczane
 
 
 @pytest.fixture
 def eczane_b(db):
     il, _ = Il.objects.get_or_create(ad="Istanbul")
     ilce, _ = Ilce.objects.get_or_create(il=il, ad="Kadikoy")
-    return Eczane.objects.create(ad="Eczane B", il=il, ilce=ilce)
+    eczane = Eczane.objects.create(ad="Eczane B", il=il, ilce=ilce)
+    _aktif_sozlesme(eczane)
+    return eczane
 
 
 @pytest.fixture

@@ -220,7 +220,18 @@ onMounted(loadData);
 
               <label>
                 <span class="eisa-field-label">İçerik</span>
-                <textarea v-model="form.icerik" class="eisa-field" rows="6" maxlength="2000" required></textarea>
+                <textarea
+                  v-model="form.icerik"
+                  class="eisa-field gorev-content-editor"
+                  rows="14"
+                  required
+                  spellcheck="true"
+                  placeholder="İşin kapsamını, yapılacak adımları ve gerekli notları paragraflar halinde yazın…"
+                ></textarea>
+                <span class="content-editor-meta">
+                  Satır sonları ve paragraflar korunur.
+                  <strong>{{ form.icerik.length.toLocaleString('tr-TR') }} karakter</strong>
+                </span>
               </label>
 
               <div class="form-row">
@@ -273,7 +284,7 @@ onMounted(loadData);
 }
 
 .gorev-form :deep(textarea.eisa-field) {
-  min-height: 156px;
+  min-height: 320px;
 }
 
 .center-state {
@@ -309,6 +320,9 @@ onMounted(loadData);
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
 }
 
 .row-actions {
@@ -336,6 +350,28 @@ onMounted(loadData);
   resize: vertical;
 }
 
+.gorev-content-editor {
+  line-height: 1.65;
+  max-height: 58vh;
+  overflow-wrap: anywhere;
+  tab-size: 2;
+}
+
+.content-editor-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  color: #6b7280;
+  font-size: .75rem;
+  line-height: 1.35;
+}
+
+.content-editor-meta strong {
+  flex: 0 0 auto;
+  color: #4b5563;
+  font-weight: 600;
+}
+
 .form-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -344,7 +380,7 @@ onMounted(loadData);
 
 .gorev-modal {
   width: calc(100vw - 2rem);
-  max-width: 640px;
+  max-width: 960px;
 }
 
 .gorev-panel-note {
@@ -358,6 +394,16 @@ onMounted(loadData);
 
   .gorev-stats {
     grid-template-columns: 1fr;
+  }
+
+  .gorev-form :deep(textarea.eisa-field) {
+    min-height: 240px;
+  }
+
+  .content-editor-meta {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: .25rem;
   }
 }
 </style>

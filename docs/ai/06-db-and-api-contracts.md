@@ -69,9 +69,43 @@
 ### İş Takibi (Admin-only) *(new 2026-09-13)*
 
 **gorevler**
-- id, baslik (max 200), icerik (max 2000), durum (`YENI|INCELENIYOR|YAPILDI|YAPILMADI`), atanan_kullanici_id FK users_eisauser (nullable, PROTECT, yalnız superadmin)
+- id, baslik (max 200), icerik (`text`, uygulama karakter sınırı yok), durum (`YENI|INCELENIYOR|YAPILDI|YAPILMADI`), atanan_kullanici_id FK users_eisauser (nullable, PROTECT, yalnız superadmin)
 - BaseModel alanları
 - `db_table`: `gorevler`
+
+### Abonelik ve Ödeme *(new 2026-10-01)*
+
+**abonelik_sozlesmeler**
+- id, eczane_id FK eczaneler (PROTECT), tur (`DEMO|STANDART`), sozlesme_tipi_ay (12|24|36, nullable — standart), demo_gun (1..30, nullable — demo)
+- baslangic_tarihi (date), oteleme_ay (PositiveSmall), ek_ay_toplam/ek_gun_toplam (uzatma birikimi), onceki_sozlesme_id FK self (SET_NULL, tarihçe)
+- aylik_kullanim_bedeli (Decimal 12,2, def 3900.00), durum (`AKTIF|IPTAL` — girişte AKTIF, iptalde IPTAL; "tamamlandı" ayrı durum değil, bitiş tarihinden türetilir), notlar
+- BaseModel alanları. Türetilen (property): toplam_ay, toplam_gun, kullanim_bedeli_baslangic, bitis_tarihi (demo=gün/standart=ay), kalan_gun, suresi_doldu, etkin_durum (`AKTIF|SURESI_DOLDU|IPTAL`)
+
+**abonelik_sozlesme_uzatmalari** (tarihçe)
+- id, sozlesme_id FK abonelik_sozlesmeler (CASCADE), ek_ay (nullable), ek_gun (nullable), neden, BaseModel alanları
+- Standart=ay, demo=gün; demo toplamı (demo_gun + ek_gun_toplam) 30 günü aşamaz
+
+**abonelik_sozlesme_talepleri**
+- id, eczane_id FK (PROTECT), talep_tipi (`YENI|UZATMA|IPTAL`), durum (`BEKLIYOR|ONAYLANDI|REDDEDILDI`)
+- hedef_sozlesme_id FK (SET_NULL), istenen_tur, istenen_tip_ay, istenen_demo_gun, ek_ay, ek_gun, aciklama
+- red_nedeni, karar_veren_id FK, karar_tarihi, olusan_sozlesme_id FK, BaseModel alanları
+
+**abonelik_cihaz_odeme_planlari**
+- id, sozlesme_id OneToOne abonelik_sozlesmeler (CASCADE), pesin_fiyat (Decimal 12,2), vade_farki_orani (Decimal 6,2, %)
+- taksit_sayisi (1|4|8|12), baslangic_tarihi (date), durum (`AKTIF|TAMAMLANDI|IPTAL`)
+- **Kural:** taksit_sayisi != 1 iken vade_farki_orani > 0 zorunlu (serializer)
+- BaseModel alanları. Türetilen: toplam_tutar = pesin*(1+vade/100), taksit_tutari = toplam/taksit_sayisi
+
+**abonelik_faturalar**
+- id, eczane_id FK (PROTECT), sozlesme_id FK (SET_NULL, nullable), cihaz_plani_id FK (SET_NULL, nullable)
+- tip (`KULLANIM_BEDELI|CIHAZ_TAKSIT`), donem (CharField `YYYY-MM`), taksit_no (nullable), tutar (Decimal 12,2), vade_tarihi (date)
+- durum (`BEKLIYOR|ODENDI|GECIKTI|IPTAL`), odenme_tarihi (nullable), aciklama
+- Partial unique: (eczane,tip,donem,taksit_no) taksit_no NOT NULL iken; (eczane,tip,donem) taksit_no NULL iken — idempotent üretim
+- BaseModel alanları
+
+**abonelik_odemeler**
+- id, fatura_id FK abonelik_faturalar (CASCADE), tutar (Decimal 12,2), yontem (`KREDI_KARTI|OTOMATIK_CEKIM|MANUEL`), odeme_tarihi
+- BaseModel alanları. Mock tahsilat; gerçek gateway çağrısı yok
 
 **Erişim/Kullanım**
 - Yalnız Süper Adminler erişir; eczacı ve diğer rol kullanıcıları yok
@@ -117,12 +151,53 @@
 
 **POST `/api/is-takip/gorevler/`** — Auth: JWT (IsSuperAdmin)
 - Request: `{baslik, icerik, durum?, atanan_kullanici_id?}`
-- Validasyon: atanan kullanıcı aktif süper admin olmalı; varsayılan durum `YENI`
+- Validasyon: başlık max 200; içerik zorunlu ve uygulama karakter sınırı yok; atanan kullanıcı aktif süper admin olmalı; varsayılan durum `YENI`
 - Response 201: aynı serializer alanları
 
 **PATCH `/api/is-takip/gorevler/{id}/`** — Auth: JWT (IsSuperAdmin)
 - Request: aynı alanların güncellenebilir kısmı
 - Response 200: aynı serializer alanları
+
+### Abonelik API Sözleşmesi *(2026-10-01)*
+
+**GET/POST `/api/abonelik/sozlesmeler/`** — Auth: JWT (IsSuperAdmin); query: `eczane`, `durum`
+- POST Request: `{eczane, tur [DEMO|STANDART], sozlesme_tipi_ay [12|24|36, standart], demo_gun [1..30, demo], baslangic_tarihi, oteleme_ay, aylik_kullanim_bedeli, durum, notlar}`
+- Response: `{id, eczane, eczane_ad, tur, tur_display, sozlesme_tipi_ay, tip_display, demo_gun, baslangic_tarihi, oteleme_ay, aylik_kullanim_bedeli, ek_ay_toplam, ek_gun_toplam, onceki_sozlesme, durum, durum_display, notlar, toplam_ay, toplam_gun, kalan_gun, suresi_doldu, etkin_durum, kullanim_bedeli_baslangic, bitis_tarihi, cihaz_plani}`
+- Validasyon: DEMO→demo_gun 1..30 & tip null; STANDART→tip 12/24/36 & demo_gun null. durum yalnız AKTIF/IPTAL.
+
+**PATCH `/api/abonelik/sozlesmeler/{id}/`** — Auth: JWT (IsSuperAdmin) — kısmi güncelleme
+
+**POST `/api/abonelik/sozlesmeler/{id}/uzat/`** — Auth: JWT (IsSuperAdmin) — sözleşme uzatma (tarihçe)
+- Request: `{ek_ay? (standart), ek_gun? (demo), neden?}` · 400: hatalı birim / demo 30g aşımı / **iptal edilmiş sözleşme** · Response: güncel Sozlesme
+- Süresi dolmuş (AKTIF) sözleşme uzatılabilir; bitiş ileri taşınır (durum zaten AKTIF).
+
+**GET `/api/abonelik/sozlesmeler/{id}/gecmis/`** — Auth: JWT (IsSuperAdmin)
+- Response: `{uzatmalar: [{id, ek_ay, ek_gun, neden, olusturan_adi, olusturulma_tarihi}], sozlesmeler: [Sozlesme...]}`
+
+**PUT `/api/abonelik/sozlesmeler/{id}/cihaz-plani/`** — Auth: JWT (IsSuperAdmin) — cihaz planı upsert
+- Request: `{pesin_fiyat, vade_farki_orani, taksit_sayisi [1|4|8|12], baslangic_tarihi}`
+- Response: `{id, sozlesme, pesin_fiyat, vade_farki_orani, taksit_sayisi, baslangic_tarihi, durum, durum_display, toplam_tutar, taksit_tutari}`
+
+**GET `/api/abonelik/faturalar/`** — Auth: JWT (IsSuperAdmin); query: `eczane`, `durum`
+- Response: `[{id, eczane, eczane_ad, sozlesme, cihaz_plani, tip, tip_display, donem, taksit_no, tutar, vade_tarihi, durum, durum_display, odenme_tarihi, aciklama}]`
+
+**POST `/api/abonelik/faturalar/{id}/ode/`** — Auth: JWT (IsSuperAdmin) — manuel tahsilat
+- Request: `{yontem?}` (def KREDI_KARTI) · 400: zaten ödenmiş/iptal · Response 201: Odeme
+
+**GET `/api/abonelik/hesabim/`** — Auth: JWT (IsEczaci)
+- Response: `{demo (bool), panel_kisitli (bool), kisit_nedeni [SOZLESME_YOK|ODEME_GECIKTI|""], sozlesme|null, acik_fatura_sayisi, toplam_borc, erisim_kapali (bool), grace_gun}`
+- `demo=true`: aktif sözleşme türü DEMO. `panel_kisitli=true` → eczacı yalnız Hesabım'ı kullanabilir.
+
+**Eczacı ek endpoint'leri:** `GET faturalarim/`, `POST faturalarim/{id}/ode/`, `GET odemelerim/`, `GET hareketlerim/`, `GET/POST taleplerim/`.
+
+**Admin talep/ödeme:** `GET talepler/` (+`{id}/karar/` `{onayla,red_nedeni}`, `bekleyen-sayisi/`), `GET odemeler/`.
+
+**GET `/api/abonelik/faturalarim/`** — Auth: JWT (IsEczaci); query: `durum` — yalnız kendi eczanesinin faturaları
+
+**POST `/api/abonelik/faturalarim/{id}/ode/`** — Auth: JWT (IsEczaci) — kendi faturasını öder (mock)
+- Request: `{yontem?}` (def KREDI_KARTI) · 404: başka eczane faturası · Response 201: Odeme
+
+**Erişim kilidi:** ödenmemiş fatura vade + 7 gün geçerse `POST /api/auth/token/` ve `.../refresh/` eczacı için 403 `{detail}` döner (kiosk etkilenmez).
 
 ### Announcements and Duty *(2026-08-18)*
 
@@ -497,7 +572,9 @@ X-Kiosk-Build-Number: <BUILD_LABEL>  # örn: 2026.09.29+prod.17
 **Sabit sistem kuralları:**
 - `DUTY_NEXT_MONTH_MISSING`: Istanbul ayının son 3 takvim günü; gelecek ayda gün/beyan yoksa aktif; aksiyon gelecek ayı açar.
 - `DUTY_CURRENT_MONTH_MISSING`: Istanbul ayının 1–14. günleri; aktif ayda gün/beyan yoksa aktif; aksiyon aktif ayı açar.
-- Her iki uyarıda bugünkü read yalnız aynı günü bastırır; ertesi gün eksiklik sürerse yeni occurrence oluşur.
+- `PAYMENT_DUE_SOON` *(2026-10-01)*: Açık (BEKLIYOR/GECIKTI) faturanın vadesine ≤3 gün kalmış/geçmişse aktif; ödenene kadar günlük tekrar; aksiyon `/pharmacist/hesabim`.
+- `CONTRACT_EXPIRING` *(2026-10-01)*: Aktif sözleşmenin bitişine 0..7 gün kalmışsa aktif; uzatılana kadar günlük tekrar; aksiyon `/pharmacist/hesabim`.
+- Her uyarıda bugünkü read yalnız aynı günü bastırır; ertesi gün koşul sürerse yeni occurrence oluşur.
 
 ### Products Endpoints
 

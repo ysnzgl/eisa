@@ -1,6 +1,6 @@
 # AI Context Index — e-isa Project
 
-**Son güncelleme:** 2026-09-13
+**Son güncelleme:** 2026-10-01
 **Amaç:** Token-ekonomik AI context; kod yapısını hızlı anlamak ve geliştirmelerde doğru noktadan başlamak.
 
 ---
@@ -74,6 +74,7 @@ Backend'de kampanya/creative tanımı → Merkezi playlist üretimi → Kiosk'a 
 | Yeni özellik ekleme prosedürü | AI-WORKFLOW.md |
 | Bug düzeltme prosedürü | AI-WORKFLOW.md + AI-RULES.md |
 | **Kiosk provisioning/onay akışı** | **05-cross-project-flows.md + 01-backend.md + 03-kiosk-edge-api-node.md + 06-db-and-api-contracts.md** |
+| Abonelik/sözleşme, faturalandırma, erişim kilidi | 01-backend.md + 02-web-panels.md + 06-db-and-api-contracts.md |
 
 ---
 
@@ -97,6 +98,9 @@ kiosk_edge/ui (ResultScreen QR) → web_panels (QrScan) → Backend API (GET /ap
 ### 6. Duyuru ve Nöbet Uyarısı Akışı
 SuperAdmin → web_panels duyuru yönetimi → `/api/announcements/admin/` → genel duyuru zamanlama/hedefleme; eczacı layout → `/api/announcements/me/active/` → occurrence bazlı genel duyuru veya backend koşullu iki sabit nöbet uyarısı → nöbet takvimi / günlük okundu kaydı
 
+### 7. Abonelik / Faturalandırma Akışı *(2026-10-01)*
+SuperAdmin → web_panels AbonelikYonetimi → `Sozlesme` (+ opsiyonel `CihazOdemePlani`) → scheduler `gunluk_faturalandirma` (02:00 UTC) idempotent `Fatura` üretir (kullanım bedeli öteleme sonrası + cihaz taksiti ayın ilk haftası) → eczacı `/pharmacist/hesabim` → "Ödeme Yap" (mock) → `Odeme` → Fatura ODENDI. Ödenmeyen fatura vade+7 gün → GECIKTI → eczacı panel girişi 403 ile kilitlenir.
+
 ---
 
 ## Kritik Domain Kavramları
@@ -115,6 +119,9 @@ SuperAdmin → web_panels duyuru yönetimi → `/api/announcements/admin/` → g
 - **Dil / i18n:** Kiosk UI TR/EN çift dil *(2026-09-29)*. Sabit metinler `i18n.js` (`$t`); DB içeriği `_en` alanlarıyla (`Kategori.ad_en`, `Soru.metin_en`, `Danisma.ad_en`, `Cevap.metin_en`, `IdleScreenContent.baslik_en/metin_en`). Köşe `LanguageToggle` butonu, seçim `localStorage`. Boş `_en` → Türkçe fallback.
 - **Kiosk:** Fiziksel cihaz (mac_adresi, uygulama_anahtari, eczane, aktif/online durumu) ve cihaz-bazlı UI zamanlayıcı/ses listesi. Sesler provisioning sonrası ilk sync'te edge'e indirilir; ilk ses idle gecikmesi sonunda, devamındakiler etkileşime kadar tekrar aralığıyla sırayla çalınır. Build/sürüm takibi için kiosk her merkezi çağrıda `X-Kiosk-Build-Number` gönderir; backend `kiosk_build_number` alanında saklar.
 - **Eczane:** Kiosk'un bulunduğu fiziksel lokasyon (il/ilçe, sahip, telefon)
+- **Sozlesme:** Eczane hizmet sözleşmesi (12/24/36 ay + kullanım bedeli öteleme ayı). Ötelenen her ay bitişe eklenir (vade kaydırma); kullanım bedeli öteleme sonrası başlar. *(2026-10-01)*
+- **CihazOdemePlani:** Cihaz donanım bedelinin peşin + vade farkı ile 4/8 eşit taksite bölünmesi.
+- **Fatura / Odeme:** Cariye borç kalemi (kullanım bedeli veya cihaz taksiti) ve karşılığındaki (mock) tahsilat. Ödenmeyen vade+7g → eczacı paneli erişim kilidi.
 - **Announcement:** Genel veya sabit sistem duyurusu; genel duyurular recurrence/hedefleme taşır, sistem duyuruları benzersiz `system_key` ile korunur
 - **PharmacyDutyMonth/Day:** Eczanenin ay bazlı nöbet günü veya “nöbetim yok” beyanı
 

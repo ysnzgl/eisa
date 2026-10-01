@@ -13,7 +13,7 @@ class Gorev(BaseModel):
         YAPILMADI = "YAPILMADI", "Yapılmadı"
 
     baslik = models.CharField(max_length=200)
-    icerik = models.TextField(max_length=2000)
+    icerik = models.TextField()
     durum = models.CharField(max_length=16, choices=Durum.choices, default=Durum.YENI, db_index=True)
     atanan_kullanici = models.ForeignKey(
         settings.AUTH_USER_MODEL,

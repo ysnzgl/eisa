@@ -13,6 +13,8 @@ class Announcement(BaseModel):
     class SystemKey(models.TextChoices):
         DUTY_NEXT_MONTH_MISSING = "DUTY_NEXT_MONTH_MISSING", "Gelecek ay nöbet bilgisi eksik"
         DUTY_CURRENT_MONTH_MISSING = "DUTY_CURRENT_MONTH_MISSING", "Bu ay nöbet bilgisi eksik"
+        PAYMENT_DUE_SOON = "PAYMENT_DUE_SOON", "Ödeme gününe az kaldı"
+        CONTRACT_EXPIRING = "CONTRACT_EXPIRING", "Sözleşme bitişine az kaldı"
 
     class Severity(models.TextChoices):
         INFO = "INFO", "Bilgilendirme"

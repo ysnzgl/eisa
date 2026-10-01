@@ -9,6 +9,9 @@ export const useAuthStore = defineStore('auth', {
     role: localStorage.getItem('eisa_role') || '',
     pharmacyId: Number(localStorage.getItem('eisa_pharmacy_id') || '') || null,
     userId: Number(localStorage.getItem('eisa_user_id') || '') || null,
+    // Eczacı abonelik durumu (oturum içi; login sonrası/AdminLayout'ta doldurulur).
+    demo: false,
+    panelKisitli: false,
   }),
   getters: {
     // Rol set edilmişse kullanıcı login olmuş kabul edilir; gerçek doğrulama
@@ -16,6 +19,10 @@ export const useAuthStore = defineStore('auth', {
     isAuthenticated: (s) => !!s.role,
   },
   actions: {
+    setBilling({ demo, panelKisitli }) {
+      this.demo = !!demo;
+      this.panelKisitli = !!panelKisitli;
+    },
     async login(username, password) {
       const { role, pharmacyId, userId } = await apiLogin(username, password);
       this.role = role;
@@ -33,6 +40,8 @@ export const useAuthStore = defineStore('auth', {
       this.role = '';
       this.pharmacyId = null;
       this.userId = null;
+      this.demo = false;
+      this.panelKisitli = false;
       ['eisa_role', 'eisa_pharmacy_id', 'eisa_user_id'].forEach((k) =>
         localStorage.removeItem(k),
       );

@@ -29,8 +29,12 @@ async function submit() {
     router.push(auth.role === 'superadmin' ? '/admin' : '/pharmacist');
   } catch (error) {
     const status = error?.response?.status;
+    const detail = error?.response?.data?.detail;
 
-    if (status === 401 || status === 403) {
+    if (status === 403 && detail) {
+      // Ödenmemiş fatura nedeniyle erişim kilidi gibi özel durumlar.
+      errorMsg.value = detail;
+    } else if (status === 401 || status === 403) {
       errorMsg.value = 'Kullanıcı adı veya şifre hatalı. Lütfen tekrar deneyin.';
     } else {
       errorMsg.value = '';

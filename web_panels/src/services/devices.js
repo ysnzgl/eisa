@@ -34,6 +34,8 @@ export function mapPharmacyFromApi(p) {
     eczaneKodu: p.eczane_kodu ?? '',
     kioskCount: p.kiosk_sayisi ?? 0,
     isActive: p.aktif !== false,
+    aktifSozlesme: p.aktif_sozlesme ?? null,
+    odemeDurumu: p.odeme_durumu ?? 'YOK',
   };
 }
 
@@ -47,6 +49,8 @@ function mapPharmacyToApi(data) {
   if (data.isActive  !== undefined) out.aktif        = data.isActive;
   if (data.il        !== undefined) out.il           = data.il;   // integer FK
   if (data.ilce      !== undefined) out.ilce         = data.ilce; // integer FK
+  // Eczane oluştururken birlikte gönderilen sözleşme (atomik).
+  if (data.sozlesme  !== undefined) out.sozlesme     = data.sozlesme;
   return out;
 }
 

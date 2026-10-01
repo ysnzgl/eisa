@@ -52,6 +52,20 @@ def test_superadmin_gorev_olusturabilir(api, admin, ikinci_admin):
     assert r.data["atanan_kullanici_adi"] == (ikinci_admin.get_full_name() or ikinci_admin.username)
 
 
+def test_icerik_iki_bin_karakterden_uzun_olabilir(api, admin):
+    uzun_icerik = ("Uzun iş notu ve uygulama ayrıntıları.\n" * 150).strip()
+
+    r = _post(api, admin, {
+        "baslik": "Uzun içerikli iş",
+        "icerik": uzun_icerik,
+    })
+
+    assert len(uzun_icerik) > 2000
+    assert r.status_code == 201
+    assert r.data["icerik"] == uzun_icerik
+    assert Gorev.objects.get(pk=r.data["id"]).icerik == uzun_icerik
+
+
 def test_pharmacist_erisim_aldirilir(api, eczaci):
     r = _post(api, eczaci, {
         "baslik": "Yetkisiz",

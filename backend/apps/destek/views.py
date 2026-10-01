@@ -17,7 +17,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.core.uow import UnitOfWork
-from apps.pharmacies.permissions import IsEczaci, IsSuperAdmin
+from apps.pharmacies.permissions import IsEczaci, IsEczaciPanelAcik, IsSuperAdmin
 from apps.users.models import Kullanici
 from core_api.cookie_jwt import JWTCookieAuthentication as JWTAuthentication
 
@@ -72,7 +72,7 @@ class DestekTalebiViewSet(
 
     def get_permissions(self):
         if self.action == "create":
-            return [IsEczaci()]
+            return [IsEczaciPanelAcik()]
         if self.action in ("durum_degistir", "yeni_sayisi"):
             return [IsSuperAdmin()]
         return [IsAuthenticated()]

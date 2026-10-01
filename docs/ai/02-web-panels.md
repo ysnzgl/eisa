@@ -62,7 +62,9 @@
 8. Dashboard analytics (kampanya performansÄ±, session Ã¶zeti)
 9. **Barkod Logo Yönetimi** *(2026-08-11)* — `/admin/barkod-logolar`, `BarkodLogoYonetimi.vue`. DOOH'dan bağımsız. Logo oluştur/düzenle/pasifleştir; PNG yükle (336×336, ≤1MB); kiosk hedefleme; günlük limit. DELETE yok.
 10. **Görüş ve Destek** *(2026-08-15)* — Admin: `/admin/destek` → `DestekYonetimi.vue`; Eczacı: `/pharmacist/destek` → `DestekTalepleri.vue`. Admin menüsünde Yeni sayısı badge'i.
-11. **İş Takibi** *(2026-09-13)* — Admin-only `/admin/is-takip` → `GorevYonetimi.vue`. Ana dashboard KPI diline uyumlu `eisa-stats` kartları kullanır; `eisa-field` ortak stile bağlanır, düzenleme popup'ı kompakt tutulur.
+11. **İş Takibi** *(2026-09-13, updated 2026-10-01)* — Admin-only `/admin/is-takip` → `GorevYonetimi.vue`. Ana dashboard KPI diline uyumlu `eisa-stats` kartları kullanır; içerik alanında karakter sınırı yoktur. Geniş, yeniden boyutlandırılabilir editör paragrafları/satır sonlarını korur ve canlı karakter sayısı gösterir; liste görünümü kısa önizleme kullanır.
+12. **Abonelik ve Ödeme** *(2026-10-01)* — Admin: `/admin/abonelik` → `AbonelikYonetimi.vue` (Sözleşmeler + **Talepler** (onay/red) + **Ödemeler** (tarihçe) + Faturalar sekmeleri; Uzat/Geçmiş; `?eczane=` filtresi; bekleyen talep badge). Eczacı: `/pharmacist/hesabim` → `HesabimOdemeler.vue` (borç/sözleşme özeti, fatura ödeme, **sözleşme talebi** yeni/uzatma/iptal, ödeme geçmişi, sözleşme hareketleri, bitiş≤7g/ödeme≤3g ısrarlı uyarılar). **Kısıtlı panel:** sözleşmesiz/ödemesi gecikmiş eczacı giriş yapar ama yalnız Hesabım'ı görür (AdminLayout nav filtresi + router guard `auth.panelKisitli`). Demo'da sol menüde **DEMO** rozeti. Ortak `components/shared/SozlesmeForm.vue`.
+13. **Eczane + sözleşme (DeviceManagement)** *(2026-10-01)* — "Yeni Eczane" modalında zorunlu sözleşme bölümü (`SozlesmeForm`); tek istekte `POST /api/pharmacies/` nested `sozlesme` ile atomik oluşur. Eczane tablosunda **Sözleşme** (tür·kalan gün) ve **Ödeme** (Güncel/Bekleyen/Gecikmiş/Demo/Sözleşme yok) renkli `eisa-pill` rozetleri + satır başı "Sözleşmeler" butonu (`/admin/abonelik?eczane=`).
 
 ---
 
@@ -89,11 +91,13 @@
 - `/admin/users` → `UserManagement.vue` (Kullanıcı CRUD)
 - `/admin/destek` → `DestekYonetimi.vue` *(2026-08-15)* (Görüş ve Destek Yönetimi)
 - `/admin/is-takip` → `GorevYonetimi.vue` *(2026-09-13)* (Admin-only iş takibi; başlık/içerik/durum/atanan admin)
+- `/admin/abonelik` → `AbonelikYonetimi.vue` *(2026-10-01)* (Sözleşme/cihaz planı/fatura yönetimi; AdminLayout nav "Abonelik ve Ödeme")
 
 **Pharmacist routes (`/pharmacist/*`):**
 - `/pharmacist` → `Dashboard.vue`
 - `/pharmacist/inbox` → `Inbox.vue` (Eczane session'ları listesi)
 - `/pharmacist/qr` → `QrScan.vue` (QR tarama)
+- `/pharmacist/hesabim` → `HesabimOdemeler.vue` *(2026-10-01)* (Hesabım ve Ödemeler; sözleşme özeti + fatura ödeme)
 - `/pharmacist/destek` → `DestekTalepleri.vue` *(2026-08-15)* (Görüş ve Destek)
 - *(Layout seviyesinde)* `PharmacistCampaignDisplay.vue` *(2026-07-31, 2026-08-01 doğrulandı)* — alt şerit + 90s idle overlay; AdminLayout'ta `v-if="isPharmacist"` ile mount edilir; route geçişinde yeniden başlamaz. Eczane eczacı kullanıcının `request.user.eczane_id`'si üzerinden il/ilçe/eczane OR eşleşmesiyle belirlenir.
 
@@ -133,6 +137,7 @@ TÃ¼m componentler tek dosyalÄ± Vue 3 Composition API (`.vue` dosyalarÄ±). 
   - **Playlists:** `listPlaylistTemplates()`, `createPlaylistTemplate(data)`, `listDayPlans(kioskId, date)`, `generatePlaylists(kioskId, dateRange)`
   - **Pricing:** `getPricingMatrix()`, `updatePricingMatrix(data)`
   - **Analytics:** `getSessionLogs(filters)`, `getPlayLogs(filters)`, `getCampaignStats(campaignId)`
+  - **Abonelik (2026-10-01, `services/abonelik.js`):** admin `listSozlesmeler/createSozlesme/updateSozlesme/setCihazPlani/uzatSozlesme/getSozlesmeGecmis/listTalepler/kararVerTalep/bekleyenTalepSayisi/listOdemeler`; eczacı `getHesabim/getFaturalarim/odeFatura/getOdemelerim/getHareketlerim/getTaleplerim/createTalep`. Eczane oluşturma `createPharmacy` gövdesine nested `sozlesme` ekler. `stores/auth.js` `panelKisitli`/`demo` durumu + `setBilling()`; router guard kısıtlı eczacıyı Hesabım'a yönlendirir.
 
 **Axios config:**
 - `baseURL`: `window.EISA_API_BASE_URL` (runtime config, `/config.js`)

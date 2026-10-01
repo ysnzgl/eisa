@@ -71,6 +71,17 @@ def superadmin(db):
 
 @pytest.fixture
 def eczaci(db, eczane):
+    # Normal çalışan eczane: aktif sözleşmesi vardır (panel kısıtı olmaz).
+    import datetime as _dt
+
+    from apps.abonelik.models import Sozlesme
+    Sozlesme.objects.create(
+        eczane=eczane,
+        tur=Sozlesme.Tur.STANDART,
+        sozlesme_tipi_ay=24,
+        baslangic_tarihi=_dt.date.today(),
+        durum=Sozlesme.Durum.AKTIF,
+    )
     return Kullanici.objects.create_user(
         username="eczaci",
         password="Str0ngPass!",

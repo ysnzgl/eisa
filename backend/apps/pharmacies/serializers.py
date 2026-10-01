@@ -10,6 +10,10 @@ class EczaneSerializer(serializers.ModelSerializer):
     il_adi = serializers.CharField(source="il.ad", read_only=True)
     ilce_adi = serializers.CharField(source="ilce.ad", read_only=True)
     kiosk_sayisi = serializers.IntegerField(read_only=True, default=0)
+    aktif_sozlesme = serializers.SerializerMethodField()
+    odeme_durumu = serializers.SerializerMethodField()
+    # Eczane oluştururken birlikte gönderilen sözleşme (atomik oluşturma).
+    sozlesme = serializers.DictField(write_only=True, required=False)
 
     class Meta:
         model = Eczane
@@ -29,6 +33,9 @@ class EczaneSerializer(serializers.ModelSerializer):
             "guncellenme_tarihi",
             "surum",
             "kiosk_sayisi",
+            "aktif_sozlesme",
+            "odeme_durumu",
+            "sozlesme",
         ]
         read_only_fields = (
             "id",
@@ -38,7 +45,29 @@ class EczaneSerializer(serializers.ModelSerializer):
             "kiosk_sayisi",
             "il_adi",
             "ilce_adi",
+            "aktif_sozlesme",
+            "odeme_durumu",
         )
+
+    def get_aktif_sozlesme(self, obj):
+        from apps.abonelik.services import eczane_aktif_sozlesme
+
+        s = eczane_aktif_sozlesme(obj.pk)
+        if s is None:
+            return None
+        return {
+            "id": s.pk,
+            "tur": s.tur,
+            "tur_display": s.get_tur_display(),
+            "bitis_tarihi": s.bitis_tarihi,
+            "kalan_gun": s.kalan_gun,
+        }
+
+    def get_odeme_durumu(self, obj):
+        from apps.abonelik.services import odeme_durumu
+
+        return odeme_durumu(obj.pk)
+
 
 
 class KioskAudioAssetSerializer(serializers.ModelSerializer):

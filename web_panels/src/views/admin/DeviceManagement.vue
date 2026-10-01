@@ -24,9 +24,13 @@ import {
   setKioskIdleAudios,
 } from '../../services/devices';
 import { toast } from 'vue-sonner';
+import { useRouter } from 'vue-router';
 import { getIller, getIlceler } from '../../services/lookups';
 import EisaDeleteConfirm from '../../components/shared/EisaDeleteConfirm.vue';
 import EisaLookup from '../../components/shared/EisaLookup.vue';
+import SozlesmeForm from '../../components/shared/SozlesmeForm.vue';
+
+const router = useRouter();
 
 // ─── Lookups ──────────────────────────────────────────────────────────────────
 const iller   = ref([]);
@@ -61,6 +65,60 @@ const EMPTY_FORM = () => ({
 const form      = ref(EMPTY_FORM());
 const formError = ref('');
 const saving    = ref(false);
+
+// Yeni eczane ile birlikte oluşturulacak sözleşme (sözleşmesiz eczane olmaz).
+const EMPTY_CONTRACT = () => ({
+  tur: 'STANDART', sozlesme_tipi_ay: 24, demo_gun: 30,
+  baslangic_tarihi: new Date().toISOString().slice(0, 10),
+  oteleme_ay: 0, aylik_kullanim_bedeli: '3900.00', durum: 'AKTIF', notlar: '',
+});
+const contractForm = ref(EMPTY_CONTRACT());
+
+function buildSozlesmePayload() {
+  const c = contractForm.value;
+  const base = {
+    tur: c.tur, baslangic_tarihi: c.baslangic_tarihi,
+    durum: c.durum, notlar: c.notlar,
+  };
+  if (c.tur === 'DEMO') return { ...base, demo_gun: Number(c.demo_gun) };
+  return {
+    ...base,
+    sozlesme_tipi_ay: Number(c.sozlesme_tipi_ay),
+    oteleme_ay: Number(c.oteleme_ay),
+    aylik_kullanim_bedeli: c.aylik_kullanim_bedeli,
+  };
+}
+
+// ─── Sözleşme badge/rozet yardımcıları ────────────────────────────────────────
+function sozlesmePill(ph) {
+  const s = ph.aktifSozlesme;
+  if (!s) return 'eisa-pill-danger';
+  if (s.kalan_gun == null) return 'eisa-pill-muted';
+  if (s.kalan_gun < 0) return 'eisa-pill-danger';
+  if (s.kalan_gun <= 30) return 'eisa-pill-warning';
+  return 'eisa-pill-success';
+}
+function sozlesmeLabel(ph) {
+  const s = ph.aktifSozlesme;
+  if (!s) return 'Sözleşme yok';
+  const kalan = s.kalan_gun < 0 ? `${Math.abs(s.kalan_gun)}g geçti` : `${s.kalan_gun}g`;
+  return `${s.tur_display} · ${kalan}`;
+}
+function odemePill(d) {
+  return {
+    GUNCEL: 'eisa-pill-success', DEMO: 'eisa-pill-info',
+    BEKLEYEN: 'eisa-pill-warning', GECIKTI: 'eisa-pill-danger', YOK: 'eisa-pill-danger',
+  }[d] || 'eisa-pill-muted';
+}
+function odemeLabel(d) {
+  return {
+    GUNCEL: 'Güncel', DEMO: 'Demo', BEKLEYEN: 'Bekleyen',
+    GECIKTI: 'Gecikmiş', YOK: 'Sözleşme yok',
+  }[d] || d;
+}
+function openSozlesmeler(ph) {
+  router.push(`/admin/abonelik?eczane=${ph.id}`);
+}
 
 // İl değişince ilçeleri yeniden yükle
 watch(() => form.value.il, (ilId) => {
@@ -334,6 +392,7 @@ onBeforeUnmount(() => {
 // ─── Eczane CRUD Modal ────────────────────────────────────────────────────────
 function openAdd() {
   form.value      = EMPTY_FORM();
+  contractForm.value = EMPTY_CONTRACT();
   formError.value = '';
   modalMode.value   = 'add';
   modalTarget.value = null;
@@ -374,14 +433,21 @@ async function saveForm() {
   formError.value = '';
   try {
     if (modalMode.value === 'add') {
-      await createPharmacy({ ...form.value });
+      if (!contractForm.value.baslangic_tarihi) {
+        formError.value = 'Sözleşme başlangıç tarihi zorunludur.';
+        saving.value = false;
+        return;
+      }
+      await createPharmacy({ ...form.value, sozlesme: buildSozlesmePayload() });
     } else {
       await updatePharmacy(modalTarget.value.id, { ...form.value });
     }
     await loadPharmacies();
     closeModal();
-  } catch {
-    formError.value = 'İşlem sırasında hata oluştu.';
+  } catch (e) {
+    formError.value = e?.response?.data?.detail
+      || e?.response?.data?.sozlesme
+      || 'İşlem sırasında hata oluştu.';
   } finally {
     saving.value = false;
   }
@@ -898,20 +964,21 @@ async function copyAppKey() {
                 <th>İl</th>
                 <th>İlçe</th>
                 <th>Eczacı</th>
-                <th>Telefon</th>
+                <th>Sözleşme</th>
+                <th>Ödeme</th>
                 <th style="text-align:center;">Kiosk</th>
                 <th class="actions-col">İşlemler</th>
               </tr>
             </thead>
             <tbody>
               <tr v-if="loadingPharm">
-                <td colspan="7" class="empty-row">
+                <td colspan="8" class="empty-row">
                   <i class="fa-solid fa-circle-notch fa-spin" style="margin-right:0.5rem;color:#B1121B;"></i>
                   Yükleniyor…
                 </td>
               </tr>
               <tr v-else-if="filteredPharmacies.length === 0">
-                <td colspan="7" class="empty-row">
+                <td colspan="8" class="empty-row">
                   <i class="fa-regular fa-face-frown" style="display:block;font-size:1.75rem;margin-bottom:0.4rem;color:#D1D5DB;"></i>
                   Sonuç bulunamadı.
                 </td>
@@ -921,12 +988,24 @@ async function copyAppKey() {
                 <td class="cell-muted">{{ ph.ilAdi }}</td>
                 <td class="cell-muted">{{ ph.ilceAdi }}</td>
                 <td class="cell-muted">{{ ph.owner }}</td>
-                <td class="cell-muted">{{ ph.telefon || '—' }}</td>
+                <td>
+                  <span class="eisa-pill" :class="sozlesmePill(ph)">{{ sozlesmeLabel(ph) }}</span>
+                </td>
+                <td>
+                  <span class="eisa-pill" :class="odemePill(ph.odemeDurumu)">{{ odemeLabel(ph.odemeDurumu) }}</span>
+                </td>
                 <td style="text-align:center;">
                   <span class="eisa-pill eisa-pill-info">{{ ph.kioskCount }}</span>
                 </td>
                 <td>
                   <div class="cell-actions">
+                    <button
+                      class="eisa-icon-btn"
+                      title="Sözleşmeler"
+                      @click="openSozlesmeler(ph)"
+                    >
+                      <i class="fa-solid fa-file-contract"></i>
+                    </button>
                     <button
                       class="eisa-icon-btn"
                       title="Kiosk Ekle"
@@ -1298,6 +1377,14 @@ async function copyAppKey() {
                   </label>
                 </div>
               </div>
+
+              <template v-if="modalMode === 'add'">
+                <h4 class="eisa-field-label" style="margin:1.1rem 0 0.5rem;">
+                  <i class="fa-solid fa-file-contract" style="margin-right:0.35rem;color:#B1121B;"></i>
+                  Sözleşme <span style="color:#EF4444;">*</span>
+                </h4>
+                <SozlesmeForm :form="contractForm" />
+              </template>
             </div>
 
             <div class="eisa-modal-footer">

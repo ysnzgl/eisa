@@ -80,6 +80,10 @@ def system_context(announcement: Announcement, pharmacy, today: date):
         if today.day > 14:
             return None
         target_month = month_start(today)
+    elif announcement.system_key == Announcement.SystemKey.PAYMENT_DUE_SOON:
+        return _payment_due_context(pharmacy, today)
+    elif announcement.system_key == Announcement.SystemKey.CONTRACT_EXPIRING:
+        return _contract_expiring_context(pharmacy, today)
     else:
         return None
 
@@ -90,3 +94,31 @@ def system_context(announcement: Announcement, pharmacy, today: date):
         "target_month": target_month.strftime("%Y-%m"),
         "action_url": f"/pharmacist/duty?month={target_month:%Y-%m}",
     }
+
+
+def _payment_due_context(pharmacy, today: date):
+    """Ödeme gününe ≤3 gün kalmış (veya geçmiş) ödenmemiş fatura varsa aktif."""
+    from apps.abonelik.models import Fatura
+
+    sinir = today + timedelta(days=3)
+    var = Fatura.objects.filter(
+        eczane_id=pharmacy.id,
+        durum__in=(Fatura.Durum.BEKLIYOR, Fatura.Durum.GECIKTI),
+        vade_tarihi__lte=sinir,
+    ).exists()
+    if not var:
+        return None
+    return {"target_month": "", "action_url": "/pharmacist/hesabim"}
+
+
+def _contract_expiring_context(pharmacy, today: date):
+    """Aktif sözleşmenin bitişine ≤7 gün kalmışsa aktif."""
+    from apps.abonelik.services import eczane_aktif_sozlesme
+
+    sozlesme = eczane_aktif_sozlesme(pharmacy.id)
+    if sozlesme is None:
+        return None
+    kalan = (sozlesme.bitis_tarihi - today).days
+    if kalan < 0 or kalan > 7:
+        return None
+    return {"target_month": "", "action_url": "/pharmacist/hesabim"}

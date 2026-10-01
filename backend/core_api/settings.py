@@ -64,6 +64,7 @@ INSTALLED_APPS = [
     "apps.destek",
     "apps.gorevler",
     "apps.announcements",
+    "apps.abonelik",
 ]
 
 MIDDLEWARE = [
