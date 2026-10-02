@@ -200,6 +200,22 @@ def test_cihaz_taksiti_ardisik_donemler(cihaz_plani):
     assert all(f.tutar == Decimal("12000.00") for f in faturalar)
 
 
+def test_tek_aylik_fatura_icerisinde_tum_odemeler_toplanir(cihaz_plani, sozlesme):
+    created = services.faturala_aylik_birlesik(bugun=dt.date(2026, 6, 3))
+    assert created == 1
+
+    f = Fatura.objects.get(tip=Fatura.Tip.BIRLESIK, donem="2026-07")
+    assert f.tutar == Decimal("15900.00")
+    assert Fatura.objects.filter(
+        tip__in=(
+            Fatura.Tip.KULLANIM_BEDELI,
+            Fatura.Tip.CIHAZ_TAKSIT,
+            Fatura.Tip.CIHAZ_KIRA,
+        )
+    ).count() == 0
+    assert f.kalemler.count() == 2
+
+
 def test_cihaz_taksiti_idempotent_ayni_ay(cihaz_plani):
     services.faturala_cihaz_taksit(bugun=dt.date(2026, 1, 2))
     services.faturala_cihaz_taksit(bugun=dt.date(2026, 1, 5))

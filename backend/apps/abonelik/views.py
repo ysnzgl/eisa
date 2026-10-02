@@ -245,21 +245,17 @@ class FaturaViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.G
 
     @action(detail=False, methods=["post"], url_path="faturalandir")
     def faturalandir(self, request):
-        """Günlük faturalandırma döngüsünü elle tetikler (idempotent).
+        """Aylık faturalandırmayı tek birleşik fatura olarak üretir.
 
-        Kullanım bedeli + cihaz taksiti + cihaz kira faturalarını üretir ve
-        gecikmiş faturaları işaretler. Admin, zamanlayıcıyı beklemeden sonucu görür.
+        Eski ayrı kullanım/cihaz faturaları yerine tek aylık birleşik fatura
+        oluşturulur. Böylece tüm ödemeler aynı fatura ve aynı tarih altında görünür.
         """
-        kullanim = services.faturala_kullanim_bedeli()
-        cihaz = services.faturala_cihaz_taksit()
-        kira = services.faturala_cihaz_kira()
+        birlesik = services.faturala_aylik_birlesik()
         gecikmis = services.guncelle_gecikmis_faturalar()
         return Response({
-            "kullanim_bedeli": kullanim,
-            "cihaz_taksit": cihaz,
-            "cihaz_kira": kira,
+            "birlesik_fatura": birlesik,
             "gecikmis": gecikmis,
-            "toplam_yeni": kullanim + cihaz + kira,
+            "toplam_yeni": birlesik,
         })
 
 
