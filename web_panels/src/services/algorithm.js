@@ -48,6 +48,7 @@ function mapCategoryFromApi(c) {
     target_gender: c.hedef_cinsiyet ?? null,
     target_age_ranges: c.hedef_yas_araliklari ?? [],
     bagli_kategori: c.bagli_kategori ?? null,
+    sira: c.sira ?? 1,
   };
 }
 
@@ -61,6 +62,7 @@ function mapCategoryToApi(data) {
   if (data.target_gender     !== undefined) out.hedef_cinsiyet      = data.target_gender;
   if (data.target_age_ranges !== undefined) out.hedef_yas_araliklari = data.target_age_ranges;
   if (data.bagli_kategori    !== undefined) out.bagli_kategori       = data.bagli_kategori;
+  if (data.sira              !== undefined) out.sira                 = data.sira;
   return out;
 }
 

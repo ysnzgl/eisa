@@ -79,28 +79,30 @@
         {resultLabel}
       </div>
       {#if $result?.recs?.length}
-        {@const firstRec = $result.recs[0]}
+        {@const visibleRecs = $result.recs.slice(0, 3)}
         <div class="ingredient-area">
-          <div class="ingredient-box">
-            {firstRec.primary}{#if firstRec.supportive} + {firstRec.supportive}{/if}
-          </div>
+          {#each visibleRecs as rec (rec.primary)}
+            <div class="ingredient-box">
+              {rec.primary}{#if rec.supportive} + {rec.supportive}{/if}
+            </div>
+          {/each}
         </div>
-        {#if $result?.recs?.length > 1}
+        {#if $result?.recs?.length > 3}
           <div class="ingredient-note">
             <div class="ingredient-note-title">
               <i class="fa-solid fa-info-circle"></i>
               {$t('result.oneOnScreen')}
             </div>
-            <button 
+            <button
               class="ingredient-btn"
               on:click={() => showOtherIngredients = !showOtherIngredients}
             >
               <i class="fa-solid fa-{showOtherIngredients ? 'chevron-up' : 'chevron-down'}"></i>
               {$t('result.otherIngredients')}
             </button>
-            {#if showOtherIngredients && $result?.recs?.length > 1}
+            {#if showOtherIngredients}
               <div class="other-ingredients">
-                {#each $result.recs.slice(1) as rec (rec.primary)}
+                {#each $result.recs.slice(3) as rec (rec.primary)}
                   <div class="ingredient-item">
                     <span class="ingredient-icon">→</span>
                     {rec.primary}{#if rec.supportive} + {rec.supportive}{/if}
@@ -129,23 +131,7 @@
       <p class="qr-note">{$t('result.qrNote')}</p>
     </div>
 
-    {#if $result?.devPreview}
-      <div class="receipt-preview">
-        <p class="receipt-preview-label">
-          <i class="fa-solid fa-print"></i> {$t('result.receiptPreview')}
-        </p>
-        <div class="receipt-paper">
-          {#if $result?.baskiLogoUrl}
-            <img src={$result.baskiLogoUrl} alt="Barkod logosu" class="receipt-logo" />
-          {:else}
-            <p class="receipt-eisa">e-ISA</p>
-          {/if}
-          <p class="receipt-text">{$t('result.receiptHealthy')}</p>
-          <p class="receipt-text" style="font-size:11px; color:#9ca3af;">{$t('result.receiptQrNote')}</p>
-          <p class="receipt-text" style="font-size:11px; margin-top:2px;">{$result.qrCode}</p>
-        </div>
-      </div>
-    {/if}
+
   </div>
 
   <div class="d-flex flex-column gap-2 mt-3">
@@ -178,12 +164,12 @@
     pointer-events: none;
   }
   .ingredient-area {
-    background: #7f1d1d;
+    background: #a71930;
     border-radius: 12px;
     padding: 14px;
     margin-top: 10px;
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
     gap: 10px;
     justify-content: center;
   }
@@ -191,52 +177,54 @@
     background: #fff;
     border-radius: 10px;
     padding: 14px 16px;
-    flex: 1 1 100%;
     min-width: 0;
     display: flex;
     align-items: center;
     justify-content: center;
     text-align: center;
-    font-size: 18px;
+    font-size: 27px;
     font-weight: 700;
-    color: #111827;
+    color: #a71930 !important;
     word-break: break-word;
     overflow-wrap: break-word;
+    box-shadow: inset 0 0 0 1px rgba(167, 25, 48, 0.08);
   }
   .ingredient-note {
     margin-top: 12px;
     background: linear-gradient(135deg, #a71930 0%, #7f1d1d 100%);
     border: 1px solid #c41e3a;
     border-radius: 12px;
-    padding: 14px;
+    padding: 16px 14px;
     text-align: center;
     color: #fff;
   }
   .ingredient-note-title {
-    font-size: 16px;
+    font-size: 20px;
     font-weight: 800;
     line-height: 1.5;
     margin-bottom: 12px;
-    color: #fff;
+    color: #fff !important;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 8px;
   }
   .ingredient-btn {
-    background: rgba(255, 255, 255, 0.15);
-    color: #fff;
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    border-radius: 8px;
-    padding: 10px 16px;
-    font-size: 14px;
-    font-weight: 600;
+    background: rgba(255, 255, 255, 0.14);
+    color: #fff !important;
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: 10px;
+    padding: 14px 18px;
+    font-size: clamp(28px, 3vw, 60px);
+    font-weight: 800;
+    line-height: 1.2;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 10px;
     width: 100%;
+    min-height: 58px;
     transition: all 0.3s ease;
   }
   .ingredient-btn:hover {
@@ -262,7 +250,7 @@
     border-radius: 8px;
     padding: 10px 12px;
     font-size: 13px;
-    color: #fff;
+    color: #fff !important;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -272,44 +260,5 @@
     font-weight: bold;
     flex-shrink: 0;
   }
-  .receipt-preview {
-    text-align: center;
-    margin-top: 8px;
-  }
-  .receipt-preview-label {
-    font-size: 11px;
-    color: #9ca3af;
-    margin-bottom: 6px;
-    letter-spacing: .02em;
-  }
-  .receipt-paper {
-    display: inline-block;
-    background: #fff;
-    border: 1px dashed #d1d5db;
-    border-radius: 4px;
-    padding: 10px 16px;
-    min-width: 140px;
-    box-shadow: 0 1px 4px rgba(0,0,0,.08);
-  }
-  .receipt-logo {
-    width: 84px;
-    height: 84px;
-    object-fit: contain;
-    display: block;
-    margin: 0 auto 6px;
-  }
-  .receipt-eisa {
-    font-size: 18px;
-    font-weight: 800;
-    letter-spacing: .06em;
-    color: #111827;
-    margin: 4px 0 8px;
-    font-family: 'Courier New', monospace;
-  }
-  .receipt-text {
-    font-size: 12px;
-    color: #374151;
-    margin: 2px 0;
-    font-family: 'Courier New', monospace;
-  }
+
 </style>

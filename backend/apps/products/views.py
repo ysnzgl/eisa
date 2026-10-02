@@ -51,7 +51,7 @@ class UrunSyncView(APIView):
     def get(self, request):
         from apps.lookups.models import Cinsiyet, YasAraligi
         
-        kategoriler = Kategori.objects.filter(aktif=True).select_related(
+        kategoriler = Kategori.objects.filter(aktif=True).order_by("sira", "ad").select_related(
             "hedef_cinsiyet", "bagli_kategori",
         ).prefetch_related(
             "hedef_yas_araliklari",
@@ -117,7 +117,7 @@ class KategoriViewSet(_M2MHedeflemeViewSet):
         "hedef_cinsiyet", "bagli_kategori",
     ).prefetch_related(
         "hedef_yas_araliklari",
-    ).all()
+    ).order_by("sira", "ad").all()
     serializer_class = KategoriSerializer
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsSuperAdmin]

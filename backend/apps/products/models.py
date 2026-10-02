@@ -4,6 +4,7 @@ Sikayet kategorileri, sorular, cevaplar, etken madde onerileri ve danisma katego
 Marka onerisi YASAKTIR — yalnizca jenerik etken maddeler.
 """
 from django.db import models
+from django.core.validators import MinValueValidator
 
 from apps.core.models import BaseModel
 
@@ -19,6 +20,23 @@ class Kategori(BaseModel):
     slug = models.SlugField(unique=True)
     ikon = models.CharField(max_length=64, default="fa-circle")
     aktif = models.BooleanField(default=True)
+    sira = models.PositiveSmallIntegerField(
+        default=1,
+        validators=[MinValueValidator(1)],
+        help_text="Goruntuleme sirasi (kucuk deger once). Eşit sirada ada gore sirala.",
+    )
+
+    def save(self, *args, **kwargs):
+        if self.sira is None or self.sira < 1:
+            self.sira = 1
+
+        while Kategori.objects.filter(
+            bagli_kategori_id=self.bagli_kategori_id,
+            sira=self.sira,
+        ).exclude(pk=self.pk).exists():
+            self.sira += 1
+
+        super().save(*args, **kwargs)
 
     hedef_cinsiyet = models.ForeignKey(
         "lookups.Cinsiyet", null=True, blank=True,
@@ -38,7 +56,20 @@ class Kategori(BaseModel):
 
     class Meta:
         db_table = "kategoriler"
-        ordering = ("ad",)
+        ordering = ("bagli_kategori_id", "sira", "ad")
+        constraints = [
+            models.UniqueConstraint(
+                fields=["bagli_kategori", "sira"],
+                condition=models.Q(bagli_kategori__isnull=False),
+                name="kategori_parent_sira_unique",
+            ),
+            models.UniqueConstraint(
+                fields=["sira"],
+                condition=models.Q(bagli_kategori__isnull=True),
+                name="kategori_root_sira_unique",
+            ),
+            models.CheckConstraint(condition=models.Q(sira__gte=1), name="kategori_sira_min_1"),
+        ]
         verbose_name = "Kategori"
         verbose_name_plural = "Kategoriler"
 

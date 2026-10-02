@@ -241,9 +241,10 @@ export async function buildServer({ db, settings, logger }) {
   app.get('/api/kategoriler', async () => {
     const rows = db
       .prepare(
-        `SELECT id, slug, ad, ad_en, ikon, bagli_kategori_id, aktif,
+        `SELECT id, slug, ad, ad_en, ikon, sira, bagli_kategori_id, aktif,
                 hedef_cinsiyet_id, hedef_cinsiyetler, hedef_yas_araliklari
-           FROM kategoriler WHERE aktif = 1 ORDER BY id`,
+           FROM kategoriler WHERE aktif = 1
+           ORDER BY COALESCE(bagli_kategori_id, 0), COALESCE(sira, 1), id`,
       )
       .all();
     return rows.map((r) => {
@@ -256,6 +257,7 @@ export async function buildServer({ db, settings, logger }) {
         ad: r.ad,
         ad_en: r.ad_en || '',
         ikon: r.ikon,
+        sira: r.sira ?? 1,
         bagli_kategori_id: r.bagli_kategori_id ?? null,
         hedef_cinsiyet: r.hedef_cinsiyet_id ?? null,
         hedef_cinsiyetler: legacyGender,

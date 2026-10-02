@@ -95,3 +95,50 @@ def test_danisma_serializer_ad_en_read_write():
     assert ser.is_valid(), ser.errors
     updated = ser.save()
     assert updated.ad_en == "Women Health"
+
+
+@pytest.mark.django_db
+def test_catalog_payload_orders_kategoriler_by_sira():
+    Kategori.objects.create(ad="Uyku", slug="uyku", sira=20)
+    Kategori.objects.create(ad="Enerji", slug="enerji", sira=10)
+
+    payload = build_catalog_payload()
+
+    assert [item["ad"] for item in payload["kategoriler"]] == ["Enerji", "Uyku"]
+
+
+@pytest.mark.django_db
+def test_kategori_sira_requires_min_1_and_unique_order():
+    Kategori.objects.create(ad="Uyku", slug="uyku", sira=1)
+
+    serializer = KategoriSerializer(data={"ad": "Enerji", "slug": "enerji", "sira": 0})
+    assert not serializer.is_valid()
+    assert "sira" in serializer.errors
+
+    second = Kategori.objects.create(ad="Zihin", slug="zihin", sira=1)
+    assert second.sira == 2
+
+
+@pytest.mark.django_db
+def test_kategori_sira_can_repeat_on_different_parent_branches():
+    root_a = Kategori.objects.create(ad="Root A", slug="root-a", sira=1)
+    root_b = Kategori.objects.create(ad="Root B", slug="root-b", sira=2)
+
+    child_a = Kategori.objects.create(
+        ad="Child A-1", slug="child-a-1", bagli_kategori=root_a, sira=1
+    )
+    child_b = Kategori.objects.create(
+        ad="Child B-1", slug="child-b-1", bagli_kategori=root_b, sira=1
+    )
+
+    assert child_a.sira == 1
+    assert child_b.sira == 1
+
+
+@pytest.mark.django_db
+def test_kategori_sira_auto_shifts_only_within_same_parent_branch():
+    root = Kategori.objects.create(ad="Root", slug="root", sira=1)
+    Kategori.objects.create(ad="Child 1", slug="child-1", bagli_kategori=root, sira=1)
+
+    child_2 = Kategori.objects.create(ad="Child 2", slug="child-2", bagli_kategori=root, sira=1)
+    assert child_2.sira == 2

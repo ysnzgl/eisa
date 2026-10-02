@@ -25,8 +25,12 @@ async function makeApp() {
 
   // 1 kategori + 2 soru + 1 aktif reklam asset
   db.prepare(
-    `INSERT INTO kategoriler (id, slug, ad, ikon, hassas, aktif)
-     VALUES (1, 'enerji', 'Enerji', 'fa-bolt', 0, 1)`,
+    `INSERT INTO kategoriler (id, slug, ad, ikon, hassas, aktif, sira)
+     VALUES (1, 'enerji', 'Enerji', 'fa-bolt', 0, 1, 2)`,
+  ).run();
+  db.prepare(
+    `INSERT INTO kategoriler (id, slug, ad, ikon, hassas, aktif, sira)
+     VALUES (2, 'uyku', 'Uyku', 'fa-moon', 0, 1, 1)`,
   ).run();
   db.prepare(
     `INSERT INTO sorular (id, kategori_id, seed_id, metin, sira, eslesme_kurallari)
@@ -96,9 +100,10 @@ describe('Kiosk API (Turkce sema)', () => {
     const r = await app.inject({ method: 'GET', url: '/api/kategoriler' });
     expect(r.statusCode).toBe(200);
     const data = r.json();
-    expect(data).toHaveLength(1);
-    expect(data[0].slug).toBe('enerji');
-    expect(data[0].ad).toBe('Enerji');
+    expect(data).toHaveLength(2);
+    expect(data[0].slug).toBe('uyku');
+    expect(data[0].ad).toBe('Uyku');
+    expect(data[0].sira).toBe(1);
     expect(data[0].hedef_cinsiyetler).toEqual([]);
     expect(data[0].hedef_yas_araliklari).toEqual([]);
   });
@@ -127,12 +132,14 @@ describe('Kiosk API (Turkce sema)', () => {
     db.prepare("UPDATE kategoriler SET ad_en = 'Energy' WHERE id = 1").run();
     const r = await app.inject({ method: 'GET', url: '/api/kategoriler' });
     expect(r.statusCode).toBe(200);
-    expect(r.json()[0].ad_en).toBe('Energy');
+    const enerji = r.json().find((x) => x.slug === 'enerji');
+    expect(enerji.ad_en).toBe('Energy');
   });
 
   it('GET /api/kategoriler ad_en bos ise bos string doner', async () => {
     const r = await app.inject({ method: 'GET', url: '/api/kategoriler' });
-    expect(r.json()[0].ad_en).toBe('');
+    const uyku = r.json().find((x) => x.slug === 'uyku');
+    expect(uyku.ad_en).toBe('');
   });
 
   it('GET /api/kategoriler/:slug/sorular metin_en (TR/EN) doner', async () => {

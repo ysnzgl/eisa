@@ -129,6 +129,7 @@ function initSchema(db, options = {}) {
       ad                   TEXT    NOT NULL,
       ad_en                TEXT    NOT NULL DEFAULT '',
       ikon                 TEXT    NOT NULL DEFAULT 'fa-circle',
+      sira                 INTEGER NOT NULL DEFAULT 1,
       bagli_kategori_id    INTEGER,
       hedef_cinsiyet_id    INTEGER,
       aktif                INTEGER NOT NULL DEFAULT 1,
@@ -498,6 +499,9 @@ function initSchema(db, options = {}) {
   // Ingilizce ceviri kolonlari — additive/idempotent, SCHEMA_VERSION degismez
   // (kiosk cache'i sifirlanmaz). Bos = kioskta Turkce alana geri doner.
   const kategoriCols = db.prepare("PRAGMA table_info(kategoriler)").all().map((c) => c.name);
+  if (!kategoriCols.includes('sira')) {
+    db.exec("ALTER TABLE kategoriler ADD COLUMN sira INTEGER NOT NULL DEFAULT 1");
+  }
   if (!kategoriCols.includes('ad_en')) {
     db.exec("ALTER TABLE kategoriler ADD COLUMN ad_en TEXT NOT NULL DEFAULT ''");
   }
@@ -576,6 +580,7 @@ export function rowToKategori(row) {
     slug: row.slug,
     ad: row.ad,
     ikon: row.ikon,
+    sira: row.sira ?? 1,
     bagli_kategori_id: row.bagli_kategori_id ?? null,
     hedef_cinsiyet_id: row.hedef_cinsiyet_id ?? null,
     aktif: !!row.aktif,

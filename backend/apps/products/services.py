@@ -18,7 +18,7 @@ from .serializers import (
 
 def build_catalog_payload() -> dict:
     """Kiosk katalog senkronizasyonu icin tam JSON payload."""
-    kategoriler = Kategori.objects.filter(aktif=True).select_related(
+    kategoriler = Kategori.objects.filter(aktif=True).order_by("sira", "ad").select_related(
         "hedef_cinsiyet", "bagli_kategori",
     ).prefetch_related(
         "hedef_yas_araliklari",

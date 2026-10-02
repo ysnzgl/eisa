@@ -36,7 +36,7 @@ const loadingCats  = ref(true);
 const catModalOpen  = ref(false);
 const catModalMode  = ref('add');        // 'add' | 'edit'
 const catTarget     = ref(null);
-const EMPTY_CAT = () => ({ name: '', name_en: '', icon: 'fa-solid fa-pills', target_gender: null, target_age_ranges: [], bagli_kategori: null });
+const EMPTY_CAT = () => ({ name: '', name_en: '', icon: 'fa-solid fa-pills', target_gender: null, target_age_ranges: [], bagli_kategori: null, sira: 1 });
 const catForm       = ref(EMPTY_CAT());
 const catFormIsRoot = ref(true);         // Ana kategori mi? (bagli_kategori === null)
 const catFormError  = ref('');
@@ -59,6 +59,7 @@ function openEditCategory(cat) {
     target_gender:    cat.target_gender ?? null,
     target_age_ranges: [...(cat.target_age_ranges ?? [])],
     bagli_kategori:   cat.bagli_kategori ?? null,
+    sira:             cat.sira ?? 1,
   };
   catFormIsRoot.value = cat.bagli_kategori === null;
   catFormError.value = '';
@@ -72,6 +73,7 @@ function closeCatModal() { catModalOpen.value = false; }
 async function saveCategory() {
   if (!catForm.value.name.trim()) { catFormError.value = 'Kategori adı zorunludur.'; return; }
   if (!catFormIsRoot.value && !catForm.value.bagli_kategori) { catFormError.value = 'Bağlı kategori seçin veya "Ana Kategori" olarak işaretleyin.'; return; }
+  if (!catForm.value.sira || catForm.value.sira < 1) { catFormError.value = 'Sıra en az 1 olmalıdır.'; return; }
   if (catFormIsRoot.value) catForm.value.bagli_kategori = null;
   catSaving.value    = true;
   catFormError.value = '';
@@ -853,6 +855,19 @@ const iconPickerOpen = ref(false);
                   >{{ c.name }}</option>
                 </select>
                 <p class="mt-1 text-[10px] text-gray-500">Yalnızca ana kategoriler seçilebilir (tek seviye derinlik).</p>
+              </div>
+
+              <div>
+                <label class="block text-xs font-semibold text-gray-600 mb-2">Sıra <span class="text-rose-600">*</span></label>
+                <input
+                  v-model.number="catForm.sira"
+                  type="number"
+                  min="1"
+                  step="1"
+                  class="drawer-input w-full"
+                  placeholder="1"
+                />
+                <p class="mt-1 text-[10px] text-gray-500">En az 1 olmalı. Aynı bağlı kategori içinde benzersiz olmalıdır.</p>
               </div>
 
               <!-- Hedef alanlar -->

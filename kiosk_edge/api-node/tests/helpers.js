@@ -15,6 +15,7 @@ export function makeMemoryDb() {
       id INTEGER PRIMARY KEY, slug TEXT NOT NULL UNIQUE, ad TEXT NOT NULL,
       ad_en TEXT NOT NULL DEFAULT '',
       ikon TEXT NOT NULL DEFAULT 'fa-circle',
+      sira INTEGER NOT NULL DEFAULT 1,
       bagli_kategori_id INTEGER REFERENCES kategoriler(id),
       hedef_cinsiyet_id INTEGER REFERENCES cinsiyetler(id),
       hassas INTEGER NOT NULL DEFAULT 0, aktif INTEGER NOT NULL DEFAULT 1,

@@ -108,6 +108,7 @@ function upsertKategori(db, c) {
     ad: c.ad,
     ad_en: c.ad_en || '',
     ikon: c.ikon || 'fa-circle',
+    sira: c.sira ?? 1,
     bagli_kategori_id: c.bagli_kategori ?? null,
     hedef_cinsiyet_id: hedefCinsiyetId,
     aktif: c.aktif === false ? 0 : 1,
@@ -117,7 +118,7 @@ function upsertKategori(db, c) {
   if (exists) {
     db.prepare(
       `UPDATE kategoriler
-          SET slug=@slug, ad=@ad, ad_en=@ad_en, ikon=@ikon,
+          SET slug=@slug, ad=@ad, ad_en=@ad_en, ikon=@ikon, sira=@sira,
               bagli_kategori_id=@bagli_kategori_id, aktif=@aktif,
               hedef_cinsiyet_id=@hedef_cinsiyet_id,
               hedef_cinsiyetler=@hedef_cinsiyetler,
@@ -128,8 +129,8 @@ function upsertKategori(db, c) {
   } else {
     db.prepare(
       `INSERT INTO kategoriler
-         (id, slug, ad, ad_en, ikon, bagli_kategori_id, hedef_cinsiyet_id, aktif, hedef_cinsiyetler, hedef_yas_araliklari)
-       VALUES (@id, @slug, @ad, @ad_en, @ikon, @bagli_kategori_id, @hedef_cinsiyet_id, @aktif,
+         (id, slug, ad, ad_en, ikon, sira, bagli_kategori_id, hedef_cinsiyet_id, aktif, hedef_cinsiyetler, hedef_yas_araliklari)
+       VALUES (@id, @slug, @ad, @ad_en, @ikon, @sira, @bagli_kategori_id, @hedef_cinsiyet_id, @aktif,
                @hedef_cinsiyetler, @hedef_yas_araliklari)`,
     ).run(params);
   }

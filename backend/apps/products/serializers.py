@@ -56,12 +56,14 @@ class SoruSerializer(serializers.ModelSerializer):
 
 
 class KategoriSerializer(serializers.ModelSerializer):
+    sira = serializers.IntegerField(min_value=1)
+
     class Meta:
         model = Kategori
         fields = [
             "id", "ad", "ad_en", "slug", "ikon", "aktif",
             "hedef_cinsiyet", "hedef_yas_araliklari",
-            "bagli_kategori",
+            "bagli_kategori", "sira",
         ]
 
 
@@ -121,13 +123,14 @@ class KategoriSyncSerializer(serializers.ModelSerializer):
     """Kiosk sync icin: aktif kategoriler + sorular + cevaplar + hedefleme."""
 
     sorular = SoruDetayliSerializer(many=True, read_only=True)
+    sira = serializers.IntegerField(min_value=1)
 
     class Meta:
         model = Kategori
         fields = [
             "id", "ad", "ad_en", "slug", "ikon", "sorular",
             "hedef_cinsiyet", "hedef_yas_araliklari",
-            "bagli_kategori",
+            "bagli_kategori", "sira",
         ]
 
 
