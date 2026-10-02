@@ -17,6 +17,7 @@ describe('kiosk device config', () => {
       idle_content_refresh_seconds: 300,
       idle_audio_delay_seconds: 1200,
       idle_audio_repeat_seconds: 300,
+      idle_audio_countdown_visible: false,
       idle_audio: { enabled: false, files: [], media_url: '' },
     });
   });
@@ -30,6 +31,7 @@ describe('kiosk device config', () => {
       idle_content_refresh_seconds: 600,
       idle_audio_delay_seconds: 900,
       idle_audio_repeat_seconds: 420,
+      idle_audio_countdown_visible: true,
       idle_audio: { enabled: false },
     }, fakeSettings);
     expect(getDeviceConfig(db)).toMatchObject({
@@ -39,6 +41,7 @@ describe('kiosk device config', () => {
       idle_content_refresh_seconds: 600,
       idle_audio_delay_seconds: 900,
       idle_audio_repeat_seconds: 420,
+      idle_audio_countdown_visible: true,
       idle_audio: { enabled: false },
     });
   });

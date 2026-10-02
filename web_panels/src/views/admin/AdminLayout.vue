@@ -8,6 +8,7 @@ import PharmacistCampaignDisplay from '../../components/pharmacist/PharmacistCam
 import { http } from '../../services/api';
 import { listProvisioningRequests } from '../../services/devices';
 import DutyAlertModal from '../../components/pharmacist/DutyAlertModal.vue';
+import EisaConfirm from '../../components/shared/EisaConfirm.vue';
 
 const auth = useAuthStore();
 const router = useRouter();
@@ -20,21 +21,23 @@ async function logout() {
 const isAdmin      = computed(() => auth.role === 'superadmin');
 const isPharmacist = computed(() => auth.role === 'pharmacist');
 
-const navBadges = reactive({ destekYeni: 0, bekleyenCihazlar: 0, bekleyenTalepler: 0 });
+const navBadges = reactive({ destekYeni: 0, bekleyenCihazlar: 0, bekleyenTalepler: 0, onayBekleyen: 0 });
 // Eczacı abonelik durumu (demo / panel kısıtı) — nav görünürlüğünü belirler.
 const billing = reactive({ demo: false, panelKisitli: false, loaded: false });
 
 async function fetchNavBadges() {
   if (!isAdmin.value) return;
   try {
-    const [destekResult, pendingRequests, talepResult] = await Promise.all([
+    const [destekResult, pendingRequests, talepResult, onayResult] = await Promise.all([
       http.get('/api/destek/talepler/yeni-sayisi/', { __silent: true }),
       listProvisioningRequests({ status: 'PENDING' }),
       http.get('/api/abonelik/talepler/bekleyen-sayisi/', { __silent: true }),
+      http.get('/api/abonelik/talepler/onay-bekleyen/', { __silent: true }),
     ]);
     navBadges.destekYeni = destekResult.data.sayi ?? 0;
     navBadges.bekleyenCihazlar = pendingRequests.length;
     navBadges.bekleyenTalepler = talepResult.data.sayi ?? 0;
+    navBadges.onayBekleyen = onayResult.data.sayi ?? 0;
   } catch { /* badge hatası kullanıcıyı engellemesin */ }
 }
 
@@ -52,7 +55,15 @@ async function fetchBilling() {
   } catch { /* sessiz */ } finally { billing.loaded = true; }
 }
 
-onMounted(() => { fetchNavBadges(); fetchBilling(); });
+async function fetchPharmacistBadges() {
+  if (!isPharmacist.value) return;
+  try {
+    const { data } = await http.get('/api/abonelik/hesabim/', { __silent: true });
+    navBadges.onayBekleyen = data?.onay_gerekli ? 1 : 0;
+  } catch { /* sessiz */ }
+}
+
+onMounted(() => { fetchNavBadges(); fetchBilling(); fetchPharmacistBadges(); });
 
 function handleNavBadgeRefresh() {
   fetchNavBadges();
@@ -82,6 +93,7 @@ const adminNavItems = [
   { to: '/admin/playlists',                  icon: 'fa-list-ol',       label: 'Gelişmiş Manuel Yayın' },
   { to: '/admin/pricing',                    icon: 'fa-coins',         label: 'Fiyat Matrisi' },
   { to: '/admin/abonelik',                   icon: 'fa-file-invoice-dollar', label: 'Abonelik ve Ödeme', badgeKey: 'bekleyenTalepler' },
+  { to: '/admin/sirket-tanimi',              icon: 'fa-building',      label: 'Şirket Tanımı' },
   { to: '/admin/users',                      icon: 'fa-user-gear',     label: 'Kullanıcı Yönetimi' },
   { to: '/admin/announcements',              icon: 'fa-bell',          label: 'Duyuru Yönetimi' },
 ];
@@ -90,7 +102,7 @@ const pharmacistNavItems = [
    { to: '/pharmacist',          exact: true, icon: 'fa-house',      label: 'Ana Sayfa' },
    { to: '/pharmacist/kiosk-activities',      icon: 'fa-display',    label: 'Kiosk Hareketleri' },
    { to: '/pharmacist/qr',                    icon: 'fa-qrcode',     label: 'QR Okutma' },
-   { to: '/pharmacist/hesabim',               icon: 'fa-file-invoice-dollar', label: 'Hesabım ve Ödemeler' },
+   { to: '/pharmacist/hesabim',               icon: 'fa-file-invoice-dollar', label: 'Hesabım ve Ödemeler', badgeKey: 'onayBekleyen' },
    { to: '/pharmacist/destek',                icon: 'fa-headset',    label: 'Görüş ve Destek' },
    { to: '/pharmacist/announcements',         icon: 'fa-bullhorn', label: 'Duyurular' },
    { to: '/pharmacist/duty',                  icon: 'fa-calendar-days', label: 'Nöbet Takvimi' },
@@ -158,5 +170,6 @@ const roleLabel  = computed(() => isAdmin.value ? 'Süper Admin' : 'Eczacı');
       <PharmacistCampaignDisplay v-if="isPharmacist" />
     </main>
     <DutyAlertModal v-if="isPharmacist" />
+    <EisaConfirm />
   </div>
 </template>

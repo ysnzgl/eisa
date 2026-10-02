@@ -9,6 +9,9 @@ import { uploadMedia } from '../../services/dooh';
 import { getIller, getIlceler } from '../../services/lookups';
 import { toast } from 'vue-sonner';
 import EisaLookup from '../../components/shared/EisaLookup.vue';
+import { useConfirm } from '../../composables/useConfirm.js';
+
+const { confirm } = useConfirm();
 
 const campaigns       = ref([]);
 const loading         = ref(false);
@@ -235,7 +238,13 @@ async function save() {
 }
 
 async function remove(c) {
-  if (!confirm(`"${c.name}" kampanyasını silmek istiyor musunuz?`)) return;
+  const ok = await confirm({
+    title: 'Kampanya Sil',
+    message: `"${c.name}" kampanyası kalıcı olarak silinecek.`,
+    confirmLabel: 'Evet, Sil',
+    variant: 'danger',
+  });
+  if (!ok) return;
   try {
     await http.delete(`/api/campaigns/v2/pharmacy-campaigns/${c.id}/`);
     toast.success('Kampanya silindi.');

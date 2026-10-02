@@ -1,0 +1,72 @@
+#!/bin/bash
+set -Eeuo pipefail
+
+readonly AUDIO_CARD="0"
+
+log() {
+    echo "eisa-audio: $*" >&2
+}
+
+has_control() {
+    local control="$1"
+
+    amixer -c "$AUDIO_CARD" scontrols |
+        grep -Fq "Simple mixer control '$control',"
+}
+
+set_control() {
+    local control="$1"
+    shift
+
+    if has_control "$control"; then
+        amixer -c "$AUDIO_CARD" sset "$control" "$@"
+    else
+        log "Mixer kontrolü bulunamadı, atlandı: $control"
+    fi
+}
+
+log "Ses hazırlığı başlatıldı."
+
+if ! command -v amixer >/dev/null 2>&1 ||
+   ! command -v alsactl >/dev/null 2>&1; then
+    export DEBIAN_FRONTEND=noninteractive
+
+    apt-get -o Acquire::Retries=3 update
+    apt-get -o DPkg::Lock::Timeout=120 install -y alsa-utils
+fi
+
+if ! amixer -c "$AUDIO_CARD" info >/dev/null 2>&1; then
+    log "ALSA card $AUDIO_CARD bulunamadı."
+    exit 1
+fi
+
+set_control Master 100% unmute
+set_control Speaker 100% unmute
+set_control PCM 100%
+set_control Headphone 100% unmute
+set_control "Line Out" 100% unmute
+
+if has_control "Auto-Mute Mode"; then
+    amixer -c "$AUDIO_CARD" sset "Auto-Mute Mode" Disabled
+fi
+
+alsactl store "$AUDIO_CARD"
+
+install -d -m 755 /var/lib/eisa/device-config
+
+{
+    echo "configured_at=$(date --utc +%Y-%m-%dT%H:%M:%SZ)"
+    echo "card=$AUDIO_CARD"
+    echo "master=100"
+    echo "speaker=100"
+    echo "pcm=100"
+} > /var/lib/eisa/device-config/audio-state
+
+chmod 644 /var/lib/eisa/device-config/audio-state
+
+amixer -c "$AUDIO_CARD" sget Master >&2
+amixer -c "$AUDIO_CARD" sget Speaker >&2
+amixer -c "$AUDIO_CARD" sget PCM >&2
+
+log "Ses hazırlığı başarıyla tamamlandı."
+exit 0

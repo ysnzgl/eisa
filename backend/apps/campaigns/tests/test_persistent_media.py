@@ -114,18 +114,12 @@ def active_campaign(db):
 def mock_storage_cls():
     """StorageService'i views.py import noktasında patch'ler.
 
-    Hem yeni (persistent) hem legacy (presigned) path için mock'lar hazır.
-    Legacy path: upload_file → str, get_object_url → presigned str.
-    Yeni path:   upload_file_with_checksum → (key, checksum), public_url → stabil str.
+    Canonical path: upload_file_with_checksum → (key, checksum).
     """
     with patch("apps.campaigns.views.StorageService") as MockCls:
         instance = MockCls.return_value
         # Yeni path
         instance.upload_file_with_checksum.return_value = (OBJECT_KEY, CHECKSUM)
-        instance.public_url.return_value = _stable_url(OBJECT_KEY)
-        # Legacy path — presigned URL davranışı
-        instance.upload_file.return_value = OBJECT_KEY
-        instance.get_object_url.return_value = _presigned_url(OBJECT_KEY)
         # delete_object (hiç çağrılmamalı)
         instance.delete_object = MagicMock()
         yield MockCls, instance
@@ -271,10 +265,10 @@ def test_m05_legacy_url_alias_present(admin_client, mock_storage_cls):
     r = admin_client.post("/api/campaigns/upload-media/", {"file": f}, format="multipart")
     assert r.status_code == 201
     body = r.json()
-    expected_url = _stable_url(OBJECT_KEY)
-
     assert "url" in body and "object_name" in body and "filename" in body
-    assert body["url"] == body["media_url"] == expected_url
+    assert body["url"] == body["media_url"]
+    assert body["media_url"].endswith(f"/api/media/{OBJECT_KEY}")
+    assert "X-Amz-" not in body["media_url"]
     assert body["object_name"] == body["object_key"] == OBJECT_KEY
 
 
@@ -530,15 +524,16 @@ def test_m12_backfill_url_parsing():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# M13 — Feature flag kapalı → legacy presigned davranışı korunuyor
+# M13 — Feature flag kapalı olsa da presigned davranış geri gelmiyor
 # ─────────────────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.django_db
 @override_settings(DOOH_PERSISTENT_MEDIA_URL=False)
-def test_m13_flag_off_uses_legacy_presigned(admin_client, mock_storage_cls):
-    """DOOH_PERSISTENT_MEDIA_URL=False: upload_file + get_object_url kullanılmalı."""
+def test_m13_flag_off_still_uses_object_key_proxy(admin_client, mock_storage_cls):
+    """Feature flag artik presigned URL uretimini etkinlestiremez."""
     _, instance = mock_storage_cls
+    instance.upload_file_with_checksum.return_value = (OBJECT_KEY, CHECKSUM)
 
     f = io.BytesIO(b"legacy"); f.name = "ad.mp4"
     r = admin_client.post("/api/campaigns/upload-media/", {"file": f}, format="multipart")
@@ -546,14 +541,12 @@ def test_m13_flag_off_uses_legacy_presigned(admin_client, mock_storage_cls):
     assert r.status_code == 201, r.content
     body = r.json()
 
-    # Legacy response alanları
-    assert "url" in body and "filename" in body and "object_name" in body
-    # Legacy path metodları
-    instance.upload_file.assert_called_once()
-    instance.upload_file_with_checksum.assert_not_called()
-    # object_key ve media_url yeni alanlar legacy response'ta yok
-    assert "object_key" not in body
-    assert "media_url" not in body
+    assert body["object_key"] == OBJECT_KEY
+    assert body["media_url"].endswith(f"/api/media/{OBJECT_KEY}")
+    assert body["url"] == body["media_url"]
+    assert "X-Amz-" not in body["media_url"]
+    instance.upload_file_with_checksum.assert_called_once()
+    instance.upload_file.assert_not_called()
 
 
 # ─────────────────────────────────────────────────────────────────────────────

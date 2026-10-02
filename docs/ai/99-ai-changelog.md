@@ -5,6 +5,89 @@
 
 ---
 
+## 2026-10-03
+
+### [Backend] Matbu sözleşme metni birebir Word belgesine göre yenilendi
+
+- `apps/abonelik/contract_template.py` tamamen yeniden yazıldı. `render_sozlesme_html(sozlesme)` artık kaynak Word belgesindeki 22 maddelik tam metni **birebir** (yorum/kısaltma yok) üretir.
+- Otomatik doldurulan alanlar: İŞ ORTAĞI ad/adres/vergi no (Madde 1, 11), aylık kullanım bedeli (Madde 12.1), ödeme günü (başlangıç tarihi günü), kullanıma tekrar açma/aktivasyon bedeli (aktif fiyat), düzenleme tarihi (Madde 22).
+- Birebir korunan boş alanlar: [Banka Adı], [IBAN No], depozito [Rakam] (17.1), cezai şart örneği (17.2).
+- `onay_blogu_html()` korundu: dijital onay beyanı (tarih + IP + 5070/6098 atfı), ıslak imza notu, onay bekliyor mesajı.
+- Testler: 59 passed (abonelik).
+
+---
+
+## 2026-10-02
+
+### [WebPanel] Admin faturalar: Ödendi fix + fatura görüntüleme
+
+- **Ödendi çalışmama düzeltildi:** Faturalar tablosundaki Ödendi butonu için eksik script fonksiyonları (`openOdemeModal`, `savePaid`) eklendi. Manuel tahsilatta zorunlu açıklama gönderiliyor, kayıt sonrası liste yenileniyor.
+- **Yeni admin özellik:** Fatura satırına `Görüntüle` aksiyonu eklendi. `GET /api/abonelik/faturalar/{id}/` ile detay çekilip modalda basit fatura tasarımıyla gösteriliyor (başlık, meta bilgiler, kalem tablosu, toplam).
+- **API servis güncellemesi:** `getFaturaAdmin` helper eklendi (`web_panels/src/services/abonelik.js`).
+- Doğrulama: frontend `npm run build` -> başarılı.
+
+### [Backend] Aktif sözleşme tarih çakışma engeli
+
+- Aynı eczane için `AKTIF` sözleşmelerde tarih aralığı çakışması artık engelleniyor. Çakışan yeni sözleşme oluşturma denemesi `400` ile reddediliyor.
+- Kural sadece admin sözleşme API’sinde değil, talep onayından sözleşme üretiminde de uygulanıyor (tek merkezden kontrol).
+- Yeni servis yardımcıları: sözleşme bitiş hesaplama + çakışan aktif sözleşme tespiti.
+- Testler eklendi: çakışan sözleşme reddi ve çakışmayan sözleşme kabulü.
+- Doğrulama: `pytest apps/abonelik -q` -> 61 passed.
+
+### [Backend+WebPanel] Fiyat tanımına ceza çarpanı + açma/kapama bedeli ve peşin fiyat border fix
+
+- **Fiyat tanımı genişletildi:** `FiyatTanimi` modeline `iptal_ceza_orani` (varsayılan 2.00) eklendi. Migration: `0015_fiyattanimi_iptal_ceza_orani.py`.
+- **API alanları eklendi:** `FiyatTanimiSerializer` artık `acma_kapama_bedeli` ve `iptal_ceza_orani` alanlarını doğrulama ile birlikte alır/verir (0 ve üzeri).
+- **Talep onayında fiyat fallback:** Yeni sözleşme talebinde admin ceza çarpanı girmezse, aktif fiyat tanımındaki ceza çarpanı otomatik uygulanır.
+- **Admin fiyat modalı güncellendi:** Abonelik Yönetimi > Fiyat Tanımları ekranına `Açma/Kapama Bedeli` ve `Ceza Çarpanı` inputları + tarihçede ilgili kolonlar eklendi.
+- **Border fix:** `SozlesmeForm.vue` içinde `Birim Peşin Fiyat` textbox grubuna görünür border stili eklendi.
+- Doğrulama: `pytest apps/abonelik -q` -> 59 passed, frontend `npm run build` -> başarılı.
+
+### [Backend+WebPanel] Açma/Kapama bedeli yüzde-temelli varsayılan ve sözleşmede oran gösterimi
+
+- **DB saklama biçimi korunuyor:** `acma_kapama_bedeli` alanı tutar (TL) olarak veritabanında saklanmaya devam ediyor.
+- **Ekranda varsayılan oran:** Fiyat Tanımları modalında açma/kapama artık oran girişiyle (%), varsayılan `%25.00` olarak geliyor.
+- **Otomatik hesap:** Açma/Kapama Bedeli, `abonelik_bedeli × oran / 100` ile otomatik hesaplanıp TL olarak gösteriliyor; kayıtta hesaplanan tutar API’ye gönderiliyor.
+- **Mevcut kayıttan oran türetme:** Aktif fiyat açıldığında, mevcut tutardan oran otomatik geri hesaplanıyor (tutar/abonelik).
+- **Sözleşme metni güncellemesi:** Matbu sözleşmede aktivasyon ifadesi sabit TL yerine oran olarak yazılıyor (ör. `%25`).
+- Doğrulama: `pytest apps/abonelik -q` -> 59 passed, frontend `npm run build` -> başarılı.
+
+### [Backend+WebPanel] Tek fatura tarihi, vergi no, sözleşme tutar düzeltmesi, yazdırma fix
+
+- **Cihaz fatura tarihi kaldırıldı:** Cihaz planlarından ayrı "1. Fatura Ayı" alanı kaldırıldı. Tüm cihaz bedelleri abonelik başlangıç tarihiyle aynı tarihte tek birleşik faturada tahsil edilir (SozlesmeForm watch cihaz tarihini sözleşme başlangıcına senkronlar).
+- **Eczane vergi no:** `Eczane.vergi_no` alanı eklendi (migration 0018), serializer + devices.js mapping + DeviceManagement kayıt formu. Sözleşme Madde 1'de görünür.
+- **Sözleşme tutar düzeltmesi:** Madde 12.1 artık net kırılım tablosu gösteriyor — Matrah, KDV oranı, KDV tutarı, KDV dahil toplam, (varsa) tevkifat ve net ödeme. Cihaz özet tablosuna tevkifat sütunu ve "tek birleşik fatura" notu eklendi.
+- **Yazdırma about:blank fix:** SozlesmeMatbu yazdırma, window.open yerine ana sayfaya geçici print container + `@media print` stylesheet ile yapılıyor; footer'da about:blank yerine gerçek sayfa URL'i görünür.
+- Testler: 112 passed (abonelik + pharmacies). Frontend build OK.
+
+
+
+- **22 maddelik matbu sözleşme:** `apps/abonelik/contract_template.py` — `render_sozlesme_html(sozlesme)` Eczane İş Ortaklığı ve Dijital Platform Kullanım Sözleşmesi'ni (22 madde) sözleşme verileriyle (eczane, bedel, KDV, cihaz planları, ceza katsayısı) doldurarak tam HTML üretir.
+- **Immutable onay snapshot:** `Sozlesme.onayli_sozlesme_metni` (TextField). `sozlesme_onayla()` onay anında tam metni + onay bloğunu dondurur; fiyat sonradan değişse bile metin değişmez. Migration 0014.
+- **Dijital onay beyanı:** Onaylı sözleşme çıktısında "✓ BU SÖZLEŞME DİJİTAL OLARAK ONAYLANMIŞTIR" + eczacı onay tarihi + IP + 5070/6098 kanun atfı yazılır.
+- **Metin endpoint'leri:** `GET /sozlesmeler/{id}/metin/` (admin) ve `/sozlesmelerim/{id}/metin/` (eczacı) — onaylıysa dondurulmuş, değilse canlı önizleme döner.
+- **SozlesmeMatbu.vue yeniden yazıldı:** Backend'den gelen tam HTML'i v-html ile gösterir, ayrı yazdırma penceresinde PDF çıktısı alır. Admin ve eczacı `role` prop ile ayrışır.
+- Testler: 59 passed (3 yeni sözleşme metni testi). Frontend build OK.
+
+
+
+- **Odeme.aciklama + EFT_HAVALE:** `Odeme` modeline `aciklama` (500 char) ve `EFT_HAVALE` yöntem seçeneği eklendi. `ode_fatura()` servisi `aciklama` parametresi alıyor. Migration 0012.
+- **Admin tahsilat modalı:** Admin faturalar tablosundaki "Ödendi" butonu, zorunlu açıklama alanı içeren modal açıyor. Açıklama girilmeden kayıt yapılamıyor. Yöntem MANUEL olarak kaydediliyor.
+- **Eczacı ödeme yöntemi seçimi:** `HesabimOdemeler.vue` — Kredi Kartı veya EFT/Havale seçilebiliyor. EFT seçilince banka IBAN bilgileri + "Fatura No yazın" yönlendirmesi gösteriliyor.
+- **10 gün uyarısı:** `odemeYakin` 3→10 güne çıkarıldı (sarı banner); `odemeKritik` 3 günde kırmızı banner ayrı eklendi. `_payment_due_context` announcements servisi de 10 güne güncellendi.
+- **Sozlesme.imza_tipi + islak_imza_url:** Dijital veya Islak İmza seçimi. Islak imzalıda eczacı dijital onay akışı atlanıyor (`onay_gerekli=False`). Admin formuna RustFS path alanı eklendi (expiring URL değil kalıcı path). Migration 0012.
+- **Admin sözleşme görüntüleme:** Sözleşmeler tablosuna "Sözleşmeyi Görüntüle" butonu eklendi — SozlesmeMatbu modalını açıyor.
+- Testler: 56 passed. Frontend build: OK.
+
+
+
+### [Kiosk UI] Idle ses sayacı görünürlüğü
+
+- `Sese kalan` göstergesi debug koşulundan çıkarıldı; idle ekranda geliştirme ve production modlarında görünür hale getirildi.
+- Gösterge sağ üstten sol üste taşındı; boyutu, kontrastı, gölgesi ve boşlukları azaltılarak daha sakin hale getirildi.
+- Kiosk ayarlarına varsayılanı kapalı `Ses Süresi Görünür` seçeneği eklendi. `idle_audio_countdown_visible` yalnız açıkça `true` ise sayaç gösterilir; backend sync, edge lokal SQLite cache ve kiosk UI sözleşmesi bu alanı taşır.
+- Yönetim panelindeki `Ses Aktif` ve `Ses Süresi Görünür` seçenekleri birbirine giren genel toggle düzeninden çıkarılıp iki kolonlu, açıklamalı ve mobilde tek kolona düşen bağımsız ayar kartlarına dönüştürüldü.
+
 ## 2026-10-01
 
 ### [Backend+WebPanel] İş takibi uzun içerik desteği

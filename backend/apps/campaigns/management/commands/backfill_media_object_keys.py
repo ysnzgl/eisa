@@ -25,6 +25,8 @@ from dataclasses import dataclass, field
 from django.conf import settings
 from django.core.management.base import BaseCommand
 
+from apps.core.media_proxy import media_proxy_url
+
 from apps.campaigns.models import Creative
 
 
@@ -158,13 +160,7 @@ def _backfill_queryset(
                 stdout.write(f"  [HEAD FAIL] {model_label} pk={obj.pk}: key={key!r} err={err}")
                 continue
 
-        if public_base:
-            base = public_base.rstrip("/")
-        else:
-            s3_secure = getattr(settings, "S3_SECURE", False)
-            scheme = "https" if s3_secure else "http"
-            base = f"{scheme}://{endpoint}"
-        new_media_url = f"{base}/{bucket}/{key}"
+        new_media_url = media_proxy_url(key)
 
         if apply:
             obj.object_key = key
@@ -214,13 +210,7 @@ def _backfill_active_media_queryset(
                 stdout.write(f"  [HEAD FAIL] Creative(active) pk={obj.pk}: key={key!r} err={err}")
                 continue
 
-        if public_base:
-            base = public_base.rstrip("/")
-        else:
-            s3_secure = getattr(settings, "S3_SECURE", False)
-            scheme = "https" if s3_secure else "http"
-            base = f"{scheme}://{endpoint}"
-        new_active_url = f"{base}/{bucket}/{key}"
+        new_active_url = media_proxy_url(key)
 
         if apply:
             obj.active_object_key = key

@@ -23,6 +23,9 @@ import EisaLookup from '../../components/shared/EisaLookup.vue';
 import EisaDeleteConfirm from '../../components/shared/EisaDeleteConfirm.vue';
 import DateRangePicker from '../../components/shared/DateRangePicker.vue';
 import { toast } from 'vue-sonner';
+import { useConfirm } from '../../composables/useConfirm.js';
+
+const { confirm } = useConfirm();
 
 const campaigns = ref([]);
 const loading   = ref(false);
@@ -364,9 +367,15 @@ async function openEdit(c) {
   formDirty.value = false;
 }
 
-function close() {
+async function close() {
   if (formDirty.value) {
-    if (!confirm('Kaydedilmemiş değişiklikler var. Yine de çıkmak istiyor musunuz?')) return;
+    const ok = await confirm({
+      title: 'Değişiklikler Kaydedilmedi',
+      message: 'Kaydedilmemiş değişiklikler var. Çıkmak istediğinizden emin misiniz?',
+      confirmLabel: 'Evet, Çık',
+      variant: 'warning',
+    });
+    if (!ok) return;
   }
   formDirty.value = false;
   wizardOpen.value = false;
@@ -678,7 +687,16 @@ async function bulkRun(action) {
   const verb = action === 'delete' ? 'silinsin'
             : action === 'pause'  ? 'duraklatılsın'
             : 'aktifleştirilsin';
-  if (!confirm(`${ids.length} kampanya ${verb} mi?`)) return;
+  const label = action === 'delete' ? 'Sil'
+              : action === 'pause'  ? 'Duraklat'
+              : 'Aktifleştir';
+  const ok = await confirm({
+    title: `${ids.length} Kampanya`,
+    message: `Seçili ${ids.length} kampanya ${verb} mı?`,
+    confirmLabel: label,
+    variant: action === 'delete' ? 'danger' : 'warning',
+  });
+  if (!ok) return;
   try {
     const { data } = await bulkActionCampaignsV2(action, ids);
     clearSelection();

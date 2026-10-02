@@ -97,10 +97,10 @@ def system_context(announcement: Announcement, pharmacy, today: date):
 
 
 def _payment_due_context(pharmacy, today: date):
-    """Ödeme gününe ≤3 gün kalmış (veya geçmiş) ödenmemiş fatura varsa aktif."""
+    """10 gün içinde vadesi dolacak ödenmemiş fatura varsa aktif (sarı uyarı)."""
     from apps.abonelik.models import Fatura
 
-    sinir = today + timedelta(days=3)
+    sinir = today + timedelta(days=10)
     var = Fatura.objects.filter(
         eczane_id=pharmacy.id,
         durum__in=(Fatura.Durum.BEKLIYOR, Fatura.Durum.GECIKTI),

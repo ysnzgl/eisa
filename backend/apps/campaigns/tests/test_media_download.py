@@ -109,6 +109,55 @@ def _mock_storage_get(content: bytes = b"fakemediabytes"):
     return resp
 
 
+@pytest.mark.django_db
+def test_authenticated_media_proxy_streams_by_object_key(superadmin):
+    client = _auth_client(superadmin)
+    content = b"0123456789"
+
+    with patch("apps.core.media_proxy.StorageService") as MockStorage:
+        storage = MockStorage.return_value
+        storage.bucket_name = "dev"
+        storage.client.stat_object.return_value = MagicMock(
+            size=len(content), content_type="video/mp4"
+        )
+        storage.client.get_object.return_value = _mock_storage_get(content)
+
+        resp = client.get(f"/api/media/{OBJECT_KEY}")
+
+    assert resp.status_code == 200
+    assert b"".join(resp.streaming_content) == content
+    assert resp["Accept-Ranges"] == "bytes"
+    assert resp["Content-Length"] == str(len(content))
+    storage.client.get_object.assert_called_once_with(
+        "dev", OBJECT_KEY, offset=0, length=len(content)
+    )
+
+
+@pytest.mark.django_db
+def test_authenticated_media_proxy_supports_range(superadmin):
+    client = _auth_client(superadmin)
+    content = b"2345"
+
+    with patch("apps.core.media_proxy.StorageService") as MockStorage:
+        storage = MockStorage.return_value
+        storage.bucket_name = "dev"
+        storage.client.stat_object.return_value = MagicMock(size=10, content_type="video/mp4")
+        storage.client.get_object.return_value = _mock_storage_get(content)
+
+        resp = client.get(f"/api/media/{OBJECT_KEY}", HTTP_RANGE="bytes=2-5")
+
+    assert resp.status_code == 206
+    assert b"".join(resp.streaming_content) == content
+    assert resp["Content-Range"] == "bytes 2-5/10"
+    storage.client.get_object.assert_called_once_with("dev", OBJECT_KEY, offset=2, length=4)
+
+
+@pytest.mark.django_db
+def test_media_proxy_rejects_non_public_storage_prefix():
+    client = APIClient()
+    assert client.get("/api/media/sozlesme/private.pdf").status_code == 416
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # D01 — Creative download endpoint
 # ─────────────────────────────────────────────────────────────────────────────

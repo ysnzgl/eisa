@@ -7,7 +7,6 @@ import io
 import os
 import threading
 import uuid
-from datetime import timedelta
 
 from django.conf import settings
 from minio import Minio
@@ -170,12 +169,3 @@ class StorageService:
     def delete_object(self, object_name: str) -> None:
         """Objeyi bucket'tan siler."""
         self.client.remove_object(self.bucket_name, object_name)
-
-    def get_object_url(self, object_name: str, expires_minutes: int | None = None) -> str:
-        """Objeye erişim için presigned URL üretir."""
-        ttl_minutes = expires_minutes or settings.RUSTFS_PRESIGNED_URL_TTL_MINUTES
-        return self.client.presigned_get_object(
-            bucket_name=self.bucket_name,
-            object_name=object_name,
-            expires=timedelta(minutes=ttl_minutes),
-        )

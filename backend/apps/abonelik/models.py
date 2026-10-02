@@ -79,6 +79,19 @@ class Sozlesme(BaseModel):
         help_text="Aylık e-İSA kullanım bedeli (TL). Demo'da faturalanmaz.",
     )
 
+    class KdvOrani(models.IntegerChoices):
+        KDV_0 = 0, "%0 (KDV Yok)"
+        KDV_1 = 1, "%1"
+        KDV_10 = 10, "%10"
+        KDV_20 = 20, "%20"
+
+    TEVKIFAT_SECENEKLER = [
+        ("", "Yok"),
+        ("1/10", "1/10"), ("2/10", "2/10"), ("3/10", "3/10"),
+        ("4/10", "4/10"), ("5/10", "5/10"), ("6/10", "6/10"),
+        ("7/10", "7/10"), ("8/10", "8/10"), ("9/10", "9/10"),
+    ]
+
     class CihazDurum(models.TextChoices):
         SATILIK = "SATILIK", "Satılık"
         KIRALIK = "KIRALIK", "Kiralık"
@@ -90,6 +103,42 @@ class Sozlesme(BaseModel):
     cihaz_kira_bedeli = models.DecimalField(
         max_digits=12, decimal_places=2, default=Decimal("0.00"),
         help_text="Kiralık cihaz için aylık kira bedeli (TL).",
+    )
+    kdv_orani = models.PositiveSmallIntegerField(
+        choices=KdvOrani.choices, default=0,
+        help_text="Kullanım bedeli ve cihaz kira üzerindeki KDV oranı (%).",
+    )
+    tevkifat_orani = models.CharField(
+        max_length=4, choices=TEVKIFAT_SECENEKLER, blank=True, default="",
+        help_text="KDV tevkifat oranı (ör. '3/10'). Boş = tevkifat yok.",
+    )
+    iptal_ceza_orani = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal("2.00"),
+        help_text="Erken iptal ceza katsayısı: ceza = kalan_ay × katsayi × aylık_bedel. Varsayılan 2.",
+    )
+    eczaci_onay_tarihi = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Eczacının dijital onay tarihi.",
+    )
+    eczaci_onay_ip = models.GenericIPAddressField(
+        null=True, blank=True, help_text="Onay IP adresi.",
+    )
+
+    class ImzaTipi(models.TextChoices):
+        DIJITAL = "DIJITAL", "Dijital İmza"
+        ISLAK = "ISLAK", "Islak İmza"
+
+    imza_tipi = models.CharField(
+        max_length=8, choices=ImzaTipi.choices, default=ImzaTipi.DIJITAL,
+        help_text="Dijital (eczacı ekrandan onaylar) veya ıslak (taranıp yüklenir).",
+    )
+    islak_imza_url = models.CharField(
+        max_length=500, blank=True, default="",
+        help_text="RustFS/S3 yolu — ıslak imzalı belge (expiring URL değil, kalıcı path).",
+    )
+    onayli_sozlesme_metni = models.TextField(
+        blank=True, default="",
+        help_text="Dijital onay anındaki tam sözleşme metni (HTML). Onaylandıktan sonra değişmez.",
     )
     durum = models.CharField(
         max_length=16, choices=Durum.choices, default=Durum.AKTIF, db_index=True
@@ -165,6 +214,47 @@ class Sozlesme(BaseModel):
             return "IPTAL"
         return "SURESI_DOLDU" if self.suresi_doldu else "AKTIF"
 
+    @property
+    def kdv_tutari(self) -> Decimal:
+        """Aylık kullanım bedeli üzerinden KDV tutarı."""
+        if not self.kdv_orani:
+            return Decimal("0.00")
+        return (self.aylik_kullanim_bedeli * self.kdv_orani / 100).quantize(Decimal("0.01"))
+
+    @property
+    def kdv_dahil_aylik(self) -> Decimal:
+        """KDV dahil aylık kullanım bedeli."""
+        return self.aylik_kullanim_bedeli + self.kdv_tutari
+
+    @property
+    def tevkifat_kesri(self) -> Decimal:
+        """Tevkifat oranı kesir değeri."""
+        if not self.tevkifat_orani:
+            return Decimal("0.00")
+        parts = self.tevkifat_orani.split("/")
+        return Decimal(parts[0]) / Decimal(parts[1])
+
+    @property
+    def tevkifat_tutari(self) -> Decimal:
+        return (self.kdv_tutari * self.tevkifat_kesri).quantize(Decimal("0.01"))
+
+    @property
+    def net_odeme(self) -> Decimal:
+        """Alıcının ödeyeceği net tutar (KDV dahil - tevkifat)."""
+        return self.kdv_dahil_aylik - self.tevkifat_tutari
+
+    @property
+    def iptal_ceza_tutari(self) -> Decimal:
+        """Erken iptal ceza: kalan_ay × katsayi × aylık_bedel."""
+        if not self.iptal_ceza_orani or self.is_demo:
+            return Decimal("0.00")
+        from django.utils import timezone
+        kalan_gun = max(0, (self.bitis_tarihi - timezone.localdate()).days)
+        kalan_ay = Decimal(str(kalan_gun)) / 30
+        return (
+            self.aylik_kullanim_bedeli * kalan_ay * self.iptal_ceza_orani
+        ).quantize(Decimal("0.01"))
+
 
 class SozlesmeUzatma(BaseModel):
     """Bir sözleşmeye uygulanan uzatma veya iptal kaydı."""
@@ -194,7 +284,11 @@ class SozlesmeUzatma(BaseModel):
 
 
 class CihazOdemePlani(BaseModel):
-    """Cihaz donanım bedelinin taksitlendirilmesi (peşin + vade farkı)."""
+    """Cihaz ödeme planı — satılık (peşin+taksit) veya kiralık (aylık kira)."""
+
+    class Tip(models.TextChoices):
+        SATILIK = "SATILIK", "Satılık"
+        KIRALIK = "KIRALIK", "Kiralık"
 
     class TaksitSayisi(models.IntegerChoices):
         TAKSIT_1 = 1, "1 Taksit (Peşin)"
@@ -207,23 +301,41 @@ class CihazOdemePlani(BaseModel):
         TAMAMLANDI = "TAMAMLANDI", "Tamamlandı"
         IPTAL = "IPTAL", "İptal"
 
-    sozlesme = models.OneToOneField(
-        Sozlesme, on_delete=models.CASCADE, related_name="cihaz_plani"
+    sozlesme = models.ForeignKey(
+        Sozlesme, on_delete=models.CASCADE, related_name="cihaz_planlari"
     )
+    tip = models.CharField(
+        max_length=8, choices=Tip.choices, default=Tip.SATILIK,
+        help_text="Satılık (peşin+taksit) veya kiralık (aylık kira).",
+    )
+    adet = models.PositiveSmallIntegerField(default=1, help_text="Cihaz adedi.")
+    # Satılık alanları
     pesin_fiyat = models.DecimalField(
-        max_digits=12, decimal_places=2,
-        help_text="Cihaz peşin fiyatı (TL).",
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text="Birim peşin fiyat (TL). Satılıkta zorunlu.",
     )
     vade_farki_orani = models.DecimalField(
         max_digits=6, decimal_places=2, default=Decimal("0.00"),
-        help_text="Peşin fiyat üzerine eklenecek vade farkı yüzdesi (%).",
+        help_text="Vade farkı yüzde (%).",
     )
     taksit_sayisi = models.PositiveSmallIntegerField(
-        choices=TaksitSayisi.choices, default=TaksitSayisi.TAKSIT_4
+        default=1, help_text="Taksit sayısı (1–12).",
     )
-    baslangic_tarihi = models.DateField(
-        help_text="İlk cihaz taksitinin faturalanacağı ay.",
+    # Kiralık alanları
+    aylik_kira_bedeli = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text="Birim aylık kira bedeli (TL). Kiralıkta zorunlu.",
     )
+    # Ortak: KDV + tevkifat
+    cihaz_kdv_orani = models.PositiveSmallIntegerField(
+        choices=Sozlesme.KdvOrani.choices, default=0,
+        help_text="KDV oranı (%).",
+    )
+    tevkifat_orani = models.CharField(
+        max_length=4, choices=Sozlesme.TEVKIFAT_SECENEKLER, blank=True, default="",
+        help_text="KDV tevkifat oranı.",
+    )
+    baslangic_tarihi = models.DateField(help_text="İlk faturalandırma ayı.")
     durum = models.CharField(
         max_length=16, choices=Durum.choices, default=Durum.AKTIF, db_index=True
     )
@@ -235,20 +347,54 @@ class CihazOdemePlani(BaseModel):
         verbose_name_plural = "Cihaz Ödeme Planları"
 
     def __str__(self) -> str:  # pragma: no cover
-        return f"Cihaz planı #{self.pk} ({self.taksit_sayisi} taksit)"
+        return f"Cihaz planı #{self.pk} ({self.tip}, {self.adet} adet)"
 
     @property
     def toplam_tutar(self) -> Decimal:
-        """Peşin fiyat + vade farkı."""
+        """Satılık: adet × peşin × (1 + vade%). Kiralık: adet × aylık kira."""
+        if self.tip == self.Tip.KIRALIK:
+            return ((self.aylik_kira_bedeli or Decimal("0.00")) * Decimal(self.adet)).quantize(Decimal("0.01"))
+        if not self.pesin_fiyat:
+            return Decimal("0.00")
         oran = (Decimal("100.00") + self.vade_farki_orani) / Decimal("100.00")
-        return (self.pesin_fiyat * oran).quantize(Decimal("0.01"))
+        return (self.pesin_fiyat * Decimal(self.adet) * oran).quantize(Decimal("0.01"))
 
     @property
     def taksit_tutari(self) -> Decimal:
-        """Toplam tutarın taksit sayısına eşit bölümü."""
+        """Satılık: toplam / taksit sayısı. Kiralık: aylık tutar."""
+        if self.tip == self.Tip.KIRALIK:
+            return self.toplam_tutar
         if not self.taksit_sayisi:
             return Decimal("0.00")
         return (self.toplam_tutar / Decimal(self.taksit_sayisi)).quantize(Decimal("0.01"))
+
+    @property
+    def cihaz_kdv_tutari(self) -> Decimal:
+        if not self.cihaz_kdv_orani:
+            return Decimal("0.00")
+        return (self.toplam_tutar * self.cihaz_kdv_orani / 100).quantize(Decimal("0.01"))
+
+    @property
+    def tevkifat_kesri(self) -> Decimal:
+        if not self.tevkifat_orani:
+            return Decimal("0.00")
+        parts = self.tevkifat_orani.split("/")
+        return Decimal(parts[0]) / Decimal(parts[1])
+
+    @property
+    def tevkifat_tutari(self) -> Decimal:
+        return (self.cihaz_kdv_tutari * self.tevkifat_kesri).quantize(Decimal("0.01"))
+
+    @property
+    def kdv_dahil_toplam(self) -> Decimal:
+        return self.toplam_tutar + self.cihaz_kdv_tutari
+
+    @property
+    def kdv_dahil_taksit(self) -> Decimal:
+        """KDV dahil taksit tutarı."""
+        if not self.taksit_sayisi:
+            return Decimal("0.00")
+        return (self.kdv_dahil_toplam / Decimal(self.taksit_sayisi)).quantize(Decimal("0.01"))
 
 
 class FiyatTanimi(BaseModel):
@@ -265,6 +411,14 @@ class FiyatTanimi(BaseModel):
     cihaz_kira_bedeli = models.DecimalField(
         max_digits=12, decimal_places=2, default=Decimal("0.00"),
         help_text="Kiralık cihaz için aylık kira bedeli (TL).",
+    )
+    acma_kapama_bedeli = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal("0.00"),
+        help_text="Hesap açma/kapama bedeli: gecikme sonrası yeniden aktifleştirme ücreti (TL).",
+    )
+    iptal_ceza_orani = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal("2.00"),
+        help_text="Erken iptal ceza katsayısı: ceza = kalan_ay × katsayi × aylık_bedel.",
     )
     gecerlilik_baslangic = models.DateField(
         db_index=True, help_text="Bu fiyatın geçerli olmaya başladığı tarih.",
@@ -288,6 +442,8 @@ class Fatura(BaseModel):
         KULLANIM_BEDELI = "KULLANIM_BEDELI", "Kullanım Bedeli"
         CIHAZ_TAKSIT = "CIHAZ_TAKSIT", "Cihaz Taksiti"
         CIHAZ_KIRA = "CIHAZ_KIRA", "Cihaz Kira Bedeli"
+        BIRLESIK = "BIRLESIK", "Birleşik Aylık Fatura"
+        ACMA_KAPAMA = "ACMA_KAPAMA", "Açma/Kapama Bedeli"
 
     class Durum(models.TextChoices):
         BEKLIYOR = "BEKLIYOR", "Bekliyor"
@@ -358,6 +514,7 @@ class Odeme(BaseModel):
 
     class Yontem(models.TextChoices):
         KREDI_KARTI = "KREDI_KARTI", "Kredi Kartı"
+        EFT_HAVALE = "EFT_HAVALE", "EFT/Havale"
         OTOMATIK_CEKIM = "OTOMATIK_CEKIM", "Otomatik Çekim"
         MANUEL = "MANUEL", "Manuel"
 
@@ -367,6 +524,10 @@ class Odeme(BaseModel):
     tutar = models.DecimalField(max_digits=12, decimal_places=2)
     yontem = models.CharField(
         max_length=16, choices=Yontem.choices, default=Yontem.KREDI_KARTI
+    )
+    aciklama = models.CharField(
+        max_length=500, blank=True, default="",
+        help_text="Ödeme açıklaması / referans bilgisi. Manuel ödemelerde zorunludur.",
     )
     odeme_tarihi = models.DateTimeField()
 
@@ -378,6 +539,38 @@ class Odeme(BaseModel):
 
     def __str__(self) -> str:  # pragma: no cover
         return f"Ödeme #{self.pk} — {self.tutar} TL"
+
+
+
+class FaturaKalemi(BaseModel):
+    """Aylık birleşik faturanın kalem satırları (abonelik, cihaz taksit, kira, açma-kapama)."""
+
+    class KalemTip(models.TextChoices):
+        ABONELIK = "ABONELIK", "Abonelik Bedeli"
+        CIHAZ_TAKSIT = "CIHAZ_TAKSIT", "Cihaz Taksiti"
+        CIHAZ_KIRA = "CIHAZ_KIRA", "Cihaz Kira"
+        ACMA_KAPAMA = "ACMA_KAPAMA", "Açma/Kapama"
+
+    fatura = models.ForeignKey(
+        Fatura, on_delete=models.CASCADE, related_name="kalemler"
+    )
+    tip = models.CharField(max_length=20, choices=KalemTip.choices)
+    cihaz_plani = models.ForeignKey(
+        CihazOdemePlani, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="fatura_kalemleri",
+    )
+    taksit_no = models.PositiveSmallIntegerField(null=True, blank=True)
+    tutar = models.DecimalField(max_digits=12, decimal_places=2)
+    aciklama = models.CharField(max_length=255, blank=True, default="")
+
+    class Meta:
+        db_table = "abonelik_fatura_kalemleri"
+        ordering = ("id",)
+        verbose_name = "Fatura Kalemi"
+        verbose_name_plural = "Fatura Kalemleri"
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"{self.get_tip_display()} — {self.tutar} TL"
 
 
 class SozlesmeTalebi(BaseModel):

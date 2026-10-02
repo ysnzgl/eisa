@@ -11,6 +11,7 @@ export const DEFAULT_DEVICE_CONFIG = Object.freeze({
   idle_audio_schedule_mode: 'ALL_DAY',
   idle_audio_play_on_duty: false,
   idle_audio_duty_dates: [],
+  idle_audio_countdown_visible: false,
   idle_audio: Object.freeze({ enabled: false, files: [], media_url: '', original_name: '' }),
 });
 
@@ -32,6 +33,7 @@ function normalize(payload = {}) {
     idle_audio_schedule_mode: payload.idle_audio_schedule_mode === 'BUSINESS_HOURS' ? 'BUSINESS_HOURS' : 'ALL_DAY',
     idle_audio_play_on_duty: payload.idle_audio_play_on_duty === true,
     idle_audio_duty_dates: Array.isArray(payload.idle_audio_duty_dates) ? payload.idle_audio_duty_dates : [],
+    idle_audio_countdown_visible: payload.idle_audio_countdown_visible === true,
     idle_audio: {
       enabled: payload?.idle_audio?.enabled === true,
       files: Array.isArray(payload?.idle_audio?.files) ? payload.idle_audio.files : [],

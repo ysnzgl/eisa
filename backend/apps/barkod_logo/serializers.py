@@ -7,6 +7,8 @@ import zlib
 
 from rest_framework import serializers
 
+from apps.core.media_proxy import media_proxy_url
+
 from .models import BarkodLogo
 
 
@@ -177,6 +179,14 @@ class BarkodLogoSerializer(serializers.ModelSerializer):
             "olusturulma_tarihi",
         ]
         read_only_fields = ["id", "olusturulma_tarihi"]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if instance.object_key:
+            data["media_url"] = media_proxy_url(
+                instance.object_key, self.context.get("request")
+            )
+        return data
 
     def validate(self, attrs):
         bas = attrs.get("baslangic_zamani") or (

@@ -16,6 +16,9 @@ import {
   listKiosks,
 } from '../../services/dooh.js';
 import { getIller, getIlceler } from '../../services/lookups.js';
+import { useConfirm } from '../../composables/useConfirm.js';
+
+const { confirm } = useConfirm();
 
 // ─── Veri ────────────────────────────────────────────────────────────────────
 const sablonlar    = ref([]);
@@ -87,7 +90,13 @@ function kioskSecimiToggle(id) {
 
 async function uretimBaslat() {
   if (uretimKilit.value) return;
-  if (!confirm('Secilen kiosklarda playlist uretimi baslatilsin mi?')) return;
+  const ok = await confirm({
+    title: 'Playlist Üretimi Başlat',
+    message: 'Seçilen kiosklarda playlist üretimi kuy ruğa alınacak.',
+    confirmLabel: 'Başlat',
+    variant: 'cta',
+  });
+  if (!ok) return;
   uretimKilit.value = true;
   uretiliyor.value = true;
   aktifIs.value = null;

@@ -38,6 +38,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.uow import UnitOfWork
+from apps.core.media_proxy import media_proxy_url
 from apps.pharmacies.models import Kiosk
 from apps.pharmacies.permissions import IsSuperAdmin, IsEczaci
 from core_api.cookie_jwt import JWTCookieAuthentication as JWTAuthentication
@@ -1079,8 +1080,14 @@ class KioskDayStreamView(APIView):
                 if not item.creative_id:
                     # Defensive: legacy/house_ad item — atla.
                     continue
-                media_url = item.creative.media_url
-                active_media_url = item.creative.active_media_url or ""
+                media_url = (
+                    media_proxy_url(item.creative.object_key, request)
+                    if item.creative.object_key else item.creative.media_url
+                )
+                active_media_url = (
+                    media_proxy_url(item.creative.active_object_key, request)
+                    if item.creative.active_object_key else item.creative.active_media_url or ""
+                )
                 duration = item.creative.duration_seconds
                 asset_id = str(item.creative_id)
                 asset_type = "creative"

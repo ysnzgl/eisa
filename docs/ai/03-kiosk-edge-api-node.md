@@ -130,7 +130,7 @@ Backend kapalı/erişilemezse:
 
 **Meta:**
 - `kiosk_meta`: key, value (kiosk_app_key, kiosk_id, pharmacy_id, playlist_version, last_sync_at, provisioning_state, registration_id, **kiosk_build_number**, **last_barkod_logo_id** *(2026-08-11)*)
-- `kiosk_device_config`: singleton cihaz ayarı; etkileşim/idle içerik, ilk ses gecikmesi/tekrar aralığı, ses zaman kuralı ve nöbet günlerini tutar. `kiosk_device_audio_files` sıralı ses manifestini, checksum'ları ve lokal hazır dosyaları tutar; eski tek-dosya cache'i idempotent olarak `legacy` satırına taşınır. Additive oluşturma/kolon kontrolü schema version yükseltip kiosk cache'ini sıfırlamaz.
+- `kiosk_device_config`: singleton cihaz ayarı; etkileşim/idle içerik, ilk ses gecikmesi/tekrar aralığı, ses zaman kuralı, nöbet günleri ve varsayılanı kapalı `idle_audio_countdown_visible` sayaç görünürlüğünü tutar. `kiosk_device_audio_files` sıralı ses manifestini, checksum'ları ve lokal hazır dosyaları tutar; eski tek-dosya cache'i idempotent olarak `legacy` satırına taşınır. Additive oluşturma/kolon kontrolü schema version yükseltip kiosk cache'ini sıfırlamaz.
 - `media_cache`: asset_id, asset_type, source_url, source_checksum (backend'den: sha256:<hex>), file_checksum (raw hex, downloadToFile), local_path, status, error_message, synced_at
   - *(v15)* `asset_type='house_ad'` satırları migration ile silinir; kampanya creative cache'i etkilenmez.
 

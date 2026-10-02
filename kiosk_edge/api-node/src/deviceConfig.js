@@ -15,6 +15,7 @@ export const DEFAULT_DEVICE_CONFIG = Object.freeze({
   idle_audio_schedule_mode: 'ALL_DAY',
   idle_audio_play_on_duty: false,
   idle_audio_duty_dates: [],
+  idle_audio_countdown_visible: false,
 });
 
 let _agent = null;
@@ -37,6 +38,7 @@ function ensureDeviceConfigTable(db) {
       idle_audio_play_on_duty INTEGER NOT NULL DEFAULT 0,
       idle_audio_duty_dates TEXT NOT NULL DEFAULT '[]',
       idle_audio_enabled INTEGER NOT NULL DEFAULT 0,
+      idle_audio_countdown_visible INTEGER NOT NULL DEFAULT 0,
       audio_source_url TEXT NOT NULL DEFAULT '',
       audio_source_checksum TEXT NOT NULL DEFAULT '',
       audio_original_name TEXT NOT NULL DEFAULT '',
@@ -71,6 +73,9 @@ function ensureDeviceConfigTable(db) {
   if (!columns.some((column) => column.name === 'idle_audio_duty_dates')) {
     db.exec("ALTER TABLE kiosk_device_config ADD COLUMN idle_audio_duty_dates TEXT NOT NULL DEFAULT '[]'");
   }
+  if (!columns.some((column) => column.name === 'idle_audio_countdown_visible')) {
+    db.exec('ALTER TABLE kiosk_device_config ADD COLUMN idle_audio_countdown_visible INTEGER NOT NULL DEFAULT 0');
+  }
   // Onceki tek-dosya cache'ini cihaz offline olsa bile yeni listeye tasir.
   db.exec(`
     INSERT OR IGNORE INTO kiosk_device_audio_files (
@@ -102,6 +107,7 @@ function normalizedTimings(payload = {}) {
     idle_audio_repeat_seconds: boundedInt(payload.idle_audio_repeat_seconds, DEFAULT_DEVICE_CONFIG.idle_audio_repeat_seconds, 60, 86400),
     idle_audio_schedule_mode: payload.idle_audio_schedule_mode === 'BUSINESS_HOURS' ? 'BUSINESS_HOURS' : 'ALL_DAY',
     idle_audio_play_on_duty: payload.idle_audio_play_on_duty === true ? 1 : 0,
+    idle_audio_countdown_visible: payload.idle_audio_countdown_visible === true ? 1 : 0,
     idle_audio_duty_dates: JSON.stringify(
       Array.isArray(payload.idle_audio_duty_dates)
         ? payload.idle_audio_duty_dates.filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date)).slice(0, 400)
@@ -158,6 +164,7 @@ function updateTimings(db, timings) {
       idle_audio_repeat_seconds=@idle_audio_repeat_seconds,
       idle_audio_schedule_mode=@idle_audio_schedule_mode,
       idle_audio_play_on_duty=@idle_audio_play_on_duty,
+      idle_audio_countdown_visible=@idle_audio_countdown_visible,
       idle_audio_duty_dates=@idle_audio_duty_dates,
       updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
     WHERE id=1
@@ -284,6 +291,7 @@ export function getDeviceConfig(db) {
     idle_audio_repeat_seconds: row.idle_audio_repeat_seconds ?? DEFAULT_DEVICE_CONFIG.idle_audio_repeat_seconds,
     idle_audio_schedule_mode: row.idle_audio_schedule_mode === 'BUSINESS_HOURS' ? 'BUSINESS_HOURS' : 'ALL_DAY',
     idle_audio_play_on_duty: row.idle_audio_play_on_duty === 1,
+    idle_audio_countdown_visible: row.idle_audio_countdown_visible === 1,
     idle_audio_duty_dates: Array.isArray(dutyDates) ? dutyDates : [],
     idle_audio: {
       enabled: publicFiles.length > 0,

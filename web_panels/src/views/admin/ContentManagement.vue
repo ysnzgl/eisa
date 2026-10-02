@@ -17,6 +17,9 @@ import {
 } from '../../services/dooh';
 import { toast } from 'vue-sonner';
 import * as XLSX from 'xlsx';
+import { useConfirm } from '../../composables/useConfirm.js';
+
+const { confirm } = useConfirm();
 
 const BASLIK_MAX = 100;
 const METIN_MAX = 300;
@@ -251,7 +254,13 @@ async function bulkDelete() {
   if (selectedIds.value.size === 0) return;
   
   const count = selectedIds.value.size;
-  if (!confirm(`Seçili ${count} içerik silinecek. Emin misiniz?`)) return;
+  const ok = await confirm({
+    title: 'Toplu İçerik Sil',
+    message: `Seçili ${count} içerik kalıcı olarak silinecek.`,
+    confirmLabel: 'Evet, Sil',
+    variant: 'danger',
+  });
+  if (!ok) return;
   
   bulkDeleting.value = true;
   try {

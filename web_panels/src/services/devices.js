@@ -30,6 +30,7 @@ export function mapPharmacyFromApi(p) {
     ilceAdi: p.ilce_adi ?? '',
     adres: p.adres ?? '',
     owner: p.sahip_adi ?? '',
+    vergiNo: p.vergi_no ?? '',
     telefon: p.telefon ?? '',
     eczaneKodu: p.eczane_kodu ?? '',
     kioskCount: p.kiosk_sayisi ?? 0,
@@ -43,6 +44,7 @@ function mapPharmacyToApi(data) {
   const out = {};
   if (data.name      !== undefined) out.ad          = data.name;
   if (data.owner     !== undefined) out.sahip_adi   = data.owner;
+  if (data.vergiNo   !== undefined) out.vergi_no     = data.vergiNo;
   if (data.adres     !== undefined) out.adres        = data.adres;
   if (data.telefon   !== undefined) out.telefon      = data.telefon;
   if (data.eczaneKodu !== undefined) out.eczane_kodu = data.eczaneKodu || null;
@@ -77,6 +79,7 @@ export function mapKioskFromApi(k) {
     idleAudioScheduleMode: k.idle_audio_schedule_mode ?? 'ALL_DAY',
     idleAudioPlayOnDuty: k.idle_audio_play_on_duty === true,
     idleAudioEnabled: k.idle_audio_enabled === true,
+    idleAudioCountdownVisible: k.idle_audio_countdown_visible === true,
     idleAudioUrl: k.idle_audio_media_url ?? '',
     idleAudioOriginalName: k.idle_audio_original_name ?? '',
     idleAudioFiles: Array.isArray(k.idle_audio_files) && k.idle_audio_files.length
@@ -160,6 +163,7 @@ export async function updateKiosk(id, data) {
   if (data.idleAudioScheduleMode !== undefined) payload.idle_audio_schedule_mode = data.idleAudioScheduleMode;
   if (data.idleAudioPlayOnDuty !== undefined) payload.idle_audio_play_on_duty = data.idleAudioPlayOnDuty;
   if (data.idleAudioEnabled !== undefined) payload.idle_audio_enabled = data.idleAudioEnabled;
+  if (data.idleAudioCountdownVisible !== undefined) payload.idle_audio_countdown_visible = data.idleAudioCountdownVisible;
   const { data: updated } = await http.patch(`/api/pharmacies/kiosks/${id}/`, payload);
   return mapKioskFromApi(updated);
 }

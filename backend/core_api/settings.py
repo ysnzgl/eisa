@@ -65,6 +65,7 @@ INSTALLED_APPS = [
     "apps.gorevler",
     "apps.announcements",
     "apps.abonelik",
+    "apps.sirket",
 ]
 
 MIDDLEWARE = [
@@ -267,6 +268,9 @@ S3_PRESIGNED_URL_TTL_MINUTES = config("S3_PRESIGNED_URL_TTL_MINUTES",
 # Production deploy YAML'ında S3_ENDPOINT=files.eisa.com.tr, S3_BUCKET=eisa-files
 # olduğundan: S3_PUBLIC_BASE_URL=https://files.eisa.com.tr/eisa-files
 S3_PUBLIC_BASE_URL = config("S3_PUBLIC_BASE_URL", default="")
+
+# Request baglami olmayan migration/worker kodlarinin proxy URL tabani.
+API_BASE_URL = config("API_BASE_URL", default="http://localhost:8000" if DEBUG else "")
 
 # DOOH kalıcı medya URL feature flag.
 DOOH_PERSISTENT_MEDIA_URL = config("DOOH_PERSISTENT_MEDIA_URL", default=True, cast=bool)

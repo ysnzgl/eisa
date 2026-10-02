@@ -29,6 +29,9 @@ import { getIller, getIlceler } from '../../services/lookups';
 import EisaDeleteConfirm from '../../components/shared/EisaDeleteConfirm.vue';
 import EisaLookup from '../../components/shared/EisaLookup.vue';
 import SozlesmeForm from '../../components/shared/SozlesmeForm.vue';
+import { useConfirm } from '../../composables/useConfirm.js';
+
+const { confirm } = useConfirm();
 
 const router = useRouter();
 
@@ -60,7 +63,7 @@ const modalTarget  = ref(null);
 
 const EMPTY_FORM = () => ({
   name: '', il: '', ilce: '', adres: '', owner: '',
-  telefon: '', eczaneKodu: '', isActive: true,
+  vergiNo: '', telefon: '', eczaneKodu: '', isActive: true,
 });
 const form      = ref(EMPTY_FORM());
 const formError = ref('');
@@ -153,6 +156,7 @@ const kioskEditForm      = ref({
   idleAudioScheduleMode: 'ALL_DAY',
   idleAudioPlayOnDuty: false,
   idleAudioEnabled: false,
+  idleAudioCountdownVisible: false,
 });
 const kioskAudioFiles      = ref([]);
 const audioUploading = ref(false);
@@ -407,6 +411,7 @@ async function openEdit(pharmacy) {
     ilce:       pharmacy.ilce,
     adres:      pharmacy.adres,
     owner:      pharmacy.owner,
+    vergiNo:    pharmacy.vergiNo,
     telefon:    pharmacy.telefon,
     eczaneKodu: pharmacy.eczaneKodu,
     isActive:   pharmacy.isActive,
@@ -513,7 +518,13 @@ function openDeleteKiosk(kiosk) {
 }
 
 async function resetDeviceId(kiosk) {
-  if (!confirm(`"${kiosk.ad}" kiosk'unun Device ID'si sıfırlanacak. Kiosk bir sonraki bağlantıda yeniden bağlanır. Devam?`)) return;
+  const ok = await confirm({
+    title: 'Device ID Sıfırla',
+    message: `"${kiosk.ad}" kiosk'unun Device ID'si sıfırlanacak. Kiosk bir sonraki bağlantıda yeniden bağlanır.`,
+    confirmLabel: 'Sıfırla',
+    variant: 'warning',
+  });
+  if (!ok) return;
   try {
     await resetKioskDeviceId(kiosk.id);
     showToast('Device ID sıfırlandı. Kiosk kendi kendine yeniden bağlanacak.');
@@ -626,6 +637,7 @@ function applyKioskEdit(kiosk) {
     idleAudioScheduleMode: kiosk.idleAudioScheduleMode ?? 'ALL_DAY',
     idleAudioPlayOnDuty: kiosk.idleAudioPlayOnDuty === true,
     idleAudioEnabled: kiosk.idleAudioEnabled === true,
+    idleAudioCountdownVisible: kiosk.idleAudioCountdownVisible === true,
   };
   selectedKioskAudioIds.value = (kiosk.idleAudioFiles || []).map(file => file.assetId || file.id).filter(Boolean);
   for (const [secondsKey, valueKey, unitKey] of [['idleAudioDelaySeconds', 'idleAudioDelayMinutes', 'idleAudioDelayUnit'], ['idleAudioRepeatSeconds', 'idleAudioRepeatMinutes', 'idleAudioRepeatUnit']]) {
@@ -740,6 +752,7 @@ async function saveEditKiosk() {
       ad, mac, isActive: kioskEditForm.value.isActive, ...seconds,
       idleAudioScheduleMode: kioskEditForm.value.idleAudioScheduleMode,
       idleAudioPlayOnDuty: kioskEditForm.value.idleAudioPlayOnDuty,
+      idleAudioCountdownVisible: kioskEditForm.value.idleAudioCountdownVisible,
       idleAudioEnabled: undefined,
     });
     await setKioskIdleAudios(kioskEditTarget.value.id, selectedKioskAudioIds.value);
@@ -1357,6 +1370,12 @@ async function copyAppKey() {
                   <input id="ph-owner" name="owner" v-model="form.owner" type="text" placeholder="Ad Soyad" class="eisa-field" />
                 </div>
 
+                <!-- Vergi Dairesi / No -->
+                <div class="eisa-form-row">
+                  <label for="ph-vergino" class="eisa-field-label">Vergi Dairesi / No</label>
+                  <input id="ph-vergino" name="vergiNo" v-model="form.vergiNo" type="text" placeholder="Örn: Kayseri VD / 1234567890" class="eisa-field" />
+                </div>
+
                 <!-- Telefon -->
                 <div class="eisa-form-row">
                   <label for="ph-telefon" class="eisa-field-label">Telefon</label>
@@ -1659,10 +1678,22 @@ async function copyAppKey() {
                   Nöbet günlerinde çal (nöbet günü 24 saat)
                 </label>
               </div>
-              <label class="eisa-toggle" style="min-height:42px;margin-top:0.8rem;">
-                <input type="checkbox" v-model="kioskEditForm.idleAudioEnabled" :disabled="!selectedKioskAudioIds.length && !kioskAudioFiles.length" />
-                Ses Aktif
-              </label>
+              <div class="audio-setting-options">
+                <label class="audio-setting-toggle" :class="{ 'audio-setting-toggle--disabled': !selectedKioskAudioIds.length && !kioskAudioFiles.length }">
+                  <input type="checkbox" v-model="kioskEditForm.idleAudioEnabled" :disabled="!selectedKioskAudioIds.length && !kioskAudioFiles.length" />
+                  <span>
+                    <strong>Ses Aktif</strong>
+                    <small>Seçili sesleri zamanlamaya göre oynatır.</small>
+                  </span>
+                </label>
+                <label class="audio-setting-toggle">
+                  <input type="checkbox" v-model="kioskEditForm.idleAudioCountdownVisible" />
+                  <span>
+                    <strong>Ses Süresi Görünür</strong>
+                    <small>Kiosk ekranında kalan süreyi gösterir.</small>
+                  </span>
+                </label>
+              </div>
             </div>
 
             <div class="eisa-modal-footer">
@@ -2250,6 +2281,61 @@ async function copyAppKey() {
   gap: 0.4rem;
 }
 
+.audio-setting-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin-top: 0.85rem;
+}
+
+.audio-setting-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  min-width: 0;
+  padding: 0.75rem 0.8rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #f9fafb;
+  cursor: pointer;
+}
+
+.audio-setting-toggle:hover {
+  border-color: #e8a5aa;
+  background: #fffafa;
+}
+
+.audio-setting-toggle input {
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  flex: 0 0 auto;
+  accent-color: #b1121b;
+}
+
+.audio-setting-toggle span {
+  display: grid;
+  min-width: 0;
+  gap: 0.2rem;
+}
+
+.audio-setting-toggle strong {
+  color: #374151;
+  font-size: 0.8rem;
+  line-height: 1.2;
+}
+
+.audio-setting-toggle small {
+  color: #6b7280;
+  font-size: 0.68rem;
+  line-height: 1.35;
+}
+
+.audio-setting-toggle--disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .eisa-modal--transfer { max-width: 560px; }
 .transfer-current,
 .transfer-summary {
@@ -2274,6 +2360,7 @@ async function copyAppKey() {
   .dm-transfer-button { font-size: 0; padding: 0.45rem; }
   .dm-transfer-button i { font-size: 0.8rem; }
   .dm-settings-grid { grid-template-columns: 1fr; }
+  .audio-setting-options { grid-template-columns: 1fr; }
 }
 
 .detail-value {

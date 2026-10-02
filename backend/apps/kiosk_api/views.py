@@ -108,6 +108,7 @@ def _device_config_payload(kiosk: Kiosk, request=None) -> dict:
         "idle_audio_schedule_mode": kiosk.idle_audio_schedule_mode,
         "idle_audio_play_on_duty": kiosk.idle_audio_play_on_duty,
         "idle_audio_duty_dates": duty_dates,
+        "idle_audio_countdown_visible": kiosk.idle_audio_countdown_visible,
         "idle_audio": {
             "enabled": bool(kiosk.idle_audio_enabled and audio_files),
             "files": audio_files,

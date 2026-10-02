@@ -23,17 +23,13 @@ def gunluk_faturalandirma() -> None:
     3) Vadesi + grace süresi geçmiş faturaları GECIKTI yap.
     """
     from apps.abonelik.services import (
-        faturala_cihaz_kira,
-        faturala_cihaz_taksit,
-        faturala_kullanim_bedeli,
+        faturala_aylik_birlesik,
         guncelle_gecikmis_faturalar,
     )
 
-    kullanim = faturala_kullanim_bedeli()
-    cihaz = faturala_cihaz_taksit()
-    kira = faturala_cihaz_kira()
+    yeni = faturala_aylik_birlesik()
     gecikmis = guncelle_gecikmis_faturalar()
     logger.info(
-        "gunluk_faturalandirma tamamlandı: kullanim=%d cihaz=%d kira=%d gecikmis=%d",
-        kullanim, cihaz, kira, gecikmis,
+        "gunluk_faturalandirma tamamlandı: birlesik=%d gecikmis=%d",
+        yeni, gecikmis,
     )

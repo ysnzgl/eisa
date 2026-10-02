@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from decimal import Decimal
 
-from rest_framework import mixins, status, viewsets
+from rest_framework import mixins, parsers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -50,7 +50,7 @@ class SozlesmeViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         qs = (
             Sozlesme.objects.select_related("eczane")
-            .prefetch_related("cihaz_plani")
+            .prefetch_related("cihaz_planlari")
             .all()
         )
         eczane_id = self.request.query_params.get("eczane")
@@ -74,24 +74,93 @@ class SozlesmeViewSet(viewsets.ModelViewSet):
         with UnitOfWork(user=self.request.user) as uow:
             uow.update(instance)
 
+    @action(detail=True, methods=["put"], url_path="cihaz-planlari")
+    def cihaz_planlari_guncelle(self, request, pk=None):
+        """Sözleşmenin cihaz planlarını toplu günceller (replace-all).
+
+        Gövde: [{id?, adet, pesin_fiyat, vade_farki_orani, taksit_sayisi,
+                  baslangic_tarihi, cihaz_kdv_orani}, ...]
+        """
+        from django.db import transaction
+
+        sozlesme = self.get_object()
+        if not isinstance(request.data, list):
+            return Response({"detail": "Liste bekleniyor."}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            existing = {p.id: p for p in sozlesme.cihaz_planlari.all()}
+            incoming_ids: set[int] = set()
+
+            for item in request.data:
+                plan_id = item.get("id")
+                try:
+                    plan_id = int(plan_id) if plan_id is not None else None
+                except (TypeError, ValueError):
+                    plan_id = None
+
+                instance = existing.get(plan_id) if plan_id else None
+                ser = CihazOdemePlaniSerializer(
+                    instance=instance, data=item, partial=instance is not None
+                )
+                ser.is_valid(raise_exception=True)
+                if instance:
+                    for f, v in ser.validated_data.items():
+                        setattr(instance, f, v)
+                    instance.save()
+                    incoming_ids.add(plan_id)
+                else:
+                    plan = CihazOdemePlani(sozlesme=sozlesme, **ser.validated_data)
+                    plan.save()
+
+            for pid, plan in existing.items():
+                if pid not in incoming_ids:
+                    if Fatura.objects.filter(cihaz_plani=plan).exists():
+                        plan.durum = CihazOdemePlani.Durum.IPTAL
+                        plan.save(update_fields=["durum"])
+                    else:
+                        plan.delete()
+
+        qs = CihazOdemePlani.objects.filter(sozlesme=sozlesme)
+        return Response(CihazOdemePlaniSerializer(qs, many=True).data)
+
     @action(detail=True, methods=["put"], url_path="cihaz-plani")
     def cihaz_plani(self, request, pk=None):
-        """Sözleşmeye cihaz ödeme planı ekler veya günceller (upsert)."""
+        """Geriye dönük uyumluluk: tek cihaz planı upsert (eskiden kullanılıyordu)."""
+        return self.cihaz_planlari_guncelle(
+            request._request if hasattr(request, "_request") else request, pk=pk
+        )
+
+    @action(detail=True, methods=["get"], url_path="metin")
+    def metin(self, request, pk=None):
+        """Sözleşmenin tam metni (HTML). Onaylıysa dondurulmuş metin, değilse canlı önizleme."""
+        from .contract_template import onay_blogu_html, render_sozlesme_html
+
         sozlesme = self.get_object()
-        plan = getattr(sozlesme, "cihaz_plani", None)
-        serializer = CihazOdemePlaniSerializer(instance=plan, data=request.data, partial=plan is not None)
-        serializer.is_valid(raise_exception=True)
-        data = serializer.validated_data
-        with UnitOfWork(user=request.user) as uow:
-            if plan is None:
-                plan = CihazOdemePlani(sozlesme=sozlesme, **data)
-                uow.add(plan)
-            else:
-                for field, value in data.items():
-                    setattr(plan, field, value)
-                uow.update(plan)
-        return Response(CihazOdemePlaniSerializer(plan).data,
-                        status=status.HTTP_200_OK if sozlesme else status.HTTP_201_CREATED)
+        if sozlesme.onayli_sozlesme_metni:
+            return Response({"html": sozlesme.onayli_sozlesme_metni, "dondurulmus": True})
+        html = render_sozlesme_html(sozlesme) + onay_blogu_html(sozlesme)
+        return Response({"html": html, "dondurulmus": False})
+
+    @action(detail=True, methods=["post"], url_path="islak-imza-yukle",
+            parser_classes=[parsers.MultiPartParser, parsers.FormParser])
+    def islak_imza_yukle(self, request, pk=None):
+        """Islak imzalı belgeyi RustFS'e yükler; object key'i sozlesme.islak_imza_url'ye yazar."""
+        sozlesme = self.get_object()
+        belge = request.FILES.get("belge")
+        if not belge:
+            return Response({"detail": "Dosya gerekli (alan adı: belge)."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            from apps.core.services.storage_service import StorageService
+            storage = StorageService()
+            object_key = storage.upload_file(belge, prefix=f"sozlesmeler/{pk}")
+        except Exception as exc:
+            logger.exception("Islak imza yükleme hatası")
+            return Response({"detail": f"Depolama hatası: {exc}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        sozlesme.islak_imza_url = object_key
+        sozlesme.imza_tipi = Sozlesme.ImzaTipi.ISLAK
+        sozlesme.save(update_fields=["islak_imza_url", "imza_tipi"])
+        return Response({"object_key": object_key, "imza_tipi": sozlesme.imza_tipi})
 
     @action(detail=True, methods=["post"], url_path="uzat")
     def uzat(self, request, pk=None):
@@ -166,7 +235,9 @@ class FaturaViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.G
         body.is_valid(raise_exception=True)
         try:
             odeme = services.ode_fatura(
-                fatura, yontem=body.validated_data["yontem"], user=request.user
+                fatura, yontem=body.validated_data["yontem"],
+                aciklama=body.validated_data.get("aciklama", ""),
+                user=request.user
             )
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -231,7 +302,7 @@ class HesabimView(APIView):
 
         sozlesme = (
             Sozlesme.objects.filter(eczane_id=eczane_id)
-            .select_related("eczane").prefetch_related("cihaz_plani")
+            .select_related("eczane").prefetch_related("cihaz_planlari")
             .order_by("-baslangic_tarihi").first()
         )
         acik_faturalar = Fatura.objects.filter(
@@ -252,6 +323,13 @@ class HesabimView(APIView):
             "toplam_borc": str(toplam_borc),
             "erisim_kapali": erisim_kapali,
             "grace_gun": services.GRACE_DAYS,
+            # Islak imzalı sözleşmelerde dijital onay istenmez.
+            "onay_gerekli": (
+                sozlesme is not None
+                and sozlesme.eczaci_onay_tarihi is None
+                and sozlesme.imza_tipi != Sozlesme.ImzaTipi.ISLAK
+            ),
+            "ceza_tutari": str(sozlesme.iptal_ceza_tutari) if sozlesme else "0.00",
         })
 
 
@@ -288,7 +366,9 @@ class FaturaOdeView(APIView):
         body.is_valid(raise_exception=True)
         try:
             odeme = services.ode_fatura(
-                fatura, yontem=body.validated_data["yontem"], user=request.user
+                fatura, yontem=body.validated_data["yontem"],
+                aciklama=body.validated_data.get("aciklama", ""),
+                user=request.user
             )
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -353,6 +433,78 @@ class TaleplerimView(APIView):
         return Response(SozlesmeTalebiSerializer(talep).data, status=status.HTTP_201_CREATED)
 
 
+class SozlesmeOnaylaView(APIView):
+    """POST /api/abonelik/sozlesmelerim/{pk}/onayla/ — eczacı dijital onayı."""
+
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsEczaci]
+
+    def post(self, request, pk):
+        eczane_id = getattr(request.user, "eczane_id", None)
+        sozlesme = Sozlesme.objects.filter(pk=pk, eczane_id=eczane_id).first()
+        if sozlesme is None:
+            return Response({"detail": "Sözleşme bulunamadı."}, status=status.HTTP_404_NOT_FOUND)
+        if sozlesme.eczaci_onay_tarihi:
+            return Response(SozlesmeSerializer(sozlesme).data)  # idempotent
+        ip = request.META.get("REMOTE_ADDR", "")
+        services.sozlesme_onayla(sozlesme, ip_address=ip, user=request.user)
+        sozlesme.refresh_from_db()
+        return Response(SozlesmeSerializer(sozlesme).data)
+
+
+class SozlesmeMetniView(APIView):
+    """GET /api/abonelik/sozlesmelerim/{pk}/metin/ — eczacının kendi sözleşme metni."""
+
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsEczaci]
+
+    def get(self, request, pk):
+        from .contract_template import onay_blogu_html, render_sozlesme_html
+
+        eczane_id = getattr(request.user, "eczane_id", None)
+        sozlesme = Sozlesme.objects.filter(pk=pk, eczane_id=eczane_id).first()
+        if sozlesme is None:
+            return Response({"detail": "Sözleşme bulunamadı."}, status=status.HTTP_404_NOT_FOUND)
+        if sozlesme.onayli_sozlesme_metni:
+            return Response({"html": sozlesme.onayli_sozlesme_metni, "dondurulmus": True})
+        html = render_sozlesme_html(sozlesme) + onay_blogu_html(sozlesme)
+        return Response({"html": html, "dondurulmus": False})
+
+
+class SozlesmeIslakImzaIndir(APIView):
+    """GET /api/abonelik/sozlesmeler/{pk}/islak-imza-indir/ — ıslak imza belgesini proxy et."""
+
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsSuperAdmin]
+
+    def get(self, request, pk):
+        from django.http import StreamingHttpResponse
+        import mimetypes
+
+        sozlesme = Sozlesme.objects.filter(pk=pk).first()
+        if sozlesme is None:
+            return Response({"detail": "Sözleşme bulunamadı."}, status=status.HTTP_404_NOT_FOUND)
+        if not sozlesme.islak_imza_url:
+            return Response({"detail": "Islak imza belgesi yüklenmemiş."}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            from apps.core.services.storage_service import StorageService
+            storage = StorageService()
+            response_obj = storage.client.get_object(storage.bucket_name, sozlesme.islak_imza_url)
+            content_type, _ = mimetypes.guess_type(sozlesme.islak_imza_url)
+            content_type = content_type or "application/octet-stream"
+            filename = sozlesme.islak_imza_url.rsplit("/", 1)[-1]
+            http_response = StreamingHttpResponse(
+                streaming_content=response_obj,
+                content_type=content_type,
+            )
+            http_response["Content-Disposition"] = f'inline; filename="{filename}"'
+            return http_response
+        except Exception as exc:
+            logger.exception("Islak imza indirme hatası")
+            return Response({"detail": f"Dosya alınamadı: {exc}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 # ── Admin: Sözleşme talepleri ────────────────────────────────────────────────
 
 class SozlesmeTalebiViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
@@ -409,6 +561,14 @@ class SozlesmeTalebiViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, vi
     @action(detail=False, methods=["get"], url_path="bekleyen-sayisi")
     def bekleyen_sayisi(self, request):
         sayi = SozlesmeTalebi.objects.filter(durum=SozlesmeTalebi.Durum.BEKLIYOR).count()
+        return Response({"sayi": sayi})
+
+    @action(detail=False, methods=["get"], url_path="onay-bekleyen")
+    def onay_bekleyen(self, request):
+        """Eczacı onayı alınmamış aktif sözleşme sayısı (admin)."""
+        sayi = Sozlesme.objects.filter(
+            durum=Sozlesme.Durum.AKTIF, eczaci_onay_tarihi__isnull=True
+        ).count()
         return Response({"sayi": sayi})
 
 

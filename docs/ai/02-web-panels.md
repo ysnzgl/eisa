@@ -442,7 +442,7 @@ Her ses satırındaki çöp kutusu, ortak silme onayıyla sesi kütüphaneden ve
 - Kiosk bazında etkileşim sonrası idle'a dönüş, idle içerik min/max gösterim süresi, idle içerik yenileme süresi, ilk ses gecikmesi ve sonraki sesler arası süre düzenlenebilir. Her alan Sn/Dk seçicisi sunar; panel seçimi API/tabloda saniyeye dönüştürür. Defaultlar 20 sn, 10/12 sn, 300 sn, 20 dk ve 5 dk'dır.
 - “Kütüphaneye Yükle” MP3/WAV/OGG dosyalarını bağımsız olarak kaydeder; otomatik kiosk ataması yapmaz. Kullanıcı kütüphaneden sesleri seçip Güncelle ile kioska bağlar. Dinle düğmesi yetkili preview endpoint'inden sesi alır; oynat/duraklat ve ilerleme kontrolleri portalda sunulur. Modal kapanınca önizleme temizlenir.
 - Idle Ses bölümünde “Mesai içi (08:00–19:00)” veya “Mesai dışı / 24 saat” seçilir. “Nöbet günlerinde çal” seçeneği, eczacının girdiği nöbet gününde mesai içi sınırını kaldırır.
-- Servis sözleşmesi: `PATCH /api/pharmacies/kiosks/{id}/`, `GET/POST .../idle-audio-library/` ve `POST .../{id}/set-idle-audios/`.
+- Servis sözleşmesi: `PATCH /api/pharmacies/kiosks/{id}/`, `GET/POST .../idle-audio-library/` ve `POST .../{id}/set-idle-audios/`. Idle ses bölümündeki `Ses Süresi Görünür` seçeneği `idle_audio_countdown_visible` alanını yönetir; yalnız `true` iken kioskta geri sayım gösterilir.
 - Kampanya yönetimi ve edge'in teknik pull/push/ping/diagnostic aralıkları bu ekrana dahil değildir.
 
 ### Ortak UI kuralları

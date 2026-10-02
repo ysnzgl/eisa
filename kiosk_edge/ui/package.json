@@ -1,7 +1,7 @@
 {
   "name": "eisa-kiosk-ui",
   "version": "0.1.0",
-  "buildNumber": "260930.2",
+  "buildNumber": "261002.2",
   "private": true,
   "type": "module",
   "scripts": {

@@ -300,6 +300,7 @@ function initSchema(db, options = {}) {
       idle_audio_delay_seconds     INTEGER NOT NULL DEFAULT 1200,
       idle_audio_repeat_seconds    INTEGER NOT NULL DEFAULT 300,
       idle_audio_enabled           INTEGER NOT NULL DEFAULT 0,
+      idle_audio_countdown_visible INTEGER NOT NULL DEFAULT 0,
       audio_source_url             TEXT NOT NULL DEFAULT '',
       audio_source_checksum        TEXT NOT NULL DEFAULT '',
       audio_original_name          TEXT NOT NULL DEFAULT '',

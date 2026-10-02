@@ -2,6 +2,9 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { toast } from 'vue-sonner';
 import { http } from '../../services/api';
+import { useConfirm } from '../../composables/useConfirm.js';
+
+const { confirm } = useConfirm();
 
 const items = ref([]);
 const provinces = ref([]);
@@ -103,7 +106,13 @@ async function save() {
   } finally { saving.value = false; }
 }
 async function remove(item) {
-  if (!confirm(`“${item.title}” duyurusu silinsin mi?`)) return;
+  const ok = await confirm({
+    title: 'Duyuruyu Sil',
+    message: `"${item.title}" duyurusu kalıcı olarak silinecek.`,
+    confirmLabel: 'Evet, Sil',
+    variant: 'danger',
+  });
+  if (!ok) return;
   await http.delete(`/api/announcements/admin/${item.id}/`);
   toast.success('Duyuru silindi.');
   await load();

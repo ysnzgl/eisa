@@ -30,6 +30,7 @@ const routes = [
       { path: 'playlists',     component: () => import('../views/admin/PlaylistEditor.vue') },
       { path: 'pricing',       component: () => import('../views/admin/PricingMatrixConfigurator.vue') },
       { path: 'abonelik',      component: () => import('../views/admin/AbonelikYonetimi.vue') },
+      { path: 'sirket-tanimi', component: () => import('../views/admin/SirketTanimi.vue') },
       { path: 'users',         component: () => import('../views/admin/UserManagement.vue') },
       { path: 'announcements', component: () => import('../views/admin/AnnouncementManagement.vue') },
     ]

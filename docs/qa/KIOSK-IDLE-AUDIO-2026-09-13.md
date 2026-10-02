@@ -14,7 +14,7 @@ Idle ses akışı ilk bekleme ve devam aralığına göre sıralı/döngüsel ç
 - Tarayıcı ses akışının dosya sonunu güvenilir belirlemesi için lokal `/api/device-audio/:audioId` yanıtına `Content-Length`, `Accept-Ranges`, `206 Partial Content` ve `Content-Range` desteği eklendi.
 - Provision onay yanıtındaki `device_config` artık hemen uygulanır; sesler full pull zamanını beklemeden indirilir. Başlangıç pull'u ve `EISA_PULL_INTERVAL_SEC` periyodik pull'u dosya listesini yeniden kontrol eder. İndirme SHA-256 doğrulamalı ve snapshot atomiktir; hata halinde son çalışan eksiksiz liste korunur.
 - UI sıra testi 16 dosyanın tamamını `1 → 16` sırasıyla doğrular; son dosyadan sonra liste başa döner.
-- Debug modda idle ekranın sağ üstünde "Sese kalan" sayacı görünür. Sayaç sıradaki timer'ı toplam saniye (`120 sn`, `119 sn`, ...) olarak her saniye gösterir; ses kapalı, mesai dışı veya çalıyor durumlarında süre yerine durum metni yazar.
+- Yönetim panelindeki `Ses Süresi Görünür` ayarı açık (`idle_audio_countdown_visible=true`) olduğunda idle ekranın sol üstünde tüm çalışma modlarında küçük ve düşük kontrastlı "Sese kalan" sayacı görünür. Ayar boş/eksik veya `false` ise sayaç gizlidir. Görünürken sıradaki timer'ı toplam saniye (`120 sn`, `119 sn`, ...) olarak her saniye gösterir; ses kapalı, mesai dışı veya çalıyor durumlarında süre yerine durum metni yazar.
 
 ## Local veri kontrolü
 

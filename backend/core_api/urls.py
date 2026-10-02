@@ -6,6 +6,7 @@ from django.urls import include, path
 from django.views import View
 
 from apps.campaigns.urls import inventory_urlpatterns
+from apps.core.views import PublicMediaProxyView
 
 from .auth_views import (
     CookieLogoutView,
@@ -66,6 +67,7 @@ urlpatterns = [
     path("api/auth/token/", CookieTokenObtainPairView.as_view(), name="token_obtain_pair"),
     path("api/auth/token/refresh/", CookieTokenRefreshView.as_view(), name="token_refresh"),
     path("api/auth/logout/", CookieLogoutView.as_view(), name="token_logout"),
+    path("api/media/<path:object_key>", PublicMediaProxyView.as_view(), name="media-proxy"),
     # Domain API'leri
     path("api/lookups/", include("apps.lookups.urls")),
     path("api/users/", include("apps.users.urls")),
@@ -80,6 +82,7 @@ urlpatterns = [
     path("api/is-takip/", include("apps.gorevler.urls")),
     path("api/announcements/", include("apps.announcements.urls")),
     path("api/abonelik/", include("apps.abonelik.urls")),
+    path("api/sirket/", include("apps.sirket.urls")),
 ]
 
 # Swagger / ReDoc yalnızca geliştirme ortamında

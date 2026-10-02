@@ -57,6 +57,7 @@ def test_existing_defaults_are_preserved(kiosk):
     assert kiosk.idle_audio_delay_seconds == 1200
     assert kiosk.idle_audio_repeat_seconds == 300
     assert kiosk.idle_audio_enabled is False
+    assert kiosk.idle_audio_countdown_visible is False
 
 
 def test_admin_updates_only_selected_kiosk(admin_client, kiosk, eczane):
@@ -74,6 +75,7 @@ def test_admin_updates_only_selected_kiosk(admin_client, kiosk, eczane):
             "idle_content_max_seconds": 25,
             "idle_content_refresh_seconds": 600,
             "idle_audio_delay_seconds": 1200,
+            "idle_audio_countdown_visible": True,
         },
         format="json",
     )
@@ -82,6 +84,7 @@ def test_admin_updates_only_selected_kiosk(admin_client, kiosk, eczane):
     other.refresh_from_db()
     assert kiosk.interaction_timeout_seconds == 45
     assert kiosk.idle_content_max_seconds == 25
+    assert kiosk.idle_audio_countdown_visible is True
     assert other.interaction_timeout_seconds == 20
 
 
@@ -98,13 +101,15 @@ def test_invalid_timing_range_rejected(admin_client, kiosk):
 def test_sync_contains_device_config(kiosk_client, kiosk):
     kiosk.interaction_timeout_seconds = 35
     kiosk.idle_audio_delay_seconds = 900
-    kiosk.save(update_fields=["interaction_timeout_seconds", "idle_audio_delay_seconds"])
+    kiosk.idle_audio_countdown_visible = True
+    kiosk.save(update_fields=["interaction_timeout_seconds", "idle_audio_delay_seconds", "idle_audio_countdown_visible"])
     response = kiosk_client.get("/api/kiosk/v1/sync/")
     assert response.status_code == 200
     config = response.json()["device_config"]
     assert config["interaction_timeout_seconds"] == 35
     assert config["idle_audio_delay_seconds"] == 900
     assert config["idle_audio_repeat_seconds"] == 300
+    assert config["idle_audio_countdown_visible"] is True
     assert config["idle_audio"]["enabled"] is False
 
 

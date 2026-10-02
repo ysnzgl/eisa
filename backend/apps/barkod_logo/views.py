@@ -3,15 +3,14 @@
 Ayrıca PNG yükleme için özel endpoint: POST /api/barkod-logo/upload-gorsel/
 """
 import logging
-import uuid
 
-from django.conf import settings
 from rest_framework import status
 from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.viewsets import ModelViewSet
 
+from apps.core.media_proxy import media_proxy_url
 from apps.core.services.storage_service import StorageService
 from apps.pharmacies.permissions import IsSuperAdmin
 from core_api.cookie_jwt import JWTCookieAuthentication as JWTAuthentication
@@ -45,8 +44,7 @@ class BarkodLogoGorselUploadView(APIView):
     """``POST /api/barkod-logo/upload-gorsel/``
 
     PNG doğrulama (format, max 336×336, ≤1 MB, şeffaf piksel yok, gri tonlu) ve depo yükleme.
-    DOOH_PERSISTENT_MEDIA_URL=True  → kalıcı URL + sha256 checksum (prod)
-    DOOH_PERSISTENT_MEDIA_URL=False → presigned URL, checksum boş (dev/varsayılan)
+    Her ortamda object_key tabanli proxy URL + sha256 checksum doner.
     Döner: {media_url, object_key, checksum}
     """
 
@@ -69,17 +67,8 @@ class BarkodLogoGorselUploadView(APIView):
 
         try:
             storage = StorageService()
-            use_persistent = getattr(settings, "DOOH_PERSISTENT_MEDIA_URL", False)
-
-            if use_persistent:
-                object_key, checksum = storage.upload_file_with_checksum(uploaded, prefix="barkod-logo")
-                media_url = storage.public_url(object_key)
-            else:
-                # Dev / presigned-URL modu (DOOH_PERSISTENT_MEDIA_URL=False)
-                filename = f"{uuid.uuid4().hex}.png"
-                object_key = storage.upload_file(uploaded, object_name=filename, prefix="barkod-logo")
-                media_url = storage.get_object_url(object_key)
-                checksum = ""
+            object_key, checksum = storage.upload_file_with_checksum(uploaded, prefix="barkod-logo")
+            media_url = media_proxy_url(object_key, request)
 
         except Exception:
             logger.exception("Barkod logo görseli yüklenemedi")

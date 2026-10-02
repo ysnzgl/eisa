@@ -78,11 +78,9 @@ def _store_idle_audio_assets(validated, user, kiosk_id=None):
     stored = []
     for uploaded, content_type in validated:
         object_key, checksum = storage.upload_file_with_checksum(uploaded, prefix="kiosk-audio")
-        try:
-            media_url = storage.public_url(object_key)
-        except Exception:
-            media_url = ""
-            logger.warning("Kiosk audio public URL could not be generated", extra={"kiosk_id": kiosk_id})
+        # Kiosk cihazina URL, katalog/device-config serializer'inda object_key
+        # uzerinden App-Key korumali proxy olarak uretilir.
+        media_url = ""
         stored.append((uploaded, content_type, object_key, checksum, media_url))
 
     assets = []

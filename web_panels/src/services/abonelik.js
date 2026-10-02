@@ -18,8 +18,19 @@ export const createSozlesme = (data) =>
 export const updateSozlesme = (id, data) =>
   http.patch(`/api/abonelik/sozlesmeler/${id}/`, data);
 
-export const setCihazPlani = (sozlesmeId, data) =>
-  http.put(`/api/abonelik/sozlesmeler/${sozlesmeId}/cihaz-plani/`, data);
+export const saveCihazPlanlari = (sozlesmeId, plans) =>
+  http.put(`/api/abonelik/sozlesmeler/${sozlesmeId}/cihaz-planlari/`, plans);
+
+export const uploadIslakImza = (sozlesmeId, file) => {
+  const fd = new FormData();
+  fd.append('belge', file);
+  return http.post(`/api/abonelik/sozlesmeler/${sozlesmeId}/islak-imza-yukle/`, fd, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+};
+
+export const getIslakImzaUrl = (sozlesmeId) =>
+  `/api/abonelik/sozlesmeler/${sozlesmeId}/islak-imza-indir/`;
 
 export const uzatSozlesme = (sozlesmeId, data) =>
   http.post(`/api/abonelik/sozlesmeler/${sozlesmeId}/uzat/`, data);
@@ -34,11 +45,20 @@ export const getSozlesmeGecmis = (sozlesmeId) =>
 export const listFaturalar = (params = {}) =>
   http.get('/api/abonelik/faturalar/', { params });
 
-export const odeFaturaAdmin = (faturaId, yontem = 'MANUEL') =>
-  http.post(`/api/abonelik/faturalar/${faturaId}/ode/`, { yontem });
+export const getFaturaAdmin = (faturaId) =>
+  http.get(`/api/abonelik/faturalar/${faturaId}/`);
+
+export const odeFaturaAdmin = (faturaId, yontem = 'MANUEL', aciklama = '') =>
+  http.post(`/api/abonelik/faturalar/${faturaId}/ode/`, { yontem, aciklama });
 
 export const faturalandir = () =>
   http.post('/api/abonelik/faturalar/faturalandir/', {});
+
+export const onaylaSozlesme = (sozlesmeId) =>
+  http.post(`/api/abonelik/sozlesmelerim/${sozlesmeId}/onayla/`, {});
+
+export const sozlesmeOnayBekleyen = () =>
+  http.get('/api/abonelik/talepler/onay-bekleyen/', { __silent: true });
 
 // ── Admin: Fiyat tanımları (parametre) ──────────────────────────────────────
 export const listFiyatlar = (params = {}) =>
@@ -46,6 +66,9 @@ export const listFiyatlar = (params = {}) =>
 
 export const createFiyat = (data) =>
   http.post('/api/abonelik/fiyatlar/', data);
+
+export const deleteFiyat = (id) =>
+  http.delete(`/api/abonelik/fiyatlar/${id}/`);
 
 export const getAktifFiyat = () =>
   http.get('/api/abonelik/fiyatlar/aktif/', { __silent: true });
@@ -74,8 +97,8 @@ export const getHesabim = () =>
 export const getFaturalarim = (params = {}) =>
   http.get('/api/abonelik/faturalarim/', { params });
 
-export const odeFatura = (faturaId, yontem = 'KREDI_KARTI') =>
-  http.post(`/api/abonelik/faturalarim/${faturaId}/ode/`, { yontem });
+export const odeFatura = (faturaId, yontem = 'KREDI_KARTI', aciklama = '') =>
+  http.post(`/api/abonelik/faturalarim/${faturaId}/ode/`, { yontem, aciklama });
 
 export const getOdemelerim = () =>
   http.get('/api/abonelik/odemelerim/');

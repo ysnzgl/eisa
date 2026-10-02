@@ -7,13 +7,11 @@
   export let active = false;
   export let lastQrCreatedAt = null;
 
-  const showDebugCounter = import.meta.env.DEV || import.meta.env.VITE_KIOSK_DEBUG === 'true';
-
   let audioElement = null;
   let isPlaying = false;
-  let debugState = null;
-  let debugText = 'Kapalı';
-  let debugTimer = null;
+  let counterState = null;
+  let counterText = 'Kapalı';
+  let counterTimer = null;
 
   function stopElement() {
     if (audioElement) {
@@ -40,19 +38,18 @@
     stop: stopElement,
     onPlayingChange: (value) => {
       isPlaying = value;
-      refreshDebugState();
+      refreshCounterState();
     },
   });
 
-  function refreshDebugState() {
-    if (!showDebugCounter) return;
-    debugState = controller.getDebugState();
-    debugText = formatIdleAudioDebugText(debugState);
+  function refreshCounterState() {
+    counterState = controller.getDebugState();
+    counterText = formatIdleAudioDebugText(counterState);
   }
 
   function onImmediateInteraction() {
     controller.interact();
-    refreshDebugState();
+    refreshCounterState();
   }
 
   $: {
@@ -60,15 +57,14 @@
       ...$deviceConfig,
       idle_audio_last_qr_created_at: lastQrCreatedAt,
     });
-    refreshDebugState();
+    refreshCounterState();
   }
 
   onMount(() => {
-    if (!showDebugCounter) return undefined;
-    refreshDebugState();
-    debugTimer = window.setInterval(refreshDebugState, 1000);
+    refreshCounterState();
+    counterTimer = window.setInterval(refreshCounterState, 1000);
     return () => {
-      if (debugTimer) window.clearInterval(debugTimer);
+      if (counterTimer) window.clearInterval(counterTimer);
     };
   });
 
@@ -90,10 +86,10 @@
   </div>
 {/if}
 
-{#if showDebugCounter && active}
-  <div class="idle-audio-debug-counter" aria-label="Sese kalan süre">
+{#if active && $deviceConfig.idle_audio_countdown_visible === true}
+  <div class="idle-audio-counter" aria-label="Sese kalan süre">
     <span>Sese kalan</span>
-    <strong>{debugText}</strong>
+    <strong>{counterText}</strong>
   </div>
 {/if}
 
@@ -118,34 +114,34 @@
 
   .idle-audio-indicator i { font-size: 20px; }
 
-  .idle-audio-debug-counter {
+  .idle-audio-counter {
     position: fixed;
-    top: 18px;
-    right: 18px;
+    top: 10px;
+    left: 10px;
     z-index: 10030;
-    min-width: 118px;
-    padding: 8px 10px;
-    border-radius: 8px;
-    color: #fff;
-    background: rgba(15, 23, 42, 0.78);
-    border: 1px solid rgba(255, 255, 255, 0.35);
-    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.24);
+    min-width: 76px;
+    padding: 5px 7px;
+    border-radius: 6px;
+    color: rgba(255, 255, 255, 0.82);
+    background: rgba(15, 23, 42, 0.38);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.12);
     pointer-events: none;
-    text-align: right;
-    backdrop-filter: blur(6px);
+    text-align: left;
+    backdrop-filter: blur(3px);
   }
 
-  .idle-audio-debug-counter span {
+  .idle-audio-counter span {
     display: block;
-    font-size: 10px;
+    font-size: 8px;
     line-height: 1.1;
-    color: rgba(255, 255, 255, 0.72);
+    color: rgba(255, 255, 255, 0.55);
   }
 
-  .idle-audio-debug-counter strong {
+  .idle-audio-counter strong {
     display: block;
-    margin-top: 3px;
-    font-size: 18px;
+    margin-top: 2px;
+    font-size: 13px;
     line-height: 1;
     font-variant-numeric: tabular-nums;
   }

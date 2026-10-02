@@ -10,6 +10,9 @@ import {
 } from '../../services/users';
 import { getPharmacies } from '../../services/devices';
 import { toast } from 'vue-sonner';
+import { useConfirm } from '../../composables/useConfirm.js';
+
+const { confirm } = useConfirm();
 const users = ref([]);
 const pharmacies = ref([]);
 const loading = ref(false);
@@ -119,7 +122,13 @@ async function save() {
 async function toggleActive(u) {
   try {
     if (u.is_active) {
-      if (!confirm(`${u.username} pasifleştirilsin mi?`)) return;
+      const ok = await confirm({
+        title: 'Kullanıcıyı Pasifleştir',
+        message: `${u.username} hesabı pasifleştirilecek ve giriş yapamayacak.`,
+        confirmLabel: 'Pasifleştir',
+        variant: 'warning',
+      });
+      if (!ok) return;
       await deactivateUser(u.id);
       toast.success('Kullanıcı pasifleştirildi');
     } else {

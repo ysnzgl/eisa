@@ -89,3 +89,42 @@ def test_sozlesme_gecmis_endpoint(admin_client, eczane):
     data = r.json()
     assert len(data["uzatmalar"]) == 1
     assert len(data["sozlesmeler"]) >= 1
+
+
+def test_aktif_sozlesme_varken_cakisan_yeni_sozlesme_olusturulamaz(admin_client, eczane):
+    Sozlesme.objects.create(
+        eczane=eczane,
+        tur=Sozlesme.Tur.STANDART,
+        sozlesme_tipi_ay=24,
+        baslangic_tarihi=dt.date(2026, 1, 1),
+        durum=Sozlesme.Durum.AKTIF,
+    )
+    payload = {
+        "eczane": eczane.id,
+        "tur": "STANDART",
+        "sozlesme_tipi_ay": 12,
+        "baslangic_tarihi": "2026-06-01",
+        "durum": "AKTIF",
+    }
+    r = admin_client.post("/api/abonelik/sozlesmeler/", payload, format="json")
+    assert r.status_code == 400, r.content
+    assert "baslangic_tarihi" in r.json()
+
+
+def test_aktif_sozlesme_bittikten_sonra_yeni_sozlesme_olusturulabilir(admin_client, eczane):
+    Sozlesme.objects.create(
+        eczane=eczane,
+        tur=Sozlesme.Tur.STANDART,
+        sozlesme_tipi_ay=12,
+        baslangic_tarihi=dt.date(2026, 1, 1),
+        durum=Sozlesme.Durum.AKTIF,
+    )
+    payload = {
+        "eczane": eczane.id,
+        "tur": "STANDART",
+        "sozlesme_tipi_ay": 12,
+        "baslangic_tarihi": "2027-03-01",
+        "durum": "AKTIF",
+    }
+    r = admin_client.post("/api/abonelik/sozlesmeler/", payload, format="json")
+    assert r.status_code == 201, r.content

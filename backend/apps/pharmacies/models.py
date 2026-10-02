@@ -27,6 +27,10 @@ class Eczane(BaseModel):
     )
     adres = models.TextField(blank=True, default="")
     sahip_adi = models.CharField(max_length=128, blank=True, default="")
+    vergi_no = models.CharField(
+        max_length=20, blank=True, default="",
+        help_text="Vergi dairesi / vergi numarası (sözleşmede görünür).",
+    )
     telefon = models.CharField(max_length=20, blank=True, default="")
     eczane_kodu = models.CharField(
         max_length=32, unique=True, null=True, blank=True,
@@ -103,6 +107,10 @@ class Kiosk(BaseModel):
         help_text="Nobet gunlerinde mesai saati kisitini kaldirir.",
     )
     idle_audio_enabled = models.BooleanField(default=False)
+    idle_audio_countdown_visible = models.BooleanField(
+        default=False,
+        help_text="Idle ses geri sayiminin kiosk ekraninda gorunup gorunmeyecegi.",
+    )
     idle_audio_media_url = models.URLField(max_length=1000, blank=True, default="")
     idle_audio_object_key = models.CharField(max_length=500, blank=True, default="")
     idle_audio_checksum = models.CharField(max_length=80, blank=True, default="")

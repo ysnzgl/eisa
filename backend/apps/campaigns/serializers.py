@@ -7,6 +7,8 @@ ve kiosk-edge DTO'lari (``KioskCreativeSyncSerializer``,
 from django.conf import settings
 from rest_framework import serializers
 
+from apps.core.media_proxy import media_proxy_url
+
 from .models import (
     Campaign,
     CampaignTarget,
@@ -49,6 +51,12 @@ def _derive_object_key_from_url(media_url: str) -> str:
     """
     if not media_url:
         return ""
+    proxy_marker = "/api/media/"
+    if proxy_marker in media_url:
+        key = media_url.split(proxy_marker, 1)[1].split("?", 1)[0]
+        if key and ".." not in key and "//" not in key:
+            return key
+        return ""
     # Presigned URL → türetme denenmez
     if "X-Amz-" in media_url or "x-amz-" in media_url:
         return ""
@@ -71,6 +79,8 @@ def _derive_object_key_from_url(media_url: str) -> str:
 
 class CreativeSerializer(serializers.ModelSerializer):
     is_grid_compliant = serializers.BooleanField(read_only=True)
+    media_url = serializers.CharField(max_length=2048)
+    active_media_url = serializers.CharField(max_length=2048, allow_blank=True, required=False)
 
     _GRID_DURATIONS = frozenset({15, 30, 45, 60})
 
@@ -79,6 +89,15 @@ class CreativeSerializer(serializers.ModelSerializer):
         fields = ["id", "campaign", "media_url", "active_media_url", "duration_seconds", "name",
                   "checksum", "object_key", "active_object_key", "weight", "is_grid_compliant"]
         read_only_fields = ("id", "is_grid_compliant")
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get("request")
+        if instance.object_key:
+            data["media_url"] = media_proxy_url(instance.object_key, request)
+        if instance.active_object_key:
+            data["active_media_url"] = media_proxy_url(instance.active_object_key, request)
+        return data
 
     def validate_duration_seconds(self, value: int) -> int:
         if not 1 <= value <= 60:
@@ -93,6 +112,16 @@ class CreativeSerializer(serializers.ModelSerializer):
                 f"duration_seconds {value} 15sn grid ile uyumsuz. "
                 f"Izin verilen: 15 / 30 / 45 / 60 saniye."
             )
+        return value
+
+    def validate_media_url(self, value: str) -> str:
+        if not value.lower().startswith(("http://", "https://")):
+            raise serializers.ValidationError("media_url yalnızca http veya https olabilir.")
+        return value
+
+    def validate_active_media_url(self, value: str) -> str:
+        if value and not value.lower().startswith(("http://", "https://")):
+            raise serializers.ValidationError("active_media_url yalnızca http veya https olabilir.")
         return value
 
     def validate(self, attrs):
@@ -350,8 +379,9 @@ class KioskCreativeSyncSerializer(serializers.ModelSerializer):
         return _kiosk_media_url(self.context.get("request"), obj.object_key, obj.media_url)
 
     def get_active_media_url(self, obj):
-        # active_media_url için ayrı object_key yok; stable URL ise doğrudan kullan
-        return obj.active_media_url or ""
+        return _kiosk_media_url(
+            self.context.get("request"), obj.active_object_key, obj.active_media_url
+        )
 
     def get_type(self, obj):  # noqa: D401
         return "creative"
@@ -395,7 +425,11 @@ class KioskPlaylistItemSerializer(serializers.ModelSerializer):
 
     def get_active_media_url(self, obj):
         if obj.creative_id:
-            return obj.creative.active_media_url or ""
+            return _kiosk_media_url(
+                self.context.get("request"),
+                obj.creative.active_object_key,
+                obj.creative.active_media_url,
+            )
         return ""
 
     def get_duration_seconds(self, obj):
@@ -662,6 +696,7 @@ class PharmacyCampaignSerializer(serializers.ModelSerializer):
     """Eczacı paneli kampanyası — admin CRUD."""
 
     _ALLOWED_DURATIONS = frozenset({15, 30, 60})
+    media_url = serializers.CharField(max_length=2048)
 
     class Meta:
         model = PharmacyCampaign
@@ -673,6 +708,14 @@ class PharmacyCampaignSerializer(serializers.ModelSerializer):
             "olusturulma_tarihi", "guncellenme_tarihi",
         ]
         read_only_fields = ("id", "olusturulma_tarihi", "guncellenme_tarihi")
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if instance.object_key:
+            data["media_url"] = media_proxy_url(
+                instance.object_key, self.context.get("request")
+            )
+        return data
 
     def validate_duration_seconds(self, value: int) -> int:
         """Yalnızca 15, 30, 60 saniye kabul edilir.
@@ -687,6 +730,11 @@ class PharmacyCampaignSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 f"duration_seconds {value} geçersiz. İzin verilen: 15, 30, 60 saniye."
             )
+        return value
+
+    def validate_media_url(self, value: str) -> str:
+        if not value.lower().startswith(("http://", "https://")):
+            raise serializers.ValidationError("media_url yalnızca http veya https olabilir.")
         return value
 
     def validate(self, attrs):
@@ -733,6 +781,13 @@ class PharmacyCampaignSerializer(serializers.ModelSerializer):
 class PharmacyCampaignFeedSerializer(serializers.ModelSerializer):
     """Eczacı feed — yalnızca gösterim için gereken alanlar."""
 
+    media_url = serializers.SerializerMethodField()
+
     class Meta:
         model = PharmacyCampaign
         fields = ["id", "name", "media_url", "duration_seconds"]
+
+    def get_media_url(self, obj):
+        if obj.object_key:
+            return media_proxy_url(obj.object_key, self.context.get("request"))
+        return obj.media_url

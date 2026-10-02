@@ -22,9 +22,9 @@ def test_panel_acik_aktif_sozlesme(sozlesme, eczane):
 
 
 def test_panel_kisitli_odeme_gecikti(sozlesme, eczane):
-    services.faturala_kullanim_bedeli(bugun=dt.date(2026, 7, 3))
-    kisitli, neden = services.panel_kisitli(eczane.id)  # vade+7 geçti
-    # "bugün" gerçek tarih; 2026-07 faturası vadesi geçmiş → GECIKTI
+    # Haziran’da Temmuz faturası kesilir (vade 06-30). Gerçek tarih 2026-10-02 → kilitli.
+    services.faturala_kullanim_bedeli(bugun=dt.date(2026, 6, 3))
+    kisitli, neden = services.panel_kisitli(eczane.id)
     assert kisitli is True
     assert neden == "ODEME_GECIKTI"
 
@@ -109,6 +109,7 @@ def test_sistem_duyuru_sozlesme_bitiyor(db, eczane):
 
 @pytest.fixture
 def sozlesme(db, eczane):
+    from django.utils import timezone as tz
     return Sozlesme.objects.create(
         eczane=eczane,
         sozlesme_tipi_ay=Sozlesme.Tip.AY_24,
@@ -116,6 +117,7 @@ def sozlesme(db, eczane):
         oteleme_ay=6,
         aylik_kullanim_bedeli=Decimal("3900.00"),
         durum=Sozlesme.Durum.AKTIF,
+        eczaci_onay_tarihi=tz.now(),  # dijital onay verilmiş (panel kontrolü geçer)
     )
 
 
@@ -139,25 +141,27 @@ def test_bitis_tarihi_30_ay_sonra(sozlesme):
 # ── Kullanım bedeli faturalandırma ──────────────────────────────────────────
 
 def test_oteleme_doneminde_fatura_kesilmez(sozlesme):
-    # 3. ay (Mart) öteleme içinde → fatura yok
+    # Mart ayında prox=Nisan; Nisan < Öteleme sonu(Temmuz) → fatura yok
     created = services.faturala_kullanim_bedeli(bugun=dt.date(2026, 3, 5))
     assert created == 0
     assert Fatura.objects.count() == 0
 
 
 def test_oteleme_sonrasi_fatura_kesilir(sozlesme):
-    # 7. ay (Temmuz) → ilk kullanım bedeli
-    created = services.faturala_kullanim_bedeli(bugun=dt.date(2026, 7, 3))
+    # Haziran ayında prox=Temmuz; öteleme sona ermiş → Temmuz faturası kesilir
+    created = services.faturala_kullanim_bedeli(bugun=dt.date(2026, 6, 3))
     assert created == 1
     f = Fatura.objects.get()
     assert f.tip == Fatura.Tip.KULLANIM_BEDELI
     assert f.tutar == Decimal("3900.00")
     assert f.donem == "2026-07"
+    # Vade: sözleşme başlangıç günü (1) Temmuz ayında = 2026-07-01
+    assert f.vade_tarihi == dt.date(2026, 7, 1)
 
 
 def test_kullanim_bedeli_idempotent(sozlesme):
-    services.faturala_kullanim_bedeli(bugun=dt.date(2026, 7, 3))
-    services.faturala_kullanim_bedeli(bugun=dt.date(2026, 7, 6))
+    services.faturala_kullanim_bedeli(bugun=dt.date(2026, 6, 3))
+    services.faturala_kullanim_bedeli(bugun=dt.date(2026, 6, 6))
     assert Fatura.objects.filter(tip=Fatura.Tip.KULLANIM_BEDELI, donem="2026-07").count() == 1
 
 
@@ -213,9 +217,10 @@ def test_cihaz_taksiti_dolunca_plan_tamamlanir(cihaz_plani):
 # ── Gecikme + erişim kilidi ─────────────────────────────────────────────────
 
 def test_gecikmis_fatura_isaretlenir(sozlesme):
-    services.faturala_kullanim_bedeli(bugun=dt.date(2026, 7, 3))
+    # Haziran’da Temmuz faturası kesilir; vade Haziran 30.
+    services.faturala_kullanim_bedeli(bugun=dt.date(2026, 6, 3))
     f = Fatura.objects.get()
-    # Vade 2026-07-07; grace 7 gün → 2026-07-15'ten sonra GECIKTI
+    # Grace 7 gün: vade(06-30) + 7 = 07-07; 07-20 > 07-07 → GECIKMIS
     updated = services.guncelle_gecikmis_faturalar(bugun=dt.date(2026, 7, 20))
     assert updated == 1
     f.refresh_from_db()
@@ -223,18 +228,18 @@ def test_gecikmis_fatura_isaretlenir(sozlesme):
 
 
 def test_erisim_grace_icinde_acik(sozlesme, eczane):
-    services.faturala_kullanim_bedeli(bugun=dt.date(2026, 7, 3))
-    # Vade 07-07 + 7 grace → 07-14'e kadar açık
-    assert services.eczane_erisim_kapali(eczane.id, bugun=dt.date(2026, 7, 10)) is False
+    services.faturala_kullanim_bedeli(bugun=dt.date(2026, 6, 3))  # vade 06-30
+    # 07-06: sinir=06-29; 06-30 >= 06-29 → henuz kilitli degil
+    assert services.eczane_erisim_kapali(eczane.id, bugun=dt.date(2026, 7, 6)) is False
 
 
 def test_erisim_grace_sonrasi_kapali(sozlesme, eczane):
-    services.faturala_kullanim_bedeli(bugun=dt.date(2026, 7, 3))
+    services.faturala_kullanim_bedeli(bugun=dt.date(2026, 6, 3))  # vade 06-30, grace sonu 07-07
     assert services.eczane_erisim_kapali(eczane.id, bugun=dt.date(2026, 7, 20)) is True
 
 
 def test_odeme_erisimi_acar(sozlesme, eczane):
-    services.faturala_kullanim_bedeli(bugun=dt.date(2026, 7, 3))
+    services.faturala_kullanim_bedeli(bugun=dt.date(2026, 6, 3))
     f = Fatura.objects.get()
     services.ode_fatura(f)
     f.refresh_from_db()
@@ -243,7 +248,7 @@ def test_odeme_erisimi_acar(sozlesme, eczane):
 
 
 def test_odenmis_fatura_tekrar_odenemez(sozlesme):
-    services.faturala_kullanim_bedeli(bugun=dt.date(2026, 7, 3))
+    services.faturala_kullanim_bedeli(bugun=dt.date(2026, 6, 3))
     f = Fatura.objects.get()
     services.ode_fatura(f)
     with pytest.raises(ValueError):
@@ -435,7 +440,8 @@ def test_cihaz_kira_faturalanir(db, eczane):
         baslangic_tarihi=dt.date(2026, 1, 1), durum=Sozlesme.Durum.AKTIF,
         cihaz_durumu=Sozlesme.CihazDurum.KIRALIK, cihaz_kira_bedeli=Decimal("750.00"),
     )
-    created = services.faturala_cihaz_kira(bugun=dt.date(2026, 1, 3))
+    # Aralık’ta çalıştırılır → Ocak 2026 faturası 1 ay önceden kesilir
+    created = services.faturala_cihaz_kira(bugun=dt.date(2025, 12, 3))
     assert created == 1
     f = Fatura.objects.get(tip=Fatura.Tip.CIHAZ_KIRA)
     assert f.tutar == Decimal("750.00")
@@ -448,8 +454,8 @@ def test_cihaz_kira_idempotent(db, eczane):
         baslangic_tarihi=dt.date(2026, 1, 1), durum=Sozlesme.Durum.AKTIF,
         cihaz_durumu=Sozlesme.CihazDurum.KIRALIK, cihaz_kira_bedeli=Decimal("750.00"),
     )
-    services.faturala_cihaz_kira(bugun=dt.date(2026, 1, 3))
-    services.faturala_cihaz_kira(bugun=dt.date(2026, 1, 6))
+    services.faturala_cihaz_kira(bugun=dt.date(2025, 12, 3))
+    services.faturala_cihaz_kira(bugun=dt.date(2025, 12, 6))
     assert Fatura.objects.filter(tip=Fatura.Tip.CIHAZ_KIRA, donem="2026-01").count() == 1
 
 
