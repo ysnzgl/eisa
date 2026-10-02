@@ -521,7 +521,7 @@ def faturala_aylik_birlesik(*, bugun: _dt.date | None = None) -> int:
             ))
             toplam += plan.toplam_tutar
 
-        # 3. Satılık cihaz taksitleri
+        # 3. Satılık cihaz taksitleri / peşin fiyatları
         for plan in sozlesme.cihaz_planlari.filter(
             durum=CihazOdemePlani.Durum.AKTIF, tip=CihazOdemePlani.Tip.SATILIK
         ):
@@ -530,6 +530,25 @@ def faturala_aylik_birlesik(*, bugun: _dt.date | None = None) -> int:
             bas_ay = _dt.date(plan.baslangic_tarihi.year, plan.baslangic_tarihi.month, 1)
             if prox_ay < bas_ay:
                 continue
+
+            if plan.odeme_tipi == "PESIN":
+                if FaturaKalemi.objects.filter(cihaz_plani=plan, tip=FaturaKalemi.KalemTip.CIHAZ_TAKSIT).exists():
+                    if plan.durum != CihazOdemePlani.Durum.TAMAMLANDI:
+                        plan.durum = CihazOdemePlani.Durum.TAMAMLANDI
+                        plan.save(update_fields=["durum"])
+                    continue
+                kalemler.append(dict(
+                    tip=FaturaKalemi.KalemTip.CIHAZ_TAKSIT,
+                    cihaz_plani=plan, taksit_no=1,
+                    tutar=plan.odeme_tutari,
+                    aciklama=f"{donem} cihaz satışı peşin ({plan.adet} adet)",
+                ))
+                toplam += plan.odeme_tutari
+                if plan.durum != CihazOdemePlani.Durum.TAMAMLANDI:
+                    plan.durum = CihazOdemePlani.Durum.TAMAMLANDI
+                    plan.save(update_fields=["durum"])
+                continue
+
             kesilmis = FaturaKalemi.objects.filter(
                 cihaz_plani=plan, tip=FaturaKalemi.KalemTip.CIHAZ_TAKSIT,
             ).count()

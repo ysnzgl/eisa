@@ -811,7 +811,10 @@ function fmtDate(iso) {
               <td class="cell-muted">{{ s.bitis_tarihi }}</td>
               <td>
                 <span v-if="s.cihaz_plani" class="eisa-pill eisa-pill-info">
-                  {{ s.cihaz_plani.taksit_sayisi }}× {{ fmtTL(s.cihaz_plani.taksit_tutari) }}
+                  {{ s.cihaz_plani.tip === 'SATILIK' && s.cihaz_plani.taksit_sayisi === 1
+                    ? 'Peşin' : `${s.cihaz_plani.taksit_sayisi}×` }}
+                  {{ fmtTL(s.cihaz_plani.tip === 'SATILIK' && s.cihaz_plani.taksit_sayisi === 1
+                    ? s.cihaz_plani.toplam_tutar : s.cihaz_plani.taksit_tutari) }}
                 </span>
                 <span v-else class="cell-muted">—</span>
               </td>

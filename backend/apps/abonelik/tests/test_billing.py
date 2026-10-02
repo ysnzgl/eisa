@@ -191,6 +191,18 @@ def test_taksit_tutari_vade_farki_dahil(cihaz_plani):
     assert cihaz_plani.taksit_tutari == Decimal("12000.00")
 
 
+def test_satilik_ciha_planinda_pesin_ve_taksit_ayrisi_yansir(cihaz_plani):
+    cihaz_plani.taksit_sayisi = 1
+    assert cihaz_plani.odeme_tipi == "PESIN"
+    assert cihaz_plani.odeme_tutari == Decimal("48000.00")
+    assert cihaz_plani.odeme_etiketi == "Peşin fiyat"
+
+    cihaz_plani.taksit_sayisi = 4
+    assert cihaz_plani.odeme_tipi == "TAKSIT"
+    assert cihaz_plani.odeme_tutari == Decimal("12000.00")
+    assert cihaz_plani.odeme_etiketi == "4 taksit"
+
+
 def test_cihaz_taksiti_ardisik_donemler(cihaz_plani):
     c1 = services.faturala_cihaz_taksit(bugun=dt.date(2026, 1, 3))
     c2 = services.faturala_cihaz_taksit(bugun=dt.date(2026, 2, 3))

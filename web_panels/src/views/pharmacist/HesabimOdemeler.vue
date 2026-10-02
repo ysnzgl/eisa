@@ -313,11 +313,11 @@ const HAREKET_ICON = {
                :key="p.id"
                class="eisa-form-row">
             <span class="eisa-field-label">
-              Cihaz Taksiti ({{ p.adet }}×)
+              {{ p.tip === 'SATILIK' && p.taksit_sayisi === 1 ? 'Cihaz Peşin Bedeli' : 'Cihaz Taksiti' }} ({{ p.adet }}×)
             </span>
             <strong>
-              {{ p.taksit_sayisi }}×
-              {{ fmtTL(p.cihaz_kdv_orani > 0 ? p.kdv_dahil_taksit : p.taksit_tutari) }}
+              {{ p.tip === 'SATILIK' && p.taksit_sayisi === 1 ? 'Peşin' : `${p.taksit_sayisi}×` }}
+              {{ fmtTL(p.cihaz_kdv_orani > 0 ? (p.tip === 'SATILIK' && p.taksit_sayisi === 1 ? p.kdv_dahil_toplam : p.kdv_dahil_taksit) : (p.tip === 'SATILIK' && p.taksit_sayisi === 1 ? p.toplam_tutar : p.taksit_tutari)) }}
             </strong>
           </div>
         </div>

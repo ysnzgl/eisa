@@ -396,6 +396,31 @@ class CihazOdemePlani(BaseModel):
             return Decimal("0.00")
         return (self.kdv_dahil_toplam / Decimal(self.taksit_sayisi)).quantize(Decimal("0.01"))
 
+    @property
+    def odeme_tipi(self) -> str:
+        """Satılık cihaz için peşin mi yoksa taksit mi yansıyacak."""
+        if self.tip == self.Tip.KIRALIK:
+            return "KIRA"
+        return "PESIN" if self.taksit_sayisi == 1 else "TAKSIT"
+
+    @property
+    def odeme_tutari(self) -> Decimal:
+        """Satılıkta peşin toplamı, taksitli durumda aylık taksit tutarı."""
+        if self.tip == self.Tip.KIRALIK:
+            return self.toplam_tutar
+        if self.taksit_sayisi == 1:
+            return self.toplam_tutar
+        return self.taksit_tutari
+
+    @property
+    def odeme_etiketi(self) -> str:
+        """Kullanıcıya gösterilecek kısa ödeme etiketi."""
+        if self.tip == self.Tip.KIRALIK:
+            return "Aylık kira"
+        if self.taksit_sayisi == 1:
+            return "Peşin fiyat"
+        return f"{self.taksit_sayisi} taksit"
+
 
 class FiyatTanimi(BaseModel):
     """Global fiyat tanımı (abonelik + cihaz kira bedeli), geçerlilik tarihli.

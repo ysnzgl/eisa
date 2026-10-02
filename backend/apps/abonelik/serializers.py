@@ -87,6 +87,9 @@ class CihazOdemePlaniSerializer(serializers.ModelSerializer):
     tevkifat_tutari = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     kdv_dahil_toplam = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     kdv_dahil_taksit = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    odeme_tutari = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    odeme_tipi = serializers.CharField(read_only=True)
+    odeme_etiketi = serializers.CharField(read_only=True)
     durum_display = serializers.CharField(source="get_durum_display", read_only=True)
 
     class Meta:
@@ -96,7 +99,7 @@ class CihazOdemePlaniSerializer(serializers.ModelSerializer):
             "pesin_fiyat", "vade_farki_orani", "taksit_sayisi",
             "aylik_kira_bedeli",
             "baslangic_tarihi", "durum", "durum_display",
-            "toplam_tutar", "taksit_tutari",
+            "toplam_tutar", "taksit_tutari", "odeme_tipi", "odeme_tutari", "odeme_etiketi",
             "cihaz_kdv_tutari", "tevkifat_tutari", "kdv_dahil_toplam", "kdv_dahil_taksit",
         )
         read_only_fields = ("sozlesme",)
