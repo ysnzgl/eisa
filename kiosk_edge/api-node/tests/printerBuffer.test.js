@@ -57,12 +57,25 @@ const INVALID_FILE = join(TEST_TMP, 'invalid.bin');
 writeFileSync(INVALID_FILE, Buffer.alloc(64, 0xff)); // not valid PNG
 
 const QR = 'TEST1234X';
+const RASTER_COMMAND = Buffer.from([0x1d, 0x76, 0x30, 0x00]);
+const QR_PRINT_COMMAND = Buffer.from([0x1d, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x51, 0x30]);
+
+function countRasterCommands(buffer) {
+  let count = 0;
+  let offset = 0;
+  while ((offset = buffer.indexOf(RASTER_COMMAND, offset)) !== -1) {
+    count += 1;
+    offset += RASTER_COMMAND.length;
+  }
+  return count;
+}
 
 describe('buildReceiptBuffer — bozuk aday atlanır', () => {
   it('boş liste → e-ISA fallback, logoId=null', () => {
     const { logoId, buffer } = buildReceiptBuffer({ qrPayload: QR, logoCandidates: [] });
     expect(logoId).toBeNull();
     expect(buffer.length).toBeGreaterThan(10);
+    expect(countRasterCommands(buffer)).toBe(1); // sabit alt e-isa logosu
   });
 
   it('tek geçerli PNG → logoId döner, buffer ESC/POS içerir', () => {
@@ -72,6 +85,12 @@ describe('buildReceiptBuffer — bozuk aday atlanır', () => {
     });
     expect(logoId).toBe('good');
     expect(buffer.length).toBeGreaterThan(10);
+    expect(countRasterCommands(buffer)).toBe(2); // sponsor üstte + sabit e-isa altta
+    const sponsorPosition = buffer.indexOf(RASTER_COMMAND);
+    const qrPosition = buffer.indexOf(QR_PRINT_COMMAND);
+    const eisaPosition = buffer.indexOf(RASTER_COMMAND, sponsorPosition + RASTER_COMMAND.length);
+    expect(sponsorPosition).toBeLessThan(qrPosition);
+    expect(qrPosition).toBeLessThan(eisaPosition);
   });
 
   it('A bozuk, B geçerliyken B basılır, logoId=B', () => {

@@ -25,7 +25,7 @@
 - `web_panels/src/views/admin/DoohControlCenter.vue` â€” DOOH izleme merkezi
 - `web_panels/src/views/admin/PlaylistEditor.vue` â€” Playlist dÃ¼zenleme
 - `web_panels/src/views/admin/ContentManagement.vue` — "İçerik Yönetimi" (route `/admin/content-management`): IdleScreenContent CRUD; başlık/metin idle içerik (2026-08-16). **TR/EN:** Başlık (İngilizce)/Metin (İngilizce) opsiyonel alanları *(2026-09-29)* — boş bırakılırsa kioskta İngilizce dilde Türkçe metin gösterilir. Eski `HouseAdManagement.vue` (`/admin/house-ads`) KALDIRILDI.
-- `web_panels/src/views/admin/GorevYonetimi.vue` — Admin-only İş Takibi (route `/admin/is-takip`); başlık/içerik/durum/atanan admin, ortak KPI kartları ve shared field styles ile kompakt modal
+- `web_panels/src/views/admin/GorevYonetimi.vue` — Admin-only İş Takibi (route `/admin/is-takip`); başlık/içerik/durum/atanan admin, İptal durumu, onaylı kalıcı silme, ortak KPI kartları ve shared field styles ile kompakt modal
 - `web_panels/src/composables/useKioskRolloutStatus.js` â€” Kiosk rollout durum hesabÄ± (tek merkezi kaynak)
 - `web_panels/src/views/pharmacist/QrScan.vue` â€” QR tarama
 - `web_panels/src/views/admin/Dashboard.vue` â€” Admin dashboard
@@ -62,7 +62,7 @@
 8. Dashboard analytics (kampanya performansÄ±, session Ã¶zeti)
 9. **Barkod Logo Yönetimi** *(2026-08-11)* — `/admin/barkod-logolar`, `BarkodLogoYonetimi.vue`. DOOH'dan bağımsız. Logo oluştur/düzenle/pasifleştir; PNG yükle (336×336, ≤1MB); kiosk hedefleme; günlük limit. DELETE yok.
 10. **Görüş ve Destek** *(2026-08-15)* — Admin: `/admin/destek` → `DestekYonetimi.vue`; Eczacı: `/pharmacist/destek` → `DestekTalepleri.vue`. Admin menüsünde Yeni sayısı badge'i.
-11. **İş Takibi** *(2026-09-13, updated 2026-10-01)* — Admin-only `/admin/is-takip` → `GorevYonetimi.vue`. Ana dashboard KPI diline uyumlu `eisa-stats` kartları kullanır; içerik alanında karakter sınırı yoktur. Geniş, yeniden boyutlandırılabilir editör paragrafları/satır sonlarını korur ve canlı karakter sayısı gösterir; liste görünümü kısa önizleme kullanır.
+11. **İş Takibi** *(2026-09-13, updated 2026-10-03)* — Admin-only `/admin/is-takip` → `GorevYonetimi.vue`. Ana dashboard KPI diline uyumlu `eisa-stats` kartları kullanır; içerik alanında karakter sınırı yoktur. Geniş, yeniden boyutlandırılabilir editör paragrafları/satır sonlarını korur ve canlı karakter sayısı gösterir; liste görünümü kısa önizleme kullanır. İşler `İptal` durumuna alınabilir veya onay diyaloğundan sonra kalıcı olarak silinebilir.
 12. **Abonelik ve Ödeme** *(2026-10-01)* — Admin: `/admin/abonelik` → `AbonelikYonetimi.vue` (Sözleşmeler + **Talepler** (onay/red) + **Ödemeler** (tarihçe) + Faturalar sekmeleri; Uzat/Geçmiş; `?eczane=` filtresi; bekleyen talep badge). Eczacı: `/pharmacist/hesabim` → `HesabimOdemeler.vue` (borç/sözleşme özeti, fatura ödeme, **sözleşme talebi** yeni/uzatma/iptal, ödeme geçmişi, sözleşme hareketleri, bitiş≤7g/ödeme≤3g ısrarlı uyarılar). **Kısıtlı panel:** sözleşmesiz/ödemesi gecikmiş eczacı giriş yapar ama yalnız Hesabım'ı görür (AdminLayout nav filtresi + router guard `auth.panelKisitli`). Demo'da sol menüde **DEMO** rozeti. Ortak `components/shared/SozlesmeForm.vue`.
 13. **Eczane + sözleşme (DeviceManagement)** *(2026-10-01)* — "Yeni Eczane" modalında zorunlu sözleşme bölümü (`SozlesmeForm`); tek istekte `POST /api/pharmacies/` nested `sozlesme` ile atomik oluşur. Eczane tablosunda **Sözleşme** (tür·kalan gün) ve **Ödeme** (Güncel/Bekleyen/Gecikmiş/Demo/Sözleşme yok) renkli `eisa-pill` rozetleri + satır başı "Sözleşmeler" butonu (`/admin/abonelik?eczane=`).
 

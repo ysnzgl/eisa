@@ -58,11 +58,11 @@ const toplamSatilikKdvDahil = computed(() => planlar.value.filter(p => p.tip !==
 const toplamKiralikAylik = computed(() => planlar.value.filter(p => p.tip === 'KIRALIK').reduce((s, p) => s + planKdvDahil(p), 0));
 
 const emptyPlan = () => ({
-  tip: 'SATILIK', adet: 1,
+  tip: 'SATILIK', adet: 1, cihaz_bilgisi: '',
   pesin_fiyat: '', vade_farki_orani: '0.00', taksit_sayisi: 1,
   aylik_kira_bedeli: '',
   cihaz_kdv_orani: 0, tevkifat_orani: '',
-  // Cihaz faturalandırma tarihi her zaman sözleşme başlangıcıyla aynı (tek birleşik fatura).
+  oteleme_ay: 0,
   baslangic_tarihi: props.form.baslangic_tarihi || '',
 });
 
@@ -78,10 +78,6 @@ watch(() => props.form.baslangic_tarihi, (val) => {
   props.form.cihaz_baslangic_tarihi = val;
   (props.form.cihaz_planlari || []).forEach(p => { p.baslangic_tarihi = val; });
 }, { immediate: true });
-
-if (!props.form.baslangic_tarihi) {
-  props.form.baslangic_tarihi = new Date().toISOString().slice(0, 10);
-}
 
 function fmtTL(v) {
   return Number(v || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '\u202f\u20ba';
@@ -181,6 +177,9 @@ function fmtTL(v) {
             <label class="eisa-form-row"><span class="eisa-field-label">Adet</span>
               <input type="number" min="1" max="99" v-model.number="p.adet" class="eisa-field" />
             </label>
+            <label class="eisa-form-row eisa-form-row-full"><span class="eisa-field-label">Cihaz Bilgisi</span>
+              <input type="text" v-model="p.cihaz_bilgisi" class="eisa-field" placeholder="Marka/model, model no, notlar" />
+            </label>
             <template v-if="p.tip === 'SATILIK'">
               <label class="eisa-form-row"><span class="eisa-field-label">Birim Peşin Fiyat</span>
                 <div class="eisa-input-group sf-pesin-group"><input type="number" step="0.01" min="0" v-model="p.pesin_fiyat" class="eisa-field" /><span class="eisa-input-suffix">₺</span></div>
@@ -194,6 +193,9 @@ function fmtTL(v) {
             </template>
             <label v-else class="eisa-form-row"><span class="eisa-field-label">Birim Aylık Kira</span>
               <div class="eisa-input-group"><input type="number" step="0.01" min="0" v-model="p.aylik_kira_bedeli" class="eisa-field" /><span class="eisa-input-suffix">₺</span></div>
+            </label>
+            <label class="eisa-form-row"><span class="eisa-field-label">Cihaz Öteleme (ay)</span>
+              <input type="number" min="0" max="36" v-model.number="p.oteleme_ay" class="eisa-field" />
             </label>
             <label class="eisa-form-row"><span class="eisa-field-label">KDV Oranı</span>
               <select v-model.number="p.cihaz_kdv_orani" class="eisa-field">
@@ -228,6 +230,12 @@ function fmtTL(v) {
               <div class="sf-tutar-kalem sf-tutar-accent"><span>Aylık Taksit</span><strong>{{ fmtTL(planTaksit(p)) }}</strong></div>
             </template>
           </div>
+          <p class="eisa-reset-info" style="margin:.4rem 0 0;font-size:.72rem;">
+            <i class="fa-solid fa-circle-info"></i>
+            {{ Number(p.oteleme_ay) > 0
+              ? `İlk cihaz faturası sözleşme başlangıcından ${p.oteleme_ay} ay sonra kesilir.`
+              : 'İlk cihaz faturası sözleşme tarihiyle aynı dönemde kesilir.' }}
+          </p>
         </div>
         <button type="button" class="sf-add-plan" @click="addPlan">
           <i class="fa-solid fa-plus-circle"></i> Cihaz Ekle

@@ -2,6 +2,9 @@
 import { computed, onMounted, reactive, ref } from 'vue';
 import { toast } from 'vue-sonner';
 import { http } from '../../services/api';
+import { useConfirm } from '../../composables/useConfirm.js';
+
+const { confirm } = useConfirm();
 
 const users = ref([]);
 const items = ref([]);
@@ -16,6 +19,7 @@ const statuses = [
   { value: 'INCELENIYOR', label: 'İnceleniyor' },
   { value: 'YAPILDI', label: 'Yapıldı' },
   { value: 'YAPILMADI', label: 'Yapılmadı' },
+  { value: 'IPTAL', label: 'İptal' },
 ];
 
 const adminUsers = computed(() => users.value.filter((user) => user.rol === 'superadmin' && user.is_active));
@@ -110,6 +114,24 @@ async function save() {
   }
 }
 
+async function remove(item) {
+  const approved = await confirm({
+    title: 'İşi Sil',
+    message: `"${item.baslik}" işi kalıcı olarak silinecek.`,
+    confirmLabel: 'Evet, Sil',
+    variant: 'danger',
+  });
+  if (!approved) return;
+
+  try {
+    await http.delete(`/api/is-takip/gorevler/${item.id}/`);
+    toast.success('İş silindi.');
+    await loadData();
+  } catch (error) {
+    toast.error(error?.response?.data?.detail || 'İş silinemedi.');
+  }
+}
+
 function formatDate(iso) {
   if (!iso) return '—';
   return new Date(iso).toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' });
@@ -120,6 +142,7 @@ const statusClass = {
   INCELENIYOR: 'eisa-pill-warning',
   YAPILDI: 'eisa-pill-success',
   YAPILMADI: 'eisa-pill-muted',
+  IPTAL: 'eisa-pill-danger',
 };
 
 onMounted(loadData);
@@ -191,6 +214,7 @@ onMounted(loadData);
               <td class="cell-muted">{{ formatDate(item.olusturulma_tarihi) }}</td>
               <td class="row-actions" @click.stop>
                 <button class="eisa-icon-btn" title="Düzenle" @click="openEdit(item)"><i class="fa-solid fa-pen"></i></button>
+                <button class="eisa-icon-btn danger" title="Sil" @click="remove(item)"><i class="fa-solid fa-trash"></i></button>
               </td>
             </tr>
           </tbody>
@@ -326,7 +350,9 @@ onMounted(loadData);
 }
 
 .row-actions {
-  width: 56px;
+  width: 96px;
+  display: flex;
+  gap: .35rem;
 }
 
 .row-actions .eisa-icon-btn {

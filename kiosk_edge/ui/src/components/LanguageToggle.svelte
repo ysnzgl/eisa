@@ -33,13 +33,13 @@
 <style>
   .lang-toggle {
     position: fixed;
-    top: 14px;
-    right: 14px;
+    top: 36px;
+    right: 28px;
     z-index: 14000;
     display: inline-flex;
     align-items: center;
-    gap: 2px;
-    padding: 4px;
+    gap: 3px;
+    padding: 5px;
     border-radius: 999px;
     background: rgba(17, 24, 39, 0.72);
     backdrop-filter: blur(6px);
@@ -48,14 +48,14 @@
     user-select: none;
   }
   .lang-btn {
-    min-width: 46px;
-    min-height: 40px;
-    padding: 0 12px;
+    min-width: 64px;
+    min-height: 56px;
+    padding: 0 16px;
     border: 0;
     border-radius: 999px;
     background: transparent;
     color: rgba(255, 255, 255, 0.7);
-    font-size: 15px;
+    font-size: 22px;
     font-weight: 800;
     letter-spacing: 0.04em;
     cursor: pointer;
@@ -68,7 +68,7 @@
   }
   .lang-sep {
     width: 1px;
-    height: 20px;
+    height: 28px;
     background: rgba(255, 255, 255, 0.18);
   }
 </style>

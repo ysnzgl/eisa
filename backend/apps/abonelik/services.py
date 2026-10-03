@@ -463,10 +463,13 @@ def _olustur_acma_kapama_fatura(fatura: Fatura, *, user=None) -> None:
 
 
 def faturala_aylik_birlesik(*, bugun: _dt.date | None = None) -> int:
-    """Aktif sözleşmeler için gelecek ayın tek birleşik faturasını üretir.
+    """Aktif sözleşmeler için gelecek ayın tek faturasını üretir.
 
-    Abonelik, kiralık cihaz ve satılık cihaz taksitlerini tek bir faturada
-    kalem kalem listeler. Vade = sözleşme başlangıç günü fatura ayında.
+    Abonelik ve cihaz (taksit/kira) bileşenleri bağımsız öteleme sürelerine
+    sahiptir. Bir ayda yalnızca vadesi gelen bileşenler faturaya kalem olarak
+    eklenir: abonelik ve cihaz aynı aya denk gelirse tek birleşik faturada iki
+    kalem; yalnız biri denk gelirse tek kalemli fatura. Vade = sözleşme
+    başlangıç günü fatura ayında (tüm faturalar sözleşme tarihiyle eşleniktir).
     """
     from .models import CihazOdemePlani, FaturaKalemi
 
@@ -482,27 +485,37 @@ def faturala_aylik_birlesik(*, bugun: _dt.date | None = None) -> int:
         .select_related("eczane")
     )
     for sozlesme in sozlesmeler:
-        baslangic = sozlesme.kullanim_bedeli_baslangic
         bitis = sozlesme.bitis_tarihi
-        if prox_ay < baslangic or prox_ay > bitis:
+        bitis_ay = _dt.date(bitis.year, bitis.month, 1)
+        # Öteleme yoksa ilk fatura sözleşme başlangıç ayı ile aynı dönemde kesilir.
+        if sozlesme.oteleme_ay == 0:
+            target_ay = _dt.date(sozlesme.baslangic_tarihi.year, sozlesme.baslangic_tarihi.month, 1)
+        else:
+            target_ay = prox_ay
+        # Sözleşme bitişini aşan dönemde hiçbir bileşen faturalanmaz.
+        if target_ay > bitis_ay:
             continue
         # Birleşik fatura zaten varsa atla.
+        donem = donem_str(target_ay)
         if Fatura.objects.filter(eczane_id=sozlesme.eczane_id, donem=donem,
                                  tip=Fatura.Tip.BIRLESIK).exists():
             continue
 
-        vade = _vade_sozlesme_gun(sozlesme.baslangic_tarihi.day, prox)
+        vade = _vade_sozlesme_gun(sozlesme.baslangic_tarihi.day, target_ay)
         kalemler = []
         toplam = Decimal("0.00")
 
-        # 1. Abonelik bedeli
-        kalemler.append(dict(
-            tip=FaturaKalemi.KalemTip.ABONELIK,
-            cihaz_plani=None, taksit_no=None,
-            tutar=sozlesme.aylik_kullanim_bedeli,
-            aciklama=f"{donem} abonelik bedeli",
-        ))
-        toplam += sozlesme.aylik_kullanim_bedeli
+        # 1. Abonelik bedeli — yalnızca kendi öteleme dönemi dolduğunda eklenir.
+        ab_bas = sozlesme.kullanim_bedeli_baslangic
+        ab_bas_ay = _dt.date(ab_bas.year, ab_bas.month, 1)
+        if target_ay >= ab_bas_ay:
+            kalemler.append(dict(
+                tip=FaturaKalemi.KalemTip.ABONELIK,
+                cihaz_plani=None, taksit_no=None,
+                tutar=sozlesme.aylik_kullanim_bedeli,
+                aciklama=f"{donem} abonelik bedeli",
+            ))
+            toplam += sozlesme.aylik_kullanim_bedeli
 
         # 2. Kiralık cihazlar
         for plan in sozlesme.cihaz_planlari.filter(
@@ -511,7 +524,7 @@ def faturala_aylik_birlesik(*, bugun: _dt.date | None = None) -> int:
             if not plan.aylik_kira_bedeli:
                 continue
             bas_ay = _dt.date(plan.baslangic_tarihi.year, plan.baslangic_tarihi.month, 1)
-            if prox_ay < bas_ay:
+            if target_ay < bas_ay:
                 continue
             kalemler.append(dict(
                 tip=FaturaKalemi.KalemTip.CIHAZ_KIRA,
@@ -528,7 +541,7 @@ def faturala_aylik_birlesik(*, bugun: _dt.date | None = None) -> int:
             if not plan.pesin_fiyat:
                 continue
             bas_ay = _dt.date(plan.baslangic_tarihi.year, plan.baslangic_tarihi.month, 1)
-            if prox_ay < bas_ay:
+            if target_ay < bas_ay:
                 continue
 
             if plan.odeme_tipi == "PESIN":

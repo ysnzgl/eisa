@@ -7,6 +7,26 @@
 
 ## 2026-10-03
 
+### [Backend + Web Panel] İş takibi iptal ve silme
+
+- İş takibi durumlarına `IPTAL` eklendi; görevler düzenleme ekranından İptal durumuna alınabilir.
+- Yalnız süper adminlerin kullanabildiği `DELETE /api/is-takip/gorevler/{id}/` açıldı; listede kalıcı silme için onay isteyen çöp kutusu aksiyonu eklendi.
+
+### [Kiosk Edge] Idle logo uzun basma bakım menüsü
+
+- Idle e-isa logosuna 10 saniye basılı tutunca açılan bakım menüsü eklendi; basma süresince belirgin halka ilerlemesi, yükleme animasyonu ve kalan saniye gösterilir.
+- Uygulamayı yenile; provisioning kimliğini silmeden durumu uzlaştırır, cihaz ayarları/içerik/katalog/medya pull ve playlist/manifest ping işlemlerini hemen çalıştırıp UI'ı yeniden yükler.
+- Cihazı yeniden başlat ve kapat seçenekleri ikinci onayla çalışır; güç uçları yalnız loopback isteklerine açıktır.
+- Windows (`shutdown.exe`) ve Linux (`systemctl`) güç komutları shell kullanılmadan yürütülür; Linux polkit kuralı yalnız `eisa` kullanıcısının logind reboot/power-off eylemleriyle sınırlandırıldı ve systemd `NoNewPrivileges` koruması korundu.
+
+### [Kiosk Edge + Web Panel] QR fiş alt logosu ve medya CSP düzeltmesi
+
+- Barkod logo rotasyonu fişin üstünde korunurken verilen e-isa logosu QR bilgisinin altında sabit basılacak şekilde çıktı buffer'ı güncellendi.
+- Sabit logo asset'i okunamazsa baskının tamamen kaybolmaması için metin fallback'i eklendi.
+- Kiosk Docker imajına sabit fiş logo asset klasörü eklendi.
+- Panel CSP'sinde `https://api.eisa.com.tr`, görsel ve medya kaynaklarına eklendi; barkod logo önizlemeleri ile sponsorluk videolarının engellenmesi giderildi.
+- Eksik favicon isteği, paketlenen e-isa PNG asset'ine yönlendirildi.
+
 ### [Backend] Matbu sözleşme metni birebir Word belgesine göre yenilendi
 
 - `apps/abonelik/contract_template.py` tamamen yeniden yazıldı. `render_sozlesme_html(sozlesme)` artık kaynak Word belgesindeki 22 maddelik tam metni **birebir** (yorum/kısaltma yok) üretir.

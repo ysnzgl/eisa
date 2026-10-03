@@ -58,6 +58,16 @@ async function makeApp() {
   return { app, db };
 }
 
+async function makeMaintenanceApp() {
+  const db = makeMemoryDb();
+  const maintenance = {
+    refreshApplication: vi.fn().mockResolvedValue(undefined),
+    requestPowerAction: vi.fn(),
+  };
+  const app = await buildServer({ db, settings: fakeSettings, logger: false, maintenance });
+  return { app, db, maintenance };
+}
+
 describe('Kiosk API (Turkce sema)', () => {
   let app, db;
   beforeEach(async () => { ({ app, db } = await makeApp()); });
@@ -66,6 +76,49 @@ describe('Kiosk API (Turkce sema)', () => {
     const r = await app.inject({ method: 'GET', url: '/health' });
     expect(r.statusCode).toBe(200);
     expect(r.json()).toEqual({ status: 'ok' });
+  });
+
+  it('POST /api/system/action refresh lokal bakim yenilemesini calistirir', async () => {
+    const local = await makeMaintenanceApp();
+    const r = await local.app.inject({ method: 'POST', url: '/api/system/action', payload: { action: 'refresh' } });
+    expect(r.statusCode).toBe(200);
+    expect(r.json()).toMatchObject({ success: true, action: 'refresh' });
+    expect(local.maintenance.refreshApplication).toHaveBeenCalledOnce();
+    local.db.close();
+    await local.app.close();
+  });
+
+  it('POST /api/system/action restart komutunu planlar', async () => {
+    const local = await makeMaintenanceApp();
+    const r = await local.app.inject({ method: 'POST', url: '/api/system/action', payload: { action: 'restart' } });
+    expect(r.statusCode).toBe(202);
+    expect(local.maintenance.requestPowerAction).toHaveBeenCalledWith('restart', expect.anything());
+    local.db.close();
+    await local.app.close();
+  });
+
+  it('POST /api/system/action gecersiz islemi reddeder', async () => {
+    const local = await makeMaintenanceApp();
+    const r = await local.app.inject({ method: 'POST', url: '/api/system/action', payload: { action: 'erase' } });
+    expect(r.statusCode).toBe(400);
+    expect(local.maintenance.refreshApplication).not.toHaveBeenCalled();
+    expect(local.maintenance.requestPowerAction).not.toHaveBeenCalled();
+    local.db.close();
+    await local.app.close();
+  });
+
+  it('POST /api/system/action uzak istemciyi reddeder', async () => {
+    const local = await makeMaintenanceApp();
+    const r = await local.app.inject({
+      method: 'POST',
+      url: '/api/system/action',
+      remoteAddress: '10.10.10.25',
+      payload: { action: 'shutdown' },
+    });
+    expect(r.statusCode).toBe(403);
+    expect(local.maintenance.requestPowerAction).not.toHaveBeenCalled();
+    local.db.close();
+    await local.app.close();
   });
 
   it('GET /api/device-audio/:id byte range ile ses dosyasi sunar', async () => {

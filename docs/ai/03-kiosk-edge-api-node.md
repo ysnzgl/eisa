@@ -110,7 +110,7 @@ Backend kapalı/erişilemezse:
 **ÖNEMLİ:** SQLite schema'sında FOREIGN KEY constraint'leri YOK (2026-07-07 itibarıyla kaldırıldı). Backend veri bütünlüğünü zaten sağladığı için offline-first SQLite'da gereksiz kontroller kaldırıldı. Tüm `REFERENCES` clause'ları silinmiş, `PRAGMA foreign_keys` komutları temizlenmiş.
 
 **Kategori/Soru/Danışma:**
-- `kategoriler`: id, slug, ad, **ad_en** *(2026-09-29, TR/EN; boş = Türkçe'ye döner)*, ikon, bagli_kategori_id (INTEGER, FK YOK), hedef_cinsiyet_id (INTEGER, FK YOK), aktif, hedef_cinsiyetler JSON, hedef_yas_araliklari JSON
+- `kategoriler`: id, slug, ad, **ad_en** *(2026-09-29, TR/EN; boş = Türkçe'ye döner)*, ikon, **sira**, bagli_kategori_id (INTEGER, FK YOK), hedef_cinsiyet_id (INTEGER, FK YOK), aktif, hedef_cinsiyetler JSON, hedef_yas_araliklari JSON. Root kategorilerde `sira` aynı level içinde unique; alt kategorilerde aynı `bagli_kategori` altında unique.
 - `sorular`: id, kategori_id (INTEGER NOT NULL, FK YOK), metin, **metin_en**, sira, hedef_cinsiyet_id (INTEGER, FK YOK), hedef_cinsiyetler JSON, hedef_yas_araliklari JSON, eslesme_kurallari JSON
 - `cevaplar`: id, soru_id (INTEGER NOT NULL, FK YOK), metin, **metin_en**, sira
 - `cevap_etken_madde`: cevap_id (FK YOK), etken_madde_id (FK YOK), aktif
@@ -288,6 +288,7 @@ Toplanan veriler `device_metadata` JSON alanı olarak `KioskProvisioningRequest`
 | `GET` | `/playlist?date=YYYY-MM-DD` | Günlük playlist JSON |
 | `GET` | `/api/idle-contents` | *(2026-08-16)* Aktif idle (bekleme) başlık/metin içerikleri (salt okunur; UI merkezi backend'e bağlanmaz) |
 | `GET` | `/api/device-config` | Lokal cache'teki cihaz iş zamanlayıcılarını ve hazırsa `/api/device-audio` URL'sini döndürür |
+| `POST` | `/api/system/action` | Yalnız loopback istemciden `refresh`, `restart`, `shutdown`; refresh provisioning uzlaştırma + anlık pull/ping çalıştırır |
 | `GET` | `/api/device-audio/:audioId` | Etkin listede checksum doğrulanarak hazır edilmiş ilgili kiosk sesini lokal diskten `Content-Length` ve byte-range desteğiyle sunar; aksi halde 404 (`/api/device-audio` ilk dosya için geriye uyumlu) |
 | `POST` | `/sessions` | Session log kaydı (outbox'a ekler) |
 | `POST` | `/ad-impressions` | Impression log kaydı (outbox'a ekler) |

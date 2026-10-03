@@ -24,6 +24,7 @@ web_panels (BarkodLogoYonetimi) → POST /api/barkod-logo/upload-gorsel/ (PNG �
   → kiosk_edge/api-node barkodLogoService.syncBarkodLogoCache(db, logolar)
   → SQLite barkod_logolar + PNG indir
   → POST /api/oturum/gonder: seciSonrakiLogo() → printReceipt(barkodLogoPath)
+    → sponsor logosu üstte, sabit e-isa logosu QR bilgisinin altında basılır
   → başarılıysa: artirGunlukSayi + setLastLogoId + outbox payload.barkod_logo_id güncelle
   → pushOutbox → POST /api/kiosk/v1/sessions/ { items: [{...barkod_logo_id}] }
   → OturumLogu.barkod_logo FK kaydedilir

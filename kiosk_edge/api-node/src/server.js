@@ -83,7 +83,7 @@ function sendAudioFile(req, reply, audio) {
  * @param {import('better-sqlite3').Database} opts.db
  * @param {object} opts.settings
  */
-export async function buildServer({ db, settings, logger }) {
+export async function buildServer({ db, settings, logger, maintenance = null }) {
   const loggerOption = logger ?? buildLoggerOptions(settings);
   const app = Fastify({
     logger: loggerOption,
@@ -192,6 +192,43 @@ export async function buildServer({ db, settings, logger }) {
 
   // â”€â”€ health â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   app.get('/health', async () => ({ status: 'ok' }));
+
+  // Bakim islemleri yalniz kiosk cihazindaki lokal UI tarafindan cagrilabilir.
+  // CORS bir yetkilendirme mekanizmasi olmadigi icin IP kontrolu burada yapilir.
+  app.post('/api/system/action', {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['action'],
+        properties: {
+          action: { type: 'string', enum: ['refresh', 'restart', 'shutdown'] },
+        },
+        additionalProperties: false,
+      },
+    },
+  }, async (req, reply) => {
+    const remoteAddress = String(req.ip || req.socket?.remoteAddress || '').replace(/^::ffff:/, '');
+    if (remoteAddress !== '127.0.0.1' && remoteAddress !== '::1') {
+      return fail(reply, 403, 'Bakim islemleri yalniz bu cihazdan yapilabilir.');
+    }
+    if (!maintenance) return fail(reply, 503, 'Bakim servisi kullanilabilir degil.');
+
+    const { action } = req.body;
+    if (action === 'refresh') {
+      if (typeof maintenance.refreshApplication !== 'function') {
+        return fail(reply, 503, 'Uygulama yenileme kullanilabilir degil.');
+      }
+      await maintenance.refreshApplication(req.log);
+      return { success: true, action };
+    }
+
+    if (typeof maintenance.requestPowerAction !== 'function') {
+      return fail(reply, 503, 'Cihaz guc kontrolu kullanilabilir degil.');
+    }
+    maintenance.requestPowerAction(action, req.log);
+    reply.code(202);
+    return { success: true, action, scheduled: true };
+  });
 
   // Dev ortamı: barkod logo PNG dosyasını doğrudan sun (yazıcı simülasyonu için)
   app.get('/api/barkod-logo-gorsel/:id', async (req, reply) => {

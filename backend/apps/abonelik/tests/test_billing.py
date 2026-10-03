@@ -5,7 +5,7 @@ from decimal import Decimal
 import pytest
 
 from apps.abonelik import services
-from apps.abonelik.models import CihazOdemePlani, Fatura, Sozlesme, SozlesmeTalebi
+from apps.abonelik.models import CihazOdemePlani, Fatura, FaturaKalemi, Sozlesme, SozlesmeTalebi
 
 
 # ── Panel kısıtı ─────────────────────────────────────────────────────────────
@@ -159,6 +159,32 @@ def test_oteleme_sonrasi_fatura_kesilir(sozlesme):
     assert f.vade_tarihi == dt.date(2026, 7, 1)
 
 
+def test_oteleme_sifir_ise_ilk_fatura_baslangic_ayinda_olur(db, eczane):
+    sozlesme = Sozlesme.objects.create(
+        eczane=eczane,
+        sozlesme_tipi_ay=Sozlesme.Tip.AY_24,
+        baslangic_tarihi=dt.date(2026, 2, 15),
+        oteleme_ay=0,
+        aylik_kullanim_bedeli=Decimal("3900.00"),
+        durum=Sozlesme.Durum.AKTIF,
+    )
+    CihazOdemePlani.objects.create(
+        sozlesme=sozlesme,
+        pesin_fiyat=Decimal("120000.00"),
+        vade_farki_orani=Decimal("0.00"),
+        taksit_sayisi=CihazOdemePlani.TaksitSayisi.TAKSIT_12,
+        baslangic_tarihi=dt.date(2026, 2, 15),
+        durum=CihazOdemePlani.Durum.AKTIF,
+    )
+
+    created = services.faturala_aylik_birlesik(bugun=dt.date(2026, 2, 3))
+
+    assert created == 1
+    f = Fatura.objects.get(tip=Fatura.Tip.BIRLESIK)
+    assert f.donem == "2026-02"
+    assert f.kalemler.count() == 2
+
+
 def test_kullanim_bedeli_idempotent(sozlesme):
     services.faturala_kullanim_bedeli(bugun=dt.date(2026, 6, 3))
     services.faturala_kullanim_bedeli(bugun=dt.date(2026, 6, 6))
@@ -226,6 +252,43 @@ def test_tek_aylik_fatura_icerisinde_tum_odemeler_toplanir(cihaz_plani, sozlesme
         )
     ).count() == 0
     assert f.kalemler.count() == 2
+
+
+# ── Cihaz ötelemesi (abonelikten bağımsız) ────────────────────────────
+
+@pytest.fixture
+def cihaz_plani_otelemeli(db, sozlesme):
+    # Abonelik ötelemesi 6 (ilk abonelik 2026-07), cihaz ötelemesi 1 (ilk cihaz 2026-02).
+    return CihazOdemePlani.objects.create(
+        sozlesme=sozlesme,
+        pesin_fiyat=Decimal("120000.00"),
+        vade_farki_orani=Decimal("0.00"),
+        taksit_sayisi=CihazOdemePlani.TaksitSayisi.TAKSIT_12,
+        oteleme_ay=1,
+        baslangic_tarihi=dt.date(2026, 2, 1),
+        durum=CihazOdemePlani.Durum.AKTIF,
+    )
+
+
+def test_cihaz_otelemesi_abonelikten_once_tek_cihaz_faturasi(cihaz_plani_otelemeli):
+    # prox=2026-02: cihaz vadesi geldi, abonelik henüz gelmedi → tek kalemli cihaz faturası.
+    created = services.faturala_aylik_birlesik(bugun=dt.date(2026, 1, 3))
+    assert created == 1
+    f = Fatura.objects.get(tip=Fatura.Tip.BIRLESIK, donem="2026-02")
+    assert f.kalemler.count() == 1
+    assert f.kalemler.first().tip == FaturaKalemi.KalemTip.CIHAZ_TAKSIT
+    assert f.tutar == Decimal("10000.00")  # 120000 / 12
+
+
+def test_cihaz_ve_abonelik_kesisince_tek_birlesik_fatura(cihaz_plani_otelemeli):
+    # Şub-Haz arası cihaz-only faturalar, Temmuz'da abonelik + cihaz tek birleşik fatura.
+    for ay in range(1, 6):  # prox = Şub..Haz
+        services.faturala_aylik_birlesik(bugun=dt.date(2026, ay, 3))
+    created = services.faturala_aylik_birlesik(bugun=dt.date(2026, 6, 3))  # prox=2026-07
+    assert created == 1
+    f = Fatura.objects.get(tip=Fatura.Tip.BIRLESIK, donem="2026-07")
+    assert f.kalemler.count() == 2  # abonelik + cihaz taksiti
+    assert f.tutar == Decimal("13900.00")  # 3900 + 10000
 
 
 def test_cihaz_taksiti_idempotent_ayni_ay(cihaz_plani):
@@ -403,7 +466,7 @@ def test_iptal_sozlesme_uzatilamaz(db, eczane):
 
 
 
-# ── Cihaz planı: taksit 1/4/8/12 + vade farkı zorunluluğu ────────────────────
+# ── Cihaz planı: taksit 1/4/8/12 (vade farkı opsiyonel) ──────────────────────
 
 def test_cihaz_plani_pesin_vade_farksiz_gecerli(db, sozlesme):
     from apps.abonelik.serializers import CihazOdemePlaniSerializer
@@ -415,15 +478,14 @@ def test_cihaz_plani_pesin_vade_farksiz_gecerli(db, sozlesme):
     assert ser.is_valid(), ser.errors
 
 
-def test_cihaz_plani_taksitli_vade_zorunlu(db, sozlesme):
+def test_cihaz_plani_taksitli_vade_farki_opsiyonel(db, sozlesme):
     from apps.abonelik.serializers import CihazOdemePlaniSerializer
 
     ser = CihazOdemePlaniSerializer(data={
         "pesin_fiyat": "40000.00", "vade_farki_orani": "0.00",
         "taksit_sayisi": 12, "baslangic_tarihi": "2026-01-01",
     })
-    assert not ser.is_valid()
-    assert "vade_farki_orani" in ser.errors
+    assert ser.is_valid(), ser.errors
 
 
 def test_cihaz_plani_12_taksit_vade_ile_gecerli(db, sozlesme):

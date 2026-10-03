@@ -38,6 +38,11 @@ def _patch(api, user, gorev_id, payload):
     return api.patch(f"/api/is-takip/gorevler/{gorev_id}/", payload, format="json")
 
 
+def _delete(api, user, gorev_id):
+    api.force_authenticate(user=user)
+    return api.delete(f"/api/is-takip/gorevler/{gorev_id}/")
+
+
 def test_superadmin_gorev_olusturabilir(api, admin, ikinci_admin):
     r = _post(api, admin, {
         "baslik": "Sunucu kontrolü",
@@ -95,3 +100,49 @@ def test_status_guncellenebilir(api, admin):
     r = _patch(api, admin, gorev.pk, {"durum": "YAPILDI"})
     assert r.status_code == 200
     assert r.data["durum"] == "YAPILDI"
+
+
+def test_gorev_iptal_durumuna_alinabilir(api, admin):
+    gorev = Gorev.objects.create(
+        baslik="İptal edilecek iş",
+        icerik="Bu iş artık yapılmayacak.",
+        durum=Gorev.Durum.YENI,
+        olusturan=admin,
+        guncelleyen=admin,
+    )
+
+    r = _patch(api, admin, gorev.pk, {"durum": "IPTAL"})
+
+    assert r.status_code == 200
+    assert r.data["durum"] == "IPTAL"
+    assert r.data["durum_ad"] == "İptal"
+    gorev.refresh_from_db()
+    assert gorev.durum == Gorev.Durum.IPTAL
+
+
+def test_superadmin_gorev_silebilir(api, admin):
+    gorev = Gorev.objects.create(
+        baslik="Silinecek iş",
+        icerik="Bu kayıt silinecek.",
+        olusturan=admin,
+        guncelleyen=admin,
+    )
+
+    r = _delete(api, admin, gorev.pk)
+
+    assert r.status_code == 204
+    assert not Gorev.objects.filter(pk=gorev.pk).exists()
+
+
+def test_pharmacist_gorev_silemez(api, admin, eczaci):
+    gorev = Gorev.objects.create(
+        baslik="Korunan iş",
+        icerik="Yetkisiz kullanıcı silememeli.",
+        olusturan=admin,
+        guncelleyen=admin,
+    )
+
+    r = _delete(api, eczaci, gorev.pk)
+
+    assert r.status_code == 403
+    assert Gorev.objects.filter(pk=gorev.pk).exists()

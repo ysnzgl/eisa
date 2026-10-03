@@ -69,7 +69,7 @@
 ### İş Takibi (Admin-only) *(new 2026-09-13)*
 
 **gorevler**
-- id, baslik (max 200), icerik (`text`, uygulama karakter sınırı yok), durum (`YENI|INCELENIYOR|YAPILDI|YAPILMADI`), atanan_kullanici_id FK users_eisauser (nullable, PROTECT, yalnız superadmin)
+- id, baslik (max 200), icerik (`text`, uygulama karakter sınırı yok), durum (`YENI|INCELENIYOR|YAPILDI|YAPILMADI|IPTAL`), atanan_kullanici_id FK users_eisauser (nullable, PROTECT, yalnız superadmin)
 - BaseModel alanları
 - `db_table`: `gorevler`
 
@@ -157,6 +157,10 @@
 **PATCH `/api/is-takip/gorevler/{id}/`** — Auth: JWT (IsSuperAdmin)
 - Request: aynı alanların güncellenebilir kısmı
 - Response 200: aynı serializer alanları
+
+**DELETE `/api/is-takip/gorevler/{id}/`** — Auth: JWT (IsSuperAdmin)
+- İş kaydını kalıcı olarak siler
+- Response 204: gövdesiz yanıt
 
 ### Abonelik API Sözleşmesi *(2026-10-01)*
 

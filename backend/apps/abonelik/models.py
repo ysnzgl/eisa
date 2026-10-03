@@ -309,6 +309,10 @@ class CihazOdemePlani(BaseModel):
         help_text="Satılık (peşin+taksit) veya kiralık (aylık kira).",
     )
     adet = models.PositiveSmallIntegerField(default=1, help_text="Cihaz adedi.")
+    cihaz_bilgisi = models.CharField(
+        max_length=255, blank=True, default="",
+        help_text="Cihaz tanımı / marka-model / açıklama; manuel olarak girilebilir.",
+    )
     # Satılık alanları
     pesin_fiyat = models.DecimalField(
         max_digits=12, decimal_places=2, null=True, blank=True,
@@ -320,6 +324,11 @@ class CihazOdemePlani(BaseModel):
     )
     taksit_sayisi = models.PositiveSmallIntegerField(
         default=1, help_text="Taksit sayısı (1–12).",
+    )
+    oteleme_ay = models.PositiveSmallIntegerField(
+        default=0,
+        help_text="Cihaz öteleme süresi (ay). Abonelikten bağımsızdır; ilk cihaz faturası "
+                  "sözleşme başlangıcı + bu kadar ay sonra kesilir. 0 ise sözleşme tarihiyle aynı.",
     )
     # Kiralık alanları
     aylik_kira_bedeli = models.DecimalField(

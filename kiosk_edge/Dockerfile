@@ -52,6 +52,7 @@ WORKDIR /app/api
 COPY --from=api-deps /api/node_modules ./node_modules
 COPY api-node/package.json ./
 COPY api-node/src ./src
+COPY api-node/assets ./assets
 
 ENV EISA_PORT=8765
 ENV EISA_HOST=127.0.0.1

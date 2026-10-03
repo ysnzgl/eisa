@@ -17,20 +17,39 @@ import {
 import { getPharmacies } from '../../services/devices';
 import SozlesmeForm from '../../components/shared/SozlesmeForm.vue';
 import EisaLookup from '../../components/shared/EisaLookup.vue';
+import EczanePicker from '../../components/shared/EczanePicker.vue';
 import SozlesmeMatbu from '../../components/shared/SozlesmeMatbu.vue';
 import { useConfirm } from '../../composables/useConfirm.js';
+import { useExcelExport } from '../../composables/useExcelExport.js';
 
 const route = useRoute();
 const { confirm } = useConfirm();
+const { exportToExcel, exporting } = useExcelExport();
 const tab = ref('sozlesmeler');
 
 const sozlesmeler = ref([]);
 const faturalar = ref([]);
 const talepler = ref([]);
 const odemeler = ref([]);
-const eczaneler = ref([]);
-const eczaneOptions = computed(() =>
-  eczaneler.value.map(e => ({ id: e.id, label: e.name || e.ad || String(e.id) })));
+// İptal edilen sözleşmeler varsayılan gizli; tik ile görünür (salt-okunur).
+const showIptal = ref(false);
+const gorunenSozlesmeler = computed(() =>
+  showIptal.value
+    ? sozlesmeler.value
+    : sozlesmeler.value.filter((s) => s.durum !== 'IPTAL'));
+
+// Bu ay başlangıcı / bitişi
+function thisMonthStart() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+}
+function thisMonthEnd() {
+  const d = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+const faturaFilters = reactive({ eczane: null, tarih_baslangic: thisMonthStart(), tarih_bitis: thisMonthEnd(), unpaid_only: false });
+const odemeFilters = reactive({ eczane: null, tarih_baslangic: thisMonthStart(), tarih_bitis: thisMonthEnd() });
 const loading = ref(false);
 
 const TAKSITLER = [
@@ -40,12 +59,22 @@ const TAKSITLER = [
   { value: 12, label: '12 Taksit' },
 ];
 
-const stats = computed(() => ({
-  toplam: sozlesmeler.value.length,
-  aktif: sozlesmeler.value.filter((s) => s.durum === 'AKTIF').length,
-  cihazli: sozlesmeler.value.filter((s) => s.cihaz_plani).length,
-  bekleyenTalepler: talepler.value.filter((t) => t.durum === 'BEKLIYOR').length,
-}));
+const stats = computed(() => {
+  const aktif  = sozlesmeler.value.filter((s) => s.durum === 'AKTIF').length;
+  const iptal  = sozlesmeler.value.filter((s) => s.durum === 'IPTAL').length;
+  const pasif  = sozlesmeler.value.length - aktif - iptal;
+  const odenmeyenFatura = faturalar.value.filter((f) => f.durum === 'BEKLIYOR' || f.durum === 'GECIKTI').length;
+  const toplamOdeme = odemeler.value.reduce((s, o) => s + Number(o.tutar || 0), 0);
+  return {
+    toplam: sozlesmeler.value.length,
+    aktif,
+    pasif,
+    iptal,
+    odenmeyenFatura,
+    toplamOdeme,
+    bekleyenTalepler: talepler.value.filter((t) => t.durum === 'BEKLIYOR').length,
+  };
+});
 
 // ── Fiyat tanımları (parametre) ─────────────────────────────────────
 const aktifFiyat = ref(null);
@@ -195,9 +224,9 @@ const emptySozlesme = () => ({
   demo_gun: 30,
   baslangic_tarihi: '',
   oteleme_ay: 0,
-  aylik_kullanim_bedeli: '3900.00',
+  aylik_kullanim_bedeli: '',
   cihaz_durumu: 'SATILIK',
-  cihaz_kira_bedeli: '0.00',
+  cihaz_kira_bedeli: '',
   pesin_fiyat: '',
   vade_farki_orani: '0.00',
   taksit_sayisi: 1,
@@ -206,7 +235,7 @@ const emptySozlesme = () => ({
   notlar: '',
   kdv_orani: 0,
   tevkifat_orani: '',
-  iptal_ceza_orani: '2.00',
+  iptal_ceza_orani: '',
   imza_tipi: 'DIJITAL',
   islak_imza_url: '',
 });
@@ -253,7 +282,12 @@ async function loadSozlesmeler() {
 async function loadFaturalar() {
   loading.value = true;
   try {
-    const { data } = await listFaturalar();
+    const params = {};
+    if (faturaFilters.eczane) params.eczane = faturaFilters.eczane;
+    if (faturaFilters.tarih_baslangic) params.tarih_baslangic = faturaFilters.tarih_baslangic;
+    if (faturaFilters.tarih_bitis) params.tarih_bitis = faturaFilters.tarih_bitis;
+    if (faturaFilters.unpaid_only) params.unpaid_only = true;
+    const { data } = await listFaturalar(params);
     faturalar.value = Array.isArray(data) ? data : (data?.results ?? []);
   } catch (e) {
     toast.error(e?.response?.data?.detail || 'Faturalar yüklenemedi.');
@@ -273,11 +307,29 @@ async function loadTalepler() {
 async function loadOdemeler() {
   loading.value = true;
   try {
-    const { data } = await listOdemeler();
+    const params = {};
+    if (odemeFilters.eczane) params.eczane = odemeFilters.eczane;
+    if (odemeFilters.tarih_baslangic) params.tarih_baslangic = odemeFilters.tarih_baslangic;
+    if (odemeFilters.tarih_bitis) params.tarih_bitis = odemeFilters.tarih_bitis;
+    const { data } = await listOdemeler(params);
     odemeler.value = Array.isArray(data) ? data : (data?.results ?? []);
   } catch (e) {
     toast.error(e?.response?.data?.detail || 'Ödemeler yüklenemedi.');
   } finally { loading.value = false; }
+}
+
+function exportOdemeler() {
+  if (!odemeler.value.length) { toast.info('Dışa aktarılacak ödeme yok.'); return; }
+  const cols = [
+    { label: 'Tarih', fn: (o) => fmtDate(o.odeme_tarihi) },
+    { label: 'Eczane', key: 'eczane_ad' },
+    { label: 'Fatura Tipi', key: 'fatura_tip' },
+    { label: 'Dönem', key: 'fatura_donem' },
+    { label: 'Tutar (TL)', fn: (o) => Number(o.tutar || 0) },
+    { label: 'Yöntem', key: 'yontem_display' },
+    { label: 'Açıklama', key: 'aciklama' },
+  ];
+  exportToExcel(odemeler.value, cols, `odemeler-${today()}.xlsx`, 'Ödemeler');
 }
 
 const kararOpen = ref(false);
@@ -307,13 +359,9 @@ function openKarar(t, onayla) {
     kararSozlesme.tur = t.istenen_tur || 'STANDART';
     kararSozlesme.sozlesme_tipi_ay = Number(t.istenen_tip_ay || 24);
     kararSozlesme.demo_gun = Number(t.istenen_demo_gun || 30);
-    kararSozlesme.baslangic_tarihi = today();
-    kararSozlesme.cihaz_baslangic_tarihi = today();
+    kararSozlesme.baslangic_tarihi = '';
+    kararSozlesme.cihaz_baslangic_tarihi = '';
     kararSozlesme.cihaz_planlari = [];
-    if (aktifFiyat.value) {
-      kararSozlesme.aylik_kullanim_bedeli = aktifFiyat.value.abonelik_bedeli;
-      kararSozlesme.iptal_ceza_orani = aktifFiyat.value.iptal_ceza_orani || '2.00';
-    }
   }
   kararOpen.value = true;
 }
@@ -377,7 +425,7 @@ async function loadEczaneler() {
 }
 
 onMounted(async () => {
-  await Promise.all([loadSozlesmeler(), loadEczaneler(), loadAktifFiyat()]);
+  await Promise.all([loadSozlesmeler(), loadAktifFiyat(), loadFaturalar(), loadOdemeler()]);
 });
 
 function switchTab(t) {
@@ -391,10 +439,6 @@ function switchTab(t) {
 function openCreate() {
   editingId.value = null;
   Object.assign(form, emptySozlesme());
-  if (aktifFiyat.value) {
-    form.aylik_kullanim_bedeli = aktifFiyat.value.abonelik_bedeli;
-    form.iptal_ceza_orani = aktifFiyat.value.iptal_ceza_orani || '2.00';
-  }
   formOpen.value = true;
 }
 
@@ -425,12 +469,14 @@ function openEdit(s) {
       id: p.id,
       tip: p.tip || 'SATILIK',
       adet: p.adet || 1,
+      cihaz_bilgisi: p.cihaz_bilgisi || '',
       pesin_fiyat: p.pesin_fiyat || '',
       vade_farki_orani: p.vade_farki_orani || '0.00',
       taksit_sayisi: p.taksit_sayisi || 1,
       aylik_kira_bedeli: p.aylik_kira_bedeli || '',
       cihaz_kdv_orani: p.cihaz_kdv_orani || 0,
       tevkifat_orani: p.tevkifat_orani || '',
+      oteleme_ay: p.oteleme_ay ?? 0,
       baslangic_tarihi: p.baslangic_tarihi || s.baslangic_tarihi,
     })),
   });
@@ -463,23 +509,21 @@ async function saveSozlesme() {
     let saved;
     if (editingId.value) {
       saved = await updateSozlesme(editingId.value, payload);
-      toast.success('Sözleşme güncellendi.');
+      if (form.cihaz_planlari && form.cihaz_planlari.length > 0) {
+        await saveCihazPlanlari(editingId.value, form.cihaz_planlari);
+      }
     } else {
-      saved = await createSozlesme(payload);
-      toast.success('Sözleşme oluşturuldu.');
+      // Atomik: sözleşme + cihaz planları tek istekte (ya hep ya hiç).
+      saved = await createSozlesme({ ...payload, cihaz_planlari: form.cihaz_planlari || [] });
     }
 
     const targetId = editingId.value ?? saved?.data?.id;
-    if (targetId && form.cihaz_planlari.length > 0) {
-      await saveCihazPlanlari(targetId, form.cihaz_planlari);
-    }
     // Islak imza belgesi seçilmişse yükle
     if (targetId && form.imza_tipi === 'ISLAK' && islakImzaDosya.value) {
       islakImzaYukleniyor.value = true;
       try {
         const { data } = await uploadIslakImza(targetId, islakImzaDosya.value);
         form.islak_imza_url = data.object_key;
-        toast.success('Islak imza belgesi RustFS\'e yüklendi.');
       } catch (e) {
         toast.error(e?.response?.data?.detail || 'Belge yüklenemedi.');
       } finally {
@@ -487,11 +531,18 @@ async function saveSozlesme() {
         islakImzaYukleniyor.value = false;
       }
     }
-    formOpen.value = false;
-    await loadSozlesmeler();
+    toast.success(editingId.value ? 'Sözleşme güncellendi.' : 'Sözleşme oluşturuldu.');
+    closeForm();
   } catch (e) {
     toast.error(e?.response?.data?.detail || 'Kaydedilemedi.');
   } finally { saving.value = false; }
+}
+
+// Modal her kapanışında (kaydet / iptal / X / backdrop) liste otomatik yenilenir.
+function closeForm() {
+  formOpen.value = false;
+  editingId.value = null;
+  loadSozlesmeler();
 }
 
 // ── Cihaz planı ─────────────────────────────────────────────────────────────
@@ -515,10 +566,6 @@ function openCihaz(s) {
 async function saveCihaz() {
   if (!cihazForm.pesin_fiyat) { toast.error('Peşin fiyat girin.'); return; }
   if (!cihazForm.baslangic_tarihi) { toast.error('Başlangıç tarihi girin.'); return; }
-  if (vadeFarkiEksik.value) {
-    toast.error('1 aydan fazla taksitte vade farkı zorunludur (> %0).');
-    return;
-  }
   cihazSaving.value = true;
   try {
     await setCihazPlani(cihazSozlesme.value.id, { ...cihazForm });
@@ -758,38 +805,81 @@ function fmtDate(iso) {
       </div>
     </div>
 
-    <section class="eisa-stats">
-      <div class="eisa-stat-card"><span class="eisa-stat-label">Toplam Sözleşme</span><span class="eisa-stat-value">{{ stats.toplam }}</span></div>
-      <div class="eisa-stat-card"><span class="eisa-stat-label">Aktif</span><span class="eisa-stat-value">{{ stats.aktif }}</span></div>
-      <div class="eisa-stat-card"><span class="eisa-stat-label">Cihaz Planlı</span><span class="eisa-stat-value">{{ stats.cihazli }}</span></div>
+    <section class="eisa-stats kpi-grid">
+      <!-- Sözleşme grubu -->
+      <div class="kpi-group">
+        <p class="kpi-group-label"><i class="fa-solid fa-file-contract"></i> Sözleşmeler</p>
+        <div class="kpi-group-cards">
+          <div class="eisa-stat-card">
+            <span class="eisa-stat-label">Aktif</span>
+            <span class="eisa-stat-value kpi-aktif">{{ stats.aktif }}</span>
+          </div>
+          <div class="eisa-stat-card">
+            <span class="eisa-stat-label">Pasif</span>
+            <span class="eisa-stat-value">{{ stats.pasif }}</span>
+          </div>
+          <div class="eisa-stat-card">
+            <span class="eisa-stat-label">Toplam</span>
+            <span class="eisa-stat-value">{{ stats.toplam }}</span>
+          </div>
+        </div>
+      </div>
+      <!-- Bu ay grubu -->
+      <div class="kpi-group">
+        <p class="kpi-group-label"><i class="fa-solid fa-calendar-day"></i> Bu Ay</p>
+        <div class="kpi-group-cards">
+          <button class="eisa-stat-card eisa-stat-card--clickable" type="button"
+            @click="switchTab('odemeler')">
+            <span class="eisa-stat-label">Toplam Tahsilat</span>
+            <span class="eisa-stat-value kpi-tahsilat">{{ fmtTL(stats.toplamOdeme) }}</span>
+          </button>
+          <button class="eisa-stat-card eisa-stat-card--clickable" type="button"
+            :class="{ 'kpi-card--alert': stats.odenmeyenFatura > 0 }"
+            @click="faturaFilters.unpaid_only = true; switchTab('faturalar')">
+            <span class="eisa-stat-label">Ödenmeyen Fatura</span>
+            <span class="eisa-stat-value" :class="stats.odenmeyenFatura > 0 ? 'kpi-alert' : ''">{{ stats.odenmeyenFatura }}</span>
+          </button>
+        </div>
+      </div>
+      <!-- Talepler -->
       <button
         v-if="stats.bekleyenTalepler > 0"
-        class="eisa-stat-card eisa-stat-card--clickable"
+        class="eisa-stat-card eisa-stat-card--clickable kpi-card--warn"
         type="button"
         @click="switchTab('talepler')"
       >
         <span class="eisa-stat-label">Bekleyen Talep</span>
-        <span class="eisa-stat-value">{{ stats.bekleyenTalepler }}</span>
+        <span class="eisa-stat-value kpi-warn">{{ stats.bekleyenTalepler }}</span>
       </button>
     </section>
 
-    <div class="eisa-header-actions">
-      <button class="eisa-btn" :class="tab === 'sozlesmeler' ? 'eisa-btn-cta' : 'eisa-btn-ghost'" @click="switchTab('sozlesmeler')">
+    <nav class="ay-tab-bar">
+      <button class="ay-tab" :class="{ 'ay-tab--active': tab === 'sozlesmeler' }" @click="switchTab('sozlesmeler')">
         <i class="fa-solid fa-file-contract"></i> Sözleşmeler
+        <span class="ay-tab-count">{{ sozlesmeler.length }}</span>
       </button>
-      <button class="eisa-btn" :class="tab === 'faturalar' ? 'eisa-btn-cta' : 'eisa-btn-ghost'" @click="switchTab('faturalar')">
+      <button class="ay-tab" :class="{ 'ay-tab--active': tab === 'faturalar' }" @click="switchTab('faturalar')">
         <i class="fa-solid fa-file-invoice-dollar"></i> Faturalar
       </button>
-      <button class="eisa-btn" :class="tab === 'talepler' ? 'eisa-btn-cta' : 'eisa-btn-ghost'" @click="switchTab('talepler')">
+      <button class="ay-tab" :class="{ 'ay-tab--active': tab === 'talepler' }" @click="switchTab('talepler')">
         <i class="fa-solid fa-paper-plane"></i> Talepler
+        <span v-if="stats.bekleyenTalepler > 0" class="ay-tab-badge">{{ stats.bekleyenTalepler }}</span>
       </button>
-      <button class="eisa-btn" :class="tab === 'odemeler' ? 'eisa-btn-cta' : 'eisa-btn-ghost'" @click="switchTab('odemeler')">
+      <button class="ay-tab" :class="{ 'ay-tab--active': tab === 'odemeler' }" @click="switchTab('odemeler')">
         <i class="fa-solid fa-receipt"></i> Ödemeler
       </button>
-    </div>
+    </nav>
 
     <!-- ── Sözleşmeler ─────────────────────────────────────────────── -->
     <section v-if="tab === 'sozlesmeler'" class="eisa-panel">
+      <div class="ay-filter-bar">
+        <label class="iptal-toggle" aria-label="İptaller dahil">
+          <input type="checkbox" v-model="showIptal" />
+          <span class="iptal-toggle-track"><span class="iptal-toggle-thumb"></span></span>
+          <span class="iptal-toggle-text">İptaller dahil</span>
+        </label>
+        <span class="ay-filter-result">{{ gorunenSozlesmeler.length }} kayıt</span>
+      </div>
       <div class="eisa-table-wrap">
         <table class="eisa-table">
           <thead>
@@ -800,7 +890,7 @@ function fmtDate(iso) {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="s in sozlesmeler" :key="s.id">
+            <tr v-for="s in gorunenSozlesmeler" :key="s.id">
               <td><strong>{{ s.eczane_ad }}</strong></td>
               <td><span class="eisa-pill" :class="turPill(s.tur)">{{ s.tur_display }}</span></td>
               <td>{{ s.tur === 'DEMO' ? `${s.toplam_gun} gün` : s.tip_display }}</td>
@@ -824,15 +914,18 @@ function fmtDate(iso) {
                 <span v-else title="Eczacı onayı bekleniyor" style="color:#D97706;">⏳</span>
               </td>
               <td class="cell-actions">
-                <button class="eisa-icon-btn" title="Düzzenle" @click="openEdit(s)"><i class="fa-solid fa-pen"></i></button>
+                <button class="eisa-icon-btn" title="Düzenle" :disabled="s.durum === 'IPTAL'" @click="openEdit(s)"><i class="fa-solid fa-pen"></i></button>
                 <button class="eisa-icon-btn" title="Sözleşmeyi Görüntle" @click="openMatbuAdmin(s)"><i class="fa-solid fa-file-contract"></i></button>
-                <button class="eisa-icon-btn" title="Uzat" @click="openUzat(s)"><i class="fa-solid fa-calendar-plus"></i></button>
+                <button class="eisa-icon-btn" title="Uzat" :disabled="s.durum === 'IPTAL'" @click="openUzat(s)"><i class="fa-solid fa-calendar-plus"></i></button>
                 <button v-if="s.durum !== 'IPTAL'" class="eisa-icon-btn" title="İptal Et" @click="openIptal(s)"><i class="fa-solid fa-ban"></i></button>
                 <button class="eisa-icon-btn" title="Geçmiş" @click="openGecmis(s)"><i class="fa-solid fa-clock-rotate-left"></i></button>
               </td>
             </tr>
             <tr v-if="!sozlesmeler.length && !loading">
               <td colspan="11" class="empty-row">Henüz sözleşme yok.</td>
+            </tr>
+            <tr v-else-if="!gorunenSozlesmeler.length && !loading">
+              <td colspan="11" class="empty-row">Görüntülenecek aktif sözleşme yok. İptal edilenleri görmek için filtreyi açın.</td>
             </tr>
           </tbody>
         </table>
@@ -841,6 +934,34 @@ function fmtDate(iso) {
 
     <!-- ── Faturalar ───────────────────────────────────────────────── -->
     <section v-else-if="tab === 'faturalar'" class="eisa-panel">
+      <div class="ay-filter-bar">
+        <div class="ay-filter-fields">
+          <div class="ay-filter-field ay-filter-field--lookup">
+            <label class="ay-filter-label">Eczane</label>
+            <EczanePicker v-model="faturaFilters.eczane" placeholder="Eczane ara…" />
+          </div>
+          <div class="ay-filter-field">
+            <label class="ay-filter-label">Başlangıç</label>
+            <input type="date" v-model="faturaFilters.tarih_baslangic" class="ay-filter-input" />
+          </div>
+          <div class="ay-filter-field">
+            <label class="ay-filter-label">Bitiş</label>
+            <input type="date" v-model="faturaFilters.tarih_bitis" class="ay-filter-input" />
+          </div>
+          <label class="ay-chip-toggle" :class="{ 'ay-chip-toggle--on': faturaFilters.unpaid_only }">
+            <input type="checkbox" v-model="faturaFilters.unpaid_only" />
+            <i class="fa-solid fa-circle-exclamation"></i> Ödenmemişler
+          </label>
+        </div>
+        <div class="ay-filter-actions">
+          <button class="ay-filter-btn" @click="loadFaturalar">
+            <i class="fa-solid fa-magnifying-glass"></i> Uygula
+          </button>
+          <button class="ay-filter-reset" title="Temizle" @click="faturaFilters.eczane=null;faturaFilters.tarih_baslangic='';faturaFilters.tarih_bitis='';faturaFilters.unpaid_only=false;loadFaturalar()">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+      </div>
       <div class="eisa-table-wrap">
         <table class="eisa-table">
           <thead>
@@ -916,6 +1037,33 @@ function fmtDate(iso) {
 
     <!-- ── Ödemeler (tarihçe) ──────────────────────────────────────── -->
     <section v-else class="eisa-panel">
+      <div class="ay-filter-bar">
+        <div class="ay-filter-fields">
+          <div class="ay-filter-field ay-filter-field--lookup">
+            <label class="ay-filter-label">Eczane</label>
+            <EczanePicker v-model="odemeFilters.eczane" placeholder="Eczane ara…" />
+          </div>
+          <div class="ay-filter-field">
+            <label class="ay-filter-label">Başlangıç</label>
+            <input type="date" v-model="odemeFilters.tarih_baslangic" class="ay-filter-input" />
+          </div>
+          <div class="ay-filter-field">
+            <label class="ay-filter-label">Bitiş</label>
+            <input type="date" v-model="odemeFilters.tarih_bitis" class="ay-filter-input" />
+          </div>
+        </div>
+        <div class="ay-filter-actions">
+          <button class="ay-filter-btn" @click="loadOdemeler">
+            <i class="fa-solid fa-magnifying-glass"></i> Uygula
+          </button>
+          <button class="ay-filter-reset" title="Temizle" @click="odemeFilters.eczane=null;odemeFilters.tarih_baslangic='';odemeFilters.tarih_bitis='';loadOdemeler()">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+          <button class="ay-filter-export" :disabled="exporting || !odemeler.length" @click="exportOdemeler">
+            <i class="fa-solid fa-file-excel"></i> Excel
+          </button>
+        </div>
+      </div>
       <div class="eisa-table-wrap">
         <table class="eisa-table">
           <thead>
@@ -1197,11 +1345,11 @@ function fmtDate(iso) {
 
     <!-- ── Sözleşme modal ──────────────────────────────────────────── -->
     <Teleport to="body">
-      <div v-if="formOpen" class="eisa-modal-backdrop" @click.self="formOpen = false">
+      <div v-if="formOpen" class="eisa-modal-backdrop" @click.self="closeForm">
         <div class="eisa-modal eisa-modal--big" role="dialog" aria-modal="true">
           <div class="eisa-modal-header">
             <h3 class="eisa-modal-title">{{ editingId ? 'Sözleşme Düzenle' : 'Yeni Sözleşme' }}</h3>
-            <button class="eisa-modal-close" title="Kapat" @click="formOpen = false"><i class="fa-solid fa-xmark"></i></button>
+            <button class="eisa-modal-close" title="Kapat" @click="closeForm"><i class="fa-solid fa-xmark"></i></button>
           </div>
           <div class="eisa-modal-body">
             <div class="eisa-form-grid">
@@ -1261,7 +1409,7 @@ function fmtDate(iso) {
             </div>
           </div>
           <div class="eisa-modal-footer">
-            <button class="eisa-btn eisa-btn-ghost" :disabled="saving" @click="formOpen = false">İptal</button>
+            <button class="eisa-btn eisa-btn-ghost" :disabled="saving" @click="closeForm">İptal</button>
             <button class="eisa-btn eisa-btn-cta" :disabled="saving" @click="saveSozlesme">
               <i :class="saving ? 'fa-solid fa-circle-notch fa-spin' : 'fa-solid fa-floppy-disk'"></i>
               {{ saving ? 'Kaydediliyor…' : 'Kaydet' }}
@@ -1487,6 +1635,53 @@ function fmtDate(iso) {
 </template>
 
 <style scoped>
+/* ── KPI grid ──────────────────────────────────────────────────── */
+.kpi-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.kpi-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.kpi-group-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted, #6B7280);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.kpi-group-cards {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.kpi-aktif   { color: #0F8F8A; }
+.kpi-tahsilat { font-size: 1rem !important; color: #0F8F8A; }
+.kpi-alert   { color: #B1121B; }
+.kpi-warn    { color: #D97706; }
+
+.kpi-card--alert {
+  border-color: rgba(177, 18, 27, 0.25) !important;
+  background: rgba(177, 18, 27, 0.04) !important;
+}
+
+.kpi-card--warn {
+  border-color: rgba(217, 119, 6, 0.3) !important;
+  background: rgba(254, 243, 199, 0.5) !important;
+}
+
 .invoice-preview {
   border: 1px solid #e5e7eb;
   border-radius: 12px;
@@ -1572,5 +1767,312 @@ function fmtDate(iso) {
 .invoice-total strong {
   font-size: 1rem;
   color: #111827;
+}
+
+/* ── Tab bar ─────────────────────────────────────────────────────── */
+.ay-tab-bar {
+  display: flex;
+  gap: 0;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 4px;
+  margin-bottom: 1.25rem;
+  width: fit-content;
+}
+
+.ay-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.5rem 1.1rem;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: #64748b;
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  position: relative;
+  white-space: nowrap;
+}
+
+.ay-tab:hover:not(.ay-tab--active) {
+  background: #e2e8f0;
+  color: #334155;
+}
+
+.ay-tab--active {
+  background: #fff;
+  color: #1e40af;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.1);
+}
+
+.ay-tab-count {
+  background: #e0e7ff;
+  color: #3730a3;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  min-width: 1.4rem;
+  text-align: center;
+}
+
+.ay-tab-badge {
+  background: #ef4444;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  min-width: 1.4rem;
+  text-align: center;
+}
+
+/* ── Filter bar ──────────────────────────────────────────────────── */
+.ay-filter-bar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.ay-filter-fields {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.ay-filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.ay-filter-label {
+  font-size: 0.73rem;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.ay-filter-select,
+.ay-filter-input {
+  height: 38px;
+  padding: 0 0.75rem;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #111827;
+  font-size: 0.875rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+  min-width: 0;
+}
+
+.ay-filter-select { min-width: 160px; }
+.ay-filter-input  { width: 140px; }
+
+/* EczanePicker (EisaLookup) margin sıfırlama + hizalama */
+.ay-filter-field--lookup :deep(.eisa-lookup) { margin: 0; }
+.ay-filter-field--lookup :deep(.lookup-trigger) { min-height: 38px; height: 38px; }
+
+.ay-filter-field--lookup {
+  min-width: 240px;
+}
+
+.ay-filter-select:focus,
+.ay-filter-input:focus {
+  border-color: #B1121B;
+  box-shadow: 0 0 0 3px rgba(177, 18, 27, 0.12);
+}
+
+.ay-chip-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  height: 38px;
+  padding: 0 0.85rem;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #6B7280;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+  align-self: flex-end;
+}
+
+.ay-chip-toggle input { display: none; }
+
+.ay-chip-toggle--on {
+  background: rgba(177,18,27,0.07);
+  border-color: #B1121B;
+  color: #B1121B;
+}
+
+.ay-chip-toggle:hover {
+  border-color: #B1121B;
+}
+
+.ay-filter-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+
+.ay-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  height: 38px;
+  padding: 0 1rem;
+  background: linear-gradient(135deg, #7F1D1D 0%, #B1121B 55%, #D72638 100%);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(177, 18, 27, 0.28);
+  transition: box-shadow 0.15s, transform 0.15s;
+  white-space: nowrap;
+}
+
+.ay-filter-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(177,18,27,0.38); }
+
+.ay-filter-reset {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-size: 0.85rem;
+}
+
+.ay-filter-reset:hover {
+  border-color: #B1121B;
+  color: #B1121B;
+  background: rgba(177,18,27,0.06);
+}
+
+.ay-filter-export {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  height: 38px;
+  padding: 0 0.9rem;
+  background: #fff;
+  color: #0F8F8A;
+  border: 1.5px solid #0F8F8A;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.ay-filter-export:hover:not(:disabled) {
+  background: #0F8F8A;
+  color: #fff;
+}
+
+.ay-filter-export:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.ay-filter-result {
+  font-size: 0.8rem;
+  color: #94a3b8;
+  font-weight: 500;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.iptal-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.45rem 0.8rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #374151;
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.iptal-toggle:hover {
+  border-color: #cbd5e1;
+  background: #f1f5f9;
+}
+
+.iptal-toggle input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.iptal-toggle-track {
+  position: relative;
+  width: 2.5rem;
+  height: 1.4rem;
+  border-radius: 999px;
+  background: #dfe5ef;
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.06);
+  transition: background 0.2s ease;
+}
+
+.iptal-toggle-thumb {
+  position: absolute;
+  top: 0.18rem;
+  left: 0.18rem;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.18);
+  transition: transform 0.2s ease;
+}
+
+.iptal-toggle input:checked + .iptal-toggle-track {
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+}
+
+.iptal-toggle input:checked + .iptal-toggle-track .iptal-toggle-thumb {
+  transform: translateX(1.05rem);
+}
+
+.iptal-toggle-text {
+  line-height: 1;
 }
 </style>

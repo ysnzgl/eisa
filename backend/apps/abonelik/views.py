@@ -67,6 +67,61 @@ class SozlesmeViewSet(viewsets.ModelViewSet):
             uow.add(instance)
         serializer.instance = instance
 
+    def create(self, request, *args, **kwargs):
+        """Sözleşmeyi ve (varsa) cihaz planlarını tek atomik işlemde kaydeder.
+
+        Gövdeye eklenen `cihaz_planlari` listesi sözleşmeyle aynı transaction'da
+        yazılır; biri başarısız olursa hiçbiri kaydedilmez (ya hep ya hiç).
+        """
+        from django.db import transaction
+
+        planlar = request.data.pop("cihaz_planlari", None) if hasattr(request.data, "pop") else None
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            with UnitOfWork(user=request.user) as uow:
+                instance = Sozlesme(**serializer.validated_data)
+                uow.add(instance)
+            serializer.instance = instance
+            if isinstance(planlar, list):
+                self._kaydet_cihaz_planlari(instance, planlar)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    def _kaydet_cihaz_planlari(self, sozlesme, planlar):
+        """Cihaz planlarını replace-all mantığıyla kaydeder; başlangıcı ötelemeden türetir."""
+        existing = {p.id: p for p in sozlesme.cihaz_planlari.all()}
+        incoming_ids: set[int] = set()
+        for item in planlar:
+            plan_id = item.get("id")
+            try:
+                plan_id = int(plan_id) if plan_id is not None else None
+            except (TypeError, ValueError):
+                plan_id = None
+            instance = existing.get(plan_id) if plan_id else None
+            ser = CihazOdemePlaniSerializer(
+                instance=instance, data=item, partial=instance is not None
+            )
+            ser.is_valid(raise_exception=True)
+            data = dict(ser.validated_data)
+            # Cihaz faturasının ilk dönemi = sözleşme başlangıcı + cihaz ötelemesi.
+            oteleme = int(data.get("oteleme_ay", getattr(instance, "oteleme_ay", 0)) or 0)
+            data["baslangic_tarihi"] = services.add_months(sozlesme.baslangic_tarihi, oteleme)
+            if instance:
+                for f, v in data.items():
+                    setattr(instance, f, v)
+                instance.save()
+                incoming_ids.add(plan_id)
+            else:
+                CihazOdemePlani(sozlesme=sozlesme, **data).save()
+        for pid, plan in existing.items():
+            if pid not in incoming_ids:
+                if Fatura.objects.filter(cihaz_plani=plan).exists():
+                    plan.durum = CihazOdemePlani.Durum.IPTAL
+                    plan.save(update_fields=["durum"])
+                else:
+                    plan.delete()
+
     def perform_update(self, serializer):
         instance = serializer.instance
         for field, value in serializer.validated_data.items():
@@ -88,37 +143,7 @@ class SozlesmeViewSet(viewsets.ModelViewSet):
             return Response({"detail": "Liste bekleniyor."}, status=status.HTTP_400_BAD_REQUEST)
 
         with transaction.atomic():
-            existing = {p.id: p for p in sozlesme.cihaz_planlari.all()}
-            incoming_ids: set[int] = set()
-
-            for item in request.data:
-                plan_id = item.get("id")
-                try:
-                    plan_id = int(plan_id) if plan_id is not None else None
-                except (TypeError, ValueError):
-                    plan_id = None
-
-                instance = existing.get(plan_id) if plan_id else None
-                ser = CihazOdemePlaniSerializer(
-                    instance=instance, data=item, partial=instance is not None
-                )
-                ser.is_valid(raise_exception=True)
-                if instance:
-                    for f, v in ser.validated_data.items():
-                        setattr(instance, f, v)
-                    instance.save()
-                    incoming_ids.add(plan_id)
-                else:
-                    plan = CihazOdemePlani(sozlesme=sozlesme, **ser.validated_data)
-                    plan.save()
-
-            for pid, plan in existing.items():
-                if pid not in incoming_ids:
-                    if Fatura.objects.filter(cihaz_plani=plan).exists():
-                        plan.durum = CihazOdemePlani.Durum.IPTAL
-                        plan.save(update_fields=["durum"])
-                    else:
-                        plan.delete()
+            self._kaydet_cihaz_planlari(sozlesme, request.data)
 
         qs = CihazOdemePlani.objects.filter(sozlesme=sozlesme)
         return Response(CihazOdemePlaniSerializer(qs, many=True).data)
@@ -225,6 +250,14 @@ class FaturaViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.G
         durum = self.request.query_params.get("durum")
         if durum:
             qs = qs.filter(durum=durum)
+        if self.request.query_params.get("unpaid_only") in ("1", "true", "yes", "on"):
+            qs = qs.filter(durum__in=(Fatura.Durum.BEKLIYOR, Fatura.Durum.GECIKTI))
+        tarih_baslangic = self.request.query_params.get("tarih_baslangic")
+        if tarih_baslangic:
+            qs = qs.filter(vade_tarihi__gte=tarih_baslangic)
+        tarih_bitis = self.request.query_params.get("tarih_bitis")
+        if tarih_bitis:
+            qs = qs.filter(vade_tarihi__lte=tarih_bitis)
         return qs
 
     @action(detail=True, methods=["post"], url_path="ode")
@@ -580,4 +613,10 @@ class OdemelerView(mixins.ListModelMixin, viewsets.GenericViewSet):
         eczane_id = self.request.query_params.get("eczane")
         if eczane_id:
             qs = qs.filter(fatura__eczane_id=eczane_id)
+        tarih_baslangic = self.request.query_params.get("tarih_baslangic")
+        if tarih_baslangic:
+            qs = qs.filter(odeme_tarihi__gte=tarih_baslangic)
+        tarih_bitis = self.request.query_params.get("tarih_bitis")
+        if tarih_bitis:
+            qs = qs.filter(odeme_tarihi__lte=tarih_bitis)
         return qs

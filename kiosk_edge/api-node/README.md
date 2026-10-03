@@ -70,4 +70,6 @@ Bootstrap akis:
 
 `eisa-api.service` systemd dosyasini `/etc/systemd/system/` altina kopyalayin. Servis `node /opt/eisa/app/kiosk_edge/api-node/src/index.js` calistirir. Tek binary istiyorsaniz Node SEA (`node --experimental-sea-config`) veya `pkg` ile derleyebilirsiniz.
 
+Bakım menüsündeki yeniden başlatma/kapatma işlemleri için `eisa-power-polkit.rules` dosyasını `/etc/polkit-1/rules.d/49-eisa-power.rules` konumuna `root:root` olarak kopyalayın. Kural yalnız `eisa` kullanıcısının logind reboot/power-off eylemlerine izin verir; servis dosyasındaki `NoNewPrivileges=true` koruması değiştirilmez.
+
 Detayli VirtualBox + production kurulum adimlari icin: `kiosk_edge/PRODUCTION_VIRTUALBOX_DEPLOY.md`

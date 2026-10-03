@@ -1,7 +1,9 @@
 """Sadece süper adminler için iş takip API'si."""
 from django.db.models import Q
-from rest_framework import viewsets
+from rest_framework import status, viewsets
+from rest_framework.response import Response
 
+from apps.core.uow import UnitOfWork
 from apps.pharmacies.permissions import IsSuperAdmin
 
 from .models import Gorev
@@ -12,7 +14,7 @@ class GorevViewSet(viewsets.ModelViewSet):
     permission_classes = [IsSuperAdmin]
     serializer_class = GorevSerializer
     queryset = Gorev.objects.select_related("atanan_kullanici", "olusturan").order_by("-olusturulma_tarihi")
-    http_method_names = ["get", "post", "patch", "put", "head", "options"]
+    http_method_names = ["get", "post", "patch", "put", "delete", "head", "options"]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -30,3 +32,9 @@ class GorevViewSet(viewsets.ModelViewSet):
                 qs = qs.filter(Q(baslik__icontains=q) | Q(icerik__icontains=q))
 
         return qs
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        with UnitOfWork(user=request.user) as uow:
+            uow.delete(instance)
+        return Response(status=status.HTTP_204_NO_CONTENT)

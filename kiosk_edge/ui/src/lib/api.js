@@ -142,6 +142,15 @@ export async function fetchWifiStatus() {
   return _request(`${API_BASE}/api/wifi/status`, { timeoutMs: 8000 });
 }
 
+/** Lokal bakim islemi: ayarlari yenile, cihazi yeniden baslat veya kapat. */
+export async function performSystemAction(action) {
+  return _request(`${API_BASE}/api/system/action`, {
+    method: 'POST',
+    body: { action },
+    timeoutMs: action === 'refresh' ? 60_000 : 5000,
+  });
+}
+
 /**
  * @returns {Promise<Array<{ssid: string, signal: number, secured: boolean}>>}
  */

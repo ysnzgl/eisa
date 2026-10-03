@@ -69,6 +69,7 @@ Backend'de kampanya/creative tanımı → Merkezi playlist üretimi → Kiosk'a 
 | Proof-of-play log toplama | 08-dooh-advertising.md + 03-kiosk-edge-api-node.md |
 | Genel duyuru / nöbet uyarısı | 01-backend.md + 02-web-panels.md + 05-cross-project-flows.md + 06-db-and-api-contracts.md |
 | Kiosk'a yeni kategori/soru ekleme | 01-backend.md + 03-kiosk-edge-api-node.md |
+| Kategori sırasını güncellemek / SQL update uygulamak | 01-backend.md + 03-kiosk-edge-api-node.md + `backend/scripts/update_root_category_order.sql` |
 | Frontend/backend API contract | 06-db-and-api-contracts.md |
 | Proje arası veri akışları | 05-cross-project-flows.md |
 | Yeni özellik ekleme prosedürü | AI-WORKFLOW.md |
@@ -82,6 +83,8 @@ Backend'de kampanya/creative tanımı → Merkezi playlist üretimi → Kiosk'a 
 
 ### 1. Kategori/Soru Akışı
 Backend (Kategori/Soru models) → web_panels (MedicalLogic/DanismaYonetimi) → Backend API → kiosk_edge/api-node (sync scheduler) → SQLite (kategoriler/sorular) → kiosk_edge/ui (CategoryScreen/QuestionScreen)
+
+> Not: Kategori sırası `sira` alanıyla yönetilir. Kök seviyedeki kategoriler yalnızca aynı root seti içinde unique `sira` taşır; alt kategoriler için benzersizlik yalnızca aynı `bagli_kategori` kapsamında geçerlidir. `backend/scripts/update_root_category_order.sql` dosyası canlı DB'ye uygulanan root sırasını hazırlar.
 
 ### 2. Reklam Slot/Playlist Akışı
 Backend (Campaign/Creative/ScheduleRule) → web_panels (CampaignWizard/PlaylistEditor) → Backend playlist generator → Kiosk ping → kiosk_edge/api-node playlist sync → SQLite (playlists/playlist_items) → kiosk_edge/ui (AdStrip)
@@ -105,7 +108,7 @@ SuperAdmin → web_panels AbonelikYonetimi → `Sozlesme` (+ opsiyonel `CihazOde
 
 ## Kritik Domain Kavramları
 
-- **Kategori:** Kullanıcının yakındığı şikayet türü (uyku, enerji, bağışıklık vb.)
+- **Kategori:** Kullanıcının yakındığı şikayet türü (uyku, enerji, bağışıklık vb.). `sira` alanı ile root/child sıralaması kontrol edilir; aynı parent altında tekrar eden `sira` yoktur, fakat farklı parent'lar arasında aynı `sira` kullanılabilir.
 - **Soru:** Kategoriye bağlı, hedeflenmiş sorular (yaş/cinsiyet/etken madde filtrelenebilir)
 - **Danışma:** Eczacıya direkt danışma kategorisi (soru akışı gerektirmez)
 - **Campaign:** DOOH reklam kampanyası (başlangıç/bitiş tarihi, durum, öncelik, garanti tipi)

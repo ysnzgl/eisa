@@ -189,6 +189,29 @@ backend/
 
 ---
 
+## Kategori Sıralama ve Kiosk Görünümü
+
+Kategori sıralaması `apps/products/models.py` içinde `Kategori.sira` ile yönetilir.
+
+- `sira` minimum `1` olmalıdır.
+- Kök kategoriler (`bagli_kategori_id IS NULL`) için benzersiz sıra, yalnızca aynı seviyedeki kök kategoriler arasında kontrol edilir.
+- Alt kategoriler için benzersizlik, aynı `bagli_kategori` altındaki `sira` değeri bazındadır.
+- Model `ordering = ("bagli_kategori_id", "sira", "ad")` ile çalışır; böylece kiosk cache'i aynı sırayla gelir.
+- Kiosk uygulaması `sira` alanını okuyup `ORDER BY COALESCE(bagli_kategori_id, 0), COALESCE(sira, 1), id` mantığıyla listeler.
+
+Bu nedenle üst kategorilerde tekrar eden `sira` değeri kabul edilmez, ama aynı `sira` değeri farklı parent altında tekrar kullanılabilir; aslında bu gereklidir. Yalnızca aynı hiyerarşi seviyesindeki sibling'lar arasında unique olmalıdır.
+
+Kök kategori sıralama güncellemesi için şablon SQL bulunur: `backend/scripts/update_root_category_order.sql`.
+
+```sql
+-- PostgreSQL hedefi: backend/scripts/update_root_category_order.sql
+-- Kök kategori sıralarını istenen düzene göre günceller.
+```
+
+Script'i canlı veritabanına uygularken önce hedef kayıtların mevcut olduğu kontrol edilir; ardından root `sira` alanları geçici olarak kaydırılır ve istenen düzen uygulanır. Bu, kiosk'taki 3 kolonlu ana liste için gerekli görünümü korur.
+
+---
+
 ## Üretim Notu
 
 Üretimde şu değişkenler **zorunludur**:

@@ -1,0 +1,12 @@
+// /etc/polkit-1/rules.d/49-eisa-power.rules olarak root:root kurulmalıdır.
+polkit.addRule(function(action, subject) {
+  var allowed = [
+    'org.freedesktop.login1.reboot',
+    'org.freedesktop.login1.reboot-multiple-sessions',
+    'org.freedesktop.login1.power-off',
+    'org.freedesktop.login1.power-off-multiple-sessions'
+  ];
+  if (subject.user === 'eisa' && allowed.indexOf(action.id) !== -1) {
+    return polkit.Result.YES;
+  }
+});

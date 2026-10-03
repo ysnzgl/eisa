@@ -87,7 +87,7 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 | `/api/destek/talepler/{id}/yorum-ekle/` | `DestekTalebiViewSet.yorum_ekle` | JWT | Yorum ekle; durum otomatik geçişi |
 | `/api/destek/talepler/{id}/durum-degistir/` | `DestekTalebiViewSet.durum_degistir` | JWT (SuperAdmin) | Admin durum değişikliği |
 | `/api/destek/talepler/yeni-sayisi/` | `DestekTalebiViewSet.yeni_sayisi` | JWT (SuperAdmin) | YENI sayısı (badge) |
-| `/api/is-takip/gorevler/` | `GorevViewSet` (list/create/update) | JWT (SuperAdmin) | İç iş takibi; başlık, içerik, durum, atanan admin |
+| `/api/is-takip/gorevler/` | `GorevViewSet` (list/create/update/delete) | JWT (SuperAdmin) | İç iş takibi; başlık, içerik, durum, atanan admin |
 | `/api/announcements/admin/` | `AdminAnnouncementViewSet` | JWT (SuperAdmin) | Genel duyuru CRUD; sistem duyurusunda sınırlı PATCH |
 | `/api/announcements/me/active/` | `ActiveAnnouncementsView` | JWT (Eczacı) | Bugünkü hedeflenmiş occurrence ve sistem uyarıları |
 | `/api/announcements/{id}/read/` | `MarkAnnouncementReadView` | JWT (Eczacı) | Bugünkü occurrence için okundu kaydı |
@@ -136,9 +136,9 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 - `LookupModel`: id + BaseModel (tüm lookup'ların base'i)
 
 ### İş Takibi (`apps.gorevler`)
-- `Gorev`: `baslik`, sınırsız uzun metin `icerik` (`TextField`), `durum` (`YENI|INCELENIYOR|YAPILDI|YAPILMADI`), `atanan_kullanici` (yalnız superadmin), BaseModel alanları
+- `Gorev`: `baslik`, sınırsız uzun metin `icerik` (`TextField`), `durum` (`YENI|INCELENIYOR|YAPILDI|YAPILMADI|IPTAL`), `atanan_kullanici` (yalnız superadmin), BaseModel alanları
 - `db_table`: `gorevler`
-- Liste/detay API'si yalnız `IsSuperAdmin` ile açılır; `atanan_kullanici` alanı kullanıcı yönetiminden gelen aktif süper adminlerle sınırlıdır
+- Liste/detay/oluşturma/güncelleme/silme API'si yalnız `IsSuperAdmin` ile açılır; `atanan_kullanici` alanı kullanıcı yönetiminden gelen aktif süper adminlerle sınırlıdır
 
 ### Lookups (`apps.lookups`)
 - `Il`: Şehirler
@@ -174,7 +174,7 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 - Migrations: `barkod_logo/0001_initial`, `barkod_logo/0002_alter_*`, `analytics/0014_oturumlogu_barkod_logo`
 
 ### Products (`apps.products`)
-- `Kategori`: Şikayet kategorisi (ad, **ad_en** *(2026-09-29, TR/EN)*, slug, ikon, hedef_cinsiyet, hedef_yas_araliklari M2M, bagli_kategori self-FK)
+- `Kategori`: Şikayet kategorisi (ad, **ad_en** *(2026-09-29, TR/EN)*, slug, ikon, hedef_cinsiyet, hedef_yas_araliklari M2M, bagli_kategori self-FK, **sira**). `sira` minimum `1` ve `bagli_kategori_id` bağlamında unique: kök kategorilerde yalnızca aynı düzeydeki root'lar arasında benzersiz; alt kategorilerde yalnızca aynı parent altında unique. Model `ordering = ("bagli_kategori_id", "sira", "ad")` ile kiosk ve admin görünümlerini aynı sıraya bağlar.
 - `Danisma`: Eczacıya danışma kategorisi (ad, **ad_en**, slug, ikon, ust_kategori self-FK)
 - `Soru`: Kategori sorular (kategori FK, metin, **metin_en**, sira, hedef_cinsiyet, hedef_yas_araliklari M2M, hedef_etken_maddeler M2M)
 - `Cevap`: Soru cevapları (soru FK, metin, **metin_en**, sira)

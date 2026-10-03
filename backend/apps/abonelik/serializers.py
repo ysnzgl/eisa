@@ -95,8 +95,8 @@ class CihazOdemePlaniSerializer(serializers.ModelSerializer):
     class Meta:
         model = CihazOdemePlani
         fields = (
-            "id", "sozlesme", "tip", "adet", "cihaz_kdv_orani", "tevkifat_orani",
-            "pesin_fiyat", "vade_farki_orani", "taksit_sayisi",
+            "id", "sozlesme", "tip", "adet", "cihaz_bilgisi", "cihaz_kdv_orani", "tevkifat_orani",
+            "pesin_fiyat", "vade_farki_orani", "taksit_sayisi", "oteleme_ay",
             "aylik_kira_bedeli",
             "baslangic_tarihi", "durum", "durum_display",
             "toplam_tutar", "taksit_tutari", "odeme_tipi", "odeme_tutari", "odeme_etiketi",
@@ -107,16 +107,11 @@ class CihazOdemePlaniSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         tip = attrs.get("tip") or getattr(self.instance, "tip", CihazOdemePlani.Tip.SATILIK)
         taksit = attrs.get("taksit_sayisi", getattr(self.instance, "taksit_sayisi", 1))
-        vade = attrs.get("vade_farki_orani", getattr(self.instance, "vade_farki_orani", 0))
         if tip == CihazOdemePlani.Tip.SATILIK:
             if attrs.get("pesin_fiyat") is None and self.instance is None:
                 raise serializers.ValidationError({"pesin_fiyat": "Satılık cihaz için peşin fiyat zorunludur."})
             if taksit is not None and not (1 <= int(taksit) <= 12):
                 raise serializers.ValidationError({"taksit_sayisi": "Taksit sayısı 1–12 arasında olmalıdır."})
-            if taksit and int(taksit) != 1 and (vade is None or vade <= 0):
-                raise serializers.ValidationError({
-                    "vade_farki_orani": "1 aydan fazla taksitte vade farkı zorunludur (> %0)."
-                })
         elif tip == CihazOdemePlani.Tip.KIRALIK:
             if attrs.get("aylik_kira_bedeli") is None and self.instance is None:
                 raise serializers.ValidationError({"aylik_kira_bedeli": "Kiralık cihaz için aylık kira bedeli zorunludur."})

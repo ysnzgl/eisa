@@ -11,6 +11,7 @@ import net from 'node:net';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
 import zlib from 'node:zlib';
 
@@ -24,6 +25,7 @@ const ALIGN_LEFT = Buffer.from([ESC, 0x61, 0x00]);
 const BOLD_ON = Buffer.from([ESC, 0x45, 0x01]);
 const BOLD_OFF = Buffer.from([ESC, 0x45, 0x00]);
 const CUT = Buffer.from([GS, 0x56, 0x42, 0x00]); // partial cut
+const EISA_FOOTER_LOGO_PATH = fileURLToPath(new URL('../assets/eisa-receipt-logo.png', import.meta.url));
 
 // ── PNG → ESC/POS raster dönüşümü (built-in node:zlib; yeni bağımlılık yok) ──
 
@@ -198,35 +200,42 @@ function qrCommands(payload) {
  */
 export function buildReceiptBuffer({ qrPayload, logoCandidates = [], logger }) {
   const log = logger ?? null;
+  let header;
+  let logoId = null;
 
   for (const logo of logoCandidates) {
     try {
-      const raster = pngToEscposRaster(logo.local_path);
-      return {
-        buffer: Buffer.concat([
-          INIT, ALIGN_CENTER, raster,
-          text('Sağlıklı günler diler.'), text(''),
-          qrCommands(qrPayload),
-          text(''), text(qrPayload),
-          Buffer.from([LF, LF, LF]), CUT,
-        ]),
-        logoId: logo.id,
-      };
+      header = pngToEscposRaster(logo.local_path);
+      logoId = logo.id;
+      break;
     } catch (err) {
       log?.warn?.({ err: err?.message, logoId: logo.id }, 'Logo raster basarisiz; sonraki deneniyor');
     }
   }
 
-  // Tüm adaylar başarısız veya liste boş: e-ISA fallback
+  // Tüm sponsor adayları başarısız veya liste boşsa mevcut metin fallback'i korunur.
+  if (!header) header = Buffer.concat([BOLD_ON, text('e-isa'), BOLD_OFF]);
+
+  // Verilen e-isa logosu sponsor rotasyonundan bağımsız olarak her fişin altında basılır.
+  // Asset beklenmedik biçimde erişilemezse fiş baskısını kaybetmemek için metin fallback'i kullanılır.
+  let footer;
+  try {
+    footer = pngToEscposRaster(EISA_FOOTER_LOGO_PATH);
+  } catch (err) {
+    log?.warn?.({ err: err?.message }, 'Sabit e-isa alt logosu raster basarisiz; metin fallback kullaniliyor');
+    footer = Buffer.concat([BOLD_ON, text('e-isa'), BOLD_OFF]);
+  }
+
   return {
     buffer: Buffer.concat([
-      INIT, ALIGN_CENTER, BOLD_ON, text('e-isa'), BOLD_OFF,
+      INIT, ALIGN_CENTER, header,
       text('Sağlıklı günler diler.'), text(''),
       qrCommands(qrPayload),
       text(''), text(qrPayload),
+      text(''), footer,
       Buffer.from([LF, LF, LF]), CUT,
     ]),
-    logoId: null,
+    logoId,
   };
 }
 

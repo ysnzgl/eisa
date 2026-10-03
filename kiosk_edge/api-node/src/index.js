@@ -2,11 +2,19 @@
 import { settings } from './config.js';
 import { openDb, closeDb } from './db.js';
 import { buildServer } from './server.js';
-import { startScheduler, stopScheduler, pullFromCentral } from './scheduler.js';
+import {
+  startScheduler,
+  stopScheduler,
+  pullFromCentral,
+  pingAndSyncPlaylist,
+  pingAndSyncManifest,
+} from './scheduler.js';
 import { resolveRuntimeSettings, hasAppKeyCredentials } from './provisioning.js';
 import { recordDiagnostic } from './diagnosticOutbox.js';
 import { recordKioskEvent } from './kioskEventOutbox.js';
 import { syncDeviceConfig } from './deviceConfig.js';
+import { schedulePowerAction } from './systemPower.js';
+import { createApplicationRefresher } from './maintenance.js';
 
 const db = openDb(settings.sqlitePath, {
   outboxMaxRows: settings.outboxMaxRows,
@@ -19,7 +27,25 @@ if (runtimeSettings.bootstrapDeviceConfig) {
   );
 }
 
-const app = await buildServer({ db, settings: runtimeSettings });
+const refreshApplication = createApplicationRefresher({
+  db,
+  settings: runtimeSettings,
+  resolveRuntimeSettings,
+  hasAppKeyCredentials,
+  syncDeviceConfig,
+  pullFromCentral,
+  pingAndSyncPlaylist,
+  pingAndSyncManifest,
+});
+
+const app = await buildServer({
+  db,
+  settings: runtimeSettings,
+  maintenance: {
+    refreshApplication,
+    requestPowerAction: (action, log) => schedulePowerAction(action, { logger: log }),
+  },
+});
 startScheduler(db, runtimeSettings, app.log);
 
 // Faz 4: uygulama başlangıcını panel-görünür olay olarak kaydet

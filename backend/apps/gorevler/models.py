@@ -11,6 +11,7 @@ class Gorev(BaseModel):
         INCELENIYOR = "INCELENIYOR", "İnceleniyor"
         YAPILDI = "YAPILDI", "Yapıldı"
         YAPILMADI = "YAPILMADI", "Yapılmadı"
+        IPTAL = "IPTAL", "İptal"
 
     baslik = models.CharField(max_length=200)
     icerik = models.TextField()

@@ -28,8 +28,10 @@
   import IdleAudio          from './components/IdleAudio.svelte';
   import IdleCountdownModal from './components/IdleCountdownModal.svelte';
   import LanguageToggle     from './components/LanguageToggle.svelte';
+  import MaintenanceMenu    from './components/MaintenanceMenu.svelte';
 
   let resultScreenRef = null;
+  let maintenanceOpen = false;
 
   // Idle ekran her acildiginda sayac lokal DB'deki en son QR kaydiyla uzlastirilir.
   $: if ($screen === 'idle') refreshQrActivity();
@@ -422,7 +424,7 @@
     <WifiSetupScreen on:connected={() => goTo('idle')} />
   {:else if $screen === 'idle'}
     <!-- Idle / Screensaver: tam ekran -->
-    <IdleScreen on:start={() => goTo('demographics')} />
+    <IdleScreen on:start={() => goTo('demographics')} on:maintenance={() => maintenanceOpen = true} />
   {:else}
     <!-- Anket bölgesi: 3/4 üst -->
     <div class="kiosk-main">
@@ -478,6 +480,10 @@
     />
   {/if}
 </div>
+
+{#if maintenanceOpen}
+  <MaintenanceMenu on:close={() => maintenanceOpen = false} />
+{/if}
 
 <style>
   .v-badge {
