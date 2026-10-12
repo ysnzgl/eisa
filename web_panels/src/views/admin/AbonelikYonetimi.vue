@@ -38,9 +38,11 @@ const gorunenSozlesmeler = computed(() =>
     ? sozlesmeler.value
     : sozlesmeler.value.filter((s) => s.durum !== 'IPTAL'));
 
-// Bu ay başlangıcı / bitişi
-function thisMonthStart() {
+// Son 3 ay başlangıcı / bu ay bitişi
+function lastThreeMonthsStart() {
   const d = new Date();
+  d.setMonth(d.getMonth() - 2);
+  d.setDate(1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
 }
 function thisMonthEnd() {
@@ -48,8 +50,8 @@ function thisMonthEnd() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-const faturaFilters = reactive({ eczane: null, tarih_baslangic: thisMonthStart(), tarih_bitis: thisMonthEnd(), unpaid_only: false });
-const odemeFilters = reactive({ eczane: null, tarih_baslangic: thisMonthStart(), tarih_bitis: thisMonthEnd() });
+const faturaFilters = reactive({ eczane: null, tarih_baslangic: lastThreeMonthsStart(), tarih_bitis: thisMonthEnd(), unpaid_only: false });
+const odemeFilters = reactive({ eczane: null, tarih_baslangic: lastThreeMonthsStart(), tarih_bitis: thisMonthEnd() });
 const loading = ref(false);
 
 const TAKSITLER = [
@@ -689,6 +691,15 @@ function kalanLabel(s) {
   if (k == null) return '—';
   return k < 0 ? `${Math.abs(k)} gün geçti` : `${k} gün`;
 }
+function cihazPlanLabel(s) {
+  const p = s?.cihaz_plani || (Array.isArray(s?.cihaz_planlari) ? s.cihaz_planlari[0] : null);
+  if (!p) return null;
+  const odeme = p.tip === 'SATILIK' && p.taksit_sayisi === 1 ? 'Peşin' : `${p.taksit_sayisi}x`;
+  const tutar = p.cihaz_kdv_orani > 0
+    ? (p.tip === 'SATILIK' && p.taksit_sayisi === 1 ? p.kdv_dahil_toplam : p.kdv_dahil_taksit)
+    : (p.tip === 'SATILIK' && p.taksit_sayisi === 1 ? p.toplam_tutar : p.taksit_tutari);
+  return { odeme, tutar: fmtTL(tutar), adet: p.adet ?? 1 };
+}
 
 // ── Uzatma ──────────────────────────────────────────────────────────────────
 const uzatOpen = ref(false);
@@ -893,19 +904,17 @@ function fmtDate(iso) {
             <tr v-for="s in gorunenSozlesmeler" :key="s.id">
               <td><strong>{{ s.eczane_ad }}</strong></td>
               <td><span class="eisa-pill" :class="turPill(s.tur)">{{ s.tur_display }}</span></td>
-              <td>{{ s.tur === 'DEMO' ? `${s.toplam_gun} gün` : s.tip_display }}</td>
+              <td>{{ s.tur === 'DEMO' ? `${s.toplam_gun} gün` : `${s.tip_display}${s.oteleme_ay ? ` (öteleme +${s.oteleme_ay} ay)` : ''}` }}</td>
               <td><span class="eisa-pill" :class="kalanPill(s)">{{ kalanLabel(s) }}</span></td>
-              <td>{{ s.tur === 'DEMO' ? '—' : `${s.oteleme_ay} ay` }}</td>
+              <td>{{ s.tur === 'DEMO' ? '—' : (s.oteleme_ay ? `${s.oteleme_ay} ay` : '—') }}</td>
               <td>{{ s.tur === 'DEMO' ? '—' : fmtTL(s.aylik_kullanim_bedeli) }}</td>
               <td class="cell-muted">{{ s.baslangic_tarihi }}</td>
               <td class="cell-muted">{{ s.bitis_tarihi }}</td>
               <td>
-                <span v-if="s.cihaz_plani" class="eisa-pill eisa-pill-info">
-                  {{ s.cihaz_plani.tip === 'SATILIK' && s.cihaz_plani.taksit_sayisi === 1
-                    ? 'Peşin' : `${s.cihaz_plani.taksit_sayisi}×` }}
-                  {{ fmtTL(s.cihaz_plani.tip === 'SATILIK' && s.cihaz_plani.taksit_sayisi === 1
-                    ? s.cihaz_plani.toplam_tutar : s.cihaz_plani.taksit_tutari) }}
-                </span>
+                <template v-if="cihazPlanLabel(s)">
+                  <span class="eisa-pill eisa-pill-info">{{ cihazPlanLabel(s).odeme }}</span>
+                  <span style="font-size:.8rem;margin-left:.25rem;">{{ cihazPlanLabel(s).tutar }}</span>
+                </template>
                 <span v-else class="cell-muted">—</span>
               </td>
               <td><span class="eisa-pill" :class="durumPill(s)">{{ durumLabel(s) }}</span></td>

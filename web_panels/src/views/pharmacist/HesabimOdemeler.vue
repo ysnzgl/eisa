@@ -11,6 +11,7 @@ import {
   getOdemelerim, getHareketlerim, getTaleplerim, createTalep,
   onaylaSozlesme, getIslakImzaUrl,
 } from '../../services/abonelik';
+import { getSirketProfili } from '../../services/sirket';
 import SozlesmeMatbu from '../../components/shared/SozlesmeMatbu.vue';
 
 const loading = ref(false);
@@ -20,6 +21,7 @@ const odemeler = ref([]);
 const hareketler = ref([]);
 const talepler = ref([]);
 const odenenId = ref(null);
+const bankaHesabi = ref(null);
 
 const aktifSozlesme = computed(() => hesap.value?.sozlesme || null);
 const sozlesmeIptal = computed(() => aktifSozlesme.value?.etkin_durum === 'IPTAL' || aktifSozlesme.value?.durum === 'IPTAL');
@@ -70,6 +72,18 @@ const odemeKritik = computed(() =>
   faturalar.value.some((f) =>
     (f.durum === 'BEKLIYOR' || f.durum === 'GECIKTI') && daysUntil(f.vade_tarihi) <= 3));
 
+async function loadBankaBilgisi() {
+  try {
+    const data = await getSirketProfili();
+    const bankalar = Array.isArray(data?.banka_hesaplari) ? data.banka_hesaplari : [];
+    bankaHesabi.value = bankalar.find((b) => b.varsayilan && b.aktif)
+      || bankalar.find((b) => b.aktif)
+      || null;
+  } catch {
+    bankaHesabi.value = null;
+  }
+}
+
 async function load() {
   loading.value = true;
   try {
@@ -81,6 +95,7 @@ async function load() {
     odemeler.value = o.data ?? [];
     hareketler.value = hr.data ?? [];
     talepler.value = t.data ?? [];
+    await loadBankaBilgisi();
   } catch (e) {
     toast.error(e?.response?.data?.detail || 'Hesap bilgileri yüklenemedi.');
   } finally { loading.value = false; }
@@ -307,8 +322,15 @@ const HAREKET_ICON = {
       <div class="eisa-panel-body">
         <div class="eisa-form-grid">
           <div class="eisa-form-row"><span class="eisa-field-label">Tür</span><strong>{{ aktifSozlesme.tur_display }}</strong></div>
-          <div class="eisa-form-row"><span class="eisa-field-label">Süre</span><strong>{{ aktifSozlesme.tur === 'DEMO' ? aktifSozlesme.toplam_gun + ' gün' : aktifSozlesme.tip_display }}</strong></div>
+          <div class="eisa-form-row">
+            <span class="eisa-field-label">Süre + Öteleme Toplam</span>
+            <strong>{{ aktifSozlesme.tur === 'DEMO'
+              ? aktifSozlesme.toplam_gun + ' gün'
+              : `${aktifSozlesme.tip_display}${aktifSozlesme.oteleme_ay ? ` + ${aktifSozlesme.oteleme_ay} ay öteleme (${aktifSozlesme.toplam_ay} ay toplam)` : ''}` }}</strong>
+          </div>
           <div v-if="aktifSozlesme.tur !== 'DEMO'" class="eisa-form-row"><span class="eisa-field-label">Aylık Kullanım Bedeli</span><strong>{{ fmtTL(aktifSozlesme.aylik_kullanim_bedeli) }}</strong></div>
+          <div v-if="aktifSozlesme.tur !== 'DEMO'" class="eisa-form-row"><span class="eisa-field-label">KDV Oranı</span><strong>%{{ aktifSozlesme.kdv_orani ?? 0 }}</strong></div>
+          <div v-if="aktifSozlesme.tur !== 'DEMO' && Number(aktifSozlesme.kdv_orani) > 0" class="eisa-form-row"><span class="eisa-field-label">KDV Dahil Aylık</span><strong>{{ fmtTL(aktifSozlesme.kdv_dahil_aylik) }}</strong></div>
           <div v-for="p in (aktifSozlesme.cihaz_planlari || [])"
                :key="p.id"
                class="eisa-form-row">
@@ -461,8 +483,15 @@ const HAREKET_ICON = {
               <!-- EFT bilgileri -->
               <div v-if="odemeYontem === 'EFT_HAVALE'" class="eisa-info-box eisa-form-row-full" style="background:#F0FDF4;border-color:#86EFAC;">
                 <p style="font-weight:700;margin-bottom:.4rem;"><i class="fa-solid fa-building-columns"></i> EFT / Havale Bilgileri</p>
-                <p>Banka: <strong>e-ISA A.Ş. İş Bankası</strong></p>
-                <p>IBAN: <strong>TR00 0000 0000 0000 0000 0000 00</strong></p>
+                <template v-if="bankaHesabi">
+                  <p>Banka: <strong>{{ bankaHesabi.banka_adi }}</strong></p>
+                  <p>Hesap Sahibi: <strong>{{ bankaHesabi.hesap_sahibi }}</strong></p>
+                  <p>IBAN: <strong>{{ bankaHesabi.iban }}</strong></p>
+                  <p v-if="bankaHesabi.sube_adi" style="font-size:.8rem;color:#374151;">Şube: {{ bankaHesabi.sube_adi }}</p>
+                </template>
+                <template v-else>
+                  <p style="color:#6B7280;">Banka bilgileri yüklenemedi. Lütfen yöneticinize danışın.</p>
+                </template>
                 <p style="margin-top:.4rem;color:#166534;"><i class="fa-solid fa-triangle-exclamation"></i> Açıklama alanına <strong>Fatura No'nuzu</strong> yazmanız zorunludur.</p>
               </div>
               <label v-if="odemeYontem === 'EFT_HAVALE'" class="eisa-form-row eisa-form-row-full">

@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from decimal import Decimal
 
+from django.utils import timezone
 from rest_framework import mixins, parsers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -181,10 +182,10 @@ class SozlesmeViewSet(viewsets.ModelViewSet):
         except Exception as exc:
             logger.exception("Islak imza yükleme hatası")
             return Response({"detail": f"Depolama hatası: {exc}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
         sozlesme.islak_imza_url = object_key
         sozlesme.imza_tipi = Sozlesme.ImzaTipi.ISLAK
-        sozlesme.save(update_fields=["islak_imza_url", "imza_tipi"])
+        sozlesme.eczaci_onay_tarihi = timezone.now()
+        sozlesme.save(update_fields=["islak_imza_url", "imza_tipi", "eczaci_onay_tarihi"])
         return Response({"object_key": object_key, "imza_tipi": sozlesme.imza_tipi})
 
     @action(detail=True, methods=["post"], url_path="uzat")

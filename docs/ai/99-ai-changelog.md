@@ -5,6 +5,21 @@
 
 ---
 
+## 2026-10-12
+
+### [Backend + Web Panel] Abonelik & Fatura UX iyileştirmeleri (9 madde)
+
+- **Islak imza → otomatik onay:** `SozlesmeViewSet.islak_imza_yukle` artık `eczaci_onay_tarihi = timezone.now()` set ediyor; admin belge yükleyince onay bekleme durumu oluşmuyor. `from django.utils import timezone` import eklendi.
+- **Süre + Öteleme Toplam:** Eczacı sözleşme bilgileri kartındaki "Süre" satırı → "Süre + Öteleme Toplam" olarak güncellendi; `tip_display + öteleme_ay + toplam_ay` birleşik gösterim. Admin tablosu da aynı şekilde değişti.
+- **KDV oranı + KDV dahil fiyat:** Eczacı sözleşme bilgileri bölümüne `KDV Oranı (%x)` ve `KDV Dahil Aylık` satırları eklendi; backend'deki `kdv_orani` ve `kdv_dahil_aylik` alanları kullanılıyor.
+- **EFT banka bilgisi:** Eczacı ödeme modalında EFT seçildiğinde banka bilgisi hardcoded yerine `getSirketProfili()` çağrısından varsayılan aktif banka hesabı gösteriliyor (`loadBankaBilgisi` fonksiyonu ve `bankaHesabi` ref eklendi).
+- **Cihaz planı "-" hatası:** Admin sözleşme tablosundaki Cihaz Planı sütunu `cihazPlanLabel(s)` fonksiyonu ile `cihaz_plani` veya `cihaz_planlari[0]`'dan doğru değeri okuyor.
+- **Fatura varsayılan 3 ay:** Admin fatura filtresinde `thisMonthStart()` yerine `lastThreeMonthsStart()` (2 ay öncesi başlangıcı) kullanılıyor; fatura ve ödeme listeleri ekran açılışında son 3 ayı gösteriyor.
+- **Syntax fix:** Backend `views.py`'de önceki patchten kalan `@action(...)    def uzat` tek satır birleşimi ayrıldı (sözdizimi hatası düzeltildi).
+- 61 test geçti (abonelik + sirket).
+
+---
+
 ## 2026-10-03
 
 ### [Backend + Web Panel] İş takibi iptal ve silme

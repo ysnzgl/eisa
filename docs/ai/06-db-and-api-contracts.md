@@ -162,14 +162,20 @@
 - İş kaydını kalıcı olarak siler
 - Response 204: gövdesiz yanıt
 
-### Abonelik API Sözleşmesi *(2026-10-01)*
+### Abonelik API Sözleşmesi *(2026-10-01, güncellendi 2026-10-12)*
 
 **GET/POST `/api/abonelik/sozlesmeler/`** — Auth: JWT (IsSuperAdmin); query: `eczane`, `durum`
-- POST Request: `{eczane, tur [DEMO|STANDART], sozlesme_tipi_ay [12|24|36, standart], demo_gun [1..30, demo], baslangic_tarihi, oteleme_ay, aylik_kullanim_bedeli, durum, notlar}`
-- Response: `{id, eczane, eczane_ad, tur, tur_display, sozlesme_tipi_ay, tip_display, demo_gun, baslangic_tarihi, oteleme_ay, aylik_kullanim_bedeli, ek_ay_toplam, ek_gun_toplam, onceki_sozlesme, durum, durum_display, notlar, toplam_ay, toplam_gun, kalan_gun, suresi_doldu, etkin_durum, kullanim_bedeli_baslangic, bitis_tarihi, cihaz_plani}`
+- POST Request: `{eczane, tur [DEMO|STANDART], sozlesme_tipi_ay [12|24|36, standart], demo_gun [1..30, demo], baslangic_tarihi, oteleme_ay, aylik_kullanim_bedeli, kdv_orani [0|1|10|20], tevkifat_orani, durum, notlar}`
+- Response: `{id, eczane, eczane_ad, tur, tur_display, sozlesme_tipi_ay, tip_display, demo_gun, baslangic_tarihi, oteleme_ay, aylik_kullanim_bedeli, kdv_orani, kdv_dahil_aylik, ek_ay_toplam, ek_gun_toplam, onceki_sozlesme, durum, durum_display, notlar, toplam_ay, toplam_gun, kalan_gun, suresi_doldu, etkin_durum, kullanim_bedeli_baslangic, bitis_tarihi, cihaz_planlari [...]}`
+- `cihaz_planlari`: `[{id, tip, adet, pesin_fiyat, taksit_sayisi, oteleme_ay, kdv_dahil_toplam, kdv_dahil_taksit, ...}]` — eski `cihaz_plani` tekil alanı yoktur.
 - Validasyon: DEMO→demo_gun 1..30 & tip null; STANDART→tip 12/24/36 & demo_gun null. durum yalnız AKTIF/IPTAL.
 
 **PATCH `/api/abonelik/sozlesmeler/{id}/`** — Auth: JWT (IsSuperAdmin) — kısmi güncelleme
+
+**POST `/api/abonelik/sozlesmeler/{id}/islak-imza-yukle/`** — Auth: JWT (IsSuperAdmin) — ıslak imzalı belge yükleme
+- Form-data: `belge` (dosya). RustFS'e yükler, `islak_imza_url` ve `imza_tipi=ISLAK` set edilir.
+- **Otomatik onay:** `eczaci_onay_tarihi = now()` set edilir — ıslak imzalı sözleşmeler yükleme anında onaylanmış sayılır, ayrıca onay bekleme durumu olmaz.
+- Response: `{object_key, imza_tipi}`
 
 **POST `/api/abonelik/sozlesmeler/{id}/uzat/`** — Auth: JWT (IsSuperAdmin) — sözleşme uzatma (tarihçe)
 - Request: `{ek_ay? (standart), ek_gun? (demo), neden?}` · 400: hatalı birim / demo 30g aşımı / **iptal edilmiş sözleşme** · Response: güncel Sozlesme
@@ -178,19 +184,21 @@
 **GET `/api/abonelik/sozlesmeler/{id}/gecmis/`** — Auth: JWT (IsSuperAdmin)
 - Response: `{uzatmalar: [{id, ek_ay, ek_gun, neden, olusturan_adi, olusturulma_tarihi}], sozlesmeler: [Sozlesme...]}`
 
-**PUT `/api/abonelik/sozlesmeler/{id}/cihaz-plani/`** — Auth: JWT (IsSuperAdmin) — cihaz planı upsert
-- Request: `{pesin_fiyat, vade_farki_orani, taksit_sayisi [1|4|8|12], baslangic_tarihi}`
-- Response: `{id, sozlesme, pesin_fiyat, vade_farki_orani, taksit_sayisi, baslangic_tarihi, durum, durum_display, toplam_tutar, taksit_tutari}`
+**PUT `/api/abonelik/sozlesmeler/{id}/cihaz-planlari/`** — Auth: JWT (IsSuperAdmin) — cihaz planları toplu güncelleme (replace-all)
+- Request: `[{id?, tip, adet, pesin_fiyat, vade_farki_orani, taksit_sayisi, oteleme_ay, cihaz_kdv_orani, ...}]`
+- Response: `[{id, sozlesme, tip, adet, pesin_fiyat, ..., kdv_dahil_toplam, kdv_dahil_taksit}]`
 
-**GET `/api/abonelik/faturalar/`** — Auth: JWT (IsSuperAdmin); query: `eczane`, `durum`
-- Response: `[{id, eczane, eczane_ad, sozlesme, cihaz_plani, tip, tip_display, donem, taksit_no, tutar, vade_tarihi, durum, durum_display, odenme_tarihi, aciklama}]`
+**GET `/api/abonelik/faturalar/`** — Auth: JWT (IsSuperAdmin); query: `eczane`, `durum`, `tarih_baslangic`, `tarih_bitis`, `unpaid_only`
+- Varsayılan UI aralığı: son 3 ay (frontend `lastThreeMonthsStart()` ile `thisMonthEnd()`).
+- Response: `[{id, eczane, eczane_ad, sozlesme, cihaz_plani, tip, tip_display, donem, taksit_no, tutar, vade_tarihi, durum, durum_display, odenme_tarihi, aciklama, kalemler [...]}]`
 
 **POST `/api/abonelik/faturalar/{id}/ode/`** — Auth: JWT (IsSuperAdmin) — manuel tahsilat
 - Request: `{yontem?}` (def KREDI_KARTI) · 400: zaten ödenmiş/iptal · Response 201: Odeme
 
 **GET `/api/abonelik/hesabim/`** — Auth: JWT (IsEczaci)
-- Response: `{demo (bool), panel_kisitli (bool), kisit_nedeni [SOZLESME_YOK|ODEME_GECIKTI|""], sozlesme|null, acik_fatura_sayisi, toplam_borc, erisim_kapali (bool), grace_gun}`
-- `demo=true`: aktif sözleşme türü DEMO. `panel_kisitli=true` → eczacı yalnız Hesabım'ı kullanabilir.
+- Response: `{demo, panel_kisitli, kisit_nedeni [SOZLESME_YOK|SOZLESME_ONAYSIZ|ODEME_GECIKTI|""], sozlesme|null, acik_fatura_sayisi, toplam_borc, erisim_kapali, grace_gun, onay_gerekli, ceza_tutari}`
+- `onay_gerekli=true`: dijital imzalı ve `eczaci_onay_tarihi` null (ıslak imzalı sözleşmelerde daima false).
+- `sozlesme.kdv_dahil_aylik`, `sozlesme.kdv_orani`, `sozlesme.cihaz_planlari[*].kdv_dahil_taksit` alanları eczacı UI'ında gösterilir.
 
 **Eczacı ek endpoint'leri:** `GET faturalarim/`, `POST faturalarim/{id}/ode/`, `GET odemelerim/`, `GET hareketlerim/`, `GET/POST taleplerim/`.
 
@@ -202,6 +210,8 @@
 - Request: `{yontem?}` (def KREDI_KARTI) · 404: başka eczane faturası · Response 201: Odeme
 
 **Erişim kilidi:** ödenmemiş fatura vade + 7 gün geçerse `POST /api/auth/token/` ve `.../refresh/` eczacı için 403 `{detail}` döner (kiosk etkilenmez).
+
+**EFT banka bilgisi:** Eczacı ödeme modalında EFT seçildiğinde `GET /api/sirket/profil/` çağrılır; `banka_hesaplari[]` içinden `varsayilan=true && aktif=true` olan hesap gösterilir.
 
 ### Announcements and Duty *(2026-08-18)*
 
