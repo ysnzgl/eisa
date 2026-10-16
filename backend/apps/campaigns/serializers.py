@@ -1,7 +1,7 @@
-"""Reklam (kampanya) serileştiricisi — DOOH v2.
+"""Reklam sponsorlugu serileştiricileri.
 
-``CampaignSerializer`` / ``CreativeSerializer`` / ``ScheduleRuleSerializer``
-ve kiosk-edge DTO'lari (``KioskCreativeSyncSerializer``,
+``CampaignSerializer`` / ``CreativeSerializer`` / ``KioskSponsorship*`` yonetim
+DTO'lari ve kiosk-edge DTO'lari (``KioskCreativeSyncSerializer``,
 ``KioskPlaylistSerializer``, ``ProofOfPlay*Serializer``).
 """
 from django.conf import settings
@@ -11,44 +11,24 @@ from apps.core.media_proxy import media_proxy_url
 
 from .models import (
     Campaign,
-    CampaignTarget,
-    CampaignTotalAllocation,
     Creative,
-    DayPlan,
-    DeliveryRule,
     GenerationJob,
-    HourPlan,
     IdleScreenContent,
-    KioskDayQuota,
-    KioskDesiredBundle,
+    KioskSponsorship,
     PharmacyCampaign,
-    PlanningRun,
     PlayLog,
     Playlist,
     PlaylistItem,
-    PlaylistTemplate,
-    PricingMatrix,
-    ScheduleRule,
 )
+from .services.sponsorship_engine import hhmm_to_minute
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ─────────────────────────────────────────────────────────────────────────────
-# Yardımcı — kalıcı URL'den object_key türetme
+# Yardimci — kalici URL'den object_key turetme
 # ─────────────────────────────────────────────────────────────────────────────
 
 
 def _derive_object_key_from_url(media_url: str) -> str:
-    """media_url bilinen S3_PUBLIC_BASE_URL ile başlıyorsa object_key'i döndürür.
-
-    Sözleşme: S3_PUBLIC_BASE_URL bucket adını içerir.
-      Örn: S3_PUBLIC_BASE_URL=https://files.eisa.com.tr/eisa-files
-           media_url=https://files.eisa.com.tr/eisa-files/ads/abc.mp4
-           → object_key=ads/abc.mp4
-
-    Presigned URL (X-Amz-*), yabancı host veya eksik S3_PUBLIC_BASE_URL → boş döner.
-    Backfill için: python manage.py backfill_media_object_keys
-    """
     if not media_url:
         return ""
     proxy_marker = "/api/media/"
@@ -57,7 +37,6 @@ def _derive_object_key_from_url(media_url: str) -> str:
         if key and ".." not in key and "//" not in key:
             return key
         return ""
-    # Presigned URL → türetme denenmez
     if "X-Amz-" in media_url or "x-amz-" in media_url:
         return ""
     base = getattr(settings, "S3_PUBLIC_BASE_URL", "").rstrip("/")
@@ -66,14 +45,14 @@ def _derive_object_key_from_url(media_url: str) -> str:
     expected_prefix = f"{base}/"
     if media_url.startswith(expected_prefix):
         key = media_url[len(expected_prefix):]
-        # Path traversal koruması
         if ".." in key or "//" in key:
             return ""
         return key
     return ""
 
 
-# DOOH v2 — Spec-compliant DTOs
+# ─────────────────────────────────────────────────────────────────────────────
+# Creative
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -87,7 +66,7 @@ class CreativeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Creative
         fields = ["id", "campaign", "media_url", "active_media_url", "duration_seconds", "name",
-                  "checksum", "object_key", "active_object_key", "weight", "is_grid_compliant"]
+                  "checksum", "object_key", "active_object_key", "is_grid_compliant"]
         read_only_fields = ("id", "is_grid_compliant")
 
     def to_representation(self, instance):
@@ -102,26 +81,23 @@ class CreativeSerializer(serializers.ModelSerializer):
     def validate_duration_seconds(self, value: int) -> int:
         if not 1 <= value <= 60:
             raise serializers.ValidationError("duration_seconds 1..60 arasinda olmalidir.")
-        # Grid validasyonu: yeni kayit veya deger degisiyorsa {15,30,45,60} zorunlu.
-        # Legacy kayit ayni degerle kaydediliyorsa izin verilir.
         instance = getattr(self, "instance", None)
         if instance and int(instance.duration_seconds) == int(value):
-            return value  # Legacy deger degismeden korunuyor
+            return value
         if value not in self._GRID_DURATIONS:
             raise serializers.ValidationError(
-                f"duration_seconds {value} 15sn grid ile uyumsuz. "
-                f"Izin verilen: 15 / 30 / 45 / 60 saniye."
+                f"duration_seconds {value} 15sn grid ile uyumsuz. Izin verilen: 15 / 30 / 45 / 60 saniye."
             )
         return value
 
     def validate_media_url(self, value: str) -> str:
         if not value.lower().startswith(("http://", "https://")):
-            raise serializers.ValidationError("media_url yalnızca http veya https olabilir.")
+            raise serializers.ValidationError("media_url yalnizca http veya https olabilir.")
         return value
 
     def validate_active_media_url(self, value: str) -> str:
         if value and not value.lower().startswith(("http://", "https://")):
-            raise serializers.ValidationError("active_media_url yalnızca http veya https olabilir.")
+            raise serializers.ValidationError("active_media_url yalnizca http veya https olabilir.")
         return value
 
     def validate(self, attrs):
@@ -132,128 +108,157 @@ class CreativeSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class CampaignTargetSerializer(serializers.ModelSerializer):
-    """Kampanya lokasyon hedefi (IL / ILCE / ECZANE / KIOSK)."""
-
-    il_ad = serializers.SerializerMethodField()
-    ilce_ad = serializers.SerializerMethodField()
-    eczane_ad = serializers.SerializerMethodField()
-    kiosk_ad = serializers.SerializerMethodField()
-
-    class Meta:
-        model = CampaignTarget
-        fields = ["id", "campaign", "target_type", "mode",
-                  "il", "ilce", "eczane", "kiosk",
-                  "il_ad", "ilce_ad", "eczane_ad", "kiosk_ad"]
-        read_only_fields = ("id",)
-
-    def get_il_ad(self, obj):
-        return obj.il.ad if obj.il_id else None
-
-    def get_ilce_ad(self, obj):
-        return obj.ilce.ad if obj.ilce_id else None
-
-    def get_eczane_ad(self, obj):
-        return obj.eczane.ad if obj.eczane_id else None
-
-    def get_kiosk_ad(self, obj):
-        return str(obj.kiosk.mac_adresi) if obj.kiosk_id else None
-
-    def validate(self, attrs):
-        tt = attrs.get("target_type")
-        if tt == CampaignTarget.TargetType.IL and not attrs.get("il"):
-            raise serializers.ValidationError({"il": "IL hedefi icin il zorunludur."})
-        if tt == CampaignTarget.TargetType.ILCE and not attrs.get("ilce"):
-            raise serializers.ValidationError({"ilce": "ILCE hedefi icin ilce zorunludur."})
-        if tt == CampaignTarget.TargetType.ECZANE and not attrs.get("eczane"):
-            raise serializers.ValidationError({"eczane": "ECZANE hedefi icin eczane zorunludur."})
-        if tt == CampaignTarget.TargetType.KIOSK and not attrs.get("kiosk"):
-            raise serializers.ValidationError({"kiosk": "KIOSK hedefi icin kiosk zorunludur."})
-        return attrs
+# ─────────────────────────────────────────────────────────────────────────────
+# Campaign (Sponsorluk)
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 class CampaignSerializer(serializers.ModelSerializer):
     creatives = CreativeSerializer(many=True, read_only=True)
-    targets = CampaignTargetSerializer(many=True, read_only=True)
     effective_state = serializers.SerializerMethodField()
+    assigned_kiosk_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Campaign
         fields = [
-            "id", "advertiser_id", "advertiser_name", "name", "start_date", "end_date",
-            "status", "effective_state", "target_scope", "follows",
-            "targets", "creatives",
-            "priority",
+            "id", "advertiser_name", "name", "start_date", "end_date",
+            "status", "effective_state", "creatives", "assigned_kiosk_count",
             "olusturulma_tarihi", "guncellenme_tarihi", "surum",
         ]
         read_only_fields = (
-            "id", "effective_state", "creatives", "targets",
+            "id", "effective_state", "creatives", "assigned_kiosk_count",
             "olusturulma_tarihi", "guncellenme_tarihi", "surum",
-            "follows",        # yalniz set_campaign_follows() servisi uzerinden
         )
 
     def get_effective_state(self, obj):
         return obj.effective_state
 
+    def get_assigned_kiosk_count(self, obj):
+        if hasattr(obj, "_assigned_kiosk_count"):
+            return obj._assigned_kiosk_count
+        return obj.kiosk_sponsorships.count()
+
     def validate(self, attrs):
-        is_create = self.instance is None
-
-        # 1. target_scope yeni kayıtta zorunlu
-        if is_create and not attrs.get("target_scope"):
-            raise serializers.ValidationError(
-                {"target_scope": (
-                    "target_scope yeni kampanya oluştururken zorunludur. "
-                    "Değerler: ALL (tum aktif kiosklar) | RULES (CampaignTarget kuralları)."
-                )}
-            )
-
-        # 2. Faz 7: Deprecated alanlar kaldırıldı — herhangi değer gönderilirse 400 ver.
-        # Bu alanlar Campaign modelinden silindi (migration 0020); sessizce ignore edilmez.
-        if self.initial_data:
-            _DEPRECATED_FIELDS = {
-                "is_guaranteed": "is_guaranteed Faz 7'de kaldirildi. DeliveryRule.guarantee_mode kullanin.",
-                "impression_goal": "impression_goal Faz 7'de kaldirildi. DeliveryRule(CAMPAIGN_TOTAL) kullanin.",
-                "frequency_cap_per_hour": "frequency_cap_per_hour Faz 7'de kaldirildi. DeliveryRule.max_per_hour kullanin.",
-            }
-            errors = {}
-            for field, msg in _DEPRECATED_FIELDS.items():
-                if field in self.initial_data:
-                    errors[field] = msg
-            if errors:
-                raise serializers.ValidationError(errors)
-
-        # 3. start/end tarih tutarlilik
         start = attrs.get("start_date", getattr(self.instance, "start_date", None))
         end = attrs.get("end_date", getattr(self.instance, "end_date", None))
         if start and end and start >= end:
-            raise serializers.ValidationError(
-                {"end_date": "end_date, start_date'ten sonra olmalidir."}
-            )
-
+            raise serializers.ValidationError({"end_date": "end_date, start_date'ten sonra olmalidir."})
         return attrs
 
 
-class ScheduleRuleSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ScheduleRule
-        fields = ["id", "campaign", "frequency_type", "frequency_value", "target_hours"]
-        read_only_fields = ("id",)
+# ─────────────────────────────────────────────────────────────────────────────
+# KioskSponsorship yonetim DTO'lari
+# ─────────────────────────────────────────────────────────────────────────────
 
-    def validate_target_hours(self, value):
-        if value is None:
-            return value
-        if not isinstance(value, list):
-            raise serializers.ValidationError("Liste olmalidir.")
-        out = []
-        for h in value:
-            try:
-                ih = int(h)
-            except (TypeError, ValueError):
-                raise serializers.ValidationError("Her saat 0-23 tamsayisi olmalidir.")
-            if not 0 <= ih <= 23:
-                raise serializers.ValidationError("Her saat 0-23 araliginda olmalidir.")
-            out.append(ih)
-        return out
+
+def _validate_weekdays(value):
+    if value in (None, []):
+        return value
+    if not isinstance(value, list):
+        raise serializers.ValidationError("active_weekdays liste olmalidir.")
+    out = []
+    for d in value:
+        try:
+            di = int(d)
+        except (TypeError, ValueError):
+            raise serializers.ValidationError("active_weekdays ISO 1-7 tamsayilari olmalidir.")
+        if not 1 <= di <= 7:
+            raise serializers.ValidationError("active_weekdays 1-7 araliginda olmalidir (ISO).")
+        out.append(di)
+    return out
+
+
+class _WindowItemMixin:
+    """window_start/window_end HH:MM -> dakika donusumu ve dogrulama."""
+
+    def _parse_window(self, window_start: str, window_end: str):
+        try:
+            s = hhmm_to_minute(window_start)
+        except ValueError as exc:
+            raise serializers.ValidationError({"window_start": str(exc)})
+        try:
+            e = hhmm_to_minute(window_end, allow_2400=True)
+        except ValueError as exc:
+            raise serializers.ValidationError({"window_end": str(exc)})
+        if e <= s:
+            raise serializers.ValidationError(
+                {"window_end": "window_end, window_start'tan sonra olmalidir."}
+            )
+        return s, e
+
+
+class KioskSponsorshipItemSerializer(serializers.Serializer, _WindowItemMixin):
+    """PUT/assign icin tek atama girdisi (HH:MM pencereli)."""
+
+    campaign_id = serializers.UUIDField()
+    window_start = serializers.CharField()
+    window_end = serializers.CharField()
+    count = serializers.IntegerField(min_value=1)
+    active_weekdays = serializers.ListField(required=False, allow_null=True, default=None)
+    start_date = serializers.DateField(required=False, allow_null=True, default=None)
+    end_date = serializers.DateField(required=False, allow_null=True, default=None)
+    is_active = serializers.BooleanField(required=False, default=True)
+
+    def validate_active_weekdays(self, value):
+        return _validate_weekdays(value)
+
+    def validate(self, attrs):
+        s, e = self._parse_window(attrs["window_start"], attrs["window_end"])
+        attrs["window_start_minute"] = s
+        attrs["window_end_minute"] = e
+        sd, ed = attrs.get("start_date"), attrs.get("end_date")
+        if sd and ed and sd > ed:
+            raise serializers.ValidationError({"end_date": "end_date start_date'ten once olamaz."})
+        return attrs
+
+
+def _minute_to_hhmm(minute: int) -> str:
+    minute = int(minute)
+    return f"{minute // 60:02d}:{minute % 60:02d}"
+
+
+class KioskSponsorshipReadSerializer(serializers.ModelSerializer):
+    """GET campaigns/{id}/kiosks/ satiri."""
+
+    kiosk_name = serializers.SerializerMethodField()
+    eczane_adi = serializers.SerializerMethodField()
+    il_adi = serializers.SerializerMethodField()
+    ilce_adi = serializers.SerializerMethodField()
+    window_start = serializers.SerializerMethodField()
+    window_end = serializers.SerializerMethodField()
+
+    class Meta:
+        model = KioskSponsorship
+        fields = [
+            "id", "kiosk_id", "kiosk_name", "eczane_adi", "il_adi", "ilce_adi",
+            "window_start", "window_end", "count", "active_weekdays",
+            "start_date", "end_date", "is_active",
+        ]
+
+    def get_kiosk_name(self, obj):
+        return obj.kiosk.ad
+
+    def get_eczane_adi(self, obj):
+        return obj.kiosk.eczane.ad if obj.kiosk.eczane_id else ""
+
+    def get_il_adi(self, obj):
+        ecz = obj.kiosk.eczane
+        return ecz.il.ad if ecz and ecz.il_id else ""
+
+    def get_ilce_adi(self, obj):
+        ecz = obj.kiosk.eczane
+        return ecz.ilce.ad if ecz and ecz.ilce_id else ""
+
+    def get_window_start(self, obj):
+        return _minute_to_hhmm(obj.window_start_minute)
+
+    def get_window_end(self, obj):
+        return _minute_to_hhmm(obj.window_end_minute)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# IdleScreenContent
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 class IdleScreenContentSerializer(serializers.ModelSerializer):
@@ -296,66 +301,12 @@ class IdleScreenContentSerializer(serializers.ModelSerializer):
         return value
 
 
-class PricingMatrixSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = PricingMatrix
-        fields = [
-            "id", "base_price_per_second", "prime_time_coefficient",
-            "prime_hours", "frequency_multipliers", "currency", "is_default",
-        ]
-        read_only_fields = ("id",)
+# ─────────────────────────────────────────────────────────────────────────────
+# Kiosk-edge DTO'lari
+# ─────────────────────────────────────────────────────────────────────────────
 
-
-class DeliveryRuleSerializer(serializers.ModelSerializer):
-    """Faz 1: Campaign icin yayın frekans + garanti kuralı (ScheduleRule'un halefi)."""
-
-    class Meta:
-        model = DeliveryRule
-        fields = [
-            "id", "campaign", "delivery_type", "count",
-            "window_start_time", "window_end_time",
-            "active_hours", "active_weekdays",
-            "guarantee_mode", "max_per_hour",
-        ]
-        read_only_fields = ("id",)
-
-    def validate_active_hours(self, value):
-        if value is None:
-            return value
-        if not isinstance(value, list):
-            raise serializers.ValidationError("Liste olmalidir.")
-        for h in value:
-            try:
-                ih = int(h)
-            except (TypeError, ValueError):
-                raise serializers.ValidationError("Her saat 0-23 tamsayisi olmalidir.")
-            if not 0 <= ih <= 23:
-                raise serializers.ValidationError("Her saat 0-23 araliginda olmalidir.")
-        return value
-
-    def validate(self, attrs):
-        delivery_type = attrs.get("delivery_type")
-        if delivery_type == DeliveryRule.DeliveryType.LEGACY_PER_LOOP:
-            raise serializers.ValidationError(
-                "LEGACY_PER_LOOP API uzerinden yazilamaz. "
-                "Bu tip yalniz legacy ScheduleRule donusumunde salt-okunur olarak korunur."
-            )
-        if delivery_type == DeliveryRule.DeliveryType.TIME_WINDOW:
-            if not attrs.get("window_start_time") or not attrs.get("window_end_time"):
-                raise serializers.ValidationError(
-                    "TIME_WINDOW icin window_start_time ve window_end_time zorunludur."
-                )
-        return attrs
-
-
-# ── Kiosk Edge DTOs ──
 
 def _kiosk_media_url(request, object_key: str, fallback: str = "") -> str:
-    """Backend proxy URL'i döndürür; object_key yoksa doğrudan fallback URL'i kullan.
-
-    Proxy: GET /api/kiosk/v1/media/<object_key> — App Key ile doğrulanır,
-    hiçbir zaman süre dolmaz (presigned URL yerine kullanılır).
-    """
     if not object_key:
         return fallback
     rel = f"/api/kiosk/v1/media/{object_key}"
@@ -379,9 +330,7 @@ class KioskCreativeSyncSerializer(serializers.ModelSerializer):
         return _kiosk_media_url(self.context.get("request"), obj.object_key, obj.media_url)
 
     def get_active_media_url(self, obj):
-        return _kiosk_media_url(
-            self.context.get("request"), obj.active_object_key, obj.active_media_url
-        )
+        return _kiosk_media_url(self.context.get("request"), obj.active_object_key, obj.active_media_url)
 
     def get_type(self, obj):  # noqa: D401
         return "creative"
@@ -426,9 +375,7 @@ class KioskPlaylistItemSerializer(serializers.ModelSerializer):
     def get_active_media_url(self, obj):
         if obj.creative_id:
             return _kiosk_media_url(
-                self.context.get("request"),
-                obj.creative.active_object_key,
-                obj.creative.active_media_url,
+                self.context.get("request"), obj.creative.active_object_key, obj.creative.active_media_url,
             )
         return ""
 
@@ -460,35 +407,23 @@ class KioskPlaylistSerializer(serializers.ModelSerializer):
         ]
 
 
-
-
-
 class ProofOfPlayItemSerializer(serializers.Serializer):
-    """Tek bir PlayLog girdisi (POST body item).
-
-    Yeni alanlar (Faz 3) opsiyonel — eski kiosk sürümleri göndermese de çalışır.
-    """
+    """Tek bir PlayLog girdisi (POST body item)."""
 
     creative_id = serializers.UUIDField(required=False, allow_null=True)
     house_ad_id = serializers.UUIDField(required=False, allow_null=True)
     played_at = serializers.DateTimeField()
     duration_played = serializers.IntegerField(min_value=0, max_value=600)
-    # Faz 3: idempotency + durum + zaman ayrımı
     play_event_id = serializers.UUIDField(required=False, allow_null=True, default=None)
     status = serializers.ChoiceField(
         choices=["STARTED", "COMPLETED", "FAILED", "INTERRUPTED"],
-        default="COMPLETED",
-        required=False,
+        default="COMPLETED", required=False,
     )
     expected_duration = serializers.IntegerField(
         min_value=0, max_value=600, required=False, allow_null=True, default=None
     )
-    error_code = serializers.CharField(
-        max_length=64, required=False, allow_blank=True, default=""
-    )
-    error_summary = serializers.CharField(
-        max_length=255, required=False, allow_blank=True, default=""
-    )
+    error_code = serializers.CharField(max_length=64, required=False, allow_blank=True, default="")
+    error_summary = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
     occurred_at = serializers.DateTimeField(required=False, allow_null=True, default=None)
 
     def validate(self, attrs):
@@ -523,177 +458,30 @@ class PlaylistAdminSerializer(serializers.ModelSerializer):
         ]
 
 
-# ── GenerationJob + PlaylistTemplate ─────────────────────────────────────────
-
 class GenerationJobSerializer(serializers.ModelSerializer):
     progress_pct = serializers.IntegerField(read_only=True)
-    # Backward-compat alias: eski API 'job_id' bekliyordu; yeni clients 'id' kullanır
     job_id = serializers.UUIDField(source="id", read_only=True)
 
     class Meta:
         model = GenerationJob
         fields = [
-            "id", "job_id",  # job_id = backward-compat alias for id
+            "id", "job_id",
             "target_date", "kiosk", "status", "triggered_by",
             "total_kiosks", "done_kiosks", "failed_kiosks", "playlists_generated",
             "progress_pct", "error_detail", "started_at", "finished_at",
             "olusturulma_tarihi",
-            # Faz 4 queue fields (read-only summary)
             "attempt_count", "max_attempts", "available_at", "dedupe_key", "payload",
         ]
         read_only_fields = fields
 
 
-class PlaylistTemplateSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = PlaylistTemplate
-        fields = [
-            "id", "name", "loop_duration_seconds", "slots", "target_hours",
-            "description", "olusturulma_tarihi", "guncellenme_tarihi",
-        ]
-        read_only_fields = ("id", "olusturulma_tarihi", "guncellenme_tarihi")
-
-    def validate_slots(self, value):
-        if not isinstance(value, list):
-            raise serializers.ValidationError("slots bir liste olmalidir.")
-        required = {"duration_seconds"}
-        for i, slot in enumerate(value):
-            missing = required - set(slot.keys())
-            if missing:
-                raise serializers.ValidationError(
-                    f"slots[{i}]: eksik alan(lar) {missing}"
-                )
-            if not 1 <= int(slot["duration_seconds"]) <= 60:
-                raise serializers.ValidationError(
-                    f"slots[{i}].duration_seconds 1..60 arasinda olmalidir."
-                )
-        return value
-
-
-# ── HourPlan + DayPlan ────────────────────────────────────────────────────────
-
-class HourPlanSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = HourPlan
-        fields = [
-            "id", "name", "description", "slots",
-            "olusturulma_tarihi", "guncellenme_tarihi",
-        ]
-        read_only_fields = ("id", "olusturulma_tarihi", "guncellenme_tarihi")
-
-    def validate_slots(self, value):
-        if not isinstance(value, list):
-            raise serializers.ValidationError("slots bir liste olmalidir.")
-        total_minutes = 0
-        for i, slot in enumerate(value):
-            for required_field in ("offset_minutes", "duration_minutes", "loop_template_id"):
-                if required_field not in slot:
-                    raise serializers.ValidationError(
-                        f"slots[{i}]: '{required_field}' alani eksik."
-                    )
-            offset = int(slot["offset_minutes"])
-            duration = int(slot["duration_minutes"])
-            if not 0 <= offset <= 59:
-                raise serializers.ValidationError(
-                    f"slots[{i}].offset_minutes 0..59 arasinda olmalidir."
-                )
-            if duration < 1:
-                raise serializers.ValidationError(
-                    f"slots[{i}].duration_minutes en az 1 olmalidir."
-                )
-            total_minutes += duration
-        if total_minutes > 60:
-            raise serializers.ValidationError(
-                f"Toplam duration_minutes ({total_minutes}) 60 dakikayi gecemez."
-            )
-        return value
-
-
-class DayPlanSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = DayPlan
-        fields = [
-            "id", "name", "description", "slots",
-            "olusturulma_tarihi", "guncellenme_tarihi",
-        ]
-        read_only_fields = ("id", "olusturulma_tarihi", "guncellenme_tarihi")
-
-    def validate_slots(self, value):
-        if not isinstance(value, list):
-            raise serializers.ValidationError("slots bir liste olmalidir.")
-        seen_hours = set()
-        for i, slot in enumerate(value):
-            for required_field in ("hour", "hour_plan_id"):
-                if required_field not in slot:
-                    raise serializers.ValidationError(
-                        f"slots[{i}]: '{required_field}' alani eksik."
-                    )
-            hour = int(slot["hour"])
-            if not 0 <= hour <= 23:
-                raise serializers.ValidationError(
-                    f"slots[{i}].hour 0..23 arasinda olmalidir."
-                )
-            if hour in seen_hours:
-                raise serializers.ValidationError(
-                    f"Saat {hour} birden fazla kez tanimlanmis."
-                )
-            seen_hours.add(hour)
-        return value
-
-
 # ─────────────────────────────────────────────────────────────────────────────
-# Faz 3 — Simulation + Activation response serializers
+# PharmacyCampaign — eczaci paneli (dokunulmadi)
 # ─────────────────────────────────────────────────────────────────────────────
 
-
-class KioskDaySimResultSerializer(serializers.Serializer):
-    """Tek kiosk+tarih simülasyon sonucu."""
-
-    kiosk_id = serializers.IntegerField()
-    date = serializers.DateField()
-    requested = serializers.IntegerField()
-    placed = serializers.IntegerField()
-    unplaced = serializers.IntegerField()
-    capacity_used_seconds = serializers.IntegerField()
-    blocking_reasons = serializers.ListField(child=serializers.CharField(), default=list)
-    fingerprint = serializers.CharField(default="")
-
-
-class SimulationResultSerializer(serializers.Serializer):
-    """Campaign simülasyon API yanıtı (POST /simulate/)."""
-
-    campaign_id = serializers.UUIDField()
-    fingerprint = serializers.CharField()
-    target_kiosks = serializers.ListField(child=serializers.IntegerField())
-    date_range = serializers.ListField(child=serializers.DateField())
-    kiosk_days = KioskDaySimResultSerializer(many=True)
-    total_requested = serializers.IntegerField()
-    total_placed = serializers.IntegerField()
-    total_unplaced = serializers.IntegerField()
-    would_succeed = serializers.BooleanField()
-    blocking_reasons = serializers.ListField(child=serializers.CharField(), default=list)
-
-
-class ActivationResultSerializer(serializers.Serializer):
-    """Campaign aktivasyon API yanıtı (POST /activate/)."""
-
-    campaign_id = serializers.UUIDField()
-    planning_run_id = serializers.UUIDField(allow_null=True)
-    activated_kiosks = serializers.IntegerField()
-    activated_dates = serializers.IntegerField()
-    total_placements = serializers.IntegerField()
-    fingerprint = serializers.CharField()
-    is_complete = serializers.BooleanField()
-    blocking_reasons = serializers.ListField(child=serializers.CharField(), default=list)
-    job_id = serializers.UUIDField(allow_null=True, default=None)  # GUARANTEED queue job; null = BEST_EFFORT
-
-
-# =============================================================================
-# PharmacyCampaign serializers
-# =============================================================================
 
 class PharmacyCampaignSerializer(serializers.ModelSerializer):
-    """Eczacı paneli kampanyası — admin CRUD."""
+    """Eczaci paneli kampanyasi — admin CRUD."""
 
     _ALLOWED_DURATIONS = frozenset({15, 30, 60})
     media_url = serializers.CharField(max_length=2048)
@@ -712,74 +500,44 @@ class PharmacyCampaignSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         data = super().to_representation(instance)
         if instance.object_key:
-            data["media_url"] = media_proxy_url(
-                instance.object_key, self.context.get("request")
-            )
+            data["media_url"] = media_proxy_url(instance.object_key, self.context.get("request"))
         return data
 
     def validate_duration_seconds(self, value: int) -> int:
-        """Yalnızca 15, 30, 60 saniye kabul edilir.
-
-        Mevcut kayıtta farklı değer varsa ve düzenleme sırasında aynı değer
-        gönderiliyorsa izin verilir (geriye uyumluluk).
-        """
         instance = getattr(self, "instance", None)
         if instance and int(instance.duration_seconds) == int(value):
-            return value  # Eski kayıt aynı değerle kaydediliyor → izin ver
+            return value
         if value not in self._ALLOWED_DURATIONS:
             raise serializers.ValidationError(
-                f"duration_seconds {value} geçersiz. İzin verilen: 15, 30, 60 saniye."
+                f"duration_seconds {value} gecersiz. Izin verilen: 15, 30, 60 saniye."
             )
         return value
 
     def validate_media_url(self, value: str) -> str:
         if not value.lower().startswith(("http://", "https://")):
-            raise serializers.ValidationError("media_url yalnızca http veya https olabilir.")
+            raise serializers.ValidationError("media_url yalnizca http veya https olabilir.")
         return value
 
     def validate(self, attrs):
-        # object_key türetme
         if not attrs.get("object_key") and attrs.get("media_url"):
             derived = _derive_object_key_from_url(attrs["media_url"])
             attrs["object_key"] = derived or None
 
-        # En az bir hedef zorunlu
-        pharmacies = attrs.get("target_pharmacies", getattr(
-            getattr(self, "instance", None), "target_pharmacies", None
-        ))
-        iller = attrs.get("target_iller", getattr(
-            getattr(self, "instance", None), "target_iller", None
-        ))
-        ilceler = attrs.get("target_ilceler", getattr(
-            getattr(self, "instance", None), "target_ilceler", None
-        ))
-
-        def _has(field):
-            if field is None:
-                return False
-            if hasattr(field, "all"):  # ManyRelatedManager (instance case)
-                # Partial update durumunda attrs'ta yoksa mevcut değeri kullan
-                return field.exists()
-            return bool(field)  # attrs'tan gelen liste
-
-        # Sadece partial update değilse (create veya full update) zorunlu kontrol
         is_create = self.instance is None
         is_partial = getattr(self, "partial", False)
-
         if is_create or not is_partial:
             ph_val = attrs.get("target_pharmacies", [])
             il_val = attrs.get("target_iller", [])
             ilce_val = attrs.get("target_ilceler", [])
             if not ph_val and not il_val and not ilce_val:
                 raise serializers.ValidationError(
-                    "En az bir hedef seçilmelidir: eczane, il veya ilçe."
+                    "En az bir hedef secilmelidir: eczane, il veya ilce."
                 )
-
         return attrs
 
 
 class PharmacyCampaignFeedSerializer(serializers.ModelSerializer):
-    """Eczacı feed — yalnızca gösterim için gereken alanlar."""
+    """Eczaci feed — yalnizca gosterim icin gereken alanlar."""
 
     media_url = serializers.SerializerMethodField()
 
