@@ -551,11 +551,13 @@ class AdminDashboardView(APIView):
         )
         if eczane_id:
             aktif_reklam_qs = aktif_reklam_qs.filter(
-                Q(target_pharmacies__isnull=True) | Q(target_pharmacies__id=eczane_id)
+                kiosk_sponsorships__is_active=True,
+                kiosk_sponsorships__kiosk__eczane_id=eczane_id,
             ).distinct()
         elif il_id:
             aktif_reklam_qs = aktif_reklam_qs.filter(
-                Q(target_pharmacies__isnull=True) | Q(target_pharmacies__il_id=il_id)
+                kiosk_sponsorships__is_active=True,
+                kiosk_sponsorships__kiosk__eczane__il_id=il_id,
             ).distinct()
         aktif_reklam = aktif_reklam_qs.count()
         bugunki_oturum = oturum_qs.filter(
@@ -592,12 +594,12 @@ class AdminDashboardView(APIView):
             {
                 "id": str(row["id"]),
                 "ad": row["name"],
-                "musteri": str(row["advertiser_id"]) if row["advertiser_id"] else "",
+                "musteri": row["advertiser_name"] or "",
                 "baslangic_tarihi": row["start_date"],
                 "bitis_tarihi": row["end_date"],
             }
             for row in aktif_reklam_qs
-            .values("id", "name", "advertiser_id", "start_date", "end_date", "olusturulma_tarihi")
+            .values("id", "name", "advertiser_name", "start_date", "end_date", "olusturulma_tarihi")
             .order_by("-olusturulma_tarihi")[:5]
         ]
 

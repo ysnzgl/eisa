@@ -569,12 +569,14 @@ def validate_specs(
     return ValidationResult(valid=(len(conflicts) == 0), conflicts=conflicts)
 
 
-def validate_kiosk(kiosk_id: int, assignments) -> ValidationResult:
+def validate_kiosk(kiosk_id: int, assignments, creatives_override: Optional[Dict] = None) -> ValidationResult:
     """Kiosk'un verilen atama kumesi icin kapasiteyi dogrula.
 
     assignments: KioskSponsorship benzeri nesneler (DB'ye yazilmamis olabilir).
+    creatives_override: {campaign_id: [creative,...]} — DB'ye yazilmamis creative
+    seti ile dogrulama (creative CRUD guard'i icin).
     """
-    cache: Dict = {}
+    cache: Dict = dict(creatives_override or {})
     pairs: List[Tuple[object, Spec]] = []
     earliest: Optional[_dt.date] = None
     latest: Optional[_dt.date] = None
