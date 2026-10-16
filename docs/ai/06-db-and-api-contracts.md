@@ -273,34 +273,25 @@
 
 ### Campaigns (DOOH v2)
 
-**dooh_campaigns** *(Faz 7 sonrasi — 0020 migrasyonu)*
-- id (UUID), advertiser_id (UUID, nullable), advertiser_name, name
-- start_date, end_date, status (DRAFT/ACTIVE/PAUSED/COMPLETED/CANCELLED)
-- target_scope (ALL|RULES|null-legacy), follows_id FK self (nullable)
-- priority (default 50)
-- target_pharmacies M2M (legacy, fiziksel korunuyor; API write path kapali)
-- **Kaldirildi (migration 0020):** is_guaranteed, impression_goal, frequency_cap_per_hour
-- **Canonical:** DeliveryRule.guarantee_mode + max_per_hour + CAMPAIGN_TOTAL
-- **constraints:** dooh_campaign_no_self_follow, dooh_campaign_follows_unique_predecessor
+**dooh_campaigns** *(2026-10-16 cihaz bazlı yeniden tasarım — migration 0034)*
+- id (UUID), advertiser_name (serbest metin, blank), name
+- start_date, end_date, status (ACTIVE/PAUSED/COMPLETED)
+- türetilen: effective_state (ACTIVE & başlamamış → SCHEDULED)
+- index: (status, start_date, end_date)
+- **Kaldırıldı:** advertiser_id, target_scope, follows_id, priority, target_pharmacies M2M, is_guaranteed, impression_goal, frequency_cap_per_hour, follow constraint'leri
 
-**dooh_campaign_targets** *(Faz 1: KIOSK + mode)*
-- id (UUID), campaign_id FK, target_type (IL/ILCE/ECZANE/KIOSK), mode (INCLUDE/EXCLUDE|null)
-- il_id FK (nullable), ilce_id FK (nullable), eczane_id FK (nullable), kiosk_id FK (nullable)
+**dooh_kiosk_sponsorships** *(2026-10-16 yeni — migration 0034)*
+- id (UUID), kiosk_id FK, campaign_id FK
+- window_start_minute (0..1439), window_end_minute (1..1440, exclusive, > start), count (>=1; pencere içinde günlük toplam gösterim)
+- active_weekdays (JSON, ISO 1-7, null/[]=her gün), start_date/end_date (DateField nullable), is_active (bool)
+- unique(kiosk, campaign); CheckConstraint'ler: window_start_range, window_end_range, window_end_gt_start, count_min_1
+- **CampaignTarget/ScheduleRule/DeliveryRule/PlanningRun/CampaignTotalAllocation/KioskDayQuota/KioskDesiredBundle tabloları migration 0033 (veri) + 0034 (şema) ile kaldırıldı**
 
-**dooh_delivery_rules** *(Faz 1 yeni)*
-- id (UUID), campaign_id FK (1to1), delivery_type (TIME_WINDOW/PER_HOUR/PER_DAY/CAMPAIGN_TOTAL/LEGACY_PER_LOOP)
-- count (>=1), window_start/end_time, active_hours JSON, active_weekdays JSON
-- guarantee_mode (GUARANTEED/BEST_EFFORT), max_per_hour (nullable)
-- API: LEGACY_PER_LOOP yazılamaz; TIME_WINDOW için window zorunlu
+**dooh_creatives** *(object_key, active_media_url)*
+- id (UUID), campaign_id FK, media_url (kalıcı URL), active_media_url (blank, işlem ekranı alt alan ~1080x768), active_object_key (nullable)
+- duration_seconds (1..60 DB constraint; grid uyumu {15,30,45,60} `is_grid_compliant`), name, checksum ('sha256:<hex>'), object_key (nullable)
 
-**dooh_planning_runs** / **dooh_campaign_total_allocations** / **dooh_kiosk_day_quotas** *(Faz 1 yeni)*
-- KioskDayQuota: placed>=0, quota>=0, placed<=quota DB constraint; unique(run,campaign,kiosk,date)
-
-**dooh_creatives** *(Faz 0.5: object_key, Faz 1: weight, 2026-07-31: active_media_url)*
-- id (UUID), campaign_id FK, media_url (kalici URL Faz 0.5+), active_media_url (blank=True, islem ekrani alt alan gorseli ~1080x768), duration_seconds (grid:{15,30,45,60} yeni kayit), name, checksum ('sha256:<hex>'), object_key (nullable, 0015), weight (default 1)
-- Migration 0021: active_media_url eklendi (additive, nullable)
-
-**pharmacy_campaigns** *(2026-07-31, 2026-08-01)*
+**pharmacy_campaigns** *(2026-07-31, 2026-08-01 — kiosk DOOH'dan bağımsız)*
 - id (UUID), name, media_url, object_key (nullable), start_at, end_at, duration_seconds (default 15; izin verilen: 15, 30, 60), is_active (bool)
 - M2M: pharmacy_campaigns_target_pharmacies (campaign_id, eczane_id)
 - M2M: pharmacy_campaigns_target_iller (campaign_id, il_id)
@@ -308,28 +299,27 @@
 - Migration 0022: tablo ve M2M olusturuldu; Migration 0024: target_iller + target_ilceler eklendi
 - Feed eşleşme: target_pharmacies OR target_iller OR target_ilceler (OR mantığı); hiç hedefi olmayan → feed'e girmez
 
-**dooh_schedule_rules** *(Legacy, ScheduleRule → DeliveryRule geçiş)*
-- id (UUID), campaign_id FK (1to1), frequency_type (PER_LOOP/PER_HOUR/PER_DAY), frequency_value, target_hours (JSON)
-
 **dooh_playlists**
 - id (UUID), kiosk_id FK, target_date, target_hour (0-23, Istanbul yereli), loop_duration_seconds (default 60), version
 - unique(kiosk, target_date, target_hour); item'lar ayri dooh_playlist_items satirlarinda
 
 **dooh_playlist_items**
-- id (UUID), playlist_id FK, creative_id FK (creative-only; house_ad_id FK KALDIRILDI — migration 0027; `clean()` creative zorunlu), playback_order, estimated_start_offset_seconds (SAAT-mutlak 0..3599)
+- id (UUID), playlist_id FK, creative_id FK (creative-only; `clean()` creative zorunlu), playback_order, estimated_start_offset_seconds (SAAT-mutlak 0..3599)
 - API contract'ta creative -> asset_id + asset_type ("creative") + media_url + **active_media_url** + duration_seconds olarak duzlestirilir
-- Playlist campaign-only: uygun creative yoksa 0 item (bos playlist gecerli) -> kiosk idle ekranini gosterir
+- Playlist creative-only: yerleşim olmayan saat 0 item (bos playlist gecerli) -> kiosk idle ekranini gosterir
 
 **dooh_idle_screen_contents** *(2026-08-16)*
-- id (BigAutoField), baslik (CharField<=100, zorunlu), metin (CharField<=300, zorunlu), aktif (bool default True), olusturulma_tarihi, guncellenme_tarihi
+- id (BigAutoField), baslik (CharField<=250; serializer <=100), baslik_en (blank), metin (CharField<=1000; serializer <=300), metin_en (blank), aktif (bool default True), kategori_id FK nullable, olusturulma_tarihi, guncellenme_tarihi
 - "Icerik Yonetimi" idle (bekleme) ekrani baslık/metin icerigi; medya/HTML YOK. Eski `dooh_house_ads` tablosu migration 0027 ile dusuruldu.
 
 **dooh_play_logs**
 - id (UUID), kiosk_id FK, creative_id FK (nullable, SET_NULL) [house_ad_id FK KALDIRILDI — migration 0027]
-- played_at (indexed), duration_played (saniye)
+- played_at (indexed), duration_played (saniye), play_event_id (nullable UUID, idempotency), status (STARTED/COMPLETED/FAILED/INTERRUPTED), occurred_at/received_at
 
-**dooh_pricing_matrix**
-- id (singleton), matrix (JSON)
+**dooh_generation_jobs**
+- id (UUID), target_date (indexed), kiosk_id FK (nullable; NULL=tüm aktif kiosk), status (PENDING/RUNNING/DONE/FAILED/RETRY), triggered_by (manual/nightly/campaign_change)
+- DB-backed queue: payload JSON, available_at, attempt_count/max_attempts, worker_id, lock_expires_at, dedupe_key ('kd:{kiosk_id}:{date}')
+- **Kaldırıldı:** dooh_pricing_matrix, dooh_playlist_templates, dooh_hour_plans, dooh_day_plans, dooh_schedule_rules, dooh_delivery_rules, dooh_planning_runs, dooh_campaign_total_allocations, dooh_kiosk_day_quotas, dooh_campaign_targets
 
 ### Analytics
 
@@ -681,135 +671,82 @@ X-Kiosk-Build-Number: <BUILD_LABEL>  # örn: 2026.09.29+prod.17
 
 **GET /api/campaigns/v2/campaigns/**
 - Auth: JWT (SuperAdmin)
-- Response: `[{ "id": "uuid", "name": "...", "start_date": "...", "end_date": "...", "status": "ACTIVE", "priority": 50, "target_scope": "ALL", "creatives": [...], "targets": [...] }, ...]`
-- **Faz 7:** is_guaranteed, impression_goal, frequency_cap_per_hour, target_pharmacies response'da YOK
+- Response: `[{ "id": "uuid", "name": "...", "advertiser_name": "XYZ", "start_date": "...", "end_date": "...", "status": "ACTIVE", "effective_state": "ACTIVE|SCHEDULED|PAUSED|COMPLETED", "creatives": [...] }, ...]`
+- İl/ilçe/eczane hedefleme, priority, is_guaranteed, target_scope response'da YOK (2026-10-16)
 
 **POST /api/campaigns/v2/campaigns/**
 - Auth: JWT (SuperAdmin)
-- Request: `{ "name": "Kampanya 1", "advertiser_name": "XYZ", "start_date": "...", "end_date": "...", "priority": 50, "target_scope": "ALL" }`
-- **Faz 7:** is_guaranteed/impression_goal/frequency_cap_per_hour gonderilenince 400 donar (deprecated)
+- Request: `{ "name": "Sponsorluk 1", "advertiser_name": "XYZ", "start_date": "...", "end_date": "...", "status": "ACTIVE" }`
 - Response: `{ "id": "uuid", ... }`
 
-**POST /api/campaigns/upload-media/** *(Faz 0.5 guncellendi)*
+**POST /api/campaigns/v2/campaigns/bulk-action/**
+- Auth: JWT (SuperAdmin)
+- Request: `{ "action": "delete|pause|resume", "ids": ["uuid", ...] }` (`activate` → `resume` alias)
+- Response: `{ "updated": <n>, "action": "..." }`
+
+**POST /api/campaigns/upload-media/** *(DOOH_PERSISTENT_MEDIA_URL)*
 - Auth: JWT (SuperAdmin)
 - Request: multipart/form-data, field: `file`
-- Feature flag: `DOOH_PERSISTENT_MEDIA_URL` (settings)
 - Response (flag=True): `{ "object_key": "ads/uuid.mp4", "media_url": "https://files.eisa.com.tr/eisa-files/ads/uuid.mp4", "checksum": "sha256:...", "url": "(alias=media_url)", "filename": "...", "object_name": "(alias=object_key)" }`
 - Response (flag=False, legacy): `{ "url": "https://...?X-Amz-Signature=...", "filename": "...", "object_name": "ads/uuid.mp4" }`
-- URL format (production, S3_FORCE_PATH_STYLE=True): `https://<S3_ENDPOINT>/<S3_BUCKET>/<object_key>`
 
 **POST /api/campaigns/v2/creatives/**
 - Auth: JWT (SuperAdmin)
-- Request: `{ "campaign_id": "uuid", "media_url": "...", "duration_seconds": 15, "name": "Creative 1" }`
+- Request: `{ "campaign_id": "uuid", "media_url": "...", "active_media_url": "...", "duration_seconds": 15, "name": "Creative 1" }` (duration 1..60)
 - Response: `{ "id": "uuid", ... }`
 
 **GET/POST/PUT/PATCH/DELETE /api/campaigns/v2/idle-contents/** *(2026-08-16)*
 - Auth: JWT (SuperAdmin); router basename `dooh-idle-content`
 - "İçerik Yönetimi" idle (bekleme) başlık/metin CRUD; eski `/api/campaigns/v2/house-ads/` KALDIRILDI
-- Serializer alanları: `id, baslik, metin, aktif, created_at, updated_at`
+- Serializer alanları: `id, baslik, baslik_en, metin, metin_en, aktif, kategori, created_at, updated_at`
 - Request (POST): `{ "baslik": "...", "metin": "...", "aktif": true }`
 
-**GET /api/campaigns/v2/campaigns/{id}/rules/**
+**GET /api/campaigns/v2/campaigns/{id}/kiosks/**
 - Auth: JWT (SuperAdmin)
-- Response: `{ "id": "uuid", "campaign": "uuid", "frequency_type": "PER_HOUR", "frequency_value": 2, "target_hours": [9, 10, 11, 12, 13] }`
+- Response: kampanyaya atanmış KioskSponsorship satırları (kiosk + pencere + count)
 
-**POST /api/campaigns/v2/campaigns/{id}/rules/**
+**POST /api/campaigns/v2/campaigns/{id}/assign-kiosks/**
 - Auth: JWT (SuperAdmin)
-- Request: `{ "frequency_type": "PER_HOUR", "frequency_value": 2, "target_hours": [9, 10, 11, 12] }`
-- Response: `{ "id": "uuid", ... }`
-
-**GET /api/campaigns/v2/pricing-matrix/**
-- Auth: JWT (SuperAdmin)
-- Response: `{ "matrix": { ... } }` (JSON object)
-
-**PUT /api/campaigns/v2/pricing-matrix/**
-- Auth: JWT (SuperAdmin)
-- Request: `{ "matrix": { ... } }`
-- Response: `{ "matrix": { ... } }`
-
-**POST /api/campaigns/v2/playlists/generate/**
-- Auth: JWT (SuperAdmin)
-- Request: `{ "kiosk_id": 1, "start_date": "2026-06-01", "end_date": "2026-06-30" }`
-- Response: `{ "job_id": "uuid", "status": "PENDING" }`
-
-**GET /api/campaigns/v2/playlists/jobs/{job_id}/**
-- Auth: JWT (SuperAdmin)
-- Response: `{ "job_id": "uuid", "status": "COMPLETED", "result": { ... } }`
+- Request: `{ "kiosk_ids": [1,2], "window_start": "08:00", "window_end": "19:00", "count": 100, "active_weekdays": [1,2,3,4,5], "start_date": null, "end_date": null, "is_active": true, "dry_run": false }`
+- Response: `{ "assigned": [1], "skipped_already_assigned": [2], "rejected": [{kiosk_id, kiosk_name, conflicts}], "dry_run": false }`
+- Kapasite aşarsa (dry_run=false) 400 `capacity_exceeded` — hiçbir şey kaydedilmez
 
 ---
 
-### Faz 3 — Simulation / Activation Endpoints *(2026-07-22)*
+### Kiosk Sponsorship Endpoints *(2026-10-16)*
 
-**POST /api/campaigns/v2/campaigns/{id}/simulate/**
-- Auth: JWT (SuperAdmin)
-- DOOH_ENGINE_V2: `shadow` veya `active` gerektirir. `off` ise 403.
-- Request: body yok (campaign id URL'de)
-- Response 200:
-  ```json
-  {
-    "campaign_id": "uuid",
-    "fingerprint": "hex16",
-    "target_kiosks": [1, 2],
-    "date_range": ["2026-07-22", "2026-07-25"],
-    "kiosk_days": [
-      {
-        "kiosk_id": 1,
-        "date": "2026-07-22",
-        "requested": 4,
-        "placed": 4,
-        "unplaced": 0,
-        "capacity_used_seconds": 60,
-        "blocking_reasons": [],
-        "fingerprint": "abc123"
-      }
-    ],
-    "total_requested": 8,
-    "total_placed": 8,
-    "total_unplaced": 0,
-    "would_succeed": true,
-    "blocking_reasons": []
-  }
-  ```
-- Response 403: `DOOH_ENGINE_V2=off`
-- Response 404: campaign bulunamadı
-- **Read-only**: hiçbir tabloya yazma yapmaz (Playlist, PlaylistItem, GenerationJob, KioskDayQuota, CampaignTotalAllocation, PlanningRun değişmez)
-- **Deterministic**: aynı input, aynı campaign durumunda aynı fingerprint ve aynı kiosk_days üretir
-- **Serializer**: `SimulationResultSerializer` (apps/campaigns/serializers.py)
+**GET /api/campaigns/v2/sponsorship-kiosks/?search=&unassigned=1**
+- Response: kiosk listesi + `sponsorship_count`, `active_sponsorship_count`
 
-**POST /api/campaigns/v2/campaigns/{id}/activate/**
+**GET/PUT /api/campaigns/v2/sponsorship-kiosks/{kiosk_id}/sponsorships/**
+- GET: `{ "kiosk": {...}, "items": [{ campaign_id, campaign_name, window_start, window_end, count, active_weekdays, start_date, end_date, is_active, ... }] }`
+- PUT (tam set): `{ "items": [{ campaign_id, window_start, window_end, count, active_weekdays?, start_date?, end_date?, is_active? }] }` — kapasite aşarsa 400 `capacity_exceeded`
+
+**POST /api/campaigns/v2/sponsorship-kiosks/{kiosk_id}/preview/** *(DB yazmaz)*
+- Request: `{ "date": "YYYY-MM-DD"?, "items": [...]? }` (items verilmezse kayıtlı atamalar)
+- Response: `{ kiosk_id, date, ok, fingerprint, total_used_seconds, items:[{start,end,hour,offset,duration,campaign_id,creative_id,media_url,...}], hours:[{hour,used_seconds,item_count,utilization}], assignments:[{campaign_id,requested,placed,unplaced,window_start,window_end}] }`
+
+**POST /api/campaigns/v2/sponsorship-kiosks/{kiosk_id}/copy/** *(ÜZERİNE YAZAR)*
+- Request: `{ "target_kiosk_ids": [2,3], "dry_run": false }`
+- Response: `{ dry_run, source_kiosk_id, item_count, targets:[{kiosk_id, kiosk_name, removed, added, kept}] }`
+
+**POST /api/campaigns/v2/sponsorship-kiosks/{kiosk_id}/simulate/** *(DB yazmaz)*
+- Request: `{ "date_from"?, "date_to"? (≤92 gün), "include_existing": true, "probe": {window_start, window_end, duration_seconds, active_weekdays?}?, "scenario": [{label, duration_seconds, count, window_start, window_end, active_weekdays?}]? }`
+- Response: `{ kiosk_id, date_from, date_to, probe, scenario }`
+
+**POST /api/campaigns/v2/playlists/generate/**
 - Auth: JWT (SuperAdmin)
-- Faz 7+: Feature flag yok, endpoint her zaman açık.
-- Request: body yok
-- Response 200:
-  ```json
-  {
-    "campaign_id": "uuid",
-    "planning_run_id": null,
-    "activated_kiosks": 2,
-    "activated_dates": 3,
-    "total_placements": 0,
-    "fingerprint": "hex16",
-    "is_complete": true,
-    "blocking_reasons": []
-  }
-  ```
-- Response 400: `ActivationValidationError`
-  ```json
-  { "error": "...", "validation_errors": { "delivery_rule": "...", "creatives": "..." } }
-  ```
-- Response 404: campaign bulunamadı
-- Response 409: `CapacityError` (GUARANTEED kapasite yetersiz)
-  ```json
-  { "error": "...", "blocking_reasons": ["kiosk=1 date=2026-07-22: ..."] }
-  ```
-- **Çalışma akışı (2026-08):**
-  - Endpoint artık kampanya tarih aralığının tamamı için senkron playlist üretmez.
-  - `activate` yalnız doğrulama + (GUARANTEED ise) rolling horizon kapasite kontrolü yapar.
-  - Ağır üretim `GenerationJob` kuyruğuna bırakılır (`triggered_by=campaign_activate`).
-  - Üretim kapsamı yalnız rolling horizon'dur (varsayılan: bugün + 2 gün).
-- **Dedupe/coalesce:** Aynı kiosk+tarih için mevcut `dedupe_key=kd:{kiosk_id}:{date}` mekanizması duplicate `PENDING` job üretimini engeller.
-- **GUARANTEED all-or-nothing:** GUARANTEED pre-check başarısızsa 409 döner, `campaign_activate` job enqueue edilmez; kısmi publish başlamaz.
-- **Serializer**: `ActivationResultSerializer` (apps/campaigns/serializers.py)
+- Request: `{ "kiosk_id"?: 1, "date"?: "2026-06-01" }` (kiosk_id/date yoksa tüm aktif kiosk × horizon)
+- Response: `{ "job_id": "uuid", "status": "PENDING" }`
+
+**GET /api/campaigns/v2/playlists/jobs/** ve **/jobs/{job_id}/**
+- Auth: JWT (SuperAdmin)
+- Response: GenerationJob durumu `{ id, status, target_date, total_kiosks, done_kiosks, failed_kiosks, playlists_generated, ... }`
+
+**GET /api/campaigns/v2/playlists/day-stream/?kiosk=&date=**
+- Auth: JWT (SuperAdmin); read-only yayın akışı (bkz. 08-dooh-advertising.md)
+
+> **Kapasite hata şekli (tüm atama/preview/assign uçları):** `400 { "code": "capacity_exceeded", "detail": "...", "conflicts": [{ "date", "campaign_id", "campaign_name", "requested", "placed" }] }`. Yerleşim motoru `sponsorship_engine.validate_kiosk` ile hesaplanır; **read-only** uçlar (preview/simulate) hiçbir tabloya yazmaz, aynı girdi için deterministik fingerprint üretir.
 
 ---
 
@@ -921,7 +858,8 @@ X-Kiosk-Build-Number: <BUILD_LABEL>  # örn: 2026.09.29+prod.17
 ### web_panels (Vue 3)
 
 **Expected Response Fields:**
-- Campaign list: `id`, `name`, `status`, `start_date`, `end_date`, `priority`, `is_guaranteed`, `creatives` (array), `schedule_rule` (object)
+- Campaign (sponsorluk) list: `id`, `name`, `advertiser_name`, `status`, `effective_state`, `start_date`, `end_date`, `creatives` (array)
+- KioskSponsorship: `campaign_id`, `window_start`, `window_end`, `count`, `active_weekdays`, `start_date`, `end_date`, `is_active`
 - Creative: `id`, `campaign_id`, `media_url`, `duration_seconds`, `name`
 - Kategori: `id`, `ad`, `slug`, `ikon`, `hedef_cinsiyet`, `hedef_yas_araliklari` (array of IDs), `aktif`
 - Session (QR tarama): `id`, `qr_kodu` (8 karakter), `kiosk`, `yas_araligi`, `cinsiyet`, `kategori`, `cevaplar`, `cevap_detaylari`, `onerilen_etken_maddeler`, `onerilen_etken_madde_detaylari`, `danisma_*` alanları
@@ -994,10 +932,9 @@ X-Kiosk-Build-Number: <BUILD_LABEL>  # örn: 2026.09.29+prod.17
    - web_panels QrScan: String array olarak gösterim
    - (Tutarlı gibi görünüyor ama doğrulanmalı)
 
-3. **Campaign targeting:**
-   - Backend: Hem `target_pharmacies` M2M (legacy) hem `CampaignTarget` (yeni) destekleniyor
-   - Frontend: Hangi mekanizmayı kullanıyor? (Belirsiz)
-   - Kiosk: Backend playlist üretiminde hangi hedefleme kullanılıyor? (Belirsiz)
+3. **Sponsorluk atama (2026-10-16):**
+   - Hedefleme kaldırıldı; sponsorluklar yalnız kiosk (cihaz) bazlı `KioskSponsorship` ile atanır.
+   - Playlist üretimi atanan kiosklar için `sponsorship_engine` tarafından yapılır (homojen, deterministik).
 
 4. **Session QR response:**
   - QR 8 karakterdir ve yalnızca merkezi backend'deki oturumu bulmak için kullanılır.

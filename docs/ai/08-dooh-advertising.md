@@ -87,16 +87,19 @@ Kapasite hata şekli: `400 {"code":"capacity_exceeded","detail":"...","conflicts
 ```python
 class IdleScreenContent(BaseModel):
     id = BigAutoField(pk)
-    baslik = CharField(max_length=100)            # zorunlu
-    metin = CharField(max_length=300)             # zorunlu
+    baslik = CharField(max_length=250)            # zorunlu (serializer ≤100)
+    baslik_en = CharField(blank, null)            # TR/EN, boş = TR fallback
+    metin = CharField(max_length=1000)            # zorunlu (serializer ≤300)
+    metin_en = CharField(blank, null)             # TR/EN
     aktif = BooleanField(default=True)            # NOT: "aktif" (TR)
+    kategori = FK(products.Kategori, null)        # opsiyonel
     # + BaseModel: olusturulma_tarihi / guncellenme_tarihi
     # Tablo: dooh_idle_screen_contents
 ```
 
 ### Kullanım
 - "İçerik Yönetimi" idle (bekleme) ekranı başlık/metin içeriği; **medya YOK, HTML YOK, düz metin**
-- CRUD API: `GET/POST/PUT/PATCH/DELETE /api/campaigns/v2/idle-contents/` (JWT SuperAdmin, basename `dooh-idle-content`); serializer `id, baslik, metin, aktif, created_at, updated_at`
+- CRUD API: `GET/POST/PUT/PATCH/DELETE /api/campaigns/v2/idle-contents/` (JWT SuperAdmin, basename `dooh-idle-content`); serializer `id, baslik, baslik_en, metin, metin_en, aktif, kategori, created_at, updated_at`
 - Kiosk sync: `/api/kiosk/v1/sync/` → `idle_contents` (yalnız AKTİF; `KioskIdleContentSyncSerializer`)
 - Kiosk UI shuffled-bag ile aktif idle içerikleri döndürür (bkz. 04-kiosk-edge-ui.md `idleContentStore.js` / `AdPromo` large)
 - Eski `HouseAd` modeli/tablosu (`dooh_house_ads`), viewset (`/api/campaigns/v2/house-ads/`) ve filler mantığı uçtan uca **KALDIRILDI** (migration 0027)
@@ -199,10 +202,10 @@ class PlayLog(BaseModel):
 ```
 
 **Backend implementation:**
-- File: `backend/apps/campaigns/views_v2.py`
-- Class: `ProofOfPlayView` (line 1068)
+- File: `backend/apps/kiosk_api/views.py`
+- Class: `KioskProofOfPlayView` (AppKey+MAC; `play_event_id` ile idempotent ingest)
 - URL: `POST /api/kiosk/v1/proof-of-play/`
-- Bulk ingest: `PlayLog.objects.bulk_create(bulk, batch_size=500)` (line 1101)
+- Bulk ingest: `PlayLog.objects.bulk_create(...)`
 
 ### Outbox Flow
 ```

@@ -16,9 +16,11 @@ def _aktif_sozlesme(eczane):
     import datetime as _dt
 
     from apps.abonelik.models import Sozlesme
+    from django.utils import timezone as _tz
     Sozlesme.objects.create(
         eczane=eczane, tur=Sozlesme.Tur.STANDART, sozlesme_tipi_ay=24,
         baslangic_tarihi=_dt.date.today(), durum=Sozlesme.Durum.AKTIF,
+        eczaci_onay_tarihi=_tz.now(),
     )
 
 

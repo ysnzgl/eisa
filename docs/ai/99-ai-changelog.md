@@ -5,7 +5,19 @@
 
 ---
 
-## 2026-10-12
+## 2026-10-16
+
+### [Backend + Web Panel] DOOH sponsorluk sistemi cihaz (kiosk) bazlı yeniden tasarlandı
+
+- **Yeni model `KioskSponsorship`** (`dooh_kiosk_sponsorships`): kiosk + campaign (unique), `window_start_minute` (0..1439), `window_end_minute` (1..1440, >start), `count` (gün içi toplam gösterim), `active_weekdays` (ISO 1-7 JSON; boş = her gün), `start_date`/`end_date`, `is_active`. Hedefleme (il/ilçe/eczane) kaldırıldı; sponsorluk artık doğrudan cihaza atanır.
+- **Campaign sadeleştirildi:** `advertiser_name` (serbest metin), `status` (ACTIVE/PAUSED/COMPLETED), `effective_state` (SCHEDULED türetilir). Kaldırılan: advertiser_id, target_scope, follows, priority, target_pharmacies, is_guaranteed, impression_goal, frequency_cap_per_hour.
+- **Yeni motor `services/sponsorship_engine.py`:** homojen, deterministik yerleşim (ideal `t_i = S+(i+phase)·(E−S)/N`, round-robin creative, en yakın boş slot, saat sınırını aşamaz). Public: plan_day, plan_kiosk_day, persist_day, validate_kiosk, probe_window, simulate_scenario, regenerate_kiosk_day.
+- **Kaldırılan servis/model/uç:** scheduler.py, placement_engine_v2.py, activation_service.py, quota_service.py, follows_service.py; CampaignTarget, ScheduleRule, DeliveryRule, PlanningRun, CampaignTotalAllocation, KioskDayQuota, KioskDesiredBundle, PlaylistTemplate, HourPlan, DayPlan, PricingMatrix; inventory/pricing/simulate/activate/targets/rules uçları. Migration 0033 (veri) + 0034 (şema).
+- **Yeni uçlar `/api/campaigns/v2/`:** campaigns/{id}/kiosks/, campaigns/{id}/assign-kiosks/ (dry_run), sponsorship-kiosks/ (liste + arama/unassigned), {kiosk_id}/sponsorships/ GET/PUT, /preview/, /copy/ (OVERWRITE), /simulate/ (probe+senaryo). Kapasite hatası: `400 {code:"capacity_exceeded", conflicts:[...]}`.
+- **Panel:** `KioskSponsorship.vue` (/admin/kiosk-sponsorships, sekmeler: sponsorluklar/takvim/simülasyon/kopya), `SponsorshipDefinitions.vue` (/admin/campaigns, sekmeler: Bilgiler/Medya/Kiosklar), composable `useSponsorship.js`. Kaldırılan: CampaignWizard.vue, PlaylistEditor.vue, PricingMatrixConfigurator.vue, /admin/playlists, /admin/pricing.
+- **Dokümanlar güncellendi:** 00-AI-INDEX, 01-backend, 02-web-panels, 05-cross-project-flows, 06-db-and-api-contracts, 08-dooh-advertising, KULLANIM_REHBERI; FAZ2_COMPLETE/FAZ2_ONKOSULLAR/implementation-plan-dooh-scheduler tarihsel banner ile işaretlendi.
+
+---
 
 ### [Backend + Web Panel] Abonelik & Fatura UX iyileştirmeleri (9 madde)
 

@@ -472,9 +472,9 @@ onMounted(loadKiosks);
       <!-- Sol: kiosk listesi -->
       <aside class="ks-list eisa-card">
         <div class="ks-list-search">
-          <div class="eisa-input-group">
-            <i class="fa-solid fa-magnifying-glass" style="padding:0 .6rem;color:#9CA3AF"></i>
-            <input v-model="kioskSearch" class="eisa-field" placeholder="Kiosk / eczane ara…" />
+          <div class="eisa-search-wrap">
+            <i class="fa-solid fa-magnifying-glass eisa-search-icon"></i>
+            <input v-model="kioskSearch" type="search" class="eisa-field eisa-search-field" placeholder="Kiosk / eczane ara…" />
           </div>
           <label class="ks-filter">
             <input type="checkbox" v-model="onlyUnassigned" /> Atanmamış
@@ -912,7 +912,7 @@ onMounted(loadKiosks);
 .ks-cal-controls { display: flex; align-items: center; gap: .6rem; margin-bottom: .75rem; flex-wrap: wrap; }
 .ks-mode-toggle { display: inline-flex; border: 1px solid #D1D5DB; border-radius: 8px; overflow: hidden; }
 .ks-mode-toggle button { background: #fff; border: none; padding: .4rem .7rem; font-size: .78rem; cursor: pointer; color: #6B7280; }
-.ks-mode--on { background: #B1121B; color: #fff !important; }
+.ks-mode-toggle button.ks-mode--on { background: #B1121B; color: #fff; }
 .ks-heatmap { display: grid; grid-template-columns: repeat(24, 1fr); gap: 3px; }
 .ks-hour { border: none; height: 44px; border-radius: 4px; cursor: pointer; position: relative; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 2px; }
 .ks-hour--active { outline: 2px solid #111827; }

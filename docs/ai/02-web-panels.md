@@ -19,11 +19,12 @@
 - `web_panels/src/router/index.js` — Route tanımları, RBAC guard
 - `web_panels/src/stores/auth.js` — Auth state management
 - `web_panels/src/services/api.js` — Backend API client
-- `web_panels/src/services/dooh.js` — DOOH campaign/creative/playlist API client (simulate/activate/targets/kiosk-health)
+- `web_panels/src/services/dooh.js` — DOOH sponsorluk/creative/playlist API client (sponsorship-kiosks: preview/copy/simulate, assign-kiosks, kiosk-health)
 - `web_panels/src/services/lookups.js` — İl/İlçe lookup (getIller/getIlceler)
-- `web_panels/src/views/admin/CampaignWizard.vue` — Kampanya yönetimi (6 adımlı wizard)
+- `web_panels/src/views/admin/KioskSponsorship.vue` — Kiosk Sponsorluk yönetimi (route `/admin/kiosk-sponsorships`)
+- `web_panels/src/views/admin/SponsorshipDefinitions.vue` — Sponsorluk Tanımları (route `/admin/campaigns`; Bilgiler → Medya → Kiosklar)
+- `web_panels/src/composables/useSponsorship.js` — Sponsorluk panel composable (preview/simulate/copy state)
 - `web_panels/src/views/admin/DoohControlCenter.vue` — DOOH izleme merkezi
-- `web_panels/src/views/admin/PlaylistEditor.vue` — Playlist düzenleme
 - `web_panels/src/views/admin/ContentManagement.vue` — "İçerik Yönetimi" (route `/admin/content-management`): IdleScreenContent CRUD; başlık/metin idle içerik (2026-08-16). **TR/EN:** Başlık (İngilizce)/Metin (İngilizce) opsiyonel alanları *(2026-09-29)* — boş bırakılırsa kioskta İngilizce dilde Türkçe metin gösterilir. Eski `HouseAdManagement.vue` (`/admin/house-ads`) KALDIRILDI.
 - `web_panels/src/views/admin/GorevYonetimi.vue` — Admin-only İş Takibi (route `/admin/is-takip`); başlık/içerik/durum/atanan admin, İptal durumu, onaylı kalıcı silme, ortak KPI kartları ve shared field styles ile kompakt modal
 - `web_panels/src/composables/useKioskRolloutStatus.js` — Kiosk rollout durum hesabı (tek merkezi kaynak)
@@ -36,14 +37,13 @@
 ## Panel Projesinin Amacı
 
 **Kullanıcı tipleri:**
-- **SuperAdmin:** Tüm sistem yönetimi (kampanyalar, fiyatlandırma, kullanıcılar, cihazlar, kategori/soru mantığı)
+- **SuperAdmin:** Tüm sistem yönetimi (sponsorluklar, kullanıcılar, cihazlar, kategori/soru mantığı)
 - **Pharmacist (Eczacı):** Kendi eczanesine ait dashboard, QR tarama, inbox
 
 **Ana işlevler:**
-1. Kampanya oluşturma ve yönetimi (CampaignWizard — 6 adımlı wizard)
-2. DOOH kontrol merkezi (DoohControlCenter — kampanya/job/kiosk izleme)
-3. Playlist şablon/manuel düzenleme (PlaylistEditor)
-4. Fiyatlandırma matrisi konfigürasyonu (PricingMatrixConfigurator)
+1. Sponsorluk tanımı ve medya yönetimi (SponsorshipDefinitions — Bilgiler/Medya/Kiosklar)
+2. Kiosk sponsorluk atama/yayın takvimi/simülasyon/kopyalama (KioskSponsorship)
+3. DOOH kontrol merkezi (DoohControlCenter — sponsorluk/job/kiosk izleme)
 4. Kategori/Soru/Etken Madde/Danışma yönetimi (MedicalLogic, DanismaYonetimi)
 5. Eczane/Kiosk cihaz yönetimi (DeviceManagement)
    - Kiosk izleme: MAC adresi, Uygulama Anahtarı, durum, son ping, build numarası
@@ -82,12 +82,11 @@
 - `/admin/devices/pending` → `PendingDevices.vue` (Onay Bekleyen Cihazlar — 2026-07-14)
 - `/admin/medical-logic` → `MedicalLogic.vue` (Kategori/Soru/EtkenMadde CRUD; **TR/EN:** Kategori Adı (İngilizce) + Soru Metni (İngilizce) opsiyonel alanları — 2026-09-29)
 - `/admin/danisma` → `DanismaYonetimi.vue` (Danışma kategorileri CRUD; **TR/EN:** Kategori Adı (İngilizce) opsiyonel alanı — 2026-09-29)
-- `/admin/campaigns` → `CampaignWizard.vue` (Kiosk Kampanyaları — 6 adımlı wizard; Step 2: iki medya alanı hem image hem video: Bekleme/İşlem ekranı. **2026-08-09:** active_media_url video desteği eklendi; video thumbnail video kartı gösteriyor.)
+- `/admin/campaigns` → `SponsorshipDefinitions.vue` (Sponsorluk Tanımları — Bilgiler/Medya/Kiosklar; Medya adımında iki medya alanı hem image hem video: Bekleme/İşlem ekranı)
+- `/admin/kiosk-sponsorships` → `KioskSponsorship.vue` (Kiosk Sponsorluk — kiosk listesi + Sponsorluklar/Yayın Takvimi/Simülasyon/Kopyala sekmeleri)
 - `/admin/kiosk-activities` → `KioskActivities.vue` (Kiosk Hareketleri: QR/Oturum, Kampanya Gösterimleri, Kiosk Olayları, **Yayın Akışı** — 2026-08-09)
 - `/admin/pharmacy-campaigns` → `PharmacyCampaigns.vue` *(2026-07-31)* (Eczacı Paneli Kampanyaları — bağımsız CRUD)
-- `/admin/dooh/control-center` → `DoohControlCenter.vue` (DOOH izleme — kampanya/job/kiosk) — **Faz 6**
-- `/admin/playlists` → `PlaylistEditor.vue` (Playlist şablon/manuel düzenleme)
-- `/admin/pricing` → `PricingMatrixConfigurator.vue` (Fiyatlandırma matrisi)
+- `/admin/dooh/control-center` → `DoohControlCenter.vue` (DOOH izleme — sponsorluk/job/kiosk)
 - `/admin/users` → `UserManagement.vue` (Kullanıcı CRUD)
 - `/admin/destek` → `DestekYonetimi.vue` *(2026-08-15)* (Görüş ve Destek Yönetimi)
 - `/admin/is-takip` → `GorevYonetimi.vue` *(2026-09-13)* (Admin-only iş takibi; başlık/içerik/durum/atanan admin)
@@ -132,10 +131,10 @@ Tüm componentler tek dosyalı Vue 3 Composition API (`.vue` dosyaları). Liste:
   - **Lookups:** `getProvinces()`, `getDistricts(provinceId)`, `getGenders()`, `getAgeRanges()`
   - **Pharmacies:** `listPharmacies()`, `createPharmacy(data)`, `updatePharmacy(id, data)`, `deletePharmacy(id)`, `listKiosks()`, `createKiosk(data)`, `updateKiosk(id, data)`, `deleteKiosk(id)`, `getSessionsByQr(qr)`
   - **Products:** `listCategories()`, `createCategory(data)`, `listQuestions(categoryId)`, `createQuestion(data)`, `listDanisma()`, `createDanisma(data)`
-  - **Campaigns:** `listCampaignsV2()`, `createCampaignV2(data)`, `updateCampaignV2(id, data)`, `deleteCampaignV2(id)`, `getCampaignRules(campaignId)`, `setCampaignRules(campaignId, data)`, `createCreative(data)`, `uploadMedia(file)`
+  - **Sponsorluk (`services/dooh.js`):** `listCampaignsV2()`, `getCampaignV2(id)`, `createCampaignV2(data)`, `updateCampaignV2(id, data)`, `deleteCampaignV2(id)`, `bulkActionCampaignsV2(action, ids)`, `getCampaignKiosks(id)`, `assignKiosksToCampaign(id, body)`, `createCreative(data)`/`updateCreative`/`deleteCreative`, `uploadMedia(file, kind)`
+  - **Kiosk sponsorluk (`services/dooh.js`):** `listSponsorshipKiosks(params)`, `getKioskSponsorships(kioskId)`, `putKioskSponsorships(kioskId, items)`, `previewKioskSponsorships(kioskId, body)`, `copyKioskSponsorships(kioskId, body)`, `simulateKioskSponsorship(kioskId, body)`, `getKioskDayStream(kioskId, date)`
   - **Idle içerik (İçerik Yönetimi, 2026-08-16):** `listIdleContents()`, `createIdleContent(data)`, `updateIdleContent(id, data)`, `deleteIdleContent(id)` — eski `listHouseAds/createHouseAd/updateHouseAd/deleteHouseAd/downloadHouseAdMedia` KALDIRILDI
-  - **Playlists:** `listPlaylistTemplates()`, `createPlaylistTemplate(data)`, `listDayPlans(kioskId, date)`, `generatePlaylists(kioskId, dateRange)`
-  - **Pricing:** `getPricingMatrix()`, `updatePricingMatrix(data)`
+  - **Playlist üretim/izleme:** `generatePlaylists(payload)`, `forceRegenerateKiosk(kioskId, date)`, `listGenerationJobs()`, `getGenerationJob(id)`, `getKioskHealth()`
   - **Analytics:** `getSessionLogs(filters)`, `getPlayLogs(filters)`, `getCampaignStats(campaignId)`
   - **Abonelik (2026-10-01, `services/abonelik.js`):** admin `listSozlesmeler/createSozlesme/updateSozlesme/setCihazPlani/uzatSozlesme/getSozlesmeGecmis/listTalepler/kararVerTalep/bekleyenTalepSayisi/listOdemeler`; eczacı `getHesabim/getFaturalarim/odeFatura/getOdemelerim/getHareketlerim/getTaleplerim/createTalep`. Eczane oluşturma `createPharmacy` gövdesine nested `sozlesme` ekler. `stores/auth.js` `panelKisitli`/`demo` durumu + `setBilling()`; router guard kısıtlı eczacıyı Hesabım'a yönlendirir.
 
@@ -182,29 +181,31 @@ Tüm API çağrıları `axios` üzerinden `/api/*` endpoint'lerine yapılır.
 - `GET /api/products/danisma-kategorileri/`
 - `POST /api/products/danisma-kategorileri/`
 
-**Campaigns API:**
+**Sponsorluk API:**
 - `GET /api/campaigns/v2/campaigns/`
 - `POST /api/campaigns/v2/campaigns/`
 - `PUT /api/campaigns/v2/campaigns/{id}/`
 - `DELETE /api/campaigns/v2/campaigns/{id}/`
 - `POST /api/campaigns/v2/campaigns/bulk-action/` (pause/resume/delete toplu işlem)
-- `GET /api/campaigns/v2/campaigns/{id}/rules/`
-- `POST /api/campaigns/v2/campaigns/{id}/rules/`
+- `GET /api/campaigns/v2/campaigns/{id}/kiosks/` → sponsorluğun atandığı kiosklar
+- `POST /api/campaigns/v2/campaigns/{id}/assign-kiosks/` → çoklu kioska atama (dry_run opsiyonu)
 - `POST /api/campaigns/upload-media/` (file upload, multipart/form-data)
 - `POST /api/campaigns/v2/creatives/`
 - `GET /api/campaigns/v2/idle-contents/`
 - `POST /api/campaigns/v2/idle-contents/`
 
-**Playlists API:**
-- `GET /api/campaigns/v2/playlist-templates/`
-- `POST /api/campaigns/v2/playlist-templates/`
+**Kiosk sponsorluk API:**
+- `GET /api/campaigns/v2/sponsorship-kiosks/?search=&unassigned=1` → kiosk listesi + atama sayıları
+- `GET/PUT /api/campaigns/v2/sponsorship-kiosks/{kiosk_id}/sponsorships/` → kioskun atamaları (PUT tam değiştirme)
+- `POST /api/campaigns/v2/sponsorship-kiosks/{kiosk_id}/preview/` → gün planı önizleme (DB yazmaz)
+- `POST /api/campaigns/v2/sponsorship-kiosks/{kiosk_id}/copy/` → başka kiosklara kopyala (üzerine yazar; dry_run)
+- `POST /api/campaigns/v2/sponsorship-kiosks/{kiosk_id}/simulate/` → probe + senaryo simülasyonu
+
+**Playlist API:**
 - `POST /api/campaigns/v2/playlists/generate/` → Async playlist generation job başlatma
 - `GET /api/campaigns/v2/playlists/jobs/` → Job listesi
 - `GET /api/campaigns/v2/playlists/jobs/{job_id}/` → Job durumu
-
-**Pricing API:**
-- `GET /api/campaigns/v2/pricing-matrix/`
-- `PUT /api/campaigns/v2/pricing-matrix/`
+- `GET /api/campaigns/v2/playlists/day-stream/?kiosk=&date=` → yayındaki gerçek akış (read-only)
 
 **Analytics API:**
 - `GET /api/analytics/oturum-loglari/?kiosk={id}&start_date={date}&end_date={date}`
@@ -266,85 +267,43 @@ window.EISA_API_BASE_URL = 'http://localhost:8000';
 
 ## Kritik UI Akışları
 
-### 1. Campaign Oluşturma/Düzenleme (CampaignWizard.vue) — Faz 6
+### 1. Sponsorluk Tanımları (SponsorshipDefinitions.vue)
 
 **Route:** `/admin/campaigns` (SuperAdmin)
-**Modal:** Tek sayfada kampanya listesi + 6 adımlı wizard modal
+**Yapı:** Sponsorluk listesi + sekmeli modal (3 sekme).
 
-**Wizard adımları:**
+| Sekme | Açıklama |
+|-------|----------|
+| Bilgiler | `name`, `advertiser_name` (serbest metin), `start_date`, `end_date`, `status` (ACTIVE/PAUSED/COMPLETED) |
+| Medya | Creative upload (görsel/video); iki alan: Bekleme ekranı (`media_url`, portrait) + İşlem ekranı (`active_media_url`), `duration_seconds` (1–60; grid {15,30,45,60}) |
+| Kiosklar | Atanmış kiosklar (`getCampaignKiosks`) + "Kiosklara Ata" (`assignKiosksToCampaign`) |
 
-| Adım | Başlık | Açıklama |
-|------|--------|----------|
-| 1 | Bilgiler | `name`, `advertiser_name`, `start_date`, `end_date`, `status` |
-| 2 | Medya | Creative upload (tek dosya), `duration_seconds` (5/10/15/30/60 sn) |
-| 3 | Hedefleme | ALL (tüm aktif kiosklar) veya RULES (IL/ILCE/ECZANE hedefleri) |
-| 4 | Frekans/Pacing | Frekans modu (PER_LOOP/PER_HOUR/PER_DAY + target_hours) veya Gösterim Hedefi modu |
-| 5 | Simülasyon | Read-only kapasite simülasyonu — kalıcı mutation yok |
-| 6 | Aktive Et | Özet + Kaydet (taslak) + Aktive Et (onay modali) |
+- İl/ilçe/eczane hedefleme, frekans matrisi, öncelik/garanti, simülasyon/aktivasyon adımları **YOK** (2026-10-16 yeniden tasarım).
+- Creative upload: `POST /api/campaigns/upload-media/` → `{ media_url, object_key, checksum, url[alias] }` (`media_url ?? url` fallback) → `POST /api/campaigns/v2/creatives/`.
+- "Kiosklara Ata": tek pencere (`window_start`/`window_end`) + `count` + `active_weekdays` ile çoklu kioska atar; zaten atanmış kiosklar atlanır; kapasite aşarsa 400 `capacity_exceeded` (hiçbir şey kaydedilmez); `dry_run` ön kontrol.
+- Silme: tekil `deleteCampaignV2(id)`; toplu `bulkActionCampaignsV2('delete'|'pause'|'resume', ids)`.
 
-**Create/Edit davranışı:**
-- Create mode: `openCreate()` — empty form, formDirty=false
-- Edit mode: `openEdit(c)` — mevcut kampanya yüklenir; `getCampaignRules` + `getCampaignTargets` çağrılır
-- Edit sırasında formun yönetmediği alanlar (priority, is_guaranteed) gönderilmez (PATCH — sadece değişenler)
-- `saveDraft()`: Adım 4→5 geçişinde otomatik çağrılır; `createCampaignV2` → `createCreative` → `setCampaignTargets` → `setCampaignRules`
+### 1b. Kiosk Sponsorluk (KioskSponsorship.vue)
 
-**Hedefleme (Adım 3):**
-- `target_scope = 'ALL'`: Hedef belirtmek zorunlu değil
-- `target_scope = 'RULES'`: En az 1 IL/ILCE/ECZANE hedefi zorunlu
-- CampaignTarget kayıtları: `{ target_type, il?, ilce?, eczane? }`
-- **NOT:** `Campaign.target_pharmacies` (legacy M2M) artık CampaignWizard tarafından KULLANILMAMAKTADIR
-- `getIller()`/`getIlceler()` → `lookups.js`'den çağrılır (dooh.js'de değil)
-- Eczane: `EisaLookup` component (`GET /api/pharmacies/`) ile arama
+**Route:** `/admin/kiosk-sponsorships` (SuperAdmin). Composable: `composables/useSponsorship.js`.
+**Yapı:** Solda aranabilir kiosk listesi (çevrimiçi durumu, sponsorluk sayısı, "Atanmamış" filtresi); sağda seçili kiosk için 4 sekme.
 
-**Creative Upload (Adım 2):**
-- `POST /api/campaigns/upload-media/` (multipart/form-data)
-- Response: `{ media_url, object_key, checksum, url[alias] }` — `media_url ?? url` fallback
-- `POST /api/campaigns/v2/creatives/` → `{ campaign, media_url, object_key, checksum, duration_seconds, name }`
-- Upload hatasında form state korunur (saving=false, creatives listesi değişmez)
-- Mevcut (kaydedilmiş) creatives `c.id` varsa yeniden upload edilmez
+| Sekme | Açıklama |
+|-------|----------|
+| Sponsorluklar | Düzenlenebilir atama tablosu (sponsorluk, pencere başlangıç/bitiş, `count`, aktif günler, tarih, aktif); canlı kapasite önizlemesi (requested vs placed, debounce). `PUT .../sponsorships/` tam değiştirme (set). |
+| Yayın Takvimi | Taslak/yayında günlük plan: 24 saat ısı haritası → dakika/saniye şeridi + görsel önizleme (`POST .../preview/`, DB yazmaz). |
+| Simülasyon | `probe` (bir pencere + süre için en fazla kaç gösterim sığar) ve `scenario` (varsayımsal satırların uygulanabilirliği) — `POST .../simulate/`. |
+| Kopyala | Kaynak kioskun takvimini hedef kiosklara kopyalar — **üzerine yazar**; `dry_run` ile removed/added/kept farkı önizlenir (`POST .../copy/`). |
 
-**ScheduleRule:**
-- Backend contract: `{ frequency_type, frequency_value, target_hours }` (target_days Faz 7'de UI'dan kaldırıldı)
-- `frequency_type`: `PER_LOOP | PER_HOUR | PER_DAY`
-- `target_hours`: `[0..23]` array veya `null` (tüm gün)
-- UI'daki "Hedef günler" devre dışı — backend desteği yoktur, yakında eklenecek
-
-**Simülasyon (Adım 5):**
-- `POST /api/campaigns/v2/campaigns/{id}/simulate/` — kalıcı değişiklik yapmaz
-- simResult var + form değişirse → `simStale=true` (watcher: name, start_date, end_date, creatives.length, target_scope, rule, impression_goal)
-- `simStale=true` iken Aktive Et butonu `disabled`
-- Aktivasyondan önce simülasyon zorunlu
-
-**Activation (Adım 6):**
-- `POST /api/campaigns/v2/campaigns/{id}/activate/` — `DOOH_ENGINE_V2=active` gerektirir
-- EisaDeleteConfirm onay modali (double-submit engeli: `activateLoading` flag)
-- 409 → kapasite/kota hatası; 400 → validation hatası; her ikisi görüntülenir
-- Activation response queued job ise UI "başarıyla aktive edildi" gösterir (job_id döner)
-
-**Kaydedilmemiş değişiklik uyarısı:**
-- `formDirty` ref — form name/tarih/creative değişince `true`
-- `close()` → `formDirty=true` ise `confirm()` diyaloğu
-- `saveDraft()` başarıyla tamamlanınca `formDirty=false`
-
-**Silme:**
-- Tekil: EisaDeleteConfirm modal → `deleteCampaignV2(id)`
-- Bulk: native `confirm()` → `bulkActionCampaignsV2('delete', ids)`
-
-**Kullanılan ortak componentler:**
-- `EisaLookup` (eczane arama)
-- `EisaDeleteConfirm` (silme/aktivasyon onayı)
-- `DateRangePicker` (tarih aralığı)
-- `vue-sonner` (toast bildirimler)
-- `eisa-*` CSS sınıfları (global styles.css)
-
-### 2. DOOH Kontrol Merkezi (DoohControlCenter.vue) — Faz 6
+- Kapasite hatası şekli: `400 {code:'capacity_exceeded', detail, conflicts:[{date, campaign_id, campaign_name, requested, placed}]}` → `extractCapacityError` ile gösterilir.
+- Yardımcılar (useSponsorship): `hhmmToMinutes`, `secondToHHMMSS`, `maxCountHint`, `validateRow`, `rowToPayload`, `heatmapColor`, `hourTimeline`, `diffCampaignNames`, `extractCapacityError`.
 
 **Route:** `/admin/dooh/control-center` (SuperAdmin — `/admin/*` meta: `roles: ['superadmin']`)
 
 **Bölümler:**
 
 1. **Özet kartlar:** Aktif kampanya, Bekleyen/Başarısız job, Geride kiosk sayıları
-2. **Kampanya listesi:** Status badge + pause/resume/cancel/delete (EisaDeleteConfirm ile)
+2. **Sponsorluk listesi:** Status badge + pause/resume/delete (EisaDeleteConfirm ile)
 3. **Playlist üretim işleri:** job listesi, polling (yalnız PENDING/RUNNING), `onUnmounted` cleanup
 4. **Kiosk dağıtım durumu:** desired/applied/horizon tablosu, rollout durum badge'i
 
@@ -364,7 +323,7 @@ window.EISA_API_BASE_URL = 'http://localhost:8000';
 - `serverHorizonEnd` backend'den alınır (şu an `null` — horizon kontrolü atlanır)
 
 **Status mapping:**
-- `STATUS_MAP` (kampanya): ACTIVE/PAUSED/COMPLETED/DRAFT/CANCELLED → label + CSS class
+- `STATUS_MAP` (sponsorluk): ACTIVE/PAUSED/COMPLETED (+ eski DRAFT/CANCELLED fallback etiketleri) → label + CSS class
 - `JOB_STATUS_MAP` (job): PENDING/RUNNING/DONE/FAILED/RETRY; `COMPLETED` → `DONE` (backward compat)
 - `ROLLOUT_ACCENT_MAP` (kiosk): up_to_date/behind/ack_pending/horizon_stale/offline/no_publish/unknown
 - Üç map tek dosyada (DoohControlCenter.vue) — kopya yok
@@ -374,31 +333,13 @@ window.EISA_API_BASE_URL = 'http://localhost:8000';
 - ACK üretmez
 - Otomatik publish tetiklemez
 
-### 3. Gelismis Manuel Yayin (PlaylistEditor.vue) — Faz 7: Salt Okunur
+### 3. Playlist Üretim / İzleme *(2026-10-16)*
 
-**Route:** `/admin/playlists` (SuperAdmin — backward compat)
-**Nav adı:** "Gelişmiş Manuel Yayın"
-
-**Faz 7 sonrası durum — tam salt okunur:**
-- Mevcut Loop Şablonları, Saatlik Planlar, Günlük Planlar **tablolar olarak** gösterilir
-- Şablon/plan oluşturma/düzenleme/silme/drag-reorder mutation'ları **kaldırıldı** (sadece görüntüleme)
-- `createPlaylistTemplate`, `updatePlaylistTemplate`, `deletePlaylistTemplate`, `createHourPlan`, `updateHourPlan`, `deleteHourPlan`, `createDayPlan`, `updateDayPlan`, `deleteDayPlan` importları ve fonksiyonları **kaldırıldı**
-- Salt okunur banner ekranın üstünde açıkça görünür
-- CampaignWizard'a ve ControlCenter'a yönlendiren linkler var
-
-**Korunan bölüm:** Canonical `generatePlaylists` (`POST /api/campaigns/v2/playlists/generate/`)
-- Seçili kiosk + tarih için async job kuyruğuna alır
-- Double-submit koruması (`uretimKilit` flag)
-- Confirmation dialog zorunlu
-- Job durumu `setInterval` ile polling (terminal durumda `clearInterval`), `onUnmounted` cleanup
-
-### 4. Fiyatlandirma Matrisi (PricingMatrixConfigurator.vue)
-
-1. SuperAdmin → `/admin/pricing`
-2. `GET /api/campaigns/v2/pricing-matrix/` → mevcut matris (singleton)
-3. Form: JSON editör (slot fiyatları, süre katsayıları, vb.)
-4. `PUT /api/campaigns/v2/pricing-matrix/` → güncelleme
-5. Backend → fiyat hesaplamalarında kullanır
+`PlaylistEditor.vue` (Gelişmiş Manuel Yayın) ve `PricingMatrixConfigurator.vue` (Fiyat Matrisi) **kaldırıldı**; `/admin/playlists` ve `/admin/pricing` route'ları yoktur. Playlist üretimi artık sponsorluk atamalarından otomatik türetilir (`sponsorship_engine`). Manuel üretim/izleme `DoohControlCenter.vue` ve `KioskSponsorship.vue` üzerinden yapılır:
+- `generatePlaylists(payload)` → `POST /api/campaigns/v2/playlists/generate/` (seçili kiosk + tarih için async job)
+- `forceRegenerateKiosk(kioskId, date)` → zorla yeniden üretim
+- `listGenerationJobs()` / `getGenerationJob(id)` → kuyruk izleme (polling yalnız PENDING/RUNNING; `onUnmounted` cleanup)
+- `getKioskDayStream(kioskId, date)` → yayındaki gerçek akış (read-only)
 
 ### 4. QR Tarama (QrScan.vue)
 
@@ -487,14 +428,13 @@ Her ses satırındaki çöp kutusu, ortak silme onayıyla sesi kütüphaneden ve
 
 ## Belirsiz / Riskli Noktalar
 
-1. **CampaignWizard target_scope (ÇÖZÜLDÜ):** `target_scope` Faz 6'da wizard Adım 3'e eklendi. `ALL` veya `RULES` zorunlu.
-2. **CampaignWizard medya akışı (Faz 0.5):** Upload response canonical: `{object_key, media_url, checksum, url[alias]}`. `media_url ?? url` fallback çalışıyor. Component testi: `dooh_media_flow.test.js` ✓.
-3. **Campaign.target_pharmacies (ÇÖZÜLDÜ):** CampaignWizard bu legacy alanı KULLANMAMAKTADIR. Hedefleme yalnız `CampaignTarget` (IL/ILCE/ECZANE) üzerinden yapılır.
-4. **Playlist generation job polling (ÇÖZÜLDÜ):** PlaylistEditor ve DoohControlCenter polling yalnız PENDING/RUNNING durumunda çalışır; terminal durumda (DONE/FAILED) durur. `onUnmounted` ile timer temizlenir.
+1. **Sponsorluk hedefleme (2026-10-16):** İl/ilçe/eczane hedefleme, frekans matrisi ve simülasyon/aktivasyon wizard adımları kaldırıldı; atama yalnız kiosk bazlı `KioskSponsorship` (SponsorshipDefinitions + KioskSponsorship ekranları).
+2. **Medya akışı:** Upload response canonical: `{object_key, media_url, checksum, url[alias]}`. `media_url ?? url` fallback çalışıyor.
+3. **Kapasite doğrulama:** Atama kaydı sırasında kapasite aşımı 400 `capacity_exceeded` ile reddedilir (hiçbir şey kaydedilmez); panel `conflicts` listesini gösterir.
+4. **Playlist generation job polling (ÇÖZÜLDÜ):** DoohControlCenter polling yalnız PENDING/RUNNING durumunda çalışır; terminal durumda (DONE/FAILED) durur. `onUnmounted` ile timer temizlenir.
 5. **İçerik Yönetimi (2026-08-16):** Sol menü + sayfa başlığı "İçerik Yönetimi" (route `/admin/content-management`) KORUNDU ama artık yeni `IdleScreenContent` CRUD'unu açar (`ContentManagement.vue`): Başlık/Metin/Durum/Son Güncelleme listesi, ekle/düzenle/aktif-pasif/onaylı silme, karakter sayacı 0/100 & 0/300, "Tanı, tedavi veya kesin sağlık sonucu ifade eden içerikler kullanmayın." notu, küçük 1080×1920 kiosk önizlemesi. Ayrı "HouseAd Yönetimi" ekranı (`/admin/house-ads`, `HouseAdManagement.vue`) ve `dooh.js` house-ad metotları KALDIRILDI.
-6. **follows API write point:** `Campaign.follows` CampaignSerializer'da read-only. Yalnız `set_campaign_follows()` servisi üzerinden.
-7. **Vue test pre-existing failure:** `api.test.js login()` testi önceden yanlış contract bekliyordu (access/refresh yerine rol/userId). 2026-07-22'de düzeltildi.
-8. **Token refresh interceptor:** Axios interceptor'da retry logic düzgün çalışıyor mu, sonsuz döngü riski? (Doğrulanmalı)
+6. **Kaldırılan ekranlar:** CampaignWizard.vue, PlaylistEditor.vue, PricingMatrixConfigurator.vue ve `/admin/playlists`, `/admin/pricing` route'ları artık yok.
+7. **Token refresh interceptor:** Axios interceptor'da retry logic düzgün çalışıyor mu, sonsuz döngü riski? (Doğrulanmalı)
 
 ---
 
