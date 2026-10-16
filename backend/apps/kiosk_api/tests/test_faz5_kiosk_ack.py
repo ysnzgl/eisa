@@ -322,11 +322,9 @@ def test_fc15_no_ack_applied_stays_null(kiosk):
 @pytest.mark.django_db
 @override_settings(DOOH_ENGINE_V2="active")
 def test_fc16_publish_bumps_desired_version(kiosk):
-    """_persist_plan desired version'ı artırmalı (Kiosk.last_playlist_version)."""
-    from apps.campaigns.services.activation_service import ActivationService
-    from apps.campaigns.services.placement_engine_v2 import PlacementEngineV2
-    from apps.campaigns.models import Campaign, Creative, DeliveryRule
-    from django.db import transaction
+    """Playlist üretimi desired version'ı artırmalı (Kiosk.last_playlist_version)."""
+    from apps.campaigns.services.sponsorship_engine import regenerate_kiosk_day
+    from apps.campaigns.models import Campaign, Creative, KioskSponsorship
 
     base = timezone.make_aware(_dt.datetime.combine(TODAY, _dt.time(0, 0)))
     camp = Campaign.objects.create(
@@ -334,22 +332,20 @@ def test_fc16_publish_bumps_desired_version(kiosk):
         start_date=base - _dt.timedelta(days=1),
         end_date=base + _dt.timedelta(days=2, hours=23),
         status=Campaign.Status.ACTIVE,
-        target_scope="ALL",
     )
     Creative.objects.create(
         campaign=camp,
         media_url=f"http://localhost:9000/dev/ads/fc16-{camp.pk}.mp4",
         duration_seconds=15,
     )
-
-    plan = PlacementEngineV2.plan_kiosk_day(
-        kiosk_id=kiosk.id, target_date=TODAY, planning_run=None
+    KioskSponsorship.objects.create(
+        kiosk=kiosk, campaign=camp,
+        window_start_minute=0, window_end_minute=1440, count=10,
     )
 
     before_version = kiosk.last_playlist_version or 0
 
-    with transaction.atomic():
-        ActivationService._persist_plan(kiosk.id, TODAY, plan)
+    regenerate_kiosk_day(kiosk.id, TODAY)
 
     kiosk.refresh_from_db()
     assert kiosk.last_playlist_version is not None

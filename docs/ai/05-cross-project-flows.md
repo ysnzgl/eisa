@@ -217,25 +217,24 @@ kiosk_edge/ui (CategoryScreen)
 
 ### Backend (Kampanya + Playlist) → kiosk_edge → Backend (Proof-of-Play)
 
-**2.1. Kampanya Oluşturma (SuperAdmin)**
+**2.1. Sponsorluk Oluşturma (SuperAdmin)**
 ```
-SuperAdmin (web_panels/CampaignWizard)
+SuperAdmin (web_panels/SponsorshipDefinitions)
   → POST /api/campaigns/v2/campaigns/
     {
-      "name": "Vitamin C Kampanyasi",
+      "name": "Vitamin C Sponsorlugu",
       "advertiser_name": "XYZ Pharma",
       "start_date": "2026-06-01T00:00:00Z",
       "end_date": "2026-06-30T23:59:59Z",
-      "priority": 50,
-      "target_scope": "ALL"
+      "status": "ACTIVE"
     }
-    // NOT (Faz 7): is_guaranteed, impression_goal, frequency_cap_per_hour gonderilenince 400
-  → Backend: Campaign model kaydi
+    // NOT (2026-10-16): target_scope/priority/follows/hedefleme alanlari YOK
+  → Backend: Campaign (sponsorluk) model kaydi
 ```
 
-**2.2. Creative Upload (SuperAdmin) — Faz 0.5+ canonical akış**
+**2.2. Creative Upload (SuperAdmin)**
 ```
-SuperAdmin (web_panels/CampaignWizard)
+SuperAdmin (web_panels/SponsorshipDefinitions)
   → POST /api/campaigns/upload-media/ (multipart/form-data: file)
   → Backend (DOOH_PERSISTENT_MEDIA_URL=True): kalici URL
     Response: { object_key, media_url, checksum: "sha256:<hex>", url[alias] }
@@ -245,7 +244,7 @@ SuperAdmin (web_panels/CampaignWizard)
       "media_url": "https://files.eisa.com.tr/eisa-files/ads/uuid.mp4",  // kalici
       "object_key": "ads/uuid.mp4",
       "checksum": "sha256:...",
-      "duration_seconds": 15,  // 15/30/45/60 zorunlu (yeni kayit)
+      "duration_seconds": 15,  // 1..60 (grid uyumu {15,30,45,60})
       "name": "Vitamin C 15s"
     }
   → Backend: Creative model kaydı (object_key + kalici media_url)
@@ -255,32 +254,36 @@ Checksum sozlesmesi:
   - Kiosk creatives.checksum: sha256:<hex> (source_checksum olarak saklanir)
   - Kiosk media_cache.file_checksum: <hex> (raw, downloadToFile tarafindan hesaplanir)
   - Karsilastirma: source_checksum freshness icin; file_checksum bilgi amacli
-
-target_scope ve follows sozlesmesi (Faz 1):
-  - POST /api/campaigns/v2/campaigns/: target_scope zorunlu (ALL|RULES)
-  - Campaign.follows: yalniz set_campaign_follows() servisi uzerinden
-  - is_guaranteed/impression_goal/frequency_cap_per_hour gonderilenince 400 (Faz 7'de kaldirilan alanlar)
 ```
 
-**2.3. ScheduleRule Tanımlama (SuperAdmin)**
+**2.3. Kiosk Atama (SuperAdmin) — KioskSponsorship**
 ```
-SuperAdmin (web_panels/CampaignWizard)
-  → POST /api/campaigns/v2/campaigns/{id}/rules/
+SuperAdmin (web_panels/KioskSponsorship veya SponsorshipDefinitions > Kiosklar)
+  → PUT /api/campaigns/v2/sponsorship-kiosks/{kiosk_id}/sponsorships/  (tam set)
+     veya POST /api/campaigns/v2/campaigns/{id}/assign-kiosks/         (coklu kiosk)
     {
-      "frequency_type": "PER_HOUR",
-      "frequency_value": 2,
-      "target_hours": [9, 10, 11, 12, 13, 14, 15, 16, 17, 18]
+      "items": [{
+        "campaign_id": "uuid",
+        "window_start": "08:00", "window_end": "19:00",
+        "count": 100,                    // pencere icinde gunluk toplam gosterim
+        "active_weekdays": [1,2,3,4,5],   // ISO; null/[]=her gun
+        "start_date": null, "end_date": null,
+        "is_active": true
+      }]
     }
-  → Backend: ScheduleRule model kaydı
+  → Backend: sponsorship_engine.validate_kiosk ile kapasite dogrulanir
+    - Asim varsa 400 {code:"capacity_exceeded", conflicts:[{date, campaign_id, requested, placed}]} (kayit YOK)
+  → Backend: KioskSponsorship kaydi
 ```
 
-**2.4. Playlist Üretimi (Backend Scheduler)**
+**2.4. Playlist Üretimi (sinyal → kuyruk → motor)**
 ```
-Backend (django_apscheduler job, her gece veya manuel)
-  → services/scheduler.py: generate_for_kiosk(date, kiosk_id)
-  → Slot hesaplama: 60sn loop, campaign priority/guaranteed/frequency kontrolü
-  → Playlist + PlaylistItem oluşturma
-  → Backend DB: Playlist model kaydı (target_date, target_hour, version, items JSON)
+Atama/sponsorluk/creative/kiosk degisikligi
+  → signal (on_commit) → invalidation_service → GenerationJob enqueue (etkilenen kiosklar × horizon)
+  → drain_queue (~30sn) → sponsorship_engine.regenerate_kiosk_day
+  → plan_day (homojen, deterministik) → persist_day: 24 saatlik Playlist + PlaylistItem
+  → Icerik aynisa version artmaz; degistiyse Playlist.version++ ve Kiosk.last_playlist_version
+Gece isi (nightly_generate): tum aktif kiosklar × horizon enqueue
 ```
 
 **2.5. Kiosk Playlist Senkronizasyonu**
@@ -553,7 +556,7 @@ Eczacı ortak AdminLayout → DutyAlertModal
    - Breaking: kategori filtering/display fails
 
 2. **Playlist Generation Flow:**
-   - Campaign/Creative/ScheduleRule → scheduler.py → Playlist/PlaylistItem → kiosk sync
+   - Campaign/Creative/KioskSponsorship → sponsorship_engine → Playlist/PlaylistItem → kiosk sync
    - Breaking: no ads display
 
 3. **Session Log Chain:**

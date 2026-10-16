@@ -1,3 +1,5 @@
+> ⚠️ **TARİHSEL / GEÇERSİZ (superseded).** Bu uygulama planı (kural tabanlı ScheduleRule/DeliveryRule planlayıcı) uygulanmadı/terk edildi. DOOH sistemi 2026-10-16'da cihaz (kiosk) bazlı `KioskSponsorship` modeline yeniden tasarlandı. Güncel ve bağlayıcı tasarım: **docs/ai/08-dooh-advertising.md (2026-10-16)**. Bu dosya yalnız tarihçe için saklanır.
+
 # DOOH Kural Tabanlı Otomatik Reklam Planlayıcı — Uygulama Planı
 
 **Durum:** ONAYLANDI (v4) — uygulamaya hazır. **Kapsam:** Backend (Django/DRF/PostgreSQL), Vue 3 admin panel, kiosk edge (Fastify + SQLite), Svelte UI. **Tarih:** 2026-07-21.

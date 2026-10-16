@@ -1,10 +1,16 @@
 /**
- * DOOH v2 reklam motoru servis katmanı.
- * Yeni Campaign / Creative / ScheduleRule / Playlist / PricingMatrix endpoint'leri.
+ * Kiosk Sponsorluk (DOOH) servis katmanı.
+ *
+ * Yeni sözleşme: cihaz (kiosk) bazlı sponsorluk yönetimi.
+ *   - Sponsorluk tanımları (campaigns) + creative medyaları
+ *   - Kiosk bazlı atama / önizleme / kopyalama / simülasyon
+ *   - Generation job izleme + kiosk sağlık durumu (Kontrol Merkezi)
+ *
+ * Base: /api/campaigns/v2/
  */
 import { http } from './api';
 
-// ── Campaigns ──
+// ── Sponsorluk tanımları (Campaign) ──────────────────────────────────────────
 export const listCampaignsV2 = (params = {}) =>
   http.get('/api/campaigns/v2/campaigns/', { params });
 
@@ -23,63 +29,37 @@ export const deleteCampaignV2 = (id) =>
 export const bulkActionCampaignsV2 = (action, ids) =>
   http.post('/api/campaigns/v2/campaigns/bulk-action/', { action, ids });
 
-export const getCampaignRules = (id) =>
-  http.get(`/api/campaigns/v2/campaigns/${id}/rules/`);
-
-export const setCampaignRules = (id, rules) =>
-  http.post(`/api/campaigns/v2/campaigns/${id}/rules/`, rules);
-
-export const getCampaignTimeline = (params = {}) =>
-  http.get('/api/campaigns/v2/campaigns/timeline/', { params });
-
-export const getCampaignCalendar = (params = {}) =>
-  http.get('/api/campaigns/v2/campaigns/calendar/', { params });
-
-// ── Campaign Targets (IL / ILCE / ECZANE hiyerarşik hedefleme) ──
-export const getCampaignTargets = (campaignId) =>
-  http.get(`/api/campaigns/v2/campaigns/${campaignId}/targets/`);
-
-/** targets = [{target_type: "IL"|"ILCE"|"ECZANE", il?, ilce?, eczane?}] */
-export const setCampaignTargets = (campaignId, targets) =>
-  http.post(`/api/campaigns/v2/campaigns/${campaignId}/targets/`, targets);
-
-// ── Simulate & Activate (Faz 3) ──
+/** Bir sponsorluğa atanmış kioskların salt-okunur listesi. */
+export const getCampaignKiosks = (campaignId) =>
+  http.get(`/api/campaigns/v2/campaigns/${campaignId}/kiosks/`);
 
 /**
- * Kampanyayı simüle et (read-only, kalıcı mutation yok).
- * DOOH_ENGINE_V2=shadow|active gerektirir.
- * @returns SimulationResultSerializer response
+ * Sponsorluğu birden çok kioska ata (çoklu seçim + pencere/sayım).
+ * @param {string} campaignId
+ * @param {object} body {kiosk_ids:[int], window_start, window_end, count,
+ *                        active_weekdays|null, start_date|null, end_date|null, dry_run:bool}
  */
-export const simulateCampaign = (id) =>
-  http.post(`/api/campaigns/v2/campaigns/${id}/simulate/`);
+export const assignKiosksToCampaign = (campaignId, body) =>
+  http.post(`/api/campaigns/v2/campaigns/${campaignId}/assign-kiosks/`, body);
 
-/**
- * Kampanyayı aktive et (DOOH_ENGINE_V2=active gerektirir).
- * @returns ActivationResultSerializer response
- */
-export const activateCampaign = (id) =>
-  http.post(`/api/campaigns/v2/campaigns/${id}/activate/`);
-
-// ── Kapasite Önizleme (Before / After) ──
-/**
- * Yeni bir kural eklemeden önce kapasite etkisini simüle eder.
- * @param {object} params - { kiosk, date, creative_duration, frequency_type, frequency_value, target_hours }
- */
-export const previewCampaignCapacity = (params) =>
-  http.post('/api/campaigns/v2/campaigns/preview/', params);
-
-// ── Creatives ──
+// ── Creatives (medya) ────────────────────────────────────────────────────────
 export const listCreatives = (params = {}) =>
   http.get('/api/campaigns/v2/creatives/', { params });
 
 export const createCreative = (data) =>
   http.post('/api/campaigns/v2/creatives/', data);
 
+export const updateCreative = (id, data) =>
+  http.patch(`/api/campaigns/v2/creatives/${id}/`, data);
+
+export const deleteCreative = (id) =>
+  http.delete(`/api/campaigns/v2/creatives/${id}/`);
+
 /** Orijinal Creative medyasını indirmek için blob URL üretir (SuperAdmin). */
 export const downloadCreativeMedia = (creativeId) =>
   http.get(`/api/campaigns/v2/creatives/${creativeId}/download/`, { responseType: 'blob' });
 
-// ── Media upload ──
+// ── Medya upload ─────────────────────────────────────────────────────────────
 export async function uploadMedia(file, mediaKind) {
   const fd = new FormData();
   fd.append('file', file);
@@ -90,7 +70,57 @@ export async function uploadMedia(file, mediaKind) {
   return data;
 }
 
-// ── Idle Screen Content (İçerik Yönetimi — başlık/metin idle içerikleri) ──
+// ── Kiosk bazlı sponsorluk yönetimi ──────────────────────────────────────────
+
+/**
+ * Sponsorluk yönetimi için kiosk listesi.
+ * @param {object} params {search?, unassigned?:1}
+ */
+export const listSponsorshipKiosks = (params = {}) =>
+  http.get('/api/campaigns/v2/sponsorship-kiosks/', { params });
+
+/** Bir kioskun kayıtlı sponsorlukları (+ kiosk özeti). */
+export const getKioskSponsorships = (kioskId) =>
+  http.get(`/api/campaigns/v2/sponsorship-kiosks/${kioskId}/sponsorships/`);
+
+/**
+ * Kioskun sponsorluk setini tamamen değiştirir (atomik, kapasite doğrulanır).
+ * @param {number} kioskId
+ * @param {Array} items [{campaign_id, window_start, window_end, count,
+ *                        active_weekdays, start_date, end_date, is_active}]
+ */
+export const putKioskSponsorships = (kioskId, items) =>
+  http.put(`/api/campaigns/v2/sponsorship-kiosks/${kioskId}/sponsorships/`, { items });
+
+/**
+ * Taslak ya da kayıtlı sete göre günlük yayın önizlemesi (yerleşim motoru).
+ * @param {number} kioskId
+ * @param {object} body {date, items?} — items verilmezse kayıtlı set kullanılır.
+ */
+export const previewKioskSponsorships = (kioskId, body) =>
+  http.post(`/api/campaigns/v2/sponsorship-kiosks/${kioskId}/preview/`, body);
+
+/**
+ * Kaynak kioskun takvimini hedef kiosklara KOPYALA (üzerine yazar).
+ * @param {number} kioskId kaynak
+ * @param {object} body {target_kiosk_ids:[int], dry_run:bool}
+ */
+export const copyKioskSponsorships = (kioskId, body) =>
+  http.post(`/api/campaigns/v2/sponsorship-kiosks/${kioskId}/copy/`, body);
+
+/**
+ * Cihaz simülasyonu: probe (tek görsel kaç kez sığar) + senaryo hesabı.
+ * @param {number} kioskId
+ * @param {object} body {date_from, date_to, include_existing, probe|null, scenario:[]}
+ */
+export const simulateKioskSponsorship = (kioskId, body) =>
+  http.post(`/api/campaigns/v2/sponsorship-kiosks/${kioskId}/simulate/`, body);
+
+// ── Yayın Akışı — kiosk günlük playlist özeti (yayında olan, read-only) ───────
+export const getKioskDayStream = (kioskId, date) =>
+  http.get('/api/campaigns/v2/playlists/day-stream/', { params: { kiosk: kioskId, date } });
+
+// ── Idle Screen Content (İçerik Yönetimi — başlık/metin idle içerikleri) ──────
 export const listIdleContents = () =>
   http.get('/api/campaigns/v2/idle-contents/');
 
@@ -109,91 +139,9 @@ export const bulkDeleteIdleContents = (ids) =>
 export const listKategoriler = () =>
   http.get('/api/products/categories/');
 
-// ── Inventory ──
-export const getInventoryAvailability = (params) =>
-  http.get('/api/inventory/availability/', { params });
-
-// ── Pricing matrix ──
-export const getPricingMatrix = () =>
-  http.get('/api/campaigns/v2/pricing-matrix/');
-
-export const updatePricingMatrix = (data) =>
-  http.put('/api/campaigns/v2/pricing-matrix/', data);
-
-// ── Playlist generation (manual trigger) ──
+// ── Playlist generation (Kontrol Merkezi — manuel tetikleme) ──────────────────
 export const generatePlaylists = (payload = {}) =>
   http.post('/api/campaigns/v2/playlists/generate/', payload);
-
-// ── Generation Jobs (progress tracking) ──
-export const listGenerationJobs = () =>
-  http.get('/api/campaigns/v2/playlists/jobs/');
-
-export const getGenerationJob = (id) =>
-  http.get(`/api/campaigns/v2/playlists/jobs/${id}/`);
-
-// ── Kiosk DOOH health (desired/applied version) ──
-/**
- * Tüm kiosklara ait desired/applied version ve horizon bilgisini döner.
- * Backend: GET /api/pharmacies/kiosks/ — KioskSerializer Faz4/5 alanlarını içerir.
- */
-export const getKioskHealth = () =>
-  http.get('/api/pharmacies/kiosks/');
-
-// ── Playlist Templates ──
-export const listPlaylistTemplates = () =>
-  http.get('/api/campaigns/v2/playlist-templates/');
-
-export const createPlaylistTemplate = (data) =>
-  http.post('/api/campaigns/v2/playlist-templates/', data);
-
-export const updatePlaylistTemplate = (id, data) =>
-  http.patch(`/api/campaigns/v2/playlist-templates/${id}/`, data);
-
-export const deletePlaylistTemplate = (id) =>
-  http.delete(`/api/campaigns/v2/playlist-templates/${id}/`);
-
-// ── Hour Plans ──
-export const listHourPlans = () =>
-  http.get('/api/campaigns/v2/hour-plans/');
-
-export const createHourPlan = (data) =>
-  http.post('/api/campaigns/v2/hour-plans/', data);
-
-export const updateHourPlan = (id, data) =>
-  http.patch(`/api/campaigns/v2/hour-plans/${id}/`, data);
-
-export const deleteHourPlan = (id) =>
-  http.delete(`/api/campaigns/v2/hour-plans/${id}/`);
-
-// ── Day Plans ──
-export const listDayPlans = () =>
-  http.get('/api/campaigns/v2/day-plans/');
-
-export const createDayPlan = (data) =>
-  http.post('/api/campaigns/v2/day-plans/', data);
-
-export const updateDayPlan = (id, data) =>
-  http.patch(`/api/campaigns/v2/day-plans/${id}/`, data);
-
-export const deleteDayPlan = (id) =>
-  http.delete(`/api/campaigns/v2/day-plans/${id}/`);
-
-// ── Schedule Rules ──
-export const listScheduleRules = () =>
-  http.get('/api/campaigns/v2/rules/');
-
-export const createScheduleRule = (data) =>
-  http.post('/api/campaigns/v2/rules/', data);
-
-export const updateScheduleRule = (id, data) =>
-  http.patch(`/api/campaigns/v2/rules/${id}/`, data);
-
-export const deleteScheduleRule = (id) =>
-  http.delete(`/api/campaigns/v2/rules/${id}/`);
-
-// ── Kiosk listesi (playlist hedefleme icin) ──
-export const listKiosks = (params = {}) =>
-  http.get('/api/pharmacies/kiosks/', { params });
 
 export const forceRegenerateKiosk = (kioskId, targetDate = null) =>
   http.post('/api/campaigns/v2/playlists/generate/', {
@@ -201,28 +149,17 @@ export const forceRegenerateKiosk = (kioskId, targetDate = null) =>
     ...(targetDate ? { date: targetDate } : {}),
   });
 
-// ── Yayın Akışı — kiosk günlük playlist özeti (read-only) ──
-export const getKioskDayStream = (kioskId, date) =>
-  http.get('/api/campaigns/v2/playlists/day-stream/', { params: { kiosk: kioskId, date } });
+// ── Generation Jobs (progress tracking) ──────────────────────────────────────
+export const listGenerationJobs = () =>
+  http.get('/api/campaigns/v2/playlists/jobs/');
 
-// ── Lokasyon Lookup'ları (hedefleme ağacı için) ──
-// getIller / getIlceler → lookups.js'den kullanın
+export const getGenerationJob = (id) =>
+  http.get(`/api/campaigns/v2/playlists/jobs/${id}/`);
 
-export async function getEczanelerByIlce(ilceId) {
-  if (!ilceId) return [];
-  const { data } = await http.get('/api/pharmacies/', { params: { ilce: ilceId } });
-  const items = Array.isArray(data) ? data : (data?.results ?? []);
-  return items.map((p) => ({ id: p.id, ad: p.ad, ilce_id: p.ilce }));
-}
+// ── Kiosk DOOH health (desired/applied version) ──────────────────────────────
+export const getKioskHealth = () =>
+  http.get('/api/pharmacies/kiosks/');
 
-// ── Eczane listesi (hedefleme dropdown'i icin, geriye dönük) ──
-export async function getPharmaciesForTargeting() {
-  const { data } = await http.get('/api/pharmacies/');
-  const items = Array.isArray(data) ? data : (data?.results ?? []);
-  return items.map((p) => ({
-    id: p.id,
-    name: p.ad,
-    province: p.il_adi ?? '',
-    district: p.ilce_adi ?? '',
-  }));
-}
+// ── Kiosk listesi (genel amaçlı) ──────────────────────────────────────────────
+export const listKiosks = (params = {}) =>
+  http.get('/api/pharmacies/kiosks/', { params });

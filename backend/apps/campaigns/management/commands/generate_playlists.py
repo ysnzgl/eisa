@@ -10,7 +10,7 @@ import datetime as _dt
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
-from apps.campaigns.services.scheduler import generate_for_kiosk
+from apps.campaigns.services.sponsorship_engine import regenerate_kiosk_day
 from apps.pharmacies.models import Kiosk
 
 
@@ -33,14 +33,15 @@ class Command(BaseCommand):
 
         total = 0
         for kiosk in qs:
-            playlists = generate_for_kiosk(kiosk, target_date)
-            total += len(playlists)
+            version = regenerate_kiosk_day(kiosk.pk, target_date)
+            if version is not None:
+                total += 1
             self.stdout.write(
-                f"  ✓ kiosk={kiosk.pk} {target_date} -> {len(playlists)} playlist"
+                f"  ✓ kiosk={kiosk.pk} {target_date} -> version={version}"
             )
 
         self.stdout.write(self.style.SUCCESS(
-            f"Toplam {total} playlist uretildi (date={target_date})."
+            f"Toplam {total} kiosk gunu guncellendi (date={target_date})."
         ))
 
     @staticmethod
