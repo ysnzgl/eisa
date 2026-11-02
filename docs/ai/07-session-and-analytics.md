@@ -326,7 +326,8 @@ GET /api/analytics/oturum-loglari/
 9. Backend:
    - OturumLogu'nu tarihsel `eczane_id` ile bulur.
    - Merkezi transition service `status`, `result_at`, danışma alanları ve seçili etken madde ilişkilerini atomik günceller.
-   - Idempotency: Eğer zaten tamamlanmışsa, tekrar güncellemez, mevcut durumu döner.
+   - `SATIS_YAPILMADI -> SATIS_YAPILDI` geçişinde satış doğrulamaları tekrar uygulanır; `result_at`, tamamlanma zamanı, eczacı ve not güncellenir. Satış raporları yeni sonuç zamanını kullanır.
+   - Idempotency: Aynı sonuç tekrarları ve zaten `SATIS_YAPILDI` olan kayıtlar değişmeden döner.
 10. Response: Güncellenmiş oturum objesi döner.
 11. Frontend: modal kontrollü kapanır ve kullanıcı+eczane kapsamlı sessionStorage temizlenir.
 ```

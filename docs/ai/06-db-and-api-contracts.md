@@ -632,6 +632,7 @@ X-Kiosk-Build-Number: <BUILD_LABEL>  # örn: 2026.09.29+prod.17
 - Response: (single updated `OturumLoguSerializer` object)
 - Response `onerilen_etken_madde_detaylari` öğeleri `id`, `ad`, `satildi`, `source` alanlarını taşır; aynı katalog girdisi öneri+eczacı seçimi kesişiminde tek normalize satır olarak kalır.
 - `status` integer authoritative kaynaktır: `0 BEKLIYOR`, `1 INCELENDI`, `2 SATIS_YAPILDI`, `3 SATIS_YAPILMADI`; sonuçlarda `result_at` set edilir. Boolean `sold` response alanı status'tan türetilen geriye uyumluluktur.
+- `3 -> 2` geçişi `sale_result="sold"` ile desteklenir; etken madde/not doğrulamaları tekrar uygulanır, sonuç zamanı ve tamamlayan eczacı güncellenir. Aynı sonuç tekrarları ve `status=2` kayıtlarına çağrılar mevcut kaydı değiştirmeden döndürür; `2 -> 3` desteklenmez.
 - `not_sold` ile ingredient gönderimi, pasif/geçersiz ID ve duplicate global kayıt oluşturma reddedilir.
 
 **POST /api/analytics/sessions/{id}/mark-reviewed/**

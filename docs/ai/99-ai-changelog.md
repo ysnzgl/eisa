@@ -5,6 +5,16 @@
 
 ---
 
+## 2026-11-03
+
+### [Backend + Web Panel] Satış yapılmadı sonucunu satışa güncelleme
+
+**Değişiklik:** `SATIS_YAPILMADI -> SATIS_YAPILDI` geçişi açıldı; tamamlanan satışlar ve aynı sonuç tekrarları idempotent kalır. Eczacı detayında etken madde seçimi ve satış formu mevcut notla tekrar kullanılabilir.
+**Dosyalar:** `backend/apps/analytics/{sales.py,views.py,tests/test_consultation_status.py}`, `web_panels/src/components/{QrSessionCard.vue,__tests__/consultation_flow.test.js}`, `web_panels/src/views/pharmacist/{KioskActivities.vue,__tests__/sale_update.test.js}`.
+**Etki:** Aynı eczane yetkisi ve satış doğrulamaları korunur; sonuç zamanı, satılan etken maddeler ve raporlar güncellenir. Şema değişikliği yoktur.
+
+---
+
 ## 2026-10-12
 
 ### [Backend + Web Panel] Abonelik & Fatura UX iyileştirmeleri (9 madde)

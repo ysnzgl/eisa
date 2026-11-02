@@ -1,5 +1,5 @@
 import uuid
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 from django.utils import timezone
@@ -93,6 +93,57 @@ def test_ingredient_validation_duplicate_and_not_sold_conflict(context):
         f"/api/analytics/sessions/{invalid.id}/complete/",
         {"sale_result":"sold", "ingredient_ids":[999999]}, format="json",
     ).status_code == 400
+
+
+def test_not_sold_can_be_updated_to_sold_and_retries_are_idempotent(context):
+    _, _, users, _, make_session = context
+    ingredient = EtkenMadde.objects.create(ad="Sonradan Satılan Etken", aktif=True)
+    row = make_session()
+    OturumOnerilenEtkenMadde.objects.create(
+        oturum=row, etken_madde=ingredient, etken_madde_adi_snapshot=ingredient.ad,
+    )
+    url = f"/api/analytics/sessions/{row.id}/complete/"
+    api = client(users[0])
+    assert api.post(url, {"sale_result": "not_sold", "note": "İlk görüşme"}, format="json").status_code == 200
+    old_result_at = timezone.now() - timedelta(days=1)
+    OturumLogu.objects.filter(pk=row.pk).update(result_at=old_result_at)
+
+    assert api.post(url, {"sale_result": "not_sold", "note": "Tekrar"}, format="json").status_code == 200
+    row.refresh_from_db()
+    assert row.result_at == old_result_at and row.danisma_notu == "İlk görüşme"
+    assert client(users[1]).post(url, {"sale_result": "sold", "ingredient_ids": [ingredient.id]}, format="json").status_code == 404
+    for payload in (
+        {"sale_result": "sold"},
+        {"sale_result": "sold", "ingredient_ids": [999999]},
+    ):
+        assert api.post(url, payload, format="json").status_code == 400
+    row.refresh_from_db()
+    assert row.status == OturumLogu.SatisDurumu.SATIS_YAPILMADI
+    assert row.result_at == old_result_at
+    assert not row.onerilen_etken_madde_detaylari.get().satildi
+
+    payload = {"sale_result": "sold", "ingredient_ids": [ingredient.id], "note": "Satış tamamlandı"}
+    response = api.post(url, payload, format="json")
+    assert response.status_code == 200 and response.data["sold"] is True
+    row.refresh_from_db()
+    assert row.status == OturumLogu.SatisDurumu.SATIS_YAPILDI
+    assert row.result_at > old_result_at
+    assert row.danisma_tamamlanma_tarihi == row.result_at
+    assert row.danisma_tamamlayan_eczaci == users[0]
+    assert row.danisma_notu == "Satış tamamlandı"
+    assert row.onerilen_etken_madde_detaylari.get().satildi
+    result_at = row.result_at
+
+    for retry in (payload, {"sale_result": "not_sold", "note": "Tekrar"}):
+        assert api.post(url, retry, format="json").status_code == 200
+        row.refresh_from_db()
+        assert row.status == OturumLogu.SatisDurumu.SATIS_YAPILDI
+        assert row.result_at == result_at and row.danisma_notu == "Satış tamamlandı"
+    assert row.onerilen_etken_madde_detaylari.count() == 1
+    data = api.get("/api/analytics/dashboard-series/").data
+    assert sum(x["sold"] for x in data["monthly_interactions"]) == 1
+    assert sum(x["not_sold"] for x in data["monthly_interactions"]) == 0
+    assert data["totals"]["monthly_sold"] == 1
 
 
 def test_ingredient_response_distinguishes_recommended_and_pharmacist_added(context):

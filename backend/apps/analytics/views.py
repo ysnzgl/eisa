@@ -267,7 +267,8 @@ class OturumLoguCompleteView(APIView):
     Eczacının bir QR danışmasını tamamlandı olarak işaretlemesini sağlar.
     - Yalnızca eczacılar kullanabilir.
     - Eczacı yalnızca kendi eczanesine ait kioskların oturumlarını güncelleyebilir.
-    - Idempotent: Tekrar tekrar çağrılsa bile yalnızca ilk seferde günceller.
+    - Satış yapılmadı sonucu sonradan satış yapıldı olarak güncellenebilir.
+    - Aynı sonuçla tekrarlanan çağrılar ve satış yapıldı sonucu idempotenttir.
     """
 
     authentication_classes = [JWTAuthentication]

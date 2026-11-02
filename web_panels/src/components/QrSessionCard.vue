@@ -15,11 +15,14 @@ const props = defineProps({
 });
 const emit = defineEmits(['completed', 'reset']);
 
-const completionNote    = ref('');
+const completionNote    = ref(props.session.danisma_notu || '');
 const completionLoading = ref(false);
 const completionError   = ref('');
 const selectedIngredients = ref([]);
 const ingredientCatalog = ref([]);
+const canRecordSale = computed(() => !props.readonly && (
+  !props.session.danisma_tamamlandi || Number(props.session.status) === 3
+));
 
 onMounted(async () => {
   if (props.readonly) return;
@@ -224,7 +227,7 @@ async function handleComplete(saleResult) {
     <div v-if="recommendedIngredients.length" class="qr-result-section">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;">
         <p class="qr-detail-label" style="margin:0;">Kiosk Tarafından Önerilen Etken Maddeler</p>
-        <div v-if="!session.danisma_tamamlandi && !readonly" style="display:flex;gap:0.5rem;">
+        <div v-if="canRecordSale" style="display:flex;gap:0.5rem;">
           <button
             type="button"
             class="qsc-batch-btn qsc-batch-btn--success"
@@ -246,7 +249,7 @@ async function handleComplete(saleResult) {
         </div>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:0.5rem;">
-        <template v-if="!session.danisma_tamamlandi && !readonly">
+        <template v-if="canRecordSale">
           <button
             v-for="ing in recommendedIngredients"
             :key="'sel-' + (ing.id ?? ing.ad)"
@@ -279,7 +282,7 @@ async function handleComplete(saleResult) {
       </div>
     </div>
 
-    <div v-if="!readonly && !session.danisma_tamamlandi" class="qr-result-section">
+    <div v-if="canRecordSale" class="qr-result-section">
       <p class="qr-detail-label" style="margin-bottom:0.5rem;">Diğer Etken Madde Ekle</p>
       <EisaMultiLookup
         v-model="selectedIngredients"
@@ -308,9 +311,12 @@ async function handleComplete(saleResult) {
 
     <!-- Tamamlama formu -->
     <div
-      v-if="!readonly && !session.danisma_tamamlandi && session.tamamlandi"
+      v-if="canRecordSale && session.tamamlandi"
       class="qr-result-section qsc-complete-action"
     >
+      <p v-if="Number(session.status) === 3" class="qsc-help" style="margin-bottom:0.75rem;">
+        Satış yapılmadı olarak kaydedilen bu danışmayı satış yapıldı olarak güncelleyebilirsiniz.
+      </p>
       <p class="qr-detail-label" style="margin-bottom:0.5rem;">Danışma Notu (Opsiyonel)</p>
       <textarea
         v-model="completionNote"
@@ -331,6 +337,7 @@ async function handleComplete(saleResult) {
           EVET - Satış Yaptım
         </button>
         <button
+          v-if="Number(session.status) !== 3"
           class="eisa-btn eisa-btn-danger"
           :disabled="completionLoading"
           @click="handleComplete('not_sold')"

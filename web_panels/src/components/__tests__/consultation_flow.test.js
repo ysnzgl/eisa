@@ -1,18 +1,19 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { get, markSessionReviewed, getDashboardSeries, push } = vi.hoisted(() => ({
-  get: vi.fn(), markSessionReviewed: vi.fn(), getDashboardSeries: vi.fn(), push: vi.fn(),
+const { get, markSessionReviewed, completeSession, getDashboardSeries, push } = vi.hoisted(() => ({
+  get: vi.fn(), markSessionReviewed: vi.fn(), completeSession: vi.fn(), getDashboardSeries: vi.fn(), push: vi.fn(),
 }));
 vi.mock('../../services/api', () => ({ http: { get } }));
 vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }));
 vi.mock('../../services/analytics', () => ({
   markSessionReviewed,
-  completeSession: vi.fn(),
+  completeSession,
   getDashboardSeries,
 }));
 
 import SessionDetailModal from '../SessionDetailModal.vue';
+import QrSessionCard from '../QrSessionCard.vue';
 import DashboardPeriodCharts from '../DashboardPeriodCharts.vue';
 import adminDashboardSource from '../../views/admin/Dashboard.vue?raw';
 import pharmacistDashboardSource from '../../views/pharmacist/Dashboard.vue?raw';
@@ -44,6 +45,61 @@ describe('eczacı zorunlu danışmanlık modalı', () => {
     expect(document.body.querySelector('.eisa-modal-close')).not.toBeNull();
     document.body.querySelector('.eisa-modal-close').click();
     expect(wrapper.emitted('close')).toHaveLength(1);
+    wrapper.unmount();
+  });
+});
+
+describe('satış yapılmadı sonucunu satışa dönüştürme', () => {
+  const notSold = {
+    ...session, status: 3, sold: false, danisma_tamamlandi: true,
+    danisma_notu: 'İlk görüşme notu',
+    onerilen_etken_madde_detaylari: [{ id: 7, ad: 'Önerilen Etken', satildi: false, source: 'RECOMMENDED' }],
+  };
+
+  beforeEach(() => {
+    get.mockReset().mockResolvedValue({ data: [] });
+    completeSession.mockReset();
+  });
+
+  it('önerilen etken maddeyi seçip mevcut notla satış kaydedebilir', async () => {
+    const sold = { ...notSold, status: 2, sold: true };
+    completeSession.mockResolvedValue({ data: sold });
+    const wrapper = mount(QrSessionCard, { props: { session: notSold } });
+    await flushPromises();
+    expect(wrapper.get('textarea').element.value).toBe('İlk görüşme notu');
+    expect(wrapper.find('.eisa-btn-danger').exists()).toBe(false);
+    await wrapper.get('.qsc-ing-label').trigger('click');
+    await wrapper.get('.eisa-btn-success').trigger('click');
+    await flushPromises();
+    expect(completeSession).toHaveBeenCalledWith(41, 'İlk görüşme notu', 'sold', [7]);
+    expect(wrapper.emitted('completed')[0][0]).toMatchObject({ status: 2, sold: true });
+    await wrapper.setProps({ session: sold });
+    expect(wrapper.find('textarea').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it('kayıt hatasında seçim ve notu koruyup yeniden denemeye izin verir', async () => {
+    completeSession.mockRejectedValue({ response: { data: { detail: 'Satış kaydedilemedi.' } } });
+    const wrapper = mount(QrSessionCard, { props: { session: notSold } });
+    await flushPromises();
+    await wrapper.get('.qsc-ing-label').trigger('click');
+    await wrapper.get('.eisa-btn-success').trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).toContain('Satış kaydedilemedi.');
+    expect(wrapper.get('.qsc-ing-label').classes()).toContain('qsc-ing-label--selected');
+    expect(wrapper.get('textarea').element.value).toBe('İlk görüşme notu');
+    expect(wrapper.emitted('completed')).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it.each([
+    { session: notSold, readonly: true },
+    { session: { ...notSold, status: 2, sold: true } },
+  ])('salt okunur ve satış yapılmış kayıtlarda formu gizler: %j', (props) => {
+    const wrapper = mount(QrSessionCard, { props });
+    expect(wrapper.find('textarea').exists()).toBe(false);
+    expect(wrapper.find('.eisa-btn-success').exists()).toBe(false);
+    expect(wrapper.find('.qsc-ing-label').exists()).toBe(false);
     wrapper.unmount();
   });
 });

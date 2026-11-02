@@ -411,6 +411,7 @@ window.EISA_API_BASE_URL = 'http://localhost:8000';
 7. Detay yüklendikten sonra eczacı için `POST /api/analytics/sessions/{id}/mark-reviewed/` çağrılır; admin görüntülemesi mutation yapmaz.
 8. Eczacı modalı sonuç girilene kadar çarpı/Kapat/Escape/backdrop ile kapanmaz. Açık kayıt kullanıcı+eczane anahtarlı `sessionStorage` ile yenilemede geri yüklenir; yeni QR fonksiyon seviyesinde engellenir.
 9. `POST /api/analytics/sessions/{id}/complete/` zorunlu `sale_result` (`sold|not_sold`) ve opsiyonel `ingredient_ids` alır. Diğer etken maddeler yalnız aramalı mevcut katalogdan çoklu seçilir.
+10. “Satış yapılmadı” (`status=3`) kaydı tekrar açıldığında etken madde seçimi ve “EVET - Satış Yaptım” formu görünür; mevcut not korunur. Başarılı güncellemede QR işlem listeleri ve Kiosk Hareketleri'nin açık oturum/satış sekmesi yenilenir. Satış yapılmış kayıtlar ve admin görünümü salt okunurdur.
 
 ### 5. Dashboard Analytics (Dashboard.vue)
 

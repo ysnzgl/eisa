@@ -38,9 +38,9 @@ def complete_sale(*, session_id, pharmacy_id, user, sale_result, note="", ingred
     }.get(sale_result)
     if target is None:
         raise ValidationError({"detail": "Satış sonucu 'sold' veya 'not_sold' olmalıdır."})
-    if session.status in (
-        OturumLogu.SatisDurumu.SATIS_YAPILDI,
-        OturumLogu.SatisDurumu.SATIS_YAPILMADI,
+    if session.status == OturumLogu.SatisDurumu.SATIS_YAPILDI or (
+        session.status == OturumLogu.SatisDurumu.SATIS_YAPILMADI
+        and target == OturumLogu.SatisDurumu.SATIS_YAPILMADI
     ):
         return session
 

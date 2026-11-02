@@ -493,6 +493,7 @@ Eczacı (web_panels/QrScan.vue)
 **5.3. Danışmanlık Sonuçlandırma (Eczacı)**
 ```
 BEKLIYOR → INCELENDI → SATIS_YAPILDI | SATIS_YAPILMADI
+SATIS_YAPILMADI → SATIS_YAPILDI (kayıt tekrar açılarak; aynı eczane yetkisi ve satış doğrulamaları)
 Eczacı → POST /api/analytics/sessions/{id}/complete/
   → {sale_result, note, ingredient_ids}
   → Backend tek sales service'inde transition + katalog doğrulama + result_at

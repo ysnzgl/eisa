@@ -216,6 +216,11 @@ function openDetail(row) {
   if (![2, 3].includes(Number(row.status))) sessionStorage.setItem(openStorageKey, JSON.stringify({ id:row.id, qr:row.qr_kodu }));
 }
 function closeDetail() { selected.value = null; sessionStorage.removeItem(openStorageKey); }
+async function onCompleted() {
+  closeDetail();
+  if (activeTab.value === 'sales') await loadSales();
+  else await loadSessions();
+}
 
 const totalPages = computed(() => Math.ceil(sessionsTotal.value / 50) || 1);
 const salesTotalPages = computed(() => Math.ceil(salesTotal.value / 50) || 1);
@@ -414,7 +419,7 @@ async function exportCurrentTab() {
       :readonly="false"
       mandatory
       @close="closeDetail"
-      @completed="(updated) => { const row = sessions.find(s => s.id === updated.id); if (row) row.danisma_tamamlandi = updated.danisma_tamamlandi; closeDetail(); }"
+      @completed="onCompleted"
     />
 
   </div>
