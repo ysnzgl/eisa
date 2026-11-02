@@ -114,16 +114,14 @@ class EczaciDashboardView(APIView):
             {"ad": top_em["em_adi"], "sayi": top_em["sayi"]} if top_em else None
         )
 
-        # Bu eczaneye hedeflenmis aktif kampanyalar (DOOH v2):
-        # target_pharmacies bos (herkese goster) VEYA bu eczane hedefte yer aliyor
-        reklam_qs = Campaign.objects.filter(
+        # Bu eczaneye ait kiosklarda aktif sponsorlugu olan, su an yayinda kampanyalar.
+        reklam_sayisi = Campaign.objects.filter(
             status=Campaign.Status.ACTIVE,
             start_date__lte=now,
             end_date__gte=now,
-        ).filter(
-            Q(target_pharmacies__isnull=True) | Q(target_pharmacies=eczane)
-        ).distinct()
-        reklam_sayisi = reklam_qs.count()
+            kiosk_sponsorships__is_active=True,
+            kiosk_sponsorships__kiosk__eczane=eczane,
+        ).distinct().count()
 
         kategori_sayisi = Kategori.objects.filter(aktif=True).count()
 

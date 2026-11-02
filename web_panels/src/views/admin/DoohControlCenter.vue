@@ -335,7 +335,7 @@ async function refreshAll() {
                     <i class="fa-solid fa-pause"></i>
                   </button>
                   <button v-else-if="c.status === 'PAUSED'" class="eisa-icon-btn" title="Aktifleştir"
-                          :disabled="actionLoading.has(c.id)" @click="campAction('activate', c)">
+                          :disabled="actionLoading.has(c.id)" @click="campAction('resume', c)">
                     <i class="fa-solid fa-play"></i>
                   </button>
                   <button class="eisa-icon-btn danger" title="Sil" @click="askDelete(c)">

@@ -86,8 +86,8 @@ Backend (Kategori/Soru models) → web_panels (MedicalLogic/DanismaYonetimi) →
 
 > Not: Kategori sırası `sira` alanıyla yönetilir. Kök seviyedeki kategoriler yalnızca aynı root seti içinde unique `sira` taşır; alt kategoriler için benzersizlik yalnızca aynı `bagli_kategori` kapsamında geçerlidir. `backend/scripts/update_root_category_order.sql` dosyası canlı DB'ye uygulanan root sırasını hazırlar.
 
-### 2. Reklam Slot/Playlist Akışı
-Backend (Campaign/Creative/ScheduleRule) → web_panels (CampaignWizard/PlaylistEditor) → Backend playlist generator → Kiosk ping → kiosk_edge/api-node playlist sync → SQLite (playlists/playlist_items) → kiosk_edge/ui (AdStrip)
+### 2. Reklam Slot/Playlist Akışı *(2026-10-16 cihaz bazlı yeniden tasarım)*
+Backend (Campaign/Creative/**KioskSponsorship**) → web_panels (KioskSponsorship/SponsorshipDefinitions) → `sponsorship_engine.py` (tek yerleşim motoru) → Playlist/PlaylistItem → Kiosk ping → kiosk_edge/api-node playlist sync → SQLite (playlists/playlist_items) → kiosk_edge/ui (AdStrip)
 
 ### 3. Kullanıcı Session/Log Akışı
 kiosk_edge/ui (App.svelte session) → kiosk_edge/api-node (POST /sessions) → oturum_outbox → Backend (POST /api/kiosk/v1/sessions/) → OturumLogu model
@@ -111,9 +111,9 @@ SuperAdmin → web_panels AbonelikYonetimi → `Sozlesme` (+ opsiyonel `CihazOde
 - **Kategori:** Kullanıcının yakındığı şikayet türü (uyku, enerji, bağışıklık vb.). `sira` alanı ile root/child sıralaması kontrol edilir; aynı parent altında tekrar eden `sira` yoktur, fakat farklı parent'lar arasında aynı `sira` kullanılabilir.
 - **Soru:** Kategoriye bağlı, hedeflenmiş sorular (yaş/cinsiyet/etken madde filtrelenebilir)
 - **Danışma:** Eczacıya direkt danışma kategorisi (soru akışı gerektirmez)
-- **Campaign:** DOOH reklam kampanyası (başlangıç/bitiş tarihi, durum, öncelik, garanti tipi)
+- **Campaign (Sponsorluk):** DOOH reklam sponsorluğu (advertiser_name serbest metin, başlangıç/bitiş tarihi, status ACTIVE/PAUSED/COMPLETED). İl/ilçe/eczane hedefleme veya öncelik/garanti **yoktur** (2026-10-16).
 - **Creative:** Kampanyaya ait medya (görsel/video URL + süre)
-- **ScheduleRule:** Kampanya frekans matrisi (per_loop/per_hour/per_day, saat hedefleme)
+- **KioskSponsorship:** Bir sponsorluğun bir kiosk'a (cihaz) atanması — tek zaman penceresi (window_start/end_minute) + pencere içinde günlük toplam gösterim `count`, `active_weekdays` (ISO 1-7, null=her gün), opsiyonel start/end_date, is_active. Unique(kiosk, campaign). ScheduleRule/DeliveryRule/kota kavramlarının yerini aldı (2026-10-16).
 - **Playlist:** Kiosk için üretilmiş 60sn reklam döngüsü (date/hour bazlı); yalnız kampanya creative'lerinden oluşur (campaign-only). Uygun creative yoksa playlist boş kalır (boş playlist geçerli) → kiosk kendi idle (bekleme) ekranını gösterir. Filler YOK.
 - **IdleScreenContent:** Bekleme (idle) ekranı başlık/metin içeriği — panelde "İçerik Yönetimi" (app: campaigns, tablo `dooh_idle_screen_contents`; `baslik`, `metin`, `aktif`). Medya/HTML yok, düz metin. Eski **HouseAd** sistemi uçtan uca kaldırıldı (2026-08-16).
 - **BarkodLogo:** Kiosk fiş baskısında e-ISA başlığının yerini alan logo (UUID PK, ad, media_url, checksum, baslangic/bitis_zamani, aktif, gunluk_baski_limiti, hedef_kiosklar M2M). DOOH sisteminden bağımsız. Backend: `apps.barkod_logo`. Kiosk: `barkodLogoService.js`.
@@ -132,7 +132,7 @@ SuperAdmin → web_panels AbonelikYonetimi → `Sozlesme` (+ opsiyonel `CihazOde
 
 ## Güncel Olmayan / Şüpheli Alanlar
 
-1. **Legacy M2M:** `Campaign.target_pharmacies` (M2M) -> Yeni kampanyalar `CampaignTarget` kullanıyor (Il/Ilce/Eczane hiyerarşisi). Eski kayıtlar varsa ikisi de destekleniyor, belirsiz.
+1. **Sponsorluk hedefleme (2026-10-16 çözüldü):** İl/ilçe/eczane hedefleme (`CampaignTarget`), `Campaign.target_pharmacies`/`target_scope` ve frekans/kota modelleri (ScheduleRule/DeliveryRule/KioskDayQuota) **kaldırıldı**. Sponsorluklar yalnız kiosk (cihaz) bazlı `KioskSponsorship` ile atanır.
 2. **Kiosk authentication:** **Çözüldü (2026-07-20):** Tek `KioskAppKeyAuthentication` (`Authorization: AppKey` + `X-Kiosk-MAC`) tüm operasyonel `/api/kiosk/v1/` endpoint'lerinde (`apps/kiosk_api/` facade). Dual auth kaldırıldı; bootstrap `app_key` döner.
 3. **Offline outbox pressure:** `reklam_gosterim_outbox` ve `oturum_outbox` tablolarında kapasite kontrolü var ama tam dolunca ne olur? Log kaybı mı, overwrite mi? (Belirsiz)
 4. **Playlist generation job:** `GenerationJob` modeli ve async task yapısı mevcut ama `django_apscheduler` kullanımı ve job durumu takibi net değil. (Belirsiz)
@@ -147,7 +147,7 @@ SuperAdmin → web_panels AbonelikYonetimi → `Sozlesme` (+ opsiyonel `CihazOde
 | **İlk kez proje** | 00-AI-INDEX.md → AI-WORKFLOW.md → AI-RULES.md → ilgili modül dokümanı |
 | **Yeni kategori eklemek** | 00-AI-INDEX.md → 01-backend.md → 03-kiosk-edge-api-node.md → gerçek kod |
 | **Yeni kampanya oluşturmak** | 00-AI-INDEX.md → 08-dooh-advertising.md → 01-backend.md → 02-web-panels.md |
-| **Playlist üretimini düzenlemek** | 08-dooh-advertising.md → 01-backend.md (scheduler.py) → 05-cross-project-flows.md |
+| **Playlist üretimini düzenlemek** | 08-dooh-advertising.md → 01-backend.md (sponsorship_engine.py) → 05-cross-project-flows.md |
 | **Kiosk senkronizasyonunu debug etmek** | 03-kiosk-edge-api-node.md → 01-backend.md → 05-cross-project-flows.md |
 | **QR akışını değiştirmek** | 07-session-and-analytics.md → 04-kiosk-edge-ui.md → 02-web-panels.md |
 | **Session log analizini eklemek** | 07-session-and-analytics.md → 01-backend.md → 02-web-panels.md |

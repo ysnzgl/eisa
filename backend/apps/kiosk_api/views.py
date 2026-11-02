@@ -356,7 +356,6 @@ class KioskSyncView(KioskAPIView):
     def get(self, request):
         kiosk = self.kiosk
         now = timezone.now()
-        eczane_id = kiosk.eczane_id
         ctx = {"request": request}
 
         creatives_qs = (
@@ -366,14 +365,14 @@ class KioskSyncView(KioskAPIView):
                 campaign__status=Campaign.Status.ACTIVE,
                 campaign__start_date__lte=now,
                 campaign__end_date__gte=now,
+                campaign__kiosk_sponsorships__is_active=True,
+                campaign__kiosk_sponsorships__kiosk_id=kiosk.pk,
             )
+            .distinct()
         )
-        creative_payload: list[dict] = []
-        for c in creatives_qs:
-            targets = c.campaign.target_pharmacies.all()
-            if targets.exists() and not targets.filter(pk=eczane_id).exists():
-                continue
-            creative_payload.append(KioskCreativeSyncSerializer(c, context=ctx).data)
+        creative_payload: list[dict] = [
+            KioskCreativeSyncSerializer(c, context=ctx).data for c in creatives_qs
+        ]
 
         idle_contents = IdleScreenContent.objects.filter(aktif=True).select_related("kategori").order_by("-guncellenme_tarihi")
         return Response({

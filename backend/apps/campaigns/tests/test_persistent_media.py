@@ -43,11 +43,21 @@ from django.test import override_settings
 from django.utils import timezone
 
 from apps.campaigns.models import Campaign, Creative, PlayLog
-from apps.campaigns.services.scheduler import generate_for_kiosk
+from apps.campaigns.services.sponsorship_engine import regenerate_kiosk_day
+
+
+def _assign_and_generate(kiosk, camp, target_date, count=1):
+    """Yardimci: kiosk'a sponsorluk ata ve o gun icin playlist uret."""
+    from apps.campaigns.models import KioskSponsorship
+    KioskSponsorship.objects.create(
+        kiosk=kiosk, campaign=camp,
+        window_start_minute=0, window_end_minute=60, count=count,
+    )
+    regenerate_kiosk_day(kiosk.id, target_date)
 
 
 TODAY = _dt.date(2026, 7, 21)
-# TODAY'ın midnight TZ-aware değeri — scheduler noon filtresi için
+# TODAY'ın midnight TZ-aware değeri
 _TODAY_START = None  # lazy, _today_start() ile hesaplanır
 
 
@@ -181,7 +191,7 @@ def test_m02_object_key_saved_in_db(admin_client, active_campaign):
 @pytest.mark.django_db
 def test_m03_same_creative_same_media_url_across_playlists(kiosk):
     """Creative.media_url playlist yeniden üretimlerinde değişmemeli."""
-    from apps.campaigns.models import ScheduleRule, Playlist
+    from apps.campaigns.models import Playlist
 
     base = _today_start()
     camp = Campaign.objects.create(
@@ -192,11 +202,8 @@ def test_m03_same_creative_same_media_url_across_playlists(kiosk):
     )
     stable = _stable_url("ads/stable_m03.mp4")
     creative = Creative.objects.create(campaign=camp, media_url=stable, duration_seconds=15)
-    ScheduleRule.objects.create(
-        campaign=camp, frequency_type=ScheduleRule.FrequencyType.PER_HOUR, frequency_value=1
-    )
+    _assign_and_generate(kiosk, camp, TODAY)
 
-    generate_for_kiosk(kiosk, TODAY)
     items1 = [
         i for i in Playlist.objects.get(kiosk=kiosk, target_date=TODAY, target_hour=0)
         .items.select_related("creative").all()
@@ -205,7 +212,7 @@ def test_m03_same_creative_same_media_url_across_playlists(kiosk):
     assert items1
     url_first = items1[0].creative.media_url
 
-    generate_for_kiosk(kiosk, TODAY)
+    regenerate_kiosk_day(kiosk.id, TODAY)
     items2 = [
         i for i in Playlist.objects.get(kiosk=kiosk, target_date=TODAY, target_hour=0)
         .items.select_related("creative").all()
@@ -395,8 +402,6 @@ def test_m08c_creative_with_playlog_delete_behavior(admin_client, active_campaig
 @pytest.mark.django_db
 def test_m09_kiosk_gets_stable_media_url(kiosk_client, kiosk):
     """Kiosk playlist endpoint'i presigned olmayan media_url döndürmeli."""
-    from apps.campaigns.models import ScheduleRule
-
     base = _today_start()
     camp = Campaign.objects.create(
         name="M09",
@@ -406,11 +411,8 @@ def test_m09_kiosk_gets_stable_media_url(kiosk_client, kiosk):
     )
     stable = _stable_url("ads/stable_m09.mp4")
     Creative.objects.create(campaign=camp, media_url=stable, duration_seconds=15)
-    ScheduleRule.objects.create(
-        campaign=camp, frequency_type=ScheduleRule.FrequencyType.PER_HOUR, frequency_value=1
-    )
+    _assign_and_generate(kiosk, camp, TODAY)
 
-    generate_for_kiosk(kiosk, TODAY)
     r = kiosk_client.get(f"/api/kiosk/v1/playlist/?date={TODAY}")
     assert r.status_code == 200, r.content
 

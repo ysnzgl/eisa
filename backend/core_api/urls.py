@@ -5,7 +5,6 @@ from django.http import HttpResponse, JsonResponse
 from django.urls import include, path
 from django.views import View
 
-from apps.campaigns.urls import inventory_urlpatterns
 from apps.core.views import PublicMediaProxyView
 
 from .auth_views import (
@@ -75,7 +74,6 @@ urlpatterns = [
     path("api/products/", include("apps.products.urls")),
     path("api/analytics/", include("apps.analytics.urls")),
     path("api/campaigns/", include("apps.campaigns.urls")),
-    path("api/inventory/", include((inventory_urlpatterns, "inventory"))),
     path("api/kiosk/v1/", include("apps.kiosk_api.urls")),
     path("api/barkod-logo/", include("apps.barkod_logo.urls")),
     path("api/destek/", include("apps.destek.urls")),

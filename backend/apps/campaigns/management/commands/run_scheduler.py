@@ -6,7 +6,7 @@ APScheduler'ı PostgreSQL jobstore ile başlatır. docker-compose'daki
 Zamanlanmış işler:
   - nightly_generate  : Her gece 01:00 UTC → yarın için tüm kiosklara playlist
   - mark_kiosks_offline: Her 5 dakikada → ping gelmeyen kiosk'ları offline işaretle
-  - drain_queue        : Her 30 saniyede → PENDING GenerationJob'ları işle (PlacementEngineV2)
+  - drain_queue        : Her 30 saniyede → PENDING GenerationJob'ları işle (sponsorship engine)
 """
 from __future__ import annotations
 
@@ -60,7 +60,7 @@ class Command(BaseCommand):
 
         # ─── Job 3: PENDING job queue worker (30 saniye) ──────────────────
         # Invalidation service'in oluşturduğu PENDING job'ları işler.
-        # drain_queue: stale recovery + claim + process (PlacementEngineV2).
+        # drain_queue: stale recovery + claim + process (sponsorship engine).
         scheduler.add_job(
             drain_queue,
             trigger=IntervalTrigger(seconds=30),

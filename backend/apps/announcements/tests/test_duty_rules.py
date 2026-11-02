@@ -18,9 +18,11 @@ def duty_context():
     il=Il.objects.create(ad="Duty İl"); ilce=Ilce.objects.create(ad="Duty İlçe",il=il)
     pharmacy=Eczane.objects.create(ad="Duty Eczane",il=il,ilce=ilce)
     import datetime as _dt
+    from django.utils import timezone as _tz
     from apps.abonelik.models import Sozlesme
     Sozlesme.objects.create(eczane=pharmacy, tur=Sozlesme.Tur.STANDART, sozlesme_tipi_ay=24,
-                            baslangic_tarihi=_dt.date.today(), durum=Sozlesme.Durum.AKTIF)
+                            baslangic_tarihi=_dt.date.today(), durum=Sozlesme.Durum.AKTIF,
+                            eczaci_onay_tarihi=_tz.now())
     user=Kullanici.objects.create_user(username="duty-user",rol="pharmacist",eczane=pharmacy)
     client=APIClient(); client.force_authenticate(user)
     return pharmacy,user,client

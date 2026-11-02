@@ -1,3 +1,5 @@
+> ⚠️ **TARİHSEL / GEÇERSİZ (superseded).** Bu belge eski PlacementEngine V2 / ScheduleRule / DeliveryRule mimarisine aittir. DOOH sistemi 2026-10-16'da cihaz (kiosk) bazlı `KioskSponsorship` modeline yeniden tasarlandı. Güncel ve bağlayıcı tasarım: **docs/ai/08-dooh-advertising.md (2026-10-16)**. Bu dosya yalnız tarihçe için saklanır.
+
 # FAZ 2 TAMAMLANMA RAPORU — PlacementEngine V2 Shadow Mode
 
 **Tarih:** 2026-07-22 04:47 UTC+3  
