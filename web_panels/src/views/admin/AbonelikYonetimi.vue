@@ -19,6 +19,7 @@ import SozlesmeForm from '../../components/shared/SozlesmeForm.vue';
 import EisaLookup from '../../components/shared/EisaLookup.vue';
 import EczanePicker from '../../components/shared/EczanePicker.vue';
 import SozlesmeMatbu from '../../components/shared/SozlesmeMatbu.vue';
+import FaturaIslemModal from '../../components/shared/FaturaIslemModal.vue';
 import { useConfirm } from '../../composables/useConfirm.js';
 import { useExcelExport } from '../../composables/useExcelExport.js';
 
@@ -31,6 +32,18 @@ const sozlesmeler = ref([]);
 const faturalar = ref([]);
 const talepler = ref([]);
 const odemeler = ref([]);
+const odemeOzeti = computed(() => ({
+  gecerli: odemeler.value.filter(o => !o.geri_alinma_tarihi).length,
+  tutar: odemeler.value.filter(o => !o.geri_alinma_tarihi).reduce((sum, o) => sum + Number(o.tutar || 0), 0),
+  geriAlinan: odemeler.value.filter(o => o.geri_alinma_tarihi).length,
+}));
+const eczaneler = ref([]);
+const eczanelerLoading = ref(false);
+const eczaneOptions = computed(() => eczaneler.value.map((p) => ({
+  id: p.id,
+  label: p.name,
+  sub: [p.ilAdi, p.ilceAdi].filter(Boolean).join(' / '),
+})));
 // İptal edilen sözleşmeler varsayılan gizli; tik ile görünür (salt-okunur).
 const showIptal = ref(false);
 const gorunenSozlesmeler = computed(() =>
@@ -66,7 +79,7 @@ const stats = computed(() => {
   const iptal  = sozlesmeler.value.filter((s) => s.durum === 'IPTAL').length;
   const pasif  = sozlesmeler.value.length - aktif - iptal;
   const odenmeyenFatura = faturalar.value.filter((f) => f.durum === 'BEKLIYOR' || f.durum === 'GECIKTI').length;
-  const toplamOdeme = odemeler.value.reduce((s, o) => s + Number(o.tutar || 0), 0);
+  const toplamOdeme = odemeler.value.filter(o => !o.geri_alinma_tarihi).reduce((s, o) => s + Number(o.tutar || 0), 0);
   return {
     toplam: sozlesmeler.value.length,
     aktif,
@@ -101,6 +114,8 @@ function hesaplaAcmaKapamaOrani(abonelikBedeli, acmaKapamaBedeli) {
 }
 
 const fiyatForm = reactive({
+  abonelik_kdv_orani: 0,
+  cihaz_kdv_orani: 0,
   abonelik_bedeli: '3900.00',
   cihaz_kira_bedeli: '0.00',
   acma_kapama_orani: DEFAULT_ACMA_KAPAMA_ORANI.toFixed(2),
@@ -125,7 +140,8 @@ async function loadAktifFiyat() {
   try {
     const { data } = await getAktifFiyat();
     aktifFiyat.value = data || null;
-  } catch { /* sessiz */ }
+    return true;
+  } catch { aktifFiyat.value = null; return false; }
 }
 
 async function openFiyat() {
@@ -137,6 +153,8 @@ async function openFiyat() {
     toast.error(e?.response?.data?.detail || 'Fiyat tanımları yüklenemedi.');
   }
   Object.assign(fiyatForm, {
+    abonelik_kdv_orani: aktifFiyat.value?.abonelik_kdv_orani ?? 0,
+    cihaz_kdv_orani: aktifFiyat.value?.cihaz_kdv_orani ?? 0,
     abonelik_bedeli: aktifFiyat.value?.abonelik_bedeli || '3900.00',
     cihaz_kira_bedeli: aktifFiyat.value?.cihaz_kira_bedeli || '0.00',
     acma_kapama_orani: hesaplaAcmaKapamaOrani(
@@ -163,6 +181,8 @@ async function saveFiyat() {
   fiyatSaving.value = true;
   try {
     await createFiyat({
+      abonelik_kdv_orani: Number(fiyatForm.abonelik_kdv_orani),
+      cihaz_kdv_orani: Number(fiyatForm.cihaz_kdv_orani),
       abonelik_bedeli: String(fiyatForm.abonelik_bedeli),
       cihaz_kira_bedeli: String(fiyatForm.cihaz_kira_bedeli),
       acma_kapama_bedeli: String(fiyatForm.acma_kapama_bedeli),
@@ -226,7 +246,7 @@ const emptySozlesme = () => ({
   demo_gun: 30,
   baslangic_tarihi: '',
   oteleme_ay: 0,
-  aylik_kullanim_bedeli: '',
+  aylik_kullanim_bedeli: aktifFiyat.value?.abonelik_bedeli ?? '3900.00',
   cihaz_durumu: 'SATILIK',
   cihaz_kira_bedeli: '',
   pesin_fiyat: '',
@@ -235,11 +255,13 @@ const emptySozlesme = () => ({
   cihaz_baslangic_tarihi: '',
   durum: 'AKTIF',
   notlar: '',
-  kdv_orani: 0,
+  kdv_orani: aktifFiyat.value?.abonelik_kdv_orani ?? 0,
+  cihaz_kdv_orani: aktifFiyat.value?.cihaz_kdv_orani ?? 0,
   tevkifat_orani: '',
-  iptal_ceza_orani: '',
+  iptal_ceza_orani: aktifFiyat.value?.iptal_ceza_orani ?? '2.00',
   imza_tipi: 'DIJITAL',
   islak_imza_url: '',
+  cihaz_planlari: [],
 });
 const form = reactive(emptySozlesme());
 
@@ -330,6 +352,8 @@ function exportOdemeler() {
     { label: 'Tutar (TL)', fn: (o) => Number(o.tutar || 0) },
     { label: 'Yöntem', key: 'yontem_display' },
     { label: 'Açıklama', key: 'aciklama' },
+    { label: 'Tahsilat Durumu', fn: o => o.geri_alinma_tarihi ? 'Geri alındı' : 'Geçerli' },
+    { label: 'Geri Alma Nedeni', key: 'geri_alma_nedeni' },
   ];
   exportToExcel(odemeler.value, cols, `odemeler-${today()}.xlsx`, 'Ödemeler');
 }
@@ -421,13 +445,16 @@ async function saveKarar() {
 }
 
 async function loadEczaneler() {
+  eczanelerLoading.value = true;
   try {
     eczaneler.value = await getPharmacies();
-  } catch { /* sessiz */ }
+  } catch {
+    toast.error('Eczaneler yüklenemedi. Lütfen tekrar deneyin.');
+  } finally { eczanelerLoading.value = false; }
 }
 
 onMounted(async () => {
-  await Promise.all([loadSozlesmeler(), loadAktifFiyat(), loadFaturalar(), loadOdemeler()]);
+  await Promise.all([loadSozlesmeler(), loadAktifFiyat(), loadFaturalar(), loadOdemeler(), loadEczaneler()]);
 });
 
 function switchTab(t) {
@@ -438,10 +465,17 @@ function switchTab(t) {
 }
 
 // ── Sözleşme CRUD ───────────────────────────────────────────────────────────
-function openCreate() {
+const createLoading = ref(false);
+async function openCreate() {
+  if (createLoading.value) return;
+  createLoading.value = true;
+  const fiyatYuklendi = await loadAktifFiyat();
+  if (!fiyatYuklendi) toast.error('Aktif fiyat yüklenemedi. Sözleşme tutarlarını kontrol edin.');
   editingId.value = null;
   Object.assign(form, emptySozlesme());
   formOpen.value = true;
+  if (!eczaneler.value.length && !eczanelerLoading.value) loadEczaneler();
+  createLoading.value = false;
 }
 
 function openEdit(s) {
@@ -547,6 +581,17 @@ function closeForm() {
   loadSozlesmeler();
 }
 
+const matbuAdminOpen = ref(false);
+const matbuAdminSozlesme = ref(null);
+function openMatbuAdmin(sozlesme) {
+  matbuAdminSozlesme.value = sozlesme;
+  matbuAdminOpen.value = true;
+}
+function closeMatbuAdmin() {
+  matbuAdminOpen.value = false;
+  matbuAdminSozlesme.value = null;
+}
+
 // ── Cihaz planı ─────────────────────────────────────────────────────────────
 function openCihaz(s) {
   cihazSozlesme.value = s;
@@ -624,6 +669,13 @@ async function savePaid() {
 const faturaModalOpen = ref(false);
 const faturaModalLoading = ref(false);
 const faturaHedef = ref(null);
+const faturaIslem = ref(null);
+async function faturaIslemSaved(data) {
+  faturaIslem.value = null;
+  if (faturaHedef.value?.id === data.id) faturaHedef.value = data;
+  toast.success('Fatura işlemi kaydedildi.');
+  await Promise.all([loadFaturalar(), loadOdemeler()]);
+}
 
 async function openFaturaModal(f) {
   faturaModalOpen.value = true;
@@ -795,7 +847,7 @@ function fmtDate(iso) {
 </script>
 
 <template>
-  <div class="eisa-page">
+  <div class="eisa-page ay-billing-page">
     <div class="eisa-page-header">
       <div>
         <p class="eisa-eyebrow">YÖNETİCİ / ABONELİK</p>
@@ -803,14 +855,13 @@ function fmtDate(iso) {
         <p class="eisa-page-subtitle">Sözleşme, cihaz ödeme planı ve fatura yönetimi.</p>
       </div>
       <div class="eisa-header-actions">
-        <button class="eisa-btn eisa-btn-ghost" title="Aylık abonelik ve cihaz kira bedeli tanımları" @click="openFiyat">
-          <i class="fa-solid fa-tags"></i> Fiyat Tanımları
+        <button class="eisa-icon-btn ay-icon-action" title="Fiyat tanımlarını yönet" aria-label="Fiyat tanımlarını yönet" @click="openFiyat">
+          <i class="fa-solid fa-tags" aria-hidden="true"></i>
         </button>
-        <button class="eisa-btn eisa-btn-ghost" :disabled="billingRunning" title="Bu dönemin faturalarını şimdi üret" @click="runFaturalandir">
-          <i :class="billingRunning ? 'fa-solid fa-circle-notch fa-spin' : 'fa-solid fa-file-invoice-dollar'"></i>
-          {{ billingRunning ? 'Faturalandırılıyor…' : 'Faturalandır' }}
+        <button class="eisa-icon-btn ay-icon-action" :disabled="billingRunning" :title="billingRunning ? 'Faturalar oluşturuluyor…' : 'Bu dönemin faturalarını oluştur'" :aria-label="billingRunning ? 'Faturalar oluşturuluyor' : 'Bu dönemin faturalarını oluştur'" @click="runFaturalandir">
+          <i :class="billingRunning ? 'fa-solid fa-circle-notch fa-spin' : 'fa-solid fa-file-invoice-dollar'" aria-hidden="true"></i>
         </button>
-        <button v-if="tab === 'sozlesmeler'" class="eisa-btn eisa-btn-cta" @click="openCreate">
+        <button v-if="tab === 'sozlesmeler'" class="eisa-btn eisa-btn-cta" :disabled="createLoading" @click="openCreate">
           <i class="fa-solid fa-plus"></i> Yeni Sözleşme
         </button>
       </div>
@@ -837,7 +888,7 @@ function fmtDate(iso) {
       </div>
       <!-- Bu ay grubu -->
       <div class="kpi-group">
-        <p class="kpi-group-label"><i class="fa-solid fa-calendar-day"></i> Bu Ay</p>
+        <p class="kpi-group-label"><i class="fa-solid fa-calendar-day"></i> Seçili Dönem</p>
         <div class="kpi-group-cards">
           <button class="eisa-stat-card eisa-stat-card--clickable" type="button"
             @click="switchTab('odemeler')">
@@ -919,22 +970,23 @@ function fmtDate(iso) {
               </td>
               <td><span class="eisa-pill" :class="durumPill(s)">{{ durumLabel(s) }}</span></td>
               <td class="cell-muted" style="font-size:.75rem;">
-                <span v-if="s.eczaci_onay_tarihi" title="Eczacı onayladı">✅</span>
-                <span v-else title="Eczacı onayı bekleniyor" style="color:#D97706;">⏳</span>
+                <span v-if="s.imza_tipi === 'ISLAK'" class="eisa-pill eisa-pill-info" title="Islak imzalı sözleşme; eczacıdan dijital onay istenmez"><i class="fa-solid fa-signature" aria-hidden="true"></i> Islak imzalı</span>
+                <span v-else-if="s.eczaci_onay_tarihi" class="eisa-pill eisa-pill-success" title="Eczacı dijital olarak onayladı"><i class="fa-solid fa-check" aria-hidden="true"></i> Onaylandı</span>
+                <span v-else class="eisa-pill eisa-pill-warning" title="Eczacının dijital onayı bekleniyor"><i class="fa-regular fa-clock" aria-hidden="true"></i> Onay bekliyor</span>
               </td>
-              <td class="cell-actions">
-                <button class="eisa-icon-btn" title="Düzenle" :disabled="s.durum === 'IPTAL'" @click="openEdit(s)"><i class="fa-solid fa-pen"></i></button>
-                <button class="eisa-icon-btn" title="Sözleşmeyi Görüntle" @click="openMatbuAdmin(s)"><i class="fa-solid fa-file-contract"></i></button>
-                <button class="eisa-icon-btn" title="Uzat" :disabled="s.durum === 'IPTAL'" @click="openUzat(s)"><i class="fa-solid fa-calendar-plus"></i></button>
-                <button v-if="s.durum !== 'IPTAL'" class="eisa-icon-btn" title="İptal Et" @click="openIptal(s)"><i class="fa-solid fa-ban"></i></button>
-                <button class="eisa-icon-btn" title="Geçmiş" @click="openGecmis(s)"><i class="fa-solid fa-clock-rotate-left"></i></button>
-              </td>
+              <td class="cell-actions"><div class="ay-row-actions">
+                <button class="eisa-icon-btn ay-icon-action" title="Düzenle" aria-label="Düzenle" :disabled="s.durum === 'IPTAL'" @click="openEdit(s)"><i class="fa-solid fa-pen"></i></button>
+                <button class="eisa-icon-btn ay-icon-action" title="Sözleşmeyi Görüntüle" aria-label="Sözleşmeyi Görüntüle" @click="openMatbuAdmin(s)"><i class="fa-solid fa-file-contract" aria-hidden="true"></i></button>
+                <button class="eisa-icon-btn ay-icon-action" title="Uzat" aria-label="Uzat" :disabled="s.durum === 'IPTAL'" @click="openUzat(s)"><i class="fa-solid fa-calendar-plus"></i></button>
+                <button v-if="s.durum !== 'IPTAL'" class="eisa-icon-btn ay-icon-action" title="İptal Et" aria-label="İptal Et" @click="openIptal(s)"><i class="fa-solid fa-ban"></i></button>
+                <button class="eisa-icon-btn ay-icon-action" title="Geçmiş" aria-label="Geçmiş" @click="openGecmis(s)"><i class="fa-solid fa-clock-rotate-left"></i></button>
+              </div></td>
             </tr>
             <tr v-if="!sozlesmeler.length && !loading">
-              <td colspan="11" class="empty-row">Henüz sözleşme yok.</td>
+              <td colspan="12" class="empty-row">Henüz sözleşme yok.</td>
             </tr>
             <tr v-else-if="!gorunenSozlesmeler.length && !loading">
-              <td colspan="11" class="empty-row">Görüntülenecek aktif sözleşme yok. İptal edilenleri görmek için filtreyi açın.</td>
+              <td colspan="12" class="empty-row">Görüntülenecek aktif sözleşme yok. İptal edilenleri görmek için filtreyi açın.</td>
             </tr>
           </tbody>
         </table>
@@ -943,6 +995,9 @@ function fmtDate(iso) {
 
     <!-- ── Faturalar ───────────────────────────────────────────────── -->
     <section v-else-if="tab === 'faturalar'" class="eisa-panel">
+      <div class="ay-section-head">
+        <div class="ay-section-title"><span class="ay-section-icon"><i class="fa-solid fa-file-invoice-dollar" aria-hidden="true"></i></span><div><h2>Fatura Kayıtları <span class="ay-record-count">{{ faturalar.length }}</span></h2><p>Dönem faturaları ve tahsilat işlemleri</p></div></div>
+      </div>
       <div class="ay-filter-bar">
         <div class="ay-filter-fields">
           <div class="ay-filter-field ay-filter-field--lookup">
@@ -963,10 +1018,10 @@ function fmtDate(iso) {
           </label>
         </div>
         <div class="ay-filter-actions">
-          <button class="ay-filter-btn" @click="loadFaturalar">
-            <i class="fa-solid fa-magnifying-glass"></i> Uygula
+          <button class="eisa-icon-btn ay-icon-action ay-icon-action--primary" title="Fatura filtrelerini uygula" aria-label="Fatura filtrelerini uygula" @click="loadFaturalar">
+            <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
           </button>
-          <button class="ay-filter-reset" title="Temizle" @click="faturaFilters.eczane=null;faturaFilters.tarih_baslangic='';faturaFilters.tarih_bitis='';faturaFilters.unpaid_only=false;loadFaturalar()">
+          <button class="eisa-icon-btn ay-icon-action" title="Fatura filtrelerini temizle" aria-label="Fatura filtrelerini temizle" @click="faturaFilters.eczane=null;faturaFilters.tarih_baslangic='';faturaFilters.tarih_bitis='';faturaFilters.unpaid_only=false;loadFaturalar()">
             <i class="fa-solid fa-xmark"></i>
           </button>
         </div>
@@ -976,27 +1031,36 @@ function fmtDate(iso) {
           <thead>
             <tr>
               <th>Eczane</th><th>Tip</th><th>Dönem</th><th>Taksit</th>
-              <th>Tutar</th><th>Vade</th><th>Durum</th><th></th>
+              <th class="ay-money">Tutar</th><th>Vade</th><th>Durum</th><th class="ay-actions-heading">İşlemler</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="f in faturalar" :key="f.id">
-              <td><strong>{{ f.eczane_ad }}</strong></td>
+              <td><strong>{{ f.eczane_ad }}</strong><span class="ay-cell-sub">Fatura #{{ f.id }}</span></td>
               <td>{{ f.tip_display }}</td>
               <td>{{ f.donem }}</td>
               <td>{{ f.taksit_no ?? '—' }}</td>
-              <td>{{ fmtTL(f.tutar) }}</td>
+              <td class="ay-money"><strong>{{ fmtTL(f.tutar) }}</strong></td>
               <td class="cell-muted">{{ f.vade_tarihi }}</td>
               <td><span class="eisa-pill" :class="PILL[f.durum]">{{ f.durum_display }}</span></td>
-              <td class="cell-actions">
-                <button class="eisa-btn eisa-btn-ghost eisa-btn--sm" @click="openFaturaModal(f)">
-                  <i class="fa-solid fa-file-lines"></i> Görüntüle
+              <td class="cell-actions"><div class="ay-row-actions">
+                <button class="eisa-icon-btn ay-icon-action" title="Faturayı görüntüle" aria-label="Faturayı görüntüle" @click="openFaturaModal(f)">
+                  <i class="fa-solid fa-file-lines" aria-hidden="true"></i>
                 </button>
                 <button v-if="f.durum === 'BEKLIYOR' || f.durum === 'GECIKTI'"
-                        class="eisa-btn eisa-btn-success eisa-btn--sm" @click="openOdemeModal(f)">
-                  <i class="fa-solid fa-check"></i> Ödendi
+                        class="eisa-icon-btn ay-icon-action ay-icon-action--success" title="Manuel tahsilat kaydet" aria-label="Manuel tahsilat kaydet" @click="openOdemeModal(f)">
+                  <i class="fa-solid fa-check" aria-hidden="true"></i>
                 </button>
-              </td>
+                <button class="eisa-icon-btn ay-icon-action ay-icon-action--info" title="Faturayı yeniden oluştur" aria-label="Faturayı yeniden oluştur" @click="faturaIslem = { fatura: f, action: 'yeniden-olustur' }">
+                  <i class="fa-solid fa-rotate" aria-hidden="true"></i>
+                </button>
+                <button v-if="f.durum !== 'IPTAL'" class="eisa-icon-btn ay-icon-action ay-icon-action--danger" title="Faturayı iptal et" aria-label="Faturayı iptal et" @click="faturaIslem = { fatura: f, action: 'iptal' }">
+                  <i class="fa-solid fa-ban" aria-hidden="true"></i>
+                </button>
+                <button v-if="f.aktif_tahsilat_var" class="eisa-icon-btn ay-icon-action ay-icon-action--warning" title="Tahsilat kaydını geri al" aria-label="Tahsilat kaydını geri al" @click="faturaIslem = { fatura: f, action: 'odemeyi-geri-al' }">
+                  <i class="fa-solid fa-rotate-left" aria-hidden="true"></i>
+                </button>
+              </div></td>
             </tr>
             <tr v-if="!faturalar.length && !loading">
               <td colspan="8" class="empty-row">Fatura bulunamadı.</td>
@@ -1025,16 +1089,16 @@ function fmtDate(iso) {
               <td class="cell-muted">{{ t.aciklama || t.red_nedeni || '—' }}</td>
               <td><span class="eisa-pill" :class="PILL[t.durum]">{{ t.durum_display }}</span></td>
               <td class="cell-muted">{{ fmtDate(t.olusturulma_tarihi) }}</td>
-              <td class="cell-actions">
+              <td class="cell-actions"><div class="ay-row-actions">
                 <template v-if="t.durum === 'BEKLIYOR'">
-                  <button class="eisa-btn eisa-btn-success eisa-btn--sm" @click="karar(t, true)">
-                    <i class="fa-solid fa-check"></i> Onayla
+                  <button class="eisa-icon-btn ay-icon-action ay-icon-action--success" title="Talebi onayla" aria-label="Talebi onayla" @click="karar(t, true)">
+                    <i class="fa-solid fa-check" aria-hidden="true"></i>
                   </button>
-                  <button class="eisa-btn eisa-btn-danger eisa-btn--sm" @click="karar(t, false)">
-                    <i class="fa-solid fa-xmark"></i> Reddet
+                  <button class="eisa-icon-btn ay-icon-action ay-icon-action--danger" title="Talebi reddet" aria-label="Talebi reddet" @click="karar(t, false)">
+                    <i class="fa-solid fa-xmark" aria-hidden="true"></i>
                   </button>
                 </template>
-              </td>
+              </div></td>
             </tr>
             <tr v-if="!talepler.length && !loading">
               <td colspan="7" class="empty-row">Talep bulunamadı.</td>
@@ -1046,6 +1110,14 @@ function fmtDate(iso) {
 
     <!-- ── Ödemeler (tarihçe) ──────────────────────────────────────── -->
     <section v-else class="eisa-panel">
+      <div class="ay-section-head">
+        <div class="ay-section-title"><span class="ay-section-icon ay-section-icon--success"><i class="fa-solid fa-receipt" aria-hidden="true"></i></span><div><h2>Tahsilat Geçmişi <span class="ay-record-count">{{ odemeler.length }}</span></h2><p>Geçerli ve geri alınmış ödeme kayıtları</p></div></div>
+      </div>
+      <div class="ay-payment-summary">
+        <div><span class="ay-summary-label">Geçerli tahsilat</span><strong class="ay-summary-amount">{{ fmtTL(odemeOzeti.tutar) }}</strong><span class="ay-cell-sub">Seçili filtrelerdeki toplam</span></div>
+        <div><span class="ay-summary-label">Geçerli ödeme</span><strong>{{ odemeOzeti.gecerli }} <small>kayıt</small></strong></div>
+        <div><span class="ay-summary-label">Geri alınan</span><strong>{{ odemeOzeti.geriAlinan }} <small>kayıt</small></strong></div>
+      </div>
       <div class="ay-filter-bar">
         <div class="ay-filter-fields">
           <div class="ay-filter-field ay-filter-field--lookup">
@@ -1062,32 +1134,34 @@ function fmtDate(iso) {
           </div>
         </div>
         <div class="ay-filter-actions">
-          <button class="ay-filter-btn" @click="loadOdemeler">
-            <i class="fa-solid fa-magnifying-glass"></i> Uygula
+          <button class="eisa-icon-btn ay-icon-action ay-icon-action--primary" title="Ödeme filtrelerini uygula" aria-label="Ödeme filtrelerini uygula" @click="loadOdemeler">
+            <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
           </button>
-          <button class="ay-filter-reset" title="Temizle" @click="odemeFilters.eczane=null;odemeFilters.tarih_baslangic='';odemeFilters.tarih_bitis='';loadOdemeler()">
+          <button class="eisa-icon-btn ay-icon-action" title="Ödeme filtrelerini temizle" aria-label="Ödeme filtrelerini temizle" @click="odemeFilters.eczane=null;odemeFilters.tarih_baslangic='';odemeFilters.tarih_bitis='';loadOdemeler()">
             <i class="fa-solid fa-xmark"></i>
           </button>
-          <button class="ay-filter-export" :disabled="exporting || !odemeler.length" @click="exportOdemeler">
-            <i class="fa-solid fa-file-excel"></i> Excel
+          <button class="eisa-icon-btn ay-icon-action ay-icon-action--success" title="Ödemeleri Excel'e aktar" aria-label="Ödemeleri Excel'e aktar" :disabled="exporting || !odemeler.length" @click="exportOdemeler">
+            <i class="fa-solid fa-file-excel" aria-hidden="true"></i>
           </button>
         </div>
       </div>
       <div class="eisa-table-wrap">
         <table class="eisa-table">
           <thead>
-            <tr><th>Tarih</th><th>Eczane</th><th>Kalem</th><th>Tutar</th><th>Yöntem</th></tr>
+            <tr><th>İşlem / Tarih</th><th>Eczane</th><th>Fatura</th><th class="ay-money">Tutar</th><th>Yöntem</th><th>Durum</th><th class="ay-actions-heading">İşlemler</th></tr>
           </thead>
           <tbody>
             <tr v-for="o in odemeler" :key="o.id">
-              <td class="cell-muted">{{ fmtDate(o.odeme_tarihi) }}</td>
+              <td><strong class="ay-payment-ref">#{{ o.id }}</strong><span class="ay-cell-sub ay-no-wrap">{{ fmtDate(o.odeme_tarihi) }}</span></td>
               <td><strong>{{ o.eczane_ad }}</strong></td>
-              <td>{{ o.fatura_tip }} · {{ o.fatura_donem }}</td>
-              <td>{{ fmtTL(o.tutar) }}</td>
-              <td>{{ o.yontem_display }}</td>
+              <td><span>{{ o.fatura_tip }}</span><span class="ay-cell-sub">{{ o.fatura_donem }} · #{{ o.fatura }}</span></td>
+              <td class="ay-money" :class="{ 'ay-money--reversed': o.geri_alinma_tarihi }"><strong>{{ fmtTL(o.tutar) }}</strong></td>
+              <td><span class="ay-method"><i :class="o.yontem === 'KREDI_KARTI' ? 'fa-regular fa-credit-card' : o.yontem === 'EFT_HAVALE' ? 'fa-solid fa-building-columns' : 'fa-solid fa-money-bill-transfer'" aria-hidden="true"></i>{{ o.yontem_display }}</span></td>
+              <td><span class="eisa-pill" :class="o.geri_alinma_tarihi ? 'eisa-pill-muted' : 'eisa-pill-success'"><i :class="o.geri_alinma_tarihi ? 'fa-solid fa-rotate-left' : 'fa-solid fa-check'" aria-hidden="true"></i>{{ o.geri_alinma_tarihi ? 'Geri alındı' : 'Geçerli' }}</span><span v-if="o.geri_alinma_tarihi" class="ay-cell-sub ay-reversal-reason">{{ o.geri_alma_nedeni }}</span></td>
+              <td class="cell-actions"><div class="ay-row-actions"><button class="eisa-icon-btn ay-icon-action" title="İlgili faturayı görüntüle" aria-label="İlgili faturayı görüntüle" @click="openFaturaModal({ id: o.fatura })"><i class="fa-solid fa-file-invoice" aria-hidden="true"></i></button></div></td>
             </tr>
             <tr v-if="!odemeler.length && !loading">
-              <td colspan="5" class="empty-row">Ödeme kaydı bulunamadı.</td>
+              <td colspan="7" class="empty-row"><i class="fa-solid fa-receipt ay-empty-icon" aria-hidden="true"></i>Seçili filtrelerde ödeme kaydı bulunamadı.</td>
             </tr>
           </tbody>
         </table>
@@ -1217,6 +1291,15 @@ function fmtDate(iso) {
                 <span>Toplam</span>
                 <strong>{{ fmtTL(faturaHedef.tutar) }}</strong>
               </div>
+              <p v-if="faturaHedef.iptal_nedeni"><strong>İptal nedeni:</strong> {{ faturaHedef.iptal_nedeni }}</p>
+              <section v-if="faturaHedef.islemler?.length" aria-label="Fatura işlem geçmişi">
+                <h4>İşlem Geçmişi</h4>
+                <div v-for="islem in faturaHedef.islemler" :key="islem.id" class="eisa-reset-info">
+                  <strong>{{ islem.islem_display }}</strong> · {{ fmtDate(islem.olusturulma_tarihi) }} · {{ islem.yapan }}
+                  <p>{{ islem.neden }}</p>
+                  <p>{{ fmtTL(islem.onceki.tutar) }} → {{ fmtTL(islem.sonraki.tutar) }} · {{ islem.onceki.durum }} → {{ islem.sonraki.durum }}</p>
+                </div>
+              </section>
             </div>
           </div>
           <div class="eisa-modal-footer">
@@ -1225,6 +1308,8 @@ function fmtDate(iso) {
         </div>
       </div>
     </Teleport>
+
+    <FaturaIslemModal v-if="faturaIslem" :fatura="faturaIslem.fatura" :action="faturaIslem.action" @close="faturaIslem = null" @saved="faturaIslemSaved" />
 
     <!-- ── Fiyat tanımları modal ─────────────────────────────────── -->
     <Teleport to="body">
@@ -1246,6 +1331,14 @@ function fmtDate(iso) {
               <label class="eisa-form-row">
                 <span class="eisa-field-label">Aylık Cihaz Kira Bedeli (TL)</span>
                 <input type="number" step="0.01" min="0" v-model="fiyatForm.cihaz_kira_bedeli" class="eisa-field" />
+              </label>
+              <label class="eisa-form-row">
+                <span class="eisa-field-label">Abonelik KDV Oranı</span>
+                <select v-model.number="fiyatForm.abonelik_kdv_orani" class="eisa-field"><option v-for="oran in [0, 1, 10, 20]" :key="oran" :value="oran">%{{ oran }}</option></select>
+              </label>
+              <label class="eisa-form-row">
+                <span class="eisa-field-label">Cihaz KDV Oranı</span>
+                <select v-model.number="fiyatForm.cihaz_kdv_orani" class="eisa-field"><option v-for="oran in [0, 1, 10, 20]" :key="oran" :value="oran">%{{ oran }}</option></select>
               </label>
               <label class="eisa-form-row">
                 <span class="eisa-field-label">Açma/Kapama Oranı (Aboneliğe göre %)</span>
@@ -1281,22 +1374,24 @@ function fmtDate(iso) {
             <h4 class="eisa-field-label" style="margin-top:1rem;">Tarihçe</h4>
             <div class="eisa-table-wrap">
               <table class="eisa-table">
-                <thead><tr><th>Geçerlilik</th><th>Abonelik</th><th>Cihaz Kira</th><th>Aç/Kapa</th><th>Ceza Çarpanı</th><th>Açıklama</th><th></th></tr></thead>
+                <thead><tr><th>Geçerlilik</th><th>Abonelik</th><th>Abonelik KDV</th><th>Cihaz Kira</th><th>Cihaz KDV</th><th>Aç/Kapa</th><th>Ceza Çarpanı</th><th>Açıklama</th><th></th></tr></thead>
                 <tbody>
                   <tr v-for="fp in fiyatlar" :key="fp.id">
                     <td class="cell-muted">{{ fp.gecerlilik_baslangic }}</td>
                     <td>{{ fmtTL(fp.abonelik_bedeli) }}</td>
+                    <td>%{{ fp.abonelik_kdv_orani ?? 0 }}</td>
                     <td>{{ fmtTL(fp.cihaz_kira_bedeli) }}</td>
+                    <td>%{{ fp.cihaz_kdv_orani ?? 0 }}</td>
                     <td>{{ fmtTL(fp.acma_kapama_bedeli) }}</td>
                     <td>×{{ fp.iptal_ceza_orani }}</td>
                     <td class="cell-muted">{{ fp.aciklama || '—' }}</td>
-                    <td class="cell-actions">
-                      <button class="eisa-icon-btn" title="Sil" @click="deleteFiyatItem(fp)">
+                    <td class="cell-actions"><div class="ay-row-actions">
+                      <button class="eisa-icon-btn ay-icon-action ay-icon-action--danger" title="Sil" aria-label="Sil" @click="deleteFiyatItem(fp)">
                         <i class="fa-solid fa-trash"></i>
                       </button>
-                    </td>
+                    </div></td>
                   </tr>
-                  <tr v-if="!fiyatlar.length"><td colspan="7" class="empty-row">Henüz fiyat tanımı yok.</td></tr>
+                  <tr v-if="!fiyatlar.length"><td colspan="9" class="empty-row">Henüz fiyat tanımı yok.</td></tr>
                 </tbody>
               </table>
             </div>
@@ -1367,6 +1462,7 @@ function fmtDate(iso) {
                 <EisaLookup
                   v-model="form.eczane"
                   :options="eczaneOptions"
+                  :loading="eczanelerLoading"
                   placeholder="Eczane ara…"
                   :disabled="!!editingId"
                 />
@@ -1463,20 +1559,20 @@ function fmtDate(iso) {
 
     <!-- ── Admin matbu sözleşme görüntüle ──────────────────────── -->
     <Teleport to="body">
-      <div v-if="matbuAdminOpen" class="eisa-modal-backdrop" @click.self="matbuAdminOpen = false">
+      <div v-if="matbuAdminOpen" class="eisa-modal-backdrop" @click.self="closeMatbuAdmin">
         <div class="eisa-modal eisa-modal--medium" role="dialog" aria-modal="true">
           <div class="eisa-modal-header">
             <div>
               <h3 class="eisa-modal-title">Sözleşme Belgesi</h3>
               <p class="eisa-reset-info">{{ matbuAdminSozlesme?.eczane_ad }}</p>
             </div>
-            <button class="eisa-modal-close" @click="matbuAdminOpen = false"><i class="fa-solid fa-xmark"></i></button>
+            <button class="eisa-modal-close" title="Kapat" @click="closeMatbuAdmin"><i class="fa-solid fa-xmark"></i></button>
           </div>
           <div class="eisa-modal-body">
             <SozlesmeMatbu v-if="matbuAdminSozlesme" :sozlesme="matbuAdminSozlesme" />
           </div>
           <div class="eisa-modal-footer">
-            <button class="eisa-btn eisa-btn-ghost" @click="matbuAdminOpen = false">Kapat</button>
+            <button class="eisa-btn eisa-btn-ghost" @click="closeMatbuAdmin">Kapat</button>
           </div>
         </div>
       </div>
@@ -1644,6 +1740,51 @@ function fmtDate(iso) {
 </template>
 
 <style scoped>
+/* Fatura ve ödeme listeleri */
+.ay-section-head { padding:1.25rem 1.4rem; border-bottom:1px solid var(--border-default); }
+.ay-section-title { display:flex; align-items:center; gap:.85rem; }
+.ay-section-title h2 { display:flex; align-items:center; gap:.6rem; margin:0; font-size:1rem; font-weight:700; color:var(--text-primary); }
+.ay-section-title p { margin:.25rem 0 0; font-size:.78rem; color:var(--text-secondary); }
+.ay-section-icon { display:grid; place-items:center; width:42px; height:42px; flex-shrink:0; border-radius:12px; background:var(--eisa-info-soft); color:var(--eisa-info); }
+.ay-section-icon--success { background:#E8F6F3; color:var(--eisa-turquoise); }
+.ay-record-count { padding:.15rem .5rem; border-radius:6px; background:var(--surface-muted); color:var(--text-secondary); font-size:.7rem; font-weight:600; font-variant-numeric:tabular-nums; }
+.ay-payment-summary { display:grid; grid-template-columns:1.6fr 1fr 1fr; margin:1.25rem 1.4rem; border:1px solid var(--border-default); border-radius:14px; background:linear-gradient(110deg, #F0FAF7, #FFFFFF 65%); }
+.ay-payment-summary > div { padding:1.1rem 1.25rem; display:flex; flex-direction:column; justify-content:center; gap:.35rem; min-width:0; }
+.ay-payment-summary > div + div { border-left:1px solid var(--border-default); }
+.ay-summary-label { font-size:.74rem; font-weight:600; color:var(--text-secondary); }
+.ay-payment-summary strong { font-size:1.5rem; line-height:1.3; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.ay-payment-summary .ay-summary-amount { color:var(--eisa-turquoise); }
+.ay-payment-summary small { font-size:.75rem; color:var(--text-secondary); font-weight:500; }
+.ay-cell-sub { display:block; margin-top:.3rem; font-size:.72rem; color:#6B7280; font-weight:400; line-height:1.5; }
+.ay-no-wrap { white-space:nowrap; }
+.ay-payment-ref { font-family:'DM Mono', monospace; font-size:.8rem; color:var(--text-secondary); }
+.ay-billing-page .eisa-table th.ay-money, .ay-billing-page .eisa-table td.ay-money { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.ay-money--reversed strong { color:#6B7280; text-decoration:line-through; text-decoration-color:#CBD5E1; }
+.ay-method { display:inline-flex; align-items:center; gap:.5rem; white-space:nowrap; font-size:.78rem; color:var(--text-secondary); }
+.ay-method i { color:#7B8798; width:1rem; text-align:center; }
+.ay-reversal-reason { max-width:240px; overflow-wrap:anywhere; }
+.ay-billing-page .eisa-table td { vertical-align:middle; }
+.eisa-table td.cell-actions { display:table-cell; text-align:right; }
+.ay-row-actions { display:flex; align-items:center; justify-content:flex-end; gap:.4rem; min-height:38px; white-space:nowrap; }
+.ay-actions-heading { text-align:right !important; }
+.ay-icon-action { width:36px; height:36px; border-radius:10px; box-shadow:0 1px 2px rgba(17,24,39,.03); }
+.ay-icon-action i { width:1.1em; text-align:center; }
+.ay-icon-action:hover:not(:disabled) { transform:translateY(-1px); }
+.ay-icon-action:focus-visible, .ay-billing-page .eisa-icon-btn:focus-visible { outline:2px solid var(--border-focus); outline-offset:3px; }
+.ay-icon-action:disabled { opacity:.4; cursor:not-allowed; }
+.ay-icon-action--primary { background:var(--eisa-red); border-color:var(--eisa-red); color:#fff; }
+.ay-icon-action--primary:hover:not(:disabled) { background:#8F1017; border-color:#8F1017; color:#fff; }
+.ay-icon-action--success { color:#0F766E; border-color:#C4E8DD; background:#F0FAF7; }
+.ay-icon-action--success:hover:not(:disabled) { background:#DCF4EA; color:#075E50; border-color:#8FD4BB; }
+.ay-icon-action--info { color:var(--eisa-info); border-color:#DDDDF7; background:#F5F5FF; }
+.ay-icon-action--info:hover:not(:disabled) { background:#E9E8FF; color:#3730A3; border-color:#BDB7F5; }
+.ay-icon-action--danger { color:#B91C1C; border-color:#F4D1D5; background:#FFF5F5; }
+.ay-icon-action--danger:hover:not(:disabled) { background:#FEE2E2; color:#991B1B; border-color:#FCA5A5; }
+.ay-icon-action--warning { color:#A16207; border-color:#EFDEB7; background:#FFFBEB; }
+.ay-icon-action--warning:hover:not(:disabled) { background:#FEF3C7; color:#854D0E; border-color:#FCD34D; }
+.ay-empty-icon { display:block; font-size:1.75rem; color:#CBD5E1; margin-bottom:.75rem; }
+.ay-billing-page .eisa-header-actions { align-items:center; }
+
 /* ── KPI grid ──────────────────────────────────────────────────── */
 .kpi-grid {
   display: flex;
@@ -2083,5 +2224,20 @@ function fmtDate(iso) {
 
 .iptal-toggle-text {
   line-height: 1;
+}
+
+@media (max-width: 768px) {
+  .ay-section-head { padding:1rem; }
+  .ay-payment-summary { margin:1rem; grid-template-columns:1fr 1fr; }
+  .ay-payment-summary > div:first-child { grid-column:1 / -1; border-bottom:1px solid var(--border-default); }
+  .ay-payment-summary > div:nth-child(2) { border-left:0; }
+  .ay-payment-summary > div { padding:.9rem 1rem; }
+  .ay-billing-page .eisa-header-actions > .ay-icon-action { flex:0 0 38px; }
+  .ay-icon-action { width:38px; height:38px; }
+  .ay-tab-bar { width: 100%; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .ay-filter-fields, .ay-filter-field { width: 100%; }
+  .ay-filter-select, .ay-filter-input, .ay-filter-field--lookup { width: 100%; min-width: 0; }
+  .invoice-meta-grid { grid-template-columns: 1fr; }
+  .invoice-table { display: block; overflow-x: auto; }
 }
 </style>

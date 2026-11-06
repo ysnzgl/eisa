@@ -526,4 +526,17 @@ function kioskHedefOzeti(logo) {
 .btn-success { background: #10b981; color: #fff; }
 .btn-success:hover { background: #059669; }
 .btn-sm { padding: .3rem .65rem; font-size: .8rem; }
+
+@media (max-width: 768px) {
+  .page-shell { padding: 1rem .85rem; }
+  .page-header { flex-wrap: wrap; gap: .75rem; }
+  .data-table { display: block; overflow-x: auto; }
+  .modal-overlay { padding: .5rem; }
+  .modal-box { width: 100%; padding: 1rem; max-height: 92dvh; }
+  .form-row { grid-template-columns: 1fr; gap: 0; }
+  .target-row { flex-direction: column; align-items: stretch; }
+  .target-label { width: auto; }
+  .modal-actions { flex-wrap: wrap; }
+  .form-control { font-size: 16px; }
+}
 </style>

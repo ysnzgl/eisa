@@ -20,8 +20,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 //   - statusFn()        → fetchWifiStatus()'ü temsil eder; { connected, ssid } döner
 //   - onSuccess()       → dispatch('connected') karşılığı
 //   - onError(msg)      → connectError = msg karşılığı
-//   - RECONCILE_ATTEMPTS: 3 (sonsuz döngü yok)
-//   - delay: testlerde 0 ms (gerçek kodda 2000 ms)
+//   - RECONCILE_ATTEMPTS: gerçek kodda 10 (sonsuz döngü yok)
+//   - delay: testlerde 0 ms (gerçek kodda 3000 ms)
 
 async function runReconcile({
   targetSsid,

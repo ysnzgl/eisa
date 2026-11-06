@@ -29,6 +29,7 @@ import { getIller, getIlceler } from '../../services/lookups';
 import EisaDeleteConfirm from '../../components/shared/EisaDeleteConfirm.vue';
 import EisaLookup from '../../components/shared/EisaLookup.vue';
 import SozlesmeForm from '../../components/shared/SozlesmeForm.vue';
+import { getAktifFiyat } from '../../services/abonelik';
 import { useConfirm } from '../../composables/useConfirm.js';
 
 const { confirm } = useConfirm();
@@ -74,6 +75,7 @@ const EMPTY_CONTRACT = () => ({
   tur: 'STANDART', sozlesme_tipi_ay: 24, demo_gun: 30,
   baslangic_tarihi: new Date().toISOString().slice(0, 10),
   oteleme_ay: 0, aylik_kullanim_bedeli: '3900.00', durum: 'AKTIF', notlar: '',
+  kdv_orani: 0, cihaz_kdv_orani: 0, iptal_ceza_orani: '2.00',
 });
 const contractForm = ref(EMPTY_CONTRACT());
 
@@ -89,6 +91,8 @@ function buildSozlesmePayload() {
     sozlesme_tipi_ay: Number(c.sozlesme_tipi_ay),
     oteleme_ay: Number(c.oteleme_ay),
     aylik_kullanim_bedeli: c.aylik_kullanim_bedeli,
+    kdv_orani: c.kdv_orani,
+    iptal_ceza_orani: c.iptal_ceza_orani,
   };
 }
 
@@ -394,9 +398,22 @@ onBeforeUnmount(() => {
 });
 
 // ─── Eczane CRUD Modal ────────────────────────────────────────────────────────
-function openAdd() {
+const contractDefaultsLoading = ref(false);
+async function openAdd() {
+  if (contractDefaultsLoading.value) return;
+  contractDefaultsLoading.value = true;
   form.value      = EMPTY_FORM();
   contractForm.value = EMPTY_CONTRACT();
+  try {
+    const { data } = await getAktifFiyat();
+    if (data) Object.assign(contractForm.value, {
+      aylik_kullanim_bedeli: data.abonelik_bedeli,
+      kdv_orani: data.abonelik_kdv_orani ?? 0,
+      cihaz_kdv_orani: data.cihaz_kdv_orani ?? 0,
+      iptal_ceza_orani: data.iptal_ceza_orani ?? '2.00',
+    });
+  } catch { toast.error('Aktif fiyat yüklenemedi. Sözleşme tutarlarını kontrol edin.'); }
+  finally { contractDefaultsLoading.value = false; }
   formError.value = '';
   modalMode.value   = 'add';
   modalTarget.value = null;
@@ -961,7 +978,7 @@ async function copyAppKey() {
               class="eisa-field eisa-search-field"
             />
           </div>
-          <button class="eisa-btn eisa-btn-cta" @click="openAdd">
+          <button class="eisa-btn eisa-btn-cta" :disabled="contractDefaultsLoading" @click="openAdd">
             <i class="fa-solid fa-plus"></i>
             Yeni Eczane
           </button>
@@ -2361,6 +2378,7 @@ async function copyAppKey() {
   .dm-transfer-button i { font-size: 0.8rem; }
   .dm-settings-grid { grid-template-columns: 1fr; }
   .audio-setting-options { grid-template-columns: 1fr; }
+  .eisa-detail-grid { grid-template-columns: 1fr; }
 }
 
 .detail-value {

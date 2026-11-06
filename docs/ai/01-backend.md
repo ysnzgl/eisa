@@ -14,7 +14,17 @@
 
 ---
 
+## Gerekçeli fatura düzeltmeleri (2026-11-03)
+
+- `apps/abonelik/invoice_corrections.py`: iptal / mevcut kalemleri güncel bedellerle yeniden oluşturma / hatalı tahsilat kaydını geri alma. İşlemler yalnız SuperAdmin; neden ve fatura sürümü zorunlu. Fatura satırı transaction boyunca kilitlenir; `ode_fatura` da aynı kilidi kullanır.
+- Migration `abonelik.0018`: `Fatura.iptal_nedeni/iptal_tarihi`, `Odeme.geri_alinma_tarihi/geri_alma_nedeni`, `FaturaIslem` (neden, kullanıcı, tarih, önceki/sonraki JSON snapshot). UoW üzerinden audit/version yazılır. Fiziksel fatura silme API'si yoktur.
+- Yeniden oluşturma aynı fatura kimliği/dönemi/vadesi ve kalemlerin taksit sırasını korur; yeni cihaz kalemi eklemez. Önizleme hash'i sunucuda tekrar hesaplanır; eski önizleme reddedilir. Ödenmişte yeni tutar tahsilattan farklıysa önce gerekçeli tahsilat geri alma gerekir; eşitse ödeme korunur.
+- İptal borç/erişim kilidine dahil edilmez; otomatik üretim aynı fatura kaydı nedeniyle tekrar kesmez. Geri alınmış ödeme geçmişte kalır, geçerli tahsilat toplamına dahil edilmez. Tahsilat geri alma banka iadesi gerçekleştirmez. Kiosk modülleri etkilenmez.
+
 ## Important Source Files
+
+- Fiyat varsayılanları (2026-11-03): `FiyatTanimi.abonelik_kdv_orani/cihaz_kdv_orani` (%0/1/10/20, eski kayıtlarda %0; migration 0019). Yeni standart sözleşmede eksik bedel/KDV/ceza alanları başlangıç tarihinde geçerli tanımdan kopyalanır; açıkça gönderilen 0 korunur, mevcut sözleşmeler değiştirilmez. Yeni cihaz planında eksik KDV tanımdan tamamlanır. Talep onayında da aynı KDV fallback'i uygulanır.
+- Sözleşme dijital onay kuralı `Sozlesme.onay_gerekli` üzerinden hesaplanır: yalnız `DIJITAL` + boş `eczaci_onay_tarihi`. `ISLAK` sözleşmeler, eski kayıtlarda tarih boş olsa bile onay beklemez; eczacı onay endpoint'i/servisi bu kayıtlarda değişiklik yapmadan döner. Admin bekleyen sayacı yalnız dijital kayıtları sayar. Sahte onay tarihi üretilmez; migration/backfill gerekmez (2026-11-03).
 
 - `backend/core_api/settings.py` — Django ayarları, env config
 - `backend/core_api/urls.py` — Root URL routing

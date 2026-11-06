@@ -45,6 +45,9 @@ export const getSozlesmeGecmis = (sozlesmeId) =>
 export const listFaturalar = (params = {}) =>
   http.get('/api/abonelik/faturalar/', { params });
 
+export const previewFaturaRebuild = (id) => http.get(`/api/abonelik/faturalar/${id}/yeniden-olustur-onizleme/`);
+export const correctFatura = (id, action, data) => http.post(`/api/abonelik/faturalar/${id}/${action}/`, data);
+
 export const getFaturaAdmin = (faturaId) =>
   http.get(`/api/abonelik/faturalar/${faturaId}/`);
 

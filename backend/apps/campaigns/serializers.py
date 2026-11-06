@@ -101,6 +101,12 @@ class CreativeSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, attrs):
+        # Standart: sponsorluk başına tek medya kaydı (tam ekran media_url + yarım ekran active_media_url).
+        campaign = attrs.get("campaign")
+        if self.instance is None and campaign is not None and campaign.creatives.exists():
+            raise serializers.ValidationError({
+                "campaign": "Sponsorluğun zaten medyası var. Bir sponsorluk en fazla bir tam ekran ve bir yarım ekran medyası alabilir."
+            })
         if not attrs.get("object_key"):
             attrs["object_key"] = _derive_object_key_from_url(attrs.get("media_url", ""))
         if not attrs.get("active_object_key") and attrs.get("active_media_url"):

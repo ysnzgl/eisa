@@ -134,8 +134,9 @@
   let _pendingTimers = [];
   let _pendingResolvers = [];
 
-  const RECONCILE_ATTEMPTS = 3;
-  const RECONCILE_INTERVAL_MS = 2000;
+  // nmcli yanıtı gecikse de DHCP/internet doğrulaması için ~30 sn tanınır.
+  const RECONCILE_ATTEMPTS = 10;
+  const RECONCILE_INTERVAL_MS = 3000;
 
   /** Cancellable delay; resolves on timer or immediately on unmount. */
   function _delay(ms) {

@@ -4,8 +4,13 @@
 
 ---
 
+## Fatura iptal/düzeltme akışı (2026-11-03)
+
+SuperAdmin → Abonelik/Faturalar → gerekçeli işlem modalı → `abonelik/faturalar/{id}/iptal|yeniden-olustur|odemeyi-geri-al/` → transaction + fatura kilidi → UoW ile fatura/ödeme güncelleme + `FaturaIslem` snapshot geçmişi → liste/ödemeler yenileme. Yeniden oluşturma önce salt okunur önizleme alır, onayda hash ve sürüm tekrar doğrulanır. İptal borç ve erişim kilidinden düşer; otomatik scheduler aynı faturayı tekrar üretmez. Ödemeyi geri alma iptal dışındaki faturayı yeniden borca açar; banka iadesi yapmaz. Eczacı ödeme geçmişinde geri alma etiketi ve hareketlerde düzeltme gerekçesi görünür.
+
 ## When To Read This File
 
+- Yeni sözleşme varsayılanları: Admin fiyat tanımı (abonelik bedeli + abonelik/cihaz KDV) → aktif fiyat API'si → Yeni Sözleşme / Yeni Eczane formuna kopyalama → sözleşme ve cihaz planlarında bağımsız değer saklama. Daha sonraki fiyat değişikliği eski sözleşmeyi değiştirmez. Formda elle değiştirilmiş değerler korunur; API eksik alanları başlangıç tarihindeki fiyatla tamamlar (2026-11-03).
 - Proje arası veri akışı sorunlarında
 - End-to-end feature geliştirirken
 - Senkronizasyon problemlerinde

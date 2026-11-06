@@ -349,6 +349,7 @@ def guncelle_gecikmis_faturalar(*, bugun: _dt.date | None = None) -> int:
 def ode_fatura(fatura: Fatura, *, yontem: str = Odeme.Yontem.KREDI_KARTI,
               aciklama: str = "", user=None) -> Odeme:
     """Faturaya karşılık tahsilat kaydı oluşturur ve faturasıyı ÖDENDİ yapar."""
+    fatura = Fatura.objects.select_for_update().get(pk=fatura.pk)
     if fatura.durum == Fatura.Durum.ODENDI:
         raise ValueError("Fatura zaten ödenmiş.")
     if fatura.durum == Fatura.Durum.IPTAL:
@@ -640,7 +641,7 @@ def sozlesme_onayla(sozlesme: Sozlesme, *, ip_address: str = "", user=None) -> S
     """Eczacının dijital sözleşme onayını kaydeder ve metni dondurur."""
     from .contract_template import onay_blogu_html, render_sozlesme_html
 
-    if sozlesme.eczaci_onay_tarihi:
+    if not sozlesme.onay_gerekli:
         return sozlesme
     with UnitOfWork(user=user) as uow:
         sozlesme.eczaci_onay_tarihi = timezone.now()
@@ -711,10 +712,7 @@ def panel_kisitli(eczane_id: int) -> tuple[bool, str]:
     if sozlesme is None:
         return True, "SOZLESME_YOK"
     # Dijital imzalı sözleşmede eczacı onayı alınmadan panel açılmaz.
-    if (
-        sozlesme.imza_tipi == Sozlesme.ImzaTipi.DIJITAL
-        and sozlesme.eczaci_onay_tarihi is None
-    ):
+    if sozlesme.onay_gerekli:
         return True, "SOZLESME_ONAYSIZ"
     if eczane_erisim_kapali(eczane_id):
         return True, "ODEME_GECIKTI"
@@ -833,7 +831,8 @@ def _talepten_sozlesme_olustur(uow, talep, user, data=None):
             aylik_kullanim_bedeli=aylik,
             **ortak,
         )
-    s.kdv_orani = int(data.get("kdv_orani") or 0)
+    kdv = data.get("kdv_orani")
+    s.kdv_orani = int(kdv if kdv is not None else (fiyat.abonelik_kdv_orani if fiyat else 0))
     s.tevkifat_orani = data.get("tevkifat_orani") or ""
     ceza_katsayisi = data.get("iptal_ceza_orani")
     if ceza_katsayisi in (None, ""):
@@ -869,7 +868,7 @@ def _talepten_sozlesme_olustur(uow, talep, user, data=None):
             pesin_fiyat=Decimal(str(pf)),
             vade_farki_orani=Decimal(str(plan_data.get("vade_farki_orani") or "0.00")),
             taksit_sayisi=int(plan_data.get("taksit_sayisi") or 1),
-            cihaz_kdv_orani=int(plan_data.get("cihaz_kdv_orani") or 0),
+            cihaz_kdv_orani=int(plan_data.get("cihaz_kdv_orani") if plan_data.get("cihaz_kdv_orani") is not None else (fiyat.cihaz_kdv_orani if fiyat else 0)),
             baslangic_tarihi=plan_data.get("baslangic_tarihi") or bugun,
         ))
 
@@ -894,7 +893,7 @@ def _talepten_sozlesme_olustur(uow, talep, user, data=None):
 
 def sozlesme_hareketleri(eczane_id: int) -> list[dict]:
     """Eczanenin sözleşme hareketleri: sözleşmeler, uzatmalar, talepler, ödemeler (tarih sıralı)."""
-    from .models import Fatura, Odeme, Sozlesme, SozlesmeTalebi, SozlesmeUzatma
+    from .models import Fatura, FaturaIslem, Odeme, Sozlesme, SozlesmeTalebi, SozlesmeUzatma
 
     olaylar: list[dict] = []
     for s in Sozlesme.objects.filter(eczane_id=eczane_id):
@@ -921,6 +920,12 @@ def sozlesme_hareketleri(eczane_id: int) -> list[dict]:
             "tip": "ODEME", "tarih": o.odeme_tarihi,
             "baslik": f"Ödeme alındı ({o.get_yontem_display()})",
             "detay": f"{o.tutar} TL — {o.fatura.donem}",
+        })
+    for islem in FaturaIslem.objects.filter(fatura__eczane_id=eczane_id):
+        olaylar.append({
+            "tip": "FATURA", "tarih": islem.olusturulma_tarihi,
+            "baslik": f"Fatura #{islem.fatura_id}: {islem.get_islem_display()}",
+            "detay": islem.neden,
         })
     olaylar.sort(key=lambda x: x["tarih"] or timezone.now(), reverse=True)
     return olaylar

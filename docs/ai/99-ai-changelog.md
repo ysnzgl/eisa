@@ -5,7 +5,83 @@
 
 ---
 
+## 2026-11-07
+
+### [Kiosk Edge] Bakım menüsü güç butonları kaldırıldı + Wi-Fi bağlantı yanlış-hata düzeltmesi
+
+**Güç:** Sahada "Cihaz yeniden başlatılıyor/kapatılıyor" mesajında kalıp işlem gerçekleşmediği için `MaintenanceMenu.svelte`'den yeniden başlat/kapat butonları ve onay adımı kaldırıldı; menüde yalnız **Uygulamayı yenile** kaldı. `/api/system/action` backend'de `restart`/`shutdown` kabul etmeye devam eder ama UI çağırmaz.
+**Wi-Fi kök neden:** `connectWifi` başarıyı stdout'ta `"successfully activated"` arayarak belirliyordu; Türkçe yerelde nmcli çıktısı çevrildiği için gerçek bağlantı 422 hata sayılıyordu. Düzeltme: nmcli `LC_ALL=C` ile çalışır, başarı çıkış kodu 0'a göre belirlenir.
+**Süreler:** nmcli `--wait 90`, süreç timeout 100 sn; UI `connectToWifi` timeout 45 → 110 sn; hata sonrası `/wifi-status` doğrulaması 3×2 sn → 10×3 sn.
+**Dosyalar:** `kiosk_edge/api-node/src/wifi.js`, `kiosk_edge/ui/src/{components/MaintenanceMenu.svelte,components/WifiSetupScreen.svelte,lib/api.js}`.
+
 ## 2026-11-03
+### [Backend + Kiosk Edge] Sponsorluk başına tek medya kaydı ve yeni creative'in anında cache'lenmesi
+
+**Kural:** Bir sponsorluk en fazla bir creative alır: tam ekran (`media_url`, 1080×1920) + yarım ekran (`active_media_url`, 1080×768). `CreativeSerializer.validate` ikinci creative'i 400 (`campaign`) ile reddeder. Testler: `test_creative_create_rejects_second_media`; kapasite testi tek creative ile güncellendi (campaigns 106 geçti).
+**Edge:** Playlist sync'i item'lardaki medya bilgisiyle `creatives` kaydını açıyor (`upsertCreativeFromPlaylistItem`); yeni sponsorluk medyası 15 dk'lık katalog pull'unu beklemeden cache'lenir. Aksi halde UI kiosk-auth isteyen uzak URL'yi alabiliyordu.
+**Veri:** Yerel ortamda tüm sponsorluklar silindi; "e-isa Test Sponsorlugu" (tek creative, kiosk 25, 00:00–24:00, 60/gün) oluşturuldu. Edge 35 sn'de senkronladı; 04:36:00 slotunda idle'da tam ekran, oturumda alt şeritte yarım ekran görseli doğrulandı.
+
+### [Kiosk Edge + Web Panel] Sponsorluk yayın takviminde görünen görsel kioskta çıkmıyordu
+
+**Kök neden:** `sponsorship_engine.persist_day` her yeniden üretimde günün playlist'lerini silip yeni UUID ile oluşturur. Edge `pingAndSyncPlaylist`/`pingAndSyncManifest` `ON CONFLICT(target_date,target_hour) DO UPDATE SET id=...` ile playlist id'sini değiştirirken eski id'ye bağlı `playlist_items` (FK, `ON UPDATE` yok) duruyordu → `FOREIGN KEY constraint failed`, tüm transaction geri alınıyor ve "offline mod" uyarısıyla her ping'te tekrar ediyordu; kiosk eski (v9, 08–18 arası) playlist'te kaldı.
+**Düzeltme:** Upsert öncesi aynı tarih+saat slotundaki item'lar siliniyor (iki sync yolunda). Canlı edge v12/250 item'a senkronladı; slot anında görsel kiosk UI'da doğrulandı. Regresyon testi: `tests/playlistResync.test.js` (edge 192/192).
+**Ek:** Sponsorluk Tanımları'nda aynı modalda tekrar "Kaydet" medyayı yeniden oluşturuyordu (kampanyada 4 aynı creative oluşmuş); oluşturulan creative id'si forma yazılıyor.
+
+### [Web Panel] Sözleşmeyi Görüntüle butonu düzeltildi
+
+**Değişiklik:** Eksik `openMatbuAdmin`, modal açık/seçili sözleşme state'i ve kapatma fonksiyonu eklendi. Görüntüle ikonundaki yazım düzeltildi. Seçilen sözleşmenin metni ortak matbu bileşeniyle açılır; kapanışta seçim temizlenir.
+**Dosyalar:** `web_panels/src/views/admin/{AbonelikYonetimi.vue,__tests__/abonelik_pharmacies.test.js}`, `docs/ai/02-web-panels.md`.
+**Doğrulama:** Gerçek metin bileşeniyle doğru API isteği, modal açma/kapatma ve başka kayda geçiş dahil ilgili 7 test başarılı. Eczacı metin bağlantısı ve rol seçimi kontrol edildi; API değişmedi.
+
+### [Backend + Web Panel] Yeni sözleşmede fiyat ve KDV varsayılanları
+
+**Değişiklik:** Yeni Sözleşme ve Yeni Eczane sözleşme formları aktif abonelik bedeli/KDV ile açılır. Fiyat tanımına ayrı abonelik/cihaz KDV oranları ve tarihçe sütunları eklendi; yeni cihaz planı tanımlı KDV'yi alır. Backend eksik alanları fiyat tanımından tamamlar; açıkça girilen 0 ve mevcut sözleşmeler korunur. Yeni form eski cihaz planlarını temizler.
+**Dosyalar:** `backend/apps/abonelik/{models,serializers,services}.py`, migration `0019`, `tests/test_price_defaults.py`; `web_panels/src/views/admin/{AbonelikYonetimi.vue,DeviceManagement.vue,__tests__/abonelik_pharmacies.test.js}`, `components/shared/SozlesmeForm.vue`.
+**Etki:** Eski fiyat tanımlarının KDV varsayılanı %0'dır; yönetici yeni oranı tanımlayabilir. Mevcut sözleşmelerin tutar/KDV'si değişmez. Docs 01/02/05/06 güncellendi; hedef veritabanında migration gerekir.
+**Doğrulama:** Abonelik backend testleri 96/96, web paketi 118/118, son cihaz KDV kontrolü dahil ilgili web testleri 6/6 ve production build başarılı. Migration 0019 yerel PostgreSQL'e uygulandı.
+
+### [Backend + Web Panel] Islak imzalı sözleşmelerin onay bekleme durumu
+
+**Değişiklik:** Admin tablosu imza türünü dikkate alarak ıslak imzayı ayrı rozetle gösterir; bekleyen sayacı yalnız dijital onaysız sözleşmeleri sayar. `Sozlesme.onay_gerekli` kuralı serializer, Hesabım, panel kısıtı ve dijital onay servisi/endpoint'inde ortak kullanılır. Islak imza tekrar eczacıya onaylatılmaz; eski boş tarihli kayıtlarda da geçerlidir.
+**Dosyalar:** `backend/apps/abonelik/{models,serializers,services,views}.py`, `tests/test_wet_signature.py`, `web_panels/src/views/admin/{AbonelikYonetimi.vue,__tests__/abonelik_pharmacies.test.js}`.
+**Etki:** Islak imzaya sahte dijital onay tarihi/IP/metni eklenmez; veri migration'ı gerekmez. Dijital sözleşmenin onay zorunluluğu korunur. Docs 01/02/06 güncellendi.
+
+### [Web Panel] Abonelik, fatura ve ödeme listelerinin görünümü
+
+**Değişiklik:** Satır işlemleri, filtre ve ikincil başlık aksiyonları renkli ikon buton + tooltip/erişilebilir ad düzenine geçti. Tablo hücrelerinin flex kaynaklı hizası iç aksiyon sarmalayıcısıyla düzeltildi. Ödemelere geçerli tahsilat/kayıt sayısı özeti, ayrı durum/yöntem sunumu ve ilgili faturaya kısayol eklendi; geri alınan tutarlar ve gerekçeler ayrıştırıldı.
+**Dosyalar:** `web_panels/src/views/admin/AbonelikYonetimi.vue`, `docs/ai/02-web-panels.md`.
+**Doğrulama:** İlgili 7 regresyon testi ve production build başarılı. API/işlem onay akışı değişmedi.
+
+### [Backend + Web Panel] Gerekçeli fatura iptali ve yeniden oluşturma
+
+**Değişiklik:** SuperAdmin için iptal, önizlemeli yeniden oluşturma ve hatalı tahsilat kaydını geri alma eklendi. Neden/sürüm zorunlu; ödeme geçmişi ve eski/yeni snapshot'lar korunur. Ödenmiş tutar değişikliğinde tahsilat geri alma gerekir. Aynı fatura numarası/dönemi/vadesi ve mevcut taksit sırası korunur.
+**Dosyalar:** `backend/apps/abonelik/{models,serializers,services,views,invoice_corrections}.py`, migration `0018`, `tests/test_invoice_corrections.py`; `web_panels/src/{services/abonelik.js,components/shared/FaturaIslemModal.vue,components/__tests__/invoice_corrections.test.js,views/admin/AbonelikYonetimi.vue,views/pharmacist/HesabimOdemeler.vue}`.
+**Etki:** İptal faturalar borçtan düşer, geri alınan tahsilatlar geçmişte işaretlenir. Fiziksel silme/banka iadesi yapılmaz. Docs 01/02/05/06 ve Kullanım Rehberi güncellendi. Veritabanı için `python manage.py migrate` gerekir.
+**Doğrulama:** Abonelik paketi 82/82; son ek kontrollerle düzeltme testleri 19/19, web testleri 116/116 ve production build başarılı. Migration 0018 yerel PostgreSQL'e uygulandı; hedef ortamda da migration çalıştırılmalı.
+
+### [Web Panel] Mobil uyumluluk ve hamburger menü
+
+**Değişiklik:** ≤1024px'te `AdminLayout` sticky topbar + hamburger ile açılan off-canvas sol menü kullanır (route/backdrop/Escape ile kapanır, scroll kilidi, rozet noktası). `styles.css`'e masaüstünü etkilemeyen 1024/768/480 responsive katmanı eklendi (sayfa boşlukları, header sarma, stat/form grid, alt-sheet modallar, tablo yatay kaydırma, iOS input zoom).
+**Ekran düzeltmeleri:** Barkod Logo (sabit 620px modal, 2 kolon form), İçerik Yönetimi filtre satırı, Abonelik sekme/filtre/fatura detayı, Cihaz detay grid'i, Kiosk Hareketleri sekmeleri (`.eisa-tabs-scroll`), oturum detay grid'i, eczacı kampanya şeridi ve Sponsorluk Tanımları stepper/footer.
+**Doğrulama:** Mock API ile 390px genişlikte 18 admin + 7 eczacı route'unda yatay taşma yok; menü aç/kapa ve route ile kapanma doğrulandı. Vitest 112/112, build başarılı.
+
+### [Web Panel] Modal form alanlarının eksik kenarlıkları düzeltildi
+
+**Değişiklik:** `.eisa-page` dışına taşınan Teleport modallarının kaybettiği tema kısa adları `:root` seviyesinde de tanımlandı; ortak input gruplarına odak çerçevesi eklendi.
+**Dosyalar:** `web_panels/src/styles.css`, `docs/ai/02-web-panels.md`.
+**Etki:** Aylık kullanım bedeli, erken iptal katsayısı, cihaz peşin fiyatı, vade farkı, kira ve fiyat tanımı yüzde alanlarının ortak kenarlıkları; aynı değişkenleri kullanan modal bölüm ve ayırıcı çizgileri görünür kalır. API/iş mantığı değişmedi.
+
+### [Web Panel] Sponsorluk Tanımları görsel yenileme
+
+**Değişiklik:** `SponsorshipDefinitions.vue` modern tasarıma geçirildi: ikonlu KPI kartları, panel içi arama + segment durum filtresi, thumbnail/alt satırlı liste, sayı rozetleri, ikonlu stepper, 9:16 ve yatay oranlı medya önizlemeleri, bölümlü "Kiosklara Ata" modalı ve renkli önizleme grupları.
+**İkon kaymaları:** `td.cell-actions` flex hatası, input-group içindeki arama ikonu ve buton ikon/metin boşlukları `inline-flex` + `fa-fw` ile düzeltildi. Teleport modallarda eksik `--border/--faint` token'ları yerel tanımlandı (buton/footer kenarlıkları görünür).
+**Etki:** Yalnız görünüm; API, kayıt/atama akışı ve doğrulamalar değişmedi. Web Vitest 112/112, production build başarılı; mock API ile tarayıcıda liste, 3 adım ve atama modalı kontrol edildi.
+
+### [Web Panel] Yeni sözleşmede boş eczane listesi düzeltildi
+
+**Değişiklik:** Eksik eczane state/seçenek tanımları eklendi ve sayfa açılışında eczanelerin yüklenmesi sağlandı. Eczane adı ve il/ilçe araması, yükleme göstergesi, hata bildirimi ve boş listede modal açılışında yeniden deneme eklendi.
+**Dosyalar:** `web_panels/src/views/admin/AbonelikYonetimi.vue`, `web_panels/src/views/admin/__tests__/abonelik_pharmacies.test.js`, `docs/ai/02-web-panels.md`.
+**Etki:** Yeni Sözleşme formunda eczane seçilebilir; mevcut API sözleşmesi değişmez. Dizi/sayfalı yanıt ve hata sonrası tekrar yükleme için 3 regresyon testi geçti.
 
 ### [Backend + Web Panel] Satış yapılmadı sonucunu satışa güncelleme
 

@@ -226,7 +226,7 @@ Toplanan veriler `device_metadata` JSON alanı olarak `KioskProvisioningRequest`
 ### Reklam Akışı
 1. Backend → playlist üretir, kiosk için `Playlist` + `PlaylistItem` kayıtları
 2. Kiosk edge scheduler → `pingAndSyncPlaylist` → yeni playlist versiyonu varsa indir
-3. SQLite → `playlists` ve `playlist_items` tablolarına kayıt
+3. SQLite → `playlists` ve `playlist_items` tablolarına kayıt (backend her yeniden üretimde yeni playlist id verir; upsert öncesi aynı `target_date+target_hour` slotunun item'ları silinir, aksi halde FK ihlali tüm sync'i geri alır)
 4. Kiosk UI → `GET http://localhost:5234/playlist?date=YYYY-MM-DD` → günlük playlist JSON
 5. Kiosk UI AdStrip → playlist item'ları sırayla oynatır (60sn döngü)
 
@@ -288,12 +288,12 @@ Toplanan veriler `device_metadata` JSON alanı olarak `KioskProvisioningRequest`
 | `GET` | `/playlist?date=YYYY-MM-DD` | Günlük playlist JSON |
 | `GET` | `/api/idle-contents` | *(2026-08-16)* Aktif idle (bekleme) başlık/metin içerikleri (salt okunur; UI merkezi backend'e bağlanmaz) |
 | `GET` | `/api/device-config` | Lokal cache'teki cihaz iş zamanlayıcılarını ve hazırsa `/api/device-audio` URL'sini döndürür |
-| `POST` | `/api/system/action` | Yalnız loopback istemciden `refresh`, `restart`, `shutdown`; refresh provisioning uzlaştırma + anlık pull/ping çalıştırır |
+| `POST` | `/api/system/action` | Yalnız loopback istemciden `refresh`, `restart`, `shutdown`; refresh provisioning uzlaştırma + anlık pull/ping çalıştırır. UI bakım menüsü 2026-11-07'den beri yalnız `refresh` kullanır (güç butonları kaldırıldı) |
 | `GET` | `/api/device-audio/:audioId` | Etkin listede checksum doğrulanarak hazır edilmiş ilgili kiosk sesini lokal diskten `Content-Length` ve byte-range desteğiyle sunar; aksi halde 404 (`/api/device-audio` ilk dosya için geriye uyumlu) |
 | `POST` | `/sessions` | Session log kaydı (outbox'a ekler) |
 | `POST` | `/ad-impressions` | Impression log kaydı (outbox'a ekler) |
 | `GET` | `/wifi-status` | WiFi bağlantı durumu (nmcli çağrısı, Linux) |
-| `POST` | `/wifi-connect` | WiFi bağlantısı kur (nmcli, Linux) |
+| `POST` | `/wifi-connect` | WiFi bağlantısı kur (nmcli `--wait 90`, `LC_ALL=C`; başarı = çıkış kodu 0, Linux) |
 | `POST` | `/api/log/client` | *(2026-07-16)* Svelte UI kritik hata köprüsü — allow-list edilen event kodlarını JSON log + diagnostic_outbox'a yazar |
 
 ---

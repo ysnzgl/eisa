@@ -230,6 +230,9 @@ const hasContent = computed(() => !!current.value);
   max-width: 100%;
   object-fit: contain;
 }
+@media (max-width: 768px) {
+  .pharm-strip { height: 150px; }
+}
 
 /* Idle overlay — modalın altında (z-index 40) */
 .pharm-idle-overlay {

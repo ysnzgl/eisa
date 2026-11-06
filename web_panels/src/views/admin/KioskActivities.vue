@@ -361,7 +361,7 @@ async function exportCurrentTab() {
     </div>
 
     <!-- Tabs -->
-    <div style="display:flex;gap:0.5rem;margin-bottom:1.25rem;border-bottom:1px solid rgba(255,255,255,0.08);padding-bottom:0;">
+    <div class="eisa-tabs-scroll" style="display:flex;gap:0.5rem;margin-bottom:1.25rem;border-bottom:1px solid rgba(255,255,255,0.08);padding-bottom:0;">
       <button v-for="tab in TABS" :key="tab.key" class="eisa-btn"
         :class="activeTab === tab.key ? 'eisa-btn-cta' : 'eisa-btn-ghost'"
         style="border-radius:4px 4px 0 0;" @click="setTab(tab.key)">

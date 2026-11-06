@@ -61,7 +61,7 @@ const emptyPlan = () => ({
   tip: 'SATILIK', adet: 1, cihaz_bilgisi: '',
   pesin_fiyat: '', vade_farki_orani: '0.00', taksit_sayisi: 1,
   aylik_kira_bedeli: '',
-  cihaz_kdv_orani: 0, tevkifat_orani: '',
+  cihaz_kdv_orani: props.form.cihaz_kdv_orani ?? 0, tevkifat_orani: '',
   oteleme_ay: 0,
   baslangic_tarihi: props.form.baslangic_tarihi || '',
 });

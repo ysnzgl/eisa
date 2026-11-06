@@ -164,6 +164,9 @@
 
 ### Abonelik API Sözleşmesi *(2026-10-01, güncellendi 2026-10-12)*
 
+**Fiyat tanımları (2026-11-03):** `GET/POST /api/abonelik/fiyatlar/`, `GET /api/abonelik/fiyatlar/aktif/` yanıt/gövdesinde `abonelik_kdv_orani`, `cihaz_kdv_orani` bulunur (%0/1/10/20, varsayılan 0). Aktif uç bugün geçerli tanımı veya null döner; ileri tarihli tanım erken uygulanmaz. Migration `abonelik.0019`.
+- Yeni standart sözleşmede eksik `aylik_kullanim_bedeli/kdv_orani/iptal_ceza_orani`, başlangıç tarihinde geçerli fiyat tanımından kopyalanır; gönderilmiş tutar/KDV=0 dahil elle belirlenen değerler korunur. Mevcut sözleşme güncellemesinde varsayılanlar tekrar uygulanmaz. Yeni cihaz planında eksik `cihaz_kdv_orani` plan başlangıç tarihinde geçerli tanımdan alınır.
+
 **GET/POST `/api/abonelik/sozlesmeler/`** — Auth: JWT (IsSuperAdmin); query: `eczane`, `durum`
 - POST Request: `{eczane, tur [DEMO|STANDART], sozlesme_tipi_ay [12|24|36, standart], demo_gun [1..30, demo], baslangic_tarihi, oteleme_ay, aylik_kullanim_bedeli, kdv_orani [0|1|10|20], tevkifat_orani, durum, notlar}`
 - Response: `{id, eczane, eczane_ad, tur, tur_display, sozlesme_tipi_ay, tip_display, demo_gun, baslangic_tarihi, oteleme_ay, aylik_kullanim_bedeli, kdv_orani, kdv_dahil_aylik, ek_ay_toplam, ek_gun_toplam, onceki_sozlesme, durum, durum_display, notlar, toplam_ay, toplam_gun, kalan_gun, suresi_doldu, etkin_durum, kullanim_bedeli_baslangic, bitis_tarihi, cihaz_planlari [...]}`
@@ -195,9 +198,19 @@
 **POST `/api/abonelik/faturalar/{id}/ode/`** — Auth: JWT (IsSuperAdmin) — manuel tahsilat
 - Request: `{yontem?}` (def KREDI_KARTI) · 400: zaten ödenmiş/iptal · Response 201: Odeme
 
+**Fatura düzeltme API'si (2026-11-03)** — Auth: JWT (IsSuperAdmin)
+- Fatura yanıtına `surum`, `iptal_nedeni`, `iptal_tarihi`, `aktif_tahsilat_var`, `islemler[]` eklendi. İşlem: `{id,islem,islem_display,neden,yapan,olusturulma_tarihi,onceki,sonraki}`. Snapshot'lar tutar/durum/kalem/ödeme bilgilerini korur.
+- `POST .../{id}/iptal/`: `{neden, surum}`. Ödenmiş/ödenmemiş fatura IPTAL olur; tahsilat saklanır, banka iadesi yapılmaz. Tekrar iptal 400. İptal edilen fatura borçtan düşer; fiziksel silme desteklenmez.
+- `GET .../{id}/yeniden-olustur-onizleme/`: `{surum,eski_tutar,yeni_tutar,tahsilat,vade_tarihi,kalemler,engel,onceki,onizleme_anahtari}`. Salt okunur; mevcut kalemler güncel sözleşme/plan bedelleriyle hesaplanır, yeni cihaz kalemi eklenmez.
+- `POST .../{id}/yeniden-olustur/`: `{neden,surum,onizleme_anahtari}`. Aynı fatura kimliği/dönem/vade ve taksit sırası korunur. İptal edilmiş fatura da yeniden oluşturulabilir. Geçerli tahsilat varsa yeni tutarla eşit olmalı; farklıysa önce tahsilatı geri almak gerekir. Sıfır tutar/silinmiş kaynak/eskimiş önizleme 400.
+- `POST .../{id}/odemeyi-geri-al/`: `{neden,surum}`. Geçerli tahsilatlar silinmeden `geri_alinma_tarihi/geri_alma_nedeni` ile işaretlenir. İptal fatura IPTAL kalır; diğerleri vade+7 gün kuralına göre BEKLIYOR/GECIKTI olur. Geçerli ödeme yoksa 400. Gerçek banka iadesi gerçekleştirmez.
+- Tüm POST işlemleri güncel sürüm ve boş olmayan en fazla 500 karakterlik neden ister; hata 400, başarı güncel Fatura (200). Fatura kilidi ödeme ve düzeltme yarışlarını önler. Eczacı bu yönetim uçlarına erişemez (403).
+- Odeme yanıtına `geri_alinma_tarihi`, `geri_alma_nedeni` eklendi. Migration `abonelik.0018`, geçmiş tablosu `abonelik_fatura_islemleri`.
+
 **GET `/api/abonelik/hesabim/`** — Auth: JWT (IsEczaci)
 - Response: `{demo, panel_kisitli, kisit_nedeni [SOZLESME_YOK|SOZLESME_ONAYSIZ|ODEME_GECIKTI|""], sozlesme|null, acik_fatura_sayisi, toplam_borc, erisim_kapali, grace_gun, onay_gerekli, ceza_tutari}`
 - `onay_gerekli=true`: dijital imzalı ve `eczaci_onay_tarihi` null (ıslak imzalı sözleşmelerde daima false).
+- Sözleşme yanıtı da salt okunur `onay_gerekli` içerir; kural `Sozlesme.onay_gerekli` özelliğinden türetilir. `ISLAK` için onay tarihi/belge alanı boş olsa bile false'tur. `POST sozlesmelerim/{id}/onayla/` ıslak imzada değişiklik yapmadan 200 döner; dijital onay tarihi/IP/metin üretmez. Admin `GET talepler/onay-bekleyen/` yalnız aktif, onaysız `DIJITAL` sözleşmeleri sayar (2026-11-03).
 - `sozlesme.kdv_dahil_aylik`, `sozlesme.kdv_orani`, `sozlesme.cihaz_planlari[*].kdv_dahil_taksit` alanları eczacı UI'ında gösterilir.
 
 **Eczacı ek endpoint'leri:** `GET faturalarim/`, `POST faturalarim/{id}/ode/`, `GET odemelerim/`, `GET hareketlerim/`, `GET/POST taleplerim/`.

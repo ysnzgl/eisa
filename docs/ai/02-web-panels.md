@@ -14,7 +14,35 @@
 
 ---
 
+## Abonelik sözleşmesinde eczane seçimi (2026-11-03)
+
+- Sözleşmeyi Görüntüle ikonu `openMatbuAdmin(s)` ile seçili kaydı `matbuAdminSozlesme`'ye koyar ve `matbuAdminOpen` modalını açar. Ortak `SozlesmeMatbu` admin metin endpoint'ini çağırır; kapatırken seçim temizlenir. Regresyon testi gerçek metin bileşeniyle açma/yükleme/kapatma ve başka sözleşmeye geçişi doğrular.
+- Yeni Sözleşme açılışında güncel `GET /api/abonelik/fiyatlar/aktif/` beklenir: aylık bedel, abonelik KDV, cihaz planı için varsayılan KDV ve ceza katsayısı formda otomatik doldurulur. Fiyatlar yüklenirken açma butonu devre dışıdır; yeni form önceki cihaz planlarını temizler. Düzenleme kayıtlı değerleri korur.
+- Fiyat Tanımları modalında abonelik ve cihaz için ayrı KDV seçicileri (%0/1/10/20) ve tarihçe sütunları vardır. `SozlesmeForm` yeni cihaz planına `form.cihaz_kdv_orani` değerini kopyalar. DeviceManagement/Yeni Eczane sözleşmesi de aktif bedel/KDV ile açılır; fiyat daha sonra değişirse mevcut sözleşme etkilenmez.
+- Sözleşmeler tablosundaki Onay sütunu önce `imza_tipi` kontrol eder: `ISLAK` → “Islak imzalı / dijital onay gerekmez”; dijitalde tarih varsa “Onaylandı”, yoksa “Onay bekliyor”. Eski ıslak imzalı kayıtlarda boş tarih bekleme göstergesine dönüşmez.
+- `AbonelikYonetimi.vue`, sayfa açılışında `getPharmacies()` ile eczaneleri yükler. `EisaLookup` seçenekleri servis çıktısındaki `id`, `name`, `ilAdi`, `ilceAdi` alanlarından üretilir; ad ve il/ilçe üzerinden aranabilir.
+- Yeni Sözleşme modalında yükleme göstergesi bulunur. İstek başarısızsa hata bildirimi gösterilir; liste boşken modal yeniden açıldığında istek tekrar denenir.
+- Regresyon testi: `src/views/admin/__tests__/abonelik_pharmacies.test.js` (dizi/sayfalı yanıt, arama/seçim ve hata sonrası yeniden yükleme).
+
+### Fatura düzeltme işlemleri (2026-11-03)
+
+- Fatura/talep satırları, filtre araçları ve başlıktaki ikincil aksiyonlar renkli ikon butonlardır; `title` tooltip ve `aria-label` açıklamaları içerir. Ana oluşturma ve modal onay butonları metinlidir. Aksiyonlar hücre içindeki `.ay-row-actions` ile hizalanır; `td` tablo hücresi olarak kalır.
+- Ödemeler: seçili filtreler için geçerli tahsilat tutarı, geçerli/geri alınan kayıt sayısı özeti; ayrı yöntem/durum sütunları, sağa hizalı tutarlar ve ilgili faturaya ikon kısayolu. Geri alma gerekçesi durumun altında gösterilir, geri alınmış tutar üzeri çizili sunulur. Mobilde özet iki sütuna geçer; tablolar yatay kayar.
+- Faturalar satırında `İptal Et`, `Yeniden Oluştur`, geçerli tahsilatı varsa `Tahsilatı Geri Al` bulunur. `components/shared/FaturaIslemModal.vue` güncel fatura sürümünü yükler; tüm işlemlerde 500 karaktere kadar gerekçe zorunludur.
+- Yeniden oluşturma önizlemesinde eski/yeni tutar ve mevcut tahsilat gösterilir. Tutarı farklı ödenmiş faturada onay kapalıdır; önce tahsilat geri alınmalıdır. Mevcut kalemler yeniden fiyatlanır; kimlik/dönem/vade/taksit sırası korunur, yeni cihaz kalemi eklenmez.
+- Fatura detayında iptal nedeni ve kullanıcı/tarih/gerekçe/eski-yeni tutar içeren işlem geçmişi gösterilir. Admin ve eczacı ödeme listesinde geri alınmış tahsilat işaretlenir; admin tahsilat toplamı bunları hariç tutar, Excel durum/neden alanlarını içerir.
+- Test: `components/__tests__/invoice_corrections.test.js` (zorunlu gerekçe, önizleme onayı, ödenmiş tutar farkı ve eski sürüm hatası).
+
+## Mobil / Responsive Yapı (2026-11-03)
+
+- Masaüstü (>1024px) görünümü değişmez. ≤1024px'te `AdminLayout` üstte sticky topbar (hamburger + logo + panel adı) gösterir; sol menü off-canvas çekmeceye döner (`navOpen`). Route değişimi, backdrop tıklaması ve `Escape` menüyü kapatır; açıkken `body.eisa-nav-locked` scroll'u kilitler. Menüde rozet varsa hamburger üzerinde kırmızı nokta görünür.
+- Ortak kurallar `styles.css` sonundaki "RESPONSIVE / MOBILE" bloğundadır (1024/768/480): `.eisa-page` padding, header/aksiyon sarma, stat grid 2 kolon, `.eisa-form-grid` tek kolon, modallar tam genişlik alt hizalı sheet, sarmalayıcısız `.eisa-table` yatay kaydırılır, input font 16px (iOS zoom).
+- Yatay kaydırılabilir sekme satırları için `.eisa-tabs-scroll` yardımcı sınıfı kullanılır. Ekran özel scoped CSS'ler (Barkod Logo, İçerik Yönetimi, Abonelik, Cihaz detay, Sponsorluk Tanımları, eczacı kampanya şeridi 150px) kendi media query'lerini taşır.
+- Yeni ekranlarda: `td`'ye `display:flex` verme, sabit `width/min-width` yerine `min(...)`/`minmax(0,1fr)` kullan, filtre satırlarına `flex-wrap` ekle.
+
 ## Important Source Files
+
+- Ortak tema kısa adları (`--border`, `--faint`, `--accent` vb.) `styles.css` içinde `:root` üzerinde de tanımlıdır; `Teleport to="body"` modalları `.eisa-page` dışına çıktığında kenarlık/renklerini korur. `.eisa-input-group` dış çerçeveyi taşır; iç input kenarlıksızdır, odak göstergesi `:focus-within` ile gruba uygulanır.
 
 - `web_panels/src/router/index.js` — Route tanımları, RBAC guard
 - `web_panels/src/stores/auth.js` — Auth state management
@@ -270,7 +298,8 @@ window.EISA_API_BASE_URL = 'http://localhost:8000';
 ### 1. Sponsorluk Tanımları (SponsorshipDefinitions.vue)
 
 **Route:** `/admin/campaigns` (SuperAdmin)
-**Yapı:** Sponsorluk listesi + sekmeli modal (3 sekme).
+**Yapı:** İkonlu KPI kartları (Toplam/Aktif/Duraklatıldı/Kiosk Ataması) + panel içinde arama ve segment durum filtresi + liste (thumbnail, reklam veren alt satırı, tarih aralığı, medya/kiosk sayı rozetleri, durum pill) + 3 adımlı modal (ikonlu stepper; tamamlanan adıma tıklayıp geri dönülür).
+**Stil notu:** Stiller scoped `sd-*` sınıflarındadır. Teleport edilen modallar `.eisa-page` CSS token'larını (`--border`, `--faint` vb.) miras almadığı için `.sd-drawer`/`.sd-assign-modal` bu token'ları yerel tanımlar. İkon+metin çiftleri `inline-flex` + `fa-fw` ile hizalanır; tablo hücresine (`td`) doğrudan `display:flex` verilmez (aksiyonlar iç `div`'de).
 
 | Sekme | Açıklama |
 |-------|----------|

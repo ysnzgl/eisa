@@ -99,7 +99,7 @@
 **Lifecycle hooks:**
 - `onMount`: WiFi durumu kontrol, kategori cache kontrol, global aktivite dinleyicileri
 - Global inaktivite: idle/wifi_setup disindaki HER ekranda cihaz ayarındaki süre (default 20 sn) işlem yoksa idle'a döner; herhangi bir dokunma/tuş zamanlayıcıyı sıfırlar
-- Idle ekranındaki e-isa logosuna 10 saniye basılı tutmak lokal bakım menüsünü açar. Basılı tutma sırasında logo üstünde belirgin halka ilerlemesi ve kalan saniye görünür; bırakınca gösterge iptal olur. Menü; provisioning durumunu koruyarak sunucu ayarları/içerikleri yeniden çeken **Uygulamayı yenile**, onaylı cihaz yeniden başlatma ve cihaz kapatma işlemlerini sunar.
+- Idle ekranındaki e-isa logosuna 10 saniye basılı tutmak lokal bakım menüsünü açar. Basılı tutma sırasında logo üstünde belirgin halka ilerlemesi ve kalan saniye görünür; bırakınca gösterge iptal olur. Menü yalnız provisioning durumunu koruyarak sunucu ayarları/içerikleri yeniden çeken **Uygulamayı yenile** işlemini sunar (cihazı yeniden başlat/kapat butonları sahada çalışmadığı için 2026-11-07'de kaldırıldı).
 
 **Session lifecycle:**
 - Kategori seçiminde `sessionId` atanır
@@ -205,7 +205,8 @@
 14. **WifiSetupScreen.svelte**
    - WiFi ağ listesi (`GET http://localhost:5234/wifi-status`)
    - Ağ seçimi + şifre girişi
-   - "Bağlan" butonu → `POST http://localhost:5234/wifi-connect` (nmcli)
+   - "Bağlan" butonu → `POST /api/wifi/connect` (nmcli `--wait 90`, UI timeout 110 sn)
+   - Bağlantı isteği hata dönerse `/api/wifi/status` 10×3 sn poll edilir; seçili SSID bağlıysa başarı sayılır
    - Başarılı bağlantı → `idle` screen
 
 ---

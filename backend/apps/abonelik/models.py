@@ -145,6 +145,11 @@ class Sozlesme(BaseModel):
     )
     notlar = models.TextField(blank=True, default="")
 
+    @property
+    def onay_gerekli(self) -> bool:
+        """Islak imza dijital onay gerektirmez; eski kayıtlarda tarih boş olabilir."""
+        return self.imza_tipi == self.ImzaTipi.DIJITAL and self.eczaci_onay_tarihi is None
+
     class Meta:
         db_table = "abonelik_sozlesmeler"
         ordering = ("-baslangic_tarihi", "-id")
@@ -442,6 +447,8 @@ class FiyatTanimi(BaseModel):
         max_digits=12, decimal_places=2, default=Decimal("3900.00"),
         help_text="Aylık e-İSA abonelik (kullanım) bedeli (TL).",
     )
+    abonelik_kdv_orani = models.PositiveSmallIntegerField(choices=Sozlesme.KdvOrani.choices, default=0)
+    cihaz_kdv_orani = models.PositiveSmallIntegerField(choices=Sozlesme.KdvOrani.choices, default=0)
     cihaz_kira_bedeli = models.DecimalField(
         max_digits=12, decimal_places=2, default=Decimal("0.00"),
         help_text="Kiralık cihaz için aylık kira bedeli (TL).",
@@ -512,6 +519,8 @@ class Fatura(BaseModel):
     )
     odenme_tarihi = models.DateTimeField(null=True, blank=True)
     aciklama = models.CharField(max_length=255, blank=True, default="")
+    iptal_nedeni = models.CharField(max_length=500, blank=True, default="")
+    iptal_tarihi = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "abonelik_faturalar"
@@ -564,6 +573,8 @@ class Odeme(BaseModel):
         help_text="Ödeme açıklaması / referans bilgisi. Manuel ödemelerde zorunludur.",
     )
     odeme_tarihi = models.DateTimeField()
+    geri_alinma_tarihi = models.DateTimeField(null=True, blank=True)
+    geri_alma_nedeni = models.CharField(max_length=500, blank=True, default="")
 
     class Meta:
         db_table = "abonelik_odemeler"
@@ -574,6 +585,24 @@ class Odeme(BaseModel):
     def __str__(self) -> str:  # pragma: no cover
         return f"Ödeme #{self.pk} — {self.tutar} TL"
 
+
+
+class FaturaIslem(BaseModel):
+    """İptal, yeniden oluşturma ve tahsilat düzeltmelerinin silinmeyen geçmişi."""
+
+    fatura = models.ForeignKey(Fatura, on_delete=models.PROTECT, related_name="islemler")
+    islem = models.CharField(max_length=24, choices=[
+        ("IPTAL", "Fatura iptali"),
+        ("YENIDEN_OLUSTUR", "Yeniden oluşturma"),
+        ("ODEME_GERI_AL", "Tahsilat kaydını geri alma"),
+    ])
+    neden = models.CharField(max_length=500)
+    onceki = models.JSONField(default=dict)
+    sonraki = models.JSONField(default=dict)
+
+    class Meta:
+        db_table = "abonelik_fatura_islemleri"
+        ordering = ("-id",)
 
 
 class FaturaKalemi(BaseModel):

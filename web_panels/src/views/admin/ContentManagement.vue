@@ -873,4 +873,10 @@ function fmtDate(iso) {
 /* Confirm Modal */
 .cm-confirm-modal { width: min(440px, 92vw); }
 .cm-confirm-text { color: var(--color-text, #374151); font-size: 0.9rem; line-height: 1.5; }
+
+@media (max-width: 768px) {
+  .cm-filter-row { flex-wrap: wrap; }
+  .cm-filter-row > * { flex: 1 1 100%; min-width: 0; }
+  .cm-filter-select { min-width: 0; }
+}
 </style>

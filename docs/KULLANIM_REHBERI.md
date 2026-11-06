@@ -8,6 +8,8 @@
 
 ## İçindekiler
 
+- [Fatura Düzeltme ve İptal](#fatura-düzeltme-ve-iptal)
+
 1. [Giriş ve Roller](#1-giriş-ve-roller)
 2. [Dashboard](#2-dashboard)
 3. [Sponsorluk Tanımı (Kampanya + Medya) Oluşturma](#3-sponsorluk-tanımı-kampanya--medya-oluşturma)
@@ -17,6 +19,18 @@
 7. [Sık Karşılaşılan Hatalar](#7-sık-karşılaşılan-hatalar)
 
 ---
+
+## Fatura Düzeltme ve İptal
+
+**Yeni sözleşme varsayılanları:** Abonelik ekranındaki fiyat etiketi ikonundan Fiyat Tanımları'nı açın. Aylık abonelik bedeli, abonelik KDV oranı ve cihaz KDV oranını geçerlilik tarihiyle kaydedin. Yeni Sözleşme ve Yeni Eczane formları bugünkü aktif bedel/KDV ile doldurulur; yeni cihaz planları tanımlı cihaz KDV'sini kullanır. İsterseniz sözleşmede bu değerleri değiştirebilirsiniz. Fiyat değişiklikleri mevcut sözleşmeleri değiştirmez.
+
+Abonelik ekranındaki **Faturalar** sekmesinde:
+
+- **İptal Et:** İptal nedenini zorunlu olarak girin ve işlemi onaylayın. Fatura borçtan düşer; fatura ve ödeme geçmişi saklanır. Ödenmiş faturanın iptali para iadesi yapmaz.
+- **Yeniden Oluştur:** Eski/yeni tutar ve mevcut tahsilatı karşılaştırın, işlem nedenini girip onaylayın. Mevcut kalemler güncel sözleşme/cihaz bedelleriyle hesaplanır; fatura numarası, dönem, vade ve taksit sırası korunur. Yeni cihaz kalemi eklenmez. İptal edilmiş faturada bu işlem faturayı yeniden etkinleştirir.
+- **Tahsilatı Geri Al:** Yanlış kaydedilmiş ödemeyi gerekçe girerek geri alın. Kayıt silinmez, ödeme geçmişinde “Geri alındı” olarak gösterilir. İptal edilmemiş fatura yeniden borca açılır. Bu işlem banka üzerinden iade yapmaz.
+
+Ödenmiş faturada yeni tutar tahsilattan farklıysa önce tahsilat kaydını geri alın; ardından yeniden oluşturun ve doğru tahsilatı kaydedin. Tutar aynıysa mevcut ödeme korunur. **Görüntüle** ile iptal nedeni, işlemi yapan yönetici, tarih ve önceki/sonraki bilgiler görülebilir. Bu işlemler yalnız SuperAdmin'e açıktır.
 
 ## 1. Giriş ve Roller
 

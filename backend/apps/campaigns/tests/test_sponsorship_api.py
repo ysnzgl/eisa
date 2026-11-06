@@ -365,12 +365,12 @@ def test_campaign_update_blocked_by_capacity(admin_client, kiosk):
 
 @pytest.mark.django_db
 def test_creative_create_blocked_by_capacity(admin_client, kiosk):
-    camp = _mk_campaign(name="C", duration=15, creatives=1)
+    camp = _mk_campaign(name="C", duration=15, creatives=0)
     KioskSponsorship.objects.create(
         kiosk=kiosk, campaign=camp, window_start_minute=600,
         window_end_minute=605, count=20,
     )
-    # Yeni 60sn'lik creative round-robin'e girince kapasite asilir.
+    # 60sn'lik creative 5 dk pencerede 20 gösterime sığmaz.
     r = admin_client.post(
         f"{BASE}/creatives/",
         {
@@ -382,4 +382,21 @@ def test_creative_create_blocked_by_capacity(admin_client, kiosk):
     )
     assert r.status_code == 400
     assert r.json()["code"] == "capacity_exceeded"
+    assert camp.creatives.count() == 0
+
+
+@pytest.mark.django_db
+def test_creative_create_rejects_second_media(admin_client):
+    camp = _mk_campaign(name="Tek", duration=15, creatives=1)
+    r = admin_client.post(
+        f"{BASE}/creatives/",
+        {
+            "campaign": str(camp.id),
+            "media_url": "https://cdn.example.com/second.png",
+            "duration_seconds": 15,
+        },
+        format="json",
+    )
+    assert r.status_code == 400
+    assert "campaign" in r.json()
     assert camp.creatives.count() == 1

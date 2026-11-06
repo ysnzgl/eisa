@@ -409,7 +409,7 @@ const HAREKET_ICON = {
               <td class="cell-muted">{{ fmtDate(o.odeme_tarihi) }}</td>
               <td>{{ o.fatura_tip }} · {{ o.fatura_donem }}</td>
               <td>{{ fmtTL(o.tutar) }}</td>
-              <td>{{ o.yontem_display }}</td>
+              <td>{{ o.yontem_display }}<span v-if="o.geri_alinma_tarihi" class="eisa-pill eisa-pill-muted">Geri alındı · {{ o.geri_alma_nedeni }}</span></td>
             </tr>
           </tbody>
         </table>

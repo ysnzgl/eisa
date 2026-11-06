@@ -1,6 +1,6 @@
 <script setup>
-import { computed, reactive, onMounted, onBeforeUnmount } from 'vue';
-import { RouterView, RouterLink } from 'vue-router';
+import { computed, reactive, ref, watch, onMounted, onBeforeUnmount } from 'vue';
+import { RouterView, RouterLink, useRoute } from 'vue-router';
 import { useAuthStore } from '../../stores/auth';
 import { useRouter } from 'vue-router';
 import logoUrl from '../../assets/eisa_logo.svg';
@@ -12,6 +12,19 @@ import EisaConfirm from '../../components/shared/EisaConfirm.vue';
 
 const auth = useAuthStore();
 const router = useRouter();
+const route = useRoute();
+
+// Mobil (≤1024px) off-canvas menü durumu.
+const navOpen = ref(false);
+function closeNav() { navOpen.value = false; }
+watch(() => route.fullPath, closeNav);
+watch(navOpen, (open) => { document.body.classList.toggle('eisa-nav-locked', open); });
+function onKeydown(e) { if (e.key === 'Escape' && navOpen.value) closeNav(); }
+onMounted(() => window.addEventListener('keydown', onKeydown));
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown);
+  document.body.classList.remove('eisa-nav-locked');
+});
 
 async function logout() {
   await auth.logout();
@@ -121,8 +134,20 @@ const roleLabel  = computed(() => isAdmin.value ? 'Süper Admin' : 'Eczacı');
 </script>
 
 <template>
-  <div class="admin-shell" :data-role="auth.role">
-    <aside class="admin-sidebar">
+  <div class="admin-shell" :class="{ 'is-nav-open': navOpen }" :data-role="auth.role">
+    <header class="admin-topbar">
+      <button type="button" class="admin-topbar-toggle" :aria-expanded="navOpen" aria-controls="admin-sidebar"
+        :aria-label="navOpen ? 'Menüyü kapat' : 'Menüyü aç'" @click="navOpen = !navOpen">
+        <i class="fa-solid" :class="navOpen ? 'fa-xmark' : 'fa-bars'"></i>
+        <span v-if="!navOpen && navItems.some((i) => i.badgeKey && navBadges[i.badgeKey] > 0)"
+          class="admin-topbar-dot" aria-hidden="true"></span>
+      </button>
+      <img :src="logoUrl" alt="E-ISA logo" class="admin-topbar-logo" />
+      <span class="admin-topbar-sub">{{ brandSub }}</span>
+    </header>
+    <div class="admin-nav-backdrop" aria-hidden="true" @click="closeNav"></div>
+
+    <aside id="admin-sidebar" class="admin-sidebar">
       <div class="brand">
         <img :src="logoUrl" alt="E-ISA logo" />        
         <p class="brand-sub">{{ brandSub }}</p>

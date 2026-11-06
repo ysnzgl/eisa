@@ -7,6 +7,7 @@ from .models import (
     CihazOdemePlani,
     Fatura,
     FaturaKalemi,
+    FaturaIslem,
     FiyatTanimi,
     Odeme,
     Sozlesme,
@@ -20,7 +21,7 @@ class FiyatTanimiSerializer(serializers.ModelSerializer):
         model = FiyatTanimi
         fields = (
             "id", "abonelik_bedeli", "cihaz_kira_bedeli", "acma_kapama_bedeli", "iptal_ceza_orani",
-            "gecerlilik_baslangic", "aciklama", "olusturulma_tarihi",
+            "gecerlilik_baslangic", "aciklama", "olusturulma_tarihi", "abonelik_kdv_orani", "cihaz_kdv_orani",
         )
         read_only_fields = ("id", "olusturulma_tarihi")
 
@@ -106,6 +107,11 @@ class CihazOdemePlaniSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         tip = attrs.get("tip") or getattr(self.instance, "tip", CihazOdemePlani.Tip.SATILIK)
+        if self.instance is None and "cihaz_kdv_orani" not in attrs:
+            from .services import aktif_fiyat
+            fiyat = aktif_fiyat(bugun=attrs.get("baslangic_tarihi"))
+            if fiyat:
+                attrs["cihaz_kdv_orani"] = fiyat.cihaz_kdv_orani
         taksit = attrs.get("taksit_sayisi", getattr(self.instance, "taksit_sayisi", 1))
         if tip == CihazOdemePlani.Tip.SATILIK:
             if attrs.get("pesin_fiyat") is None and self.instance is None:
@@ -119,6 +125,7 @@ class CihazOdemePlaniSerializer(serializers.ModelSerializer):
 
 
 class SozlesmeSerializer(serializers.ModelSerializer):
+    onay_gerekli = serializers.BooleanField(read_only=True)
     eczane_ad = serializers.CharField(source="eczane.ad", read_only=True)
     toplam_ay = serializers.IntegerField(read_only=True)
     toplam_gun = serializers.IntegerField(read_only=True)
@@ -144,7 +151,7 @@ class SozlesmeSerializer(serializers.ModelSerializer):
             "sozlesme_tipi_ay", "tip_display", "demo_gun",
             "baslangic_tarihi", "oteleme_ay", "aylik_kullanim_bedeli",
             "kdv_orani", "tevkifat_orani", "iptal_ceza_orani",
-            "eczaci_onay_tarihi", "imza_tipi", "islak_imza_url",
+            "eczaci_onay_tarihi", "imza_tipi", "islak_imza_url", "onay_gerekli",
             "cihaz_durumu", "cihaz_kira_bedeli",
             "ek_ay_toplam", "ek_gun_toplam", "onceki_sozlesme",
             "durum", "durum_display", "notlar",
@@ -159,6 +166,12 @@ class SozlesmeSerializer(serializers.ModelSerializer):
         from apps.abonelik import services
 
         tur = attrs.get("tur") or getattr(self.instance, "tur", Sozlesme.Tur.STANDART)
+        if self.instance is None and tur == Sozlesme.Tur.STANDART:
+            fiyat = services.aktif_fiyat(bugun=attrs.get("baslangic_tarihi"))
+            if fiyat:
+                attrs.setdefault("aylik_kullanim_bedeli", fiyat.abonelik_bedeli)
+                attrs.setdefault("kdv_orani", fiyat.abonelik_kdv_orani)
+                attrs.setdefault("iptal_ceza_orani", fiyat.iptal_ceza_orani)
         tip = attrs.get("sozlesme_tipi_ay", getattr(self.instance, "sozlesme_tipi_ay", None))
         demo_gun = attrs.get("demo_gun", getattr(self.instance, "demo_gun", None))
         eczane_id = attrs.get("eczane", getattr(self.instance, "eczane", None))
@@ -242,11 +255,32 @@ class SozlesmeUzatSerializer(serializers.Serializer):
 
 
 
+class FaturaIslemSerializer(serializers.ModelSerializer):
+    yapan = serializers.CharField(source="olusturan.username", read_only=True, default="")
+    islem_display = serializers.CharField(source="get_islem_display", read_only=True)
+
+    class Meta:
+        model = FaturaIslem
+        fields = ("id", "islem", "islem_display", "neden", "yapan", "olusturulma_tarihi", "onceki", "sonraki")
+        read_only_fields = fields
+
+
+class FaturaDuzeltSerializer(serializers.Serializer):
+    neden = serializers.CharField(max_length=500, allow_blank=False, trim_whitespace=True)
+    surum = serializers.IntegerField(min_value=1)
+    onizleme_anahtari = serializers.CharField(required=False, default="", max_length=64)
+
+
 class FaturaSerializer(serializers.ModelSerializer):
     eczane_ad = serializers.CharField(source="eczane.ad", read_only=True)
     tip_display = serializers.CharField(source="get_tip_display", read_only=True)
     durum_display = serializers.CharField(source="get_durum_display", read_only=True)
     kalemler = FaturaKalemiSerializer(many=True, read_only=True)
+    islemler = FaturaIslemSerializer(many=True, read_only=True)
+    aktif_tahsilat_var = serializers.SerializerMethodField()
+
+    def get_aktif_tahsilat_var(self, obj):
+        return any(o.geri_alinma_tarihi is None for o in obj.odemeler.all())
 
     class Meta:
         model = Fatura
@@ -254,7 +288,7 @@ class FaturaSerializer(serializers.ModelSerializer):
             "id", "eczane", "eczane_ad", "sozlesme", "cihaz_plani",
             "tip", "tip_display", "donem", "taksit_no", "tutar",
             "vade_tarihi", "durum", "durum_display", "odenme_tarihi", "aciklama",
-            "kalemler",
+            "kalemler", "surum", "iptal_nedeni", "iptal_tarihi", "islemler", "aktif_tahsilat_var",
         )
         read_only_fields = fields
 
@@ -268,7 +302,8 @@ class OdemeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Odeme
         fields = ("id", "fatura", "fatura_donem", "fatura_tip", "eczane_ad",
-                  "tutar", "yontem", "yontem_display", "aciklama", "odeme_tarihi")
+                  "tutar", "yontem", "yontem_display", "aciklama", "odeme_tarihi",
+                  "geri_alinma_tarihi", "geri_alma_nedeni")
         read_only_fields = ("id", "tutar", "odeme_tarihi")
 
 

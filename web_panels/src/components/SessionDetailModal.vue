@@ -95,7 +95,7 @@ onUnmounted(() => window.removeEventListener('keydown', onEscape));
             <i class="fa-solid fa-triangle-exclamation"></i> {{ loadError }}
           </div>
           <!-- Fallback: list row verisiyle temel bilgi göster -->
-          <div id="temelBilgiler" style="margin-top:1rem;display:grid;grid-template-columns:1fr 1fr;gap:0.75rem 1.25rem;">
+          <div id="temelBilgiler" style="margin-top:1rem;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0.75rem 1.25rem;">
             <div>
               <p style="font-size:0.7rem;color:#9CA3AF;">QR Kodu</p>
               <p style="font-family:'DM Mono',monospace;font-weight:700;">{{ session.qr_kodu }}</p>

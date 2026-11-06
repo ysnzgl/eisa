@@ -15,7 +15,9 @@ import { spawn }       from 'node:child_process';
 import { fetch as undiciFetch } from 'undici';
 
 const EXEC_TIMEOUT_MS    = 20_000;
-const CONNECT_TIMEOUT_MS = 40_000;
+// nmcli --wait ile aynı süre; DHCP/IP alma yavaş ağlarda 40 sn yetmeyebiliyor.
+const NMCLI_CONNECT_WAIT_S = 90;
+const CONNECT_TIMEOUT_MS = (NMCLI_CONNECT_WAIT_S + 10) * 1000;
 
 // ── temel spawn yardımcısı ─────────────────────────────────────────────────
 
@@ -29,7 +31,12 @@ const CONNECT_TIMEOUT_MS = 40_000;
  */
 function runProcess(cmd, args, timeoutMs = EXEC_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
-    const proc = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    // nmcli çıktısı sistem diline göre çevrilir (ör. "başarıyla etkinleştirildi");
+    // ayrıştırmanın tutarlı olması için C yerel ayarı zorlanır.
+    const proc = spawn(cmd, args, {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, LC_ALL: 'C', LANG: 'C' },
+    });
     let stdout = '';
     let stderr = '';
 
@@ -175,16 +182,14 @@ export async function scanWifi() {
  */
 export async function connectWifi(ssid, password) {
   try {
-    const args = ['dev', 'wifi', 'connect', ssid];
+    const args = ['--wait', String(NMCLI_CONNECT_WAIT_S), 'dev', 'wifi', 'connect', ssid];
     if (password) {
       args.push('password', password);
     }
-    const stdout = await runProcess('nmcli', args, CONNECT_TIMEOUT_MS);
-    const success = stdout.toLowerCase().includes('successfully activated');
-    return {
-      success,
-      message: success ? 'Bağlantı başarılı.' : stdout.trim(),
-    };
+    // nmcli başarısızlıkta sıfırdan farklı kodla çıkar (runProcess reject eder);
+    // çıkış kodu 0 ise bağlantı etkinleştirilmiştir.
+    await runProcess('nmcli', args, CONNECT_TIMEOUT_MS);
+    return { success: true, message: 'Bağlantı başarılı.' };
   } catch (err) {
     return { success: false, message: err.message };
   }

@@ -25,6 +25,7 @@ from .models import CihazOdemePlani, Fatura, FiyatTanimi, Odeme, Sozlesme, Sozle
 from .serializers import (
     CihazOdemePlaniSerializer,
     FaturaSerializer,
+    FaturaDuzeltSerializer,
     FiyatTanimiSerializer,
     OdemeSerializer,
     OdemeYapSerializer,
@@ -244,7 +245,7 @@ class FaturaViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.G
     serializer_class = FaturaSerializer
 
     def get_queryset(self):
-        qs = Fatura.objects.select_related("eczane").all()
+        qs = Fatura.objects.select_related("eczane").prefetch_related("kalemler", "odemeler", "islemler__olusturan").all()
         eczane_id = self.request.query_params.get("eczane")
         if eczane_id:
             qs = qs.filter(eczane_id=eczane_id)
@@ -291,6 +292,37 @@ class FaturaViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.G
             "gecikmis": gecikmis,
             "toplam_yeni": birlesik,
         })
+
+    @action(detail=True, methods=["get"], url_path="yeniden-olustur-onizleme")
+    def yeniden_olustur_onizleme(self, request, pk=None):
+        from .invoice_corrections import preview
+        try:
+            return Response(preview(self.get_object()))
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+    def _duzelt(self, request, islem):
+        from .invoice_corrections import correct
+        fatura = self.get_object()
+        body = FaturaDuzeltSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        try:
+            result = correct(fatura.pk, islem=islem, user=request.user, **body.validated_data)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(FaturaSerializer(result).data)
+
+    @action(detail=True, methods=["post"], url_path="iptal")
+    def iptal(self, request, pk=None):
+        return self._duzelt(request, "IPTAL")
+
+    @action(detail=True, methods=["post"], url_path="yeniden-olustur")
+    def yeniden_olustur(self, request, pk=None):
+        return self._duzelt(request, "YENIDEN_OLUSTUR")
+
+    @action(detail=True, methods=["post"], url_path="odemeyi-geri-al")
+    def odemeyi_geri_al(self, request, pk=None):
+        return self._duzelt(request, "ODEME_GERI_AL")
 
 
 # ── Admin: Fiyat tanımları (parametre) ────────────────────────────────
@@ -354,11 +386,7 @@ class HesabimView(APIView):
             "erisim_kapali": erisim_kapali,
             "grace_gun": services.GRACE_DAYS,
             # Islak imzalı sözleşmelerde dijital onay istenmez.
-            "onay_gerekli": (
-                sozlesme is not None
-                and sozlesme.eczaci_onay_tarihi is None
-                and sozlesme.imza_tipi != Sozlesme.ImzaTipi.ISLAK
-            ),
+            "onay_gerekli": bool(sozlesme and sozlesme.onay_gerekli),
             "ceza_tutari": str(sozlesme.iptal_ceza_tutari) if sozlesme else "0.00",
         })
 
@@ -474,7 +502,7 @@ class SozlesmeOnaylaView(APIView):
         sozlesme = Sozlesme.objects.filter(pk=pk, eczane_id=eczane_id).first()
         if sozlesme is None:
             return Response({"detail": "Sözleşme bulunamadı."}, status=status.HTTP_404_NOT_FOUND)
-        if sozlesme.eczaci_onay_tarihi:
+        if not sozlesme.onay_gerekli:
             return Response(SozlesmeSerializer(sozlesme).data)  # idempotent
         ip = request.META.get("REMOTE_ADDR", "")
         services.sozlesme_onayla(sozlesme, ip_address=ip, user=request.user)
@@ -597,7 +625,8 @@ class SozlesmeTalebiViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, vi
     def onay_bekleyen(self, request):
         """Eczacı onayı alınmamış aktif sözleşme sayısı (admin)."""
         sayi = Sozlesme.objects.filter(
-            durum=Sozlesme.Durum.AKTIF, eczaci_onay_tarihi__isnull=True
+            durum=Sozlesme.Durum.AKTIF, imza_tipi=Sozlesme.ImzaTipi.DIJITAL,
+            eczaci_onay_tarihi__isnull=True,
         ).count()
         return Response({"sayi": sayi})
 

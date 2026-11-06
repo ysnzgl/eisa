@@ -78,7 +78,8 @@ Kapasite hata şekli: `400 {"code":"capacity_exceeded","detail":"...","conflicts
 ## Panel
 
 - **Kiosk Sponsorluk** (`/admin/kiosk-sponsorships`): solda aranabilir kiosk listesi ("Atanmamış" filtresi); sağda sekmeler **Sponsorluklar** (atama tablosu, canlı kapasite), **Yayın Takvimi** (taslak/yayında; 24 saat ısı haritası → dakika/saniye çizelgesi, görsel önizleme), **Simülasyon** (probe + senaryo), **Kopyala** (önizle → onayla, üzerine yazar).
-- **Sponsorluk Tanımları** (`/admin/campaigns`): Bilgiler → Medya → Kiosklar (atanmış kiosklar + "Kiosklara Ata").
+- **Sponsorluk Tanımları** (`/admin/campaigns`): KPI kartları + aranabilir/segment filtreli liste; modal Bilgiler → Medya (9:16 bekleme + yatay işlem önizlemesi) → Kiosklar (atanmış kiosklar + "Kiosklara Ata").
+- **Medya kuralı:** Sponsorluk başına tek creative — tam ekran `media_url` (1080×1920, idle) + opsiyonel yarım ekran `active_media_url` (1080×768, oturum alt şeridi). Backend ikinci creative'i 400 ile reddeder.
 - Kaldırılanlar: CampaignWizard, PlaylistEditor (Gelişmiş Manuel Yayın), Fiyat Matrisi.
 
 ---

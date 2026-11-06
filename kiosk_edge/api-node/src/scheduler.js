@@ -316,6 +316,27 @@ function upsertCreative(db, c) {
   });
 }
 
+// Playlist item'ları medya bilgisini taşır; katalog pull'unu (15 dk) beklemeden
+// creative kaydını açar ki medya cache'i hemen indirebilsin.
+function upsertCreativeFromPlaylistItem(db, item) {
+  if ((item.asset_type ?? 'creative') !== 'creative' || !item.media_url) return;
+  db.prepare(
+    `INSERT INTO creatives (id, media_url, active_media_url, duration_seconds, checksum, type, aktif)
+     VALUES (@id, @media_url, @active_media_url, @duration_seconds, '', 'creative', 1)
+     ON CONFLICT(id) DO UPDATE SET
+       media_url=excluded.media_url,
+       active_media_url=excluded.active_media_url,
+       duration_seconds=excluded.duration_seconds,
+       aktif=1,
+       guncellenme_tarihi=strftime('%Y-%m-%dT%H:%M:%fZ','now')`,
+  ).run({
+    id: String(item.asset_id),
+    media_url: item.media_url,
+    active_media_url: item.active_media_url || '',
+    duration_seconds: item.duration_seconds ?? 15,
+  });
+}
+
 function upsertIdleContent(db, c) {
   db.prepare(
     `INSERT INTO idle_contents (id, baslik, baslik_en, metin, metin_en, kategori_id, ikon, aktif, guncellenme_tarihi)
@@ -581,6 +602,12 @@ export async function pingAndSyncPlaylist(db, settings, log = console) {
     `);
 
     const delItems  = db.prepare('DELETE FROM playlist_items WHERE playlist_id = ?');
+    // Backend her yeniden üretimde yeni playlist id verir; upsert id'yi değiştirmeden önce
+    // eski id'ye bağlı item'lar silinmezse FK ihlali tüm sync'i geri alır.
+    const delSlotItems = db.prepare(`
+      DELETE FROM playlist_items WHERE playlist_id IN
+        (SELECT id FROM playlists WHERE target_date = ? AND target_hour = ?)
+    `);
     const insItem   = db.prepare(`
       INSERT OR REPLACE INTO playlist_items
         (id, playlist_id, playback_order, asset_id, asset_type,
@@ -597,6 +624,7 @@ export async function pingAndSyncPlaylist(db, settings, log = console) {
 
     const tx = db.transaction((list) => {
       for (const pl of list) {
+        delSlotItems.run(pl.target_date, pl.target_hour);
         upsertPlaylist.run({
           id: String(pl.id),
           target_date: pl.target_date,
@@ -606,6 +634,7 @@ export async function pingAndSyncPlaylist(db, settings, log = console) {
         });
         delItems.run(String(pl.id));
         for (const item of pl.items ?? []) {
+          upsertCreativeFromPlaylistItem(db, item);
           insItem.run({
             id: String(item.id),
             playlist_id: String(pl.id),
@@ -732,6 +761,10 @@ export async function pingAndSyncManifest(db, settings, log = console) {
         synced_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
     `);
     const delItems = db.prepare('DELETE FROM playlist_items WHERE playlist_id = ?');
+    const delSlotItems = db.prepare(`
+      DELETE FROM playlist_items WHERE playlist_id IN
+        (SELECT id FROM playlists WHERE target_date = ? AND target_hour = ?)
+    `);
     const insItem = db.prepare(`
       INSERT OR REPLACE INTO playlist_items
         (id, playlist_id, playback_order, asset_id, asset_type,
@@ -756,6 +789,7 @@ export async function pingAndSyncManifest(db, settings, log = console) {
           delDatePlaylists.run(dateStr);
         } else {
           for (const pl of playlists) {
+            delSlotItems.run(dateStr, pl.target_hour);
             upsertPlaylist.run({
               id: String(pl.id),
               target_date: dateStr,
@@ -765,6 +799,7 @@ export async function pingAndSyncManifest(db, settings, log = console) {
             });
             delItems.run(String(pl.id));
             for (const item of pl.items ?? []) {
+              upsertCreativeFromPlaylistItem(db, item);
               insItem.run({
                 id: String(item.id),
                 playlist_id: String(pl.id),
