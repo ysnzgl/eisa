@@ -1,7 +1,7 @@
 """Görüş ve Destek view'leri.
 
 Permissions:
-  list, retrieve, yorum_ekle : IsAuthenticated (queryset izolasyonu)
+  list, retrieve, yorum_ekle : IsSuperAdminOrEczaci (queryset izolasyonu; editor hariç)
   create                     : IsEczaci
   durum_degistir, yeni_sayisi: IsSuperAdmin
 """
@@ -17,7 +17,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.core.uow import UnitOfWork
-from apps.pharmacies.permissions import IsEczaci, IsEczaciPanelAcik, IsSuperAdmin
+from apps.pharmacies.permissions import IsEczaci, IsEczaciPanelAcik, IsSuperAdmin, IsSuperAdminOrEczaci
 from apps.users.models import Kullanici
 from core_api.cookie_jwt import JWTCookieAuthentication as JWTAuthentication
 
@@ -75,7 +75,9 @@ class DestekTalebiViewSet(
             return [IsEczaciPanelAcik()]
         if self.action in ("durum_degistir", "yeni_sayisi"):
             return [IsSuperAdmin()]
-        return [IsAuthenticated()]
+        # list / retrieve / yorum_ekle: superadmin veya eczaci (queryset izolasyonu).
+        # `editor` rolu (yalnizca web sitesi) destek taleplerini GOREMEZ.
+        return [IsSuperAdminOrEczaci()]
 
     def get_serializer_class(self):
         if self.action == "create":

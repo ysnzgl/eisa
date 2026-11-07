@@ -3,7 +3,7 @@
  * Kullanıcı Yönetimi (Admin)
  * — Listele, oluştur, düzenle, parola sıfırla, pasifleştir/aktifleştir.
  */
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import {
   getUsers, createUser, updateUser,
   deactivateUser, activateUser, resetPassword,
@@ -37,6 +37,18 @@ const showResetModal = ref(false);
 const editing = ref(empty());
 const resetTarget = ref(null);
 const newPassword = ref('');
+
+// Rol etiketleri. Editör yalnız Web Sitesi modülüne erişir; eczane bağlantısı gerekmez.
+const ROL_BILGI = {
+  superadmin: { etiket: 'Admin', sinif: 'eisa-pill-info' },
+  pharmacist: { etiket: 'Eczacı', sinif: 'eisa-pill-muted' },
+  editor: { etiket: 'Editör', sinif: 'eisa-pill-warning' },
+};
+
+// Eczane alanı yalnız eczacı rolü için anlamlıdır.
+watch(() => editing.value.rol, (rol) => {
+  if (rol !== 'pharmacist') editing.value.eczane = null;
+});
 
 const filtered = computed(() => {
   const q = search.value.trim().toLowerCase();
@@ -93,11 +105,12 @@ async function save() {
   if (!f.username.trim()) { toast.error('Kullanıcı adı zorunlu'); return; }
   if (!f.id && !f.password) { toast.error('Parola zorunlu'); return; }
   if (!f.id && f.password.length < 10) { toast.error('Parola en az 10 karakter olmalı'); return; }
+  const eczane = f.rol === 'pharmacist' ? f.eczane : null;
   try {
     if (f.id) {
       const payload = {
         email: f.email, first_name: f.first_name, last_name: f.last_name,
-        rol: f.rol, eczane: f.eczane, is_active: f.is_active,
+        rol: f.rol, eczane, is_active: f.is_active,
       };
       await updateUser(f.id, payload);
       toast.success('Kullanıcı güncellendi');
@@ -108,7 +121,7 @@ async function save() {
         first_name: f.first_name,
         last_name: f.last_name,
         rol: f.rol,
-        eczane: f.eczane,
+        eczane,
         password: f.password,
         is_active: f.is_active,
       });
@@ -207,6 +220,7 @@ onMounted(load);
           <option value="all">Tüm Roller</option>
           <option value="superadmin">Süper Admin</option>
           <option value="pharmacist">Eczacı</option>
+          <option value="editor">Editör (Web Sitesi)</option>
         </select>
         <select v-model="filterStatus" class="eisa-field eisa-filter">
           <option value="all">Tüm Durumlar</option>
@@ -248,8 +262,8 @@ onMounted(load);
               </td>
               <td>{{ u.email || '—' }}</td>
               <td>
-                <span class="eisa-pill" :class="u.rol === 'superadmin' ? 'eisa-pill-info' : 'eisa-pill-muted'">
-                  {{ u.rol === 'superadmin' ? 'Admin' : 'Eczacı' }}
+                <span class="eisa-pill" :class="ROL_BILGI[u.rol]?.sinif || 'eisa-pill-muted'">
+                  {{ ROL_BILGI[u.rol]?.etiket || u.rol }}
                 </span>
               </td>
               <td>{{ u.eczane_detail?.ad || '—' }}</td>
@@ -312,11 +326,12 @@ onMounted(load);
               <select v-model="editing.rol" class="eisa-field">
                 <option value="pharmacist">Eczacı</option>
                 <option value="superadmin">Süper Admin</option>
+                <option value="editor">Editör (Web Sitesi)</option>
               </select>
             </div>
             <div class="eisa-form-row">
               <label class="eisa-field-label">Eczane</label>
-              <select v-model="editing.eczane" class="eisa-field" :disabled="editing.rol === 'superadmin'">
+              <select v-model="editing.eczane" class="eisa-field" :disabled="editing.rol !== 'pharmacist'">
                 <option :value="null">— Seçilmedi —</option>
                 <option v-for="p in pharmacies" :key="p.id" :value="p.id">{{ p.name }}</option>
               </select>

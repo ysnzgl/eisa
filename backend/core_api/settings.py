@@ -66,6 +66,7 @@ INSTALLED_APPS = [
     "apps.announcements",
     "apps.abonelik",
     "apps.sirket",
+    "apps.website",
 ]
 
 MIDDLEWARE = [
@@ -163,6 +164,8 @@ REST_FRAMEWORK = {
         # Log ingestion endpoint'leri — kötüye kullanımı engelle.
         "kiosk_diagnostic": config("THROTTLE_KIOSK_DIAGNOSTIC", default="60/min"),
         "client_event": config("THROTTLE_CLIENT_EVENT", default="30/min"),
+        # Web sitesi başvuru formu (apps.website) — IP başına.
+        "website_basvuru": config("THROTTLE_WEBSITE_BASVURU", default="5/hour"),
     },
 }
 
@@ -220,6 +223,12 @@ if not DEBUG:
             raise ImproperlyConfigured(
                 "DJANGO_CORS_ORIGINS wildcard ('*') içermemelidir."
             )
+
+# Web sitesi (Next.js) API'ye cluster içinden düz HTTP ile bağlanır
+# (http://eisa-api.eisa-app.svc.cluster.local); dışarıda TLS'i Traefik sonlandırır.
+# Yalnızca sitenin okuduğu public/önizleme uçları HTTPS yönlendirmesinden muaftır
+# (SECURE_SSL_REDIRECT kapalıyken etkisizdir).
+SECURE_REDIRECT_EXEMPT = [r"^api/website/(public|preview)/"]
 
 # Üretim güvenlik başlıkları (Traefik HTTPS sonlandırması arkasında)
 if not DEBUG:
@@ -292,6 +301,29 @@ RUSTFS_SECURE                     = S3_SECURE
 RUSTFS_PRESIGNED_URL_TTL_MINUTES  = S3_PRESIGNED_URL_TTL_MINUTES
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# ─── Web Sitesi (apps.website) — eisa.com.tr CMS ─────────────────────────────
+# Sözleşme: docs/web-sitesi/CONTRACT.md §1, §6.
+# SITE_PUBLIC_URL           : Önizleme linkleri için sitenin dış adresi.
+# SITE_REVALIDATE_URLS      : Yayın sonrası POST edilecek revalidate uçları (virgüllü).
+# SITE_REVALIDATE_HEADLESS_HOST : "host:port" — doluysa DNS'ten çözülen TÜM pod IP'lerine
+#                             http://<ip>:<port>/api/revalidate fan-out yapılır.
+# REVALIDATE_SECRET         : X-Revalidate-Secret başlığı (site ile aynı değer).
+# WEBSITE_SERVER_TOKEN      : Site sunucusunun "ben siteyim" başlığı (X-Website-Token).
+# WEBSITE_MEDIA_LOCAL       : True ise medya S3 yerine MEDIA_ROOT/website/ altına yazılır.
+# WEBSITE_AUTO_SEED         : True ise migrate sonunda, site içeriği hiç yoksa başlangıç içeriği yüklenir.
+SITE_PUBLIC_URL = config("SITE_PUBLIC_URL", default="http://localhost:3000").rstrip("/")
+SITE_REVALIDATE_URLS = config(
+    "SITE_REVALIDATE_URLS",
+    default="http://localhost:3000/api/revalidate",
+    cast=lambda v: [s.strip() for s in v.split(",") if s.strip()],
+)
+SITE_REVALIDATE_HEADLESS_HOST = config("SITE_REVALIDATE_HEADLESS_HOST", default="")
+SITE_REVALIDATE_TIMEOUT = config("SITE_REVALIDATE_TIMEOUT", default=3, cast=float)
+REVALIDATE_SECRET = config("REVALIDATE_SECRET", default="dev-revalidate-secret")
+WEBSITE_SERVER_TOKEN = config("WEBSITE_SERVER_TOKEN", default="dev-website-token")
+WEBSITE_MEDIA_LOCAL = config("WEBSITE_MEDIA_LOCAL", default=False, cast=bool)
+WEBSITE_AUTO_SEED = config("WEBSITE_AUTO_SEED", default=True, cast=bool)
 
 # ─── API Dokümantasyonu (yalnızca geliştirme ortamında) ─────────────────────
 if DEBUG:

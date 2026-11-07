@@ -1,4 +1,4 @@
-"""DOOH sponsorluk (reklam) modelleri.
+"""DOOH sponsorluk modelleri.
 
 Yeniden tasarim: Sponsorluk = ``Campaign``. Her kiosk atamasi ``KioskSponsorship``
 ile tanimlanir (tek zaman penceresi + gunluk toplam gosterim N). Tek yerlesim
@@ -26,7 +26,7 @@ def _https_url_validator(value: str) -> None:
 
 
 class Campaign(BaseModel):
-    """Reklam sponsorlugu. Bir reklamveren altinda bir veya daha cok creative barindirir.
+    """Sponsorluk kampanyasi. Bir sponsor firma altinda bir veya daha cok creative barindirir.
 
     Kiosk atamalari ``KioskSponsorship`` ile yapilir; hedefleme/il-ilce/kota yoktur.
     """
@@ -39,7 +39,7 @@ class Campaign(BaseModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     advertiser_name = models.CharField(
         max_length=255, blank=True, default="",
-        help_text="Reklamveren adi (admin panel icin serbest metin).",
+        help_text="Sponsor firma adi (admin panel icin serbest metin).",
     )
     name = models.CharField(max_length=255)
     start_date = models.DateTimeField()

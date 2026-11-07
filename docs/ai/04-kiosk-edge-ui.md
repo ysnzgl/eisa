@@ -1,6 +1,6 @@
 # Kiosk Edge UI — Svelte 5
 
-**Amaç:** Kiosk kullanıcı arayüzü; demografik seçim → kategori seçim → soru/cevap akışı → QR gösterimi; reklam oynatımı (60sn döngü); offline-first.
+**Amaç:** Kiosk kullanıcı arayüzü; demografik seçim → kategori seçim → soru/cevap akışı → QR gösterimi; sponsorluk oynatımı (60sn döngü); offline-first.
 
 ---
 
@@ -9,7 +9,7 @@
 - Kiosk UI değişiklikleri için
 - Kategori/soru akışı problemlerinde
 - QR üretimi/gösterimi için
-- Reklam oynatım sorunlarında
+- Sponsorluk oynatım sorunlarında
 - Session lifecycle değişikliklerinde
 
 ---
@@ -43,9 +43,9 @@
   - Kaynak: `src/assets/eisa-logo.svg` (koyu metin) + `src/assets/eisa-logo-light.svg` (beyaz metin)
 - `kiosk_edge/ui/src/components/ScreenHeader.svelte` — Ortak ekran basligi (Logo + opsiyonel subtitle); 5 ekranda kullanilir
 - `kiosk_edge/ui/src/components/MediaView.svelte` — URL uzantisina gore `<video>`/`<img>` render eden ortak bilesen; AdStrip + IdleScreen kullanir
-- `kiosk_edge/ui/src/components/AdPromo.svelte` — Reklam YOKKEN gosterilen donen "Bu Alana Reklam Verebilirsiniz" tasarimi (her yerde ortak); `large` prop tam-ekran (attractor) varyanti
-- `kiosk_edge/ui/src/components/IdleScreen.svelte` — Cekici (attractor) ekrani; acilista DOGRUDAN gosterilir (normal idle YOK). Reklam varsa MediaView ile doner, yoksa AdPromo
-- `kiosk_edge/ui/src/components/AdStrip.svelte` — Reklam oynatim *(2026-07-31 güncellendi)*:
+- `kiosk_edge/ui/src/components/AdPromo.svelte` — Sponsorluk YOKKEN gosterilen donen "Bu Alana Sponsor Olabilirsiniz" tasarimi (her yerde ortak); `large` prop tam-ekran (attractor) varyanti
+- `kiosk_edge/ui/src/components/IdleScreen.svelte` — Cekici (attractor) ekrani; acilista DOGRUDAN gosterilir (normal idle YOK). Sponsorluk varsa MediaView ile doner, yoksa AdPromo
+- `kiosk_edge/ui/src/components/AdStrip.svelte` — Sponsorluk oynatim *(2026-07-31 güncellendi)*:
   - `active_media_url` varsa → `cover`; yoksa `media_url` + `object-fit: contain` (letterbox fallback)
   - `logCurrentImpression()` — aynı `asset_type` + `asset_id` ile impression; iki URL'e iki impression YOK
   - Medya yoksa `<AdPromo />`, medya varsa `<MediaView />` gosterir
@@ -60,7 +60,7 @@
 **Kullanıcı tipi:** Anonim son kullanıcı (eczane ziyaretçisi)
 
 **Ana akış:**
-1. Cekici (attractor) ekran — acilista dogrudan gelir: reklam varsa gorseller doner, yoksa donen "Bu Alana Reklam Verebilirsiniz" + logo + "Baslamak icin dokunun"
+1. Cekici (attractor) ekran — acilista dogrudan gelir: sponsorluk varsa gorseller doner, yoksa donen "Bu Alana Sponsor Olabilirsiniz" + logo + "Baslamak icin dokunun"
 2. Dokunma → Demografik seçim (yaş aralığı, cinsiyet)
 3. Kategori seçimi (şikayet türü: uyku, enerji, bağışıklık, vb.)
 4. Soru/cevap akışı (kategori sorularına cevap verme)
@@ -70,9 +70,9 @@
 **Alternatif akış:**
 - "Eczacınıza Danışın" butonu → Danışma kategorisi seçimi → QR kod (direkt)
 
-**Reklam akışı:**
+**Sponsorluk akışı:**
 - Tüm ekranların altında AdStrip component → saatlik slot-hizalı playlist (yalnız creative; house_ad kaldırıldı)
-- Reklam YOKKEN: donen "Bu Alana Reklam Verebilirsiniz" (AdPromo); ekran koruyucuda da ayni promo
+- Sponsorluk YOKKEN: donen "Bu Alana Sponsor Olabilirsiniz" (AdPromo); ekran koruyucuda da ayni promo
 - Impression log: `{ asset_id, asset_type, played_at, duration_played }`
 
 **Marka:**
@@ -112,7 +112,7 @@
 
 1. **IdleScreen.svelte** (cekici / attractor ekrani)
    - Uygulama acilir acilmaz DOGRUDAN bu ekran gosterilir; ayri bir "normal idle" bekleme ekrani YOKTUR (kaldirildi).
-   - Gercek reklam (playlist/kampanya) varsa gorseller arasinda gecis yapar (`MediaView`); reklam YOKKEN `<AdPromo large />` (donen "Bu Alana Reklam Verebilirsiniz").
+   - Gercek sponsorluk (playlist/kampanya) varsa gorseller arasinda gecis yapar (`MediaView`); sponsorluk YOKKEN `<AdPromo large />` (donen "Bu Alana Sponsor Olabilirsiniz").
    - Ust-orta'da açık renk cam kart üzerinde koyu logo overlay'i (`ss-overlay-text`) bulunur; bu kart hem beyaz fallback hem kampanya medyası üzerinde okunur.
    - Dokunma → `demographics` screen.
 
@@ -158,7 +158,7 @@
    - Her item icin `<MediaView>` (asset_type: creative; house_ad ogeleri atlanir), `duration_seconds`
    - Slot degisince onceki slot icin impression: `POST http://127.0.0.1:8765/api/reklam-gosterim`
      `{ asset_id, asset_type, played_at, duration_played }`
-   - Medya/asset YOKKEN → `<AdPromo />` (donen "Bu Alana Reklam Verebilirsiniz")
+   - Medya/asset YOKKEN → `<AdPromo />` (donen "Bu Alana Sponsor Olabilirsiniz")
 
 ### Ortak (tekrar kullanilan) bilesenler
 
@@ -166,7 +166,7 @@
    - Marka logosu (SVG). Props: `height`, `light` (koyu zeminde beyaz), `class`. Kaynak: `assets/eisa-logo.svg` + `eisa-logo-light.svg`
 
 10. **AdPromo.svelte**
-   - Reklam yokken donen "Bu Alana Reklam Verebilirsiniz" tasarimi (konik isik halkasi + megafon + shimmer baslik + logo). `large` prop tam-ekran (attractor) varyantıdır; bu varyant beyaz/açık zemin ve koyu gri + e-isa kırmızısı kontrast kullanır. Alt banttaki küçük varyant mevcut koyu tasarımı korur.
+   - Sponsorluk yokken donen "Bu Alana Sponsor Olabilirsiniz" tasarimi (konik isik halkasi + megafon + shimmer baslik + logo). `large` prop tam-ekran (attractor) varyantıdır; bu varyant beyaz/açık zemin ve koyu gri + e-isa kırmızısı kontrast kullanır. Alt banttaki küçük varyant mevcut koyu tasarımı korur.
    - **Dekoratif kalp atışı animasyonu (2026-08-16):** `large` varyantinda merkezde HeartbeatAnimation component görünür
      - `HeartbeatAnimation.svelte` ayrı modüler widget olarak oluşturuldu
    - **Idle içerik gösterimi (2026-08-16):** `large` varyantı, mevcut heartbeat/sponsor tasarımının üstüne katmanlanmış olarak `idleContentStore`'dan gelen aktif idle içeriğini gösterir:
@@ -227,7 +227,7 @@
 
 ---
 
-## Reklam Gösterimi
+## Sponsorluk Gösterimi
 
 **Akış:**
 1. `AdStrip.svelte` component mount olduğunda → `onMount`
@@ -260,7 +260,7 @@
 6. 60sn döngü tamamlanınca başa dön (loop)
 
 **Impression logging:**
-- Bir reklam slotu gösterildiğinde → `shownAt` timestamp kaydedilir
+- Bir sponsorluk slotu gösterildiğinde → `shownAt` timestamp kaydedilir
 - Slot değişince önceki slotun gerçek izlenme süresi (`durationMs`) hesaplanır
 - `POST http://127.0.0.1:8765/api/reklam-gosterim`:
   ```json
@@ -440,7 +440,7 @@ Detay: `kiosk_edge/README_DEMO_DOCKER.md`
 4. **AdStrip video error handling:** Video yüklenemezse veya oynatılamazsa ne olur? `failure_reason` log'lanıyor ama UI'da fallback? (Belirsiz)
 5. **WiFi setup:** `nmcli` çağrıları Linux'a özel, geliştirme ortamında (Windows/macOS) çalışmaz. Fallback mekanizma? (Belirsiz)
 6. **Auto-reset timing:** 30sn sonra idle'a dön → kullanıcı QR'ı okutmaya fırsat bulamayabilir. Configurable olmalı? (Doğrulanmalı)
-7. **Offline playlist:** Internet kesildiğinde eski playlist oynatılır mı, yoksa reklam strip boş mu kalır? (Belirsiz)
+7. **Offline playlist:** Internet kesildiğinde eski playlist oynatılır mı, yoksa sponsorluk strip boş mu kalır? (Belirsiz)
 
 ---
 

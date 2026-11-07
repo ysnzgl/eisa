@@ -81,6 +81,8 @@ urlpatterns = [
     path("api/announcements/", include("apps.announcements.urls")),
     path("api/abonelik/", include("apps.abonelik.urls")),
     path("api/sirket/", include("apps.sirket.urls")),
+    # eisa.com.tr CMS (public / preview / admin) — docs/web-sitesi/CONTRACT.md
+    path("api/website/", include("apps.website.urls")),
 ]
 
 # Swagger / ReDoc yalnızca geliştirme ortamında

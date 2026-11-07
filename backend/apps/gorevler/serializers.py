@@ -5,10 +5,18 @@ from rest_framework import serializers
 from apps.core.uow import UnitOfWork
 from apps.users.models import Kullanici
 
-from .models import Gorev
+from .models import Gorev, GorevDosya
+
+
+class GorevDosyaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = GorevDosya
+        fields = ["id", "ad", "content_type", "boyut", "olusturulma_tarihi"]
+        read_only_fields = fields
 
 
 class GorevSerializer(serializers.ModelSerializer):
+    dosyalar = GorevDosyaSerializer(many=True, read_only=True)
     durum_ad = serializers.CharField(source="get_durum_display", read_only=True)
     atanan_kullanici_adi = serializers.SerializerMethodField()
     atanan_kullanici_username = serializers.SerializerMethodField()
@@ -24,6 +32,7 @@ class GorevSerializer(serializers.ModelSerializer):
         model = Gorev
         fields = [
             "id",
+            "dosyalar",
             "baslik",
             "icerik",
             "durum",

@@ -206,7 +206,7 @@ Key prohibitions:
 → Gerçek kod doğrula
 ```
 
-### 2. Reklam/Playlist Problemi
+### 2. Sponsorluk/Playlist Problemi
 ```
 → 08-dooh-advertising.md oku
 → Playlist generation + sync flow kontrol et

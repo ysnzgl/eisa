@@ -35,3 +35,9 @@ Thumbs.db
 logs/
 
 docs/rancher-deployment-updated.md
+
+# Ortam dosyaları (sır içerir) — örnekler hariç
+.env
+.env.*
+!.env.example
+!.env.*.example

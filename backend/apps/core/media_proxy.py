@@ -7,7 +7,7 @@ import re
 from urllib.parse import quote
 
 from django.conf import settings
-from django.http import StreamingHttpResponse
+from django.http import FileResponse, StreamingHttpResponse
 from django.urls import reverse
 
 from apps.core.services.storage_service import StorageService
@@ -21,7 +21,7 @@ def validate_media_object_key(object_key: str) -> str:
     key = (object_key or "").strip()
     if not key or key.startswith(("/", "\\")) or ".." in key or "\\" in key or "//" in key:
         raise ValueError("Gecersiz medya anahtari.")
-    if not key.startswith(("ads/", "barkod-logo/")):
+    if not key.startswith(("ads/", "barkod-logo/", "website/")):
         raise ValueError("Bu nesne medya proxy'sinden sunulamaz.")
     return key
 
@@ -40,9 +40,39 @@ def media_proxy_url(object_key: str, request=None) -> str:
     return f"{base}{path}" if base else path
 
 
+def stream_local_website_object(object_key: str):
+    """
+    WEBSITE_MEDIA_LOCAL=True iken web sitesi medyasini MEDIA_ROOT/website altindan sunar.
+    Yol, MEDIA_ROOT/website disina cikamaz (path traversal korumasi). Bulunamazsa FileNotFoundError.
+    """
+    from pathlib import Path
+
+    key = validate_media_object_key(object_key)
+    if not key.startswith("website/"):
+        raise FileNotFoundError(key)
+    kok = (Path(settings.MEDIA_ROOT) / "website").resolve()
+    yol = (Path(settings.MEDIA_ROOT) / key).resolve()
+    try:
+        yol.relative_to(kok)
+    except ValueError:
+        raise FileNotFoundError(key)
+    if not yol.is_file():
+        raise FileNotFoundError(key)
+    content_type = mimetypes.guess_type(key)[0] or "application/octet-stream"
+    if key.lower().endswith(".avif"):
+        content_type = "image/avif"
+    response = FileResponse(open(yol, "rb"), content_type=content_type)
+    response["Cache-Control"] = "public, max-age=86400"
+    response["X-Content-Type-Options"] = "nosniff"
+    response["Content-Disposition"] = f'inline; filename="{quote(key.rsplit("/", 1)[-1])}"'
+    return response
+
+
 def stream_storage_object(request, object_key: str):
     """RustFS nesnesini HTTP Range destekli olarak stream eder."""
     key = validate_media_object_key(object_key)
+    if key.startswith("website/") and getattr(settings, "WEBSITE_MEDIA_LOCAL", False):
+        return stream_local_website_object(key)
     storage = StorageService()
     stat = storage.client.stat_object(storage.bucket_name, key)
     total = stat.size

@@ -1,0 +1,681 @@
+@import "tailwindcss";
+
+/*
+ * e-isa tasarım sistemi (CONTRACT §10).
+ * Renk/font/radius/gölge tokenları Tailwind v4 @theme ile tanımlıdır; utility olarak kullanılır:
+ *   bg-primary, hover:bg-primary-hover, bg-dark, text-ink, text-muted, text-brand-deep,
+ *   bg-bg, bg-card, border-line, bg-gri, font-display, font-sans, rounded-kart, shadow-kart ...
+ * Koyu zemin (bg-dark) üzerinde metin: text-white / text-white/70, kenarlık: border-line-koyu.
+ */
+
+@theme {
+  /* --- Renkler --- */
+  --color-primary: #ed1c24;
+  --color-primary-hover: #c8141b;
+  /* Beyaz metin taşıyan küçük kırmızı yüzeyler (buton, kırmızı bant) için AA uyumlu ton (4.8:1). */
+  --color-primary-aa: #e3141c;
+  --color-primary-soft: #fdecec;
+  --color-dark: #0b0f14;
+  --color-dark-2: #121821;
+  --color-dark-3: #1a222d;
+  --color-ink: #1f2933;
+  --color-muted: #65736f;
+  --color-brand-deep: #3f514d;
+  --color-bg: #f8faf9;
+  --color-card: #ffffff;
+  --color-line: #e6ecea;
+  --color-line-koyu: rgb(255 255 255 / 0.1);
+  /* arka_plan: gri — hafif gri-yeşil */
+  --color-gri: #eef3f1;
+  --color-basari: #1f9d6b;
+  --color-uyari: #b7791f;
+
+  /* --- Radius --- */
+  --radius-kart: 1.25rem;
+  --radius-buton: 999px;
+  --radius-panel: 1.75rem;
+
+  /* --- Gölgeler --- */
+  --shadow-kart: 0 1px 2px rgb(11 15 20 / 0.04), 0 8px 24px -12px rgb(11 15 20 / 0.12);
+  --shadow-kart-hover: 0 2px 4px rgb(11 15 20 / 0.05), 0 22px 44px -18px rgb(11 15 20 / 0.22);
+  --shadow-cta: 0 10px 30px -10px rgb(237 28 36 / 0.6);
+  --shadow-cam: 0 1px 0 rgb(255 255 255 / 0.6) inset, 0 10px 30px -15px rgb(11 15 20 / 0.25);
+  --shadow-koyu: 0 30px 60px -30px rgb(0 0 0 / 0.6);
+
+  /* --- Hareket --- */
+  --ease-eisa: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --animate-marquee: marquee var(--marquee-sure, 40s) linear infinite;
+  --animate-yuzme: yuzme 6s ease-in-out infinite;
+  --animate-nabiz: nabiz 2.4s var(--ease-eisa) infinite;
+  --animate-yavas-don: spin 18s linear infinite;
+  --animate-parilti: parilti 2.8s ease-in-out infinite;
+
+  @keyframes marquee {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-50%);
+    }
+  }
+  @keyframes yuzme {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-10px);
+    }
+  }
+  @keyframes nabiz {
+    0% {
+      transform: scale(0.9);
+      opacity: 0.7;
+    }
+    80%,
+    100% {
+      transform: scale(1.8);
+      opacity: 0;
+    }
+  }
+  @keyframes parilti {
+    0%,
+    100% {
+      opacity: 0.55;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+}
+
+/*
+ * `inline`: utility'ler doğrudan var() kullanır → değer, elementin bulunduğu yerde çözülür.
+ * - Fontlar next/font değişkenlerinden gelir (layout.tsx).
+ * - zemin-* renkleri bulunduğu Section'ın arka planına göre otomatik değişir (aşağıdaki [data-zemin]).
+ *   Bloklarda sabit renk yerine bunları kullanın: text-zemin-baslik, text-zemin-metin,
+ *   text-zemin-soluk, text-zemin-vurgu, border-zemin-cizgi, bg-zemin-kart.
+ */
+@theme inline {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: var(--font-space-grotesk), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  --color-zemin-baslik: var(--zemin-baslik);
+  --color-zemin-metin: var(--zemin-metin);
+  --color-zemin-soluk: var(--zemin-soluk);
+  --color-zemin-vurgu: var(--zemin-vurgu);
+  --color-zemin-cizgi: var(--zemin-cizgi);
+  --color-zemin-kart: var(--zemin-kart);
+}
+
+/* ------------------------------------------------------------------ */
+/* Temel                                                               */
+/* ------------------------------------------------------------------ */
+
+:root {
+  /* Sabit header yüksekliği — anchor kaydırma offset'i ve scroll-margin için tek kaynak. */
+  --header-yukseklik: 5rem;
+  --header-yukseklik-dar: 4rem;
+  /* Önizleme bandı yüksekliği (yalnızca draft mode'da 2.5rem). */
+  --onizleme-bant: 0px;
+  color-scheme: light;
+}
+html.onizleme {
+  --onizleme-bant: 2.5rem;
+}
+
+/* Zemine duyarlı renkler (Section `data-zemin` verir). */
+:root,
+[data-zemin="acik"],
+[data-zemin="gri"] {
+  --zemin-baslik: var(--color-dark);
+  --zemin-metin: var(--color-ink);
+  --zemin-soluk: var(--color-muted);
+  /* küçük kırmızı metin için AA uyumlu ton */
+  --zemin-vurgu: var(--color-primary-hover);
+  --zemin-cizgi: var(--color-line);
+  --zemin-kart: var(--color-card);
+}
+[data-zemin="koyu"] {
+  --zemin-baslik: #ffffff;
+  --zemin-metin: rgb(255 255 255 / 0.82);
+  --zemin-soluk: rgb(255 255 255 / 0.64);
+  --zemin-vurgu: #ff5a60;
+  --zemin-cizgi: rgb(255 255 255 / 0.1);
+  --zemin-kart: var(--color-dark-2);
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-bg font-sans text-ink antialiased;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-display tracking-tight text-balance;
+  }
+
+  ::selection {
+    background: rgb(237 28 36 / 0.18);
+    color: inherit;
+  }
+
+  /* Görünür odak halkası (klavye). Fare tıklamasında görünmez. */
+  :focus {
+    outline: none;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 3px;
+    border-radius: 6px;
+  }
+  /* Koyu zeminlerde halka daha açık kırmızı */
+  [data-zemin="koyu"] :focus-visible {
+    outline-color: #ff5a60;
+  }
+  /* Anchor kaydırmasında programatik odak alan bölümlerde halka gösterme. */
+  [tabindex="-1"]:focus-visible {
+    outline: none;
+  }
+
+  /* Anchor hedefleri sabit (scroll'da daralmış) header'ın altında kalmasın. */
+  [id] {
+    scroll-margin-top: calc(var(--header-yukseklik-dar) + var(--onizleme-bant) + 1rem);
+  }
+
+  img,
+  svg,
+  video {
+    max-width: 100%;
+  }
+
+  [hidden] {
+    display: none !important;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Header teması                                                       */
+/* Varsayılan: açık tema (koyu metin). Sayfanın ilk bloğu koyu bir     */
+/* başlık bloğuysa (BlockRenderer `data-ilk-blok="koyu"` işaretler) ve */
+/* sayfa kaydırılmamışsa: şeffaf zemin + açık metin + beyaz logo.      */
+/* CSS :has() ile yapılır → SSR'da da doğru, hidrasyon titremesi yok.  */
+/* ------------------------------------------------------------------ */
+
+.site-header {
+  --hdr-metin: var(--color-ink);
+  --hdr-metin-soluk: var(--color-muted);
+  --hdr-hover-zemin: rgb(31 41 51 / 0.06);
+}
+.site-header .logo-beyaz {
+  display: none;
+}
+body:has([data-ilk-blok="koyu"]) .site-header:not([data-kaydirildi="true"]),
+.site-header[data-menu-acik="true"] {
+  --hdr-metin: #ffffff;
+  --hdr-metin-soluk: rgb(255 255 255 / 0.72);
+  --hdr-hover-zemin: rgb(255 255 255 / 0.1);
+}
+body:has([data-ilk-blok="koyu"]) .site-header:not([data-kaydirildi="true"]) .logo-koyu,
+.site-header[data-menu-acik="true"] .logo-koyu {
+  display: none;
+}
+body:has([data-ilk-blok="koyu"]) .site-header:not([data-kaydirildi="true"]) .logo-beyaz,
+.site-header[data-menu-acik="true"] .logo-beyaz {
+  display: block;
+}
+
+/* ------------------------------------------------------------------ */
+/* Lenis (lenis/dist/lenis.css ile aynı)                               */
+/* ------------------------------------------------------------------ */
+
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+.lenis:not(.lenis-autoToggle).lenis-stopped {
+  overflow: clip;
+}
+.lenis [data-lenis-prevent],
+.lenis [data-lenis-prevent-wheel],
+.lenis [data-lenis-prevent-touch] {
+  overscroll-behavior: contain;
+}
+.lenis.lenis-smooth iframe {
+  pointer-events: none;
+}
+
+/* Mobil menü / modal açıkken gövde kaydırması kilidi. */
+html.kaydirma-kilitli,
+html.kaydirma-kilitli body {
+  overflow: hidden;
+}
+
+/* ------------------------------------------------------------------ */
+/* Yardımcılar                                                         */
+/* ------------------------------------------------------------------ */
+
+/* Yatay hizalama + iç boşluk. Genişlik için max-w-* ile birlikte kullanın (Container bileşeni yapar). */
+@utility container-eisa {
+  width: 100%;
+  margin-inline: auto;
+  padding-inline: 1.25rem;
+  @media (width >= 40rem) {
+    padding-inline: 1.5rem;
+  }
+  @media (width >= 64rem) {
+    padding-inline: 2rem;
+  }
+}
+
+/* Eyebrow / üst başlık */
+@utility eyebrow {
+  font-family: var(--font-display);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/* Kırmızı vurgulu gradyan metin (koyu zeminde de okunur) */
+@utility metin-gradyan {
+  background-image: linear-gradient(100deg, #ff4a51 0%, var(--color-primary) 45%, #ff7a6b 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Cam efekti (header, rozetler) */
+@utility cam {
+  background-color: rgb(255 255 255 / 0.72);
+  -webkit-backdrop-filter: saturate(160%) blur(14px);
+  backdrop-filter: saturate(160%) blur(14px);
+}
+@utility cam-koyu {
+  background-color: rgb(11 15 20 / 0.6);
+  -webkit-backdrop-filter: saturate(160%) blur(14px);
+  backdrop-filter: saturate(160%) blur(14px);
+}
+
+/* Noise doku (NoiseOverlay bileşeni kullanır) */
+@utility doku-noise {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 160px 160px;
+}
+
+/* Izgara deseni (koyu zeminlerde teknoloji hissi) */
+@utility doku-izgara {
+  background-image:
+    linear-gradient(to right, rgb(255 255 255 / 0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(255 255 255 / 0.06) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+@utility doku-izgara-acik {
+  background-image:
+    linear-gradient(to right, rgb(31 41 51 / 0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(31 41 51 / 0.06) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Zengin metin / blog (.prose-eisa)                                   */
+/* Backend nh3 izinli etiketleri: p,h2,h3,h4,ul,ol,li,strong,em,u,s,a, */
+/* blockquote,br,hr,code,pre,img,figure,figcaption,table,...           */
+/* Koyu zeminde: class="prose-eisa prose-eisa-koyu"                     */
+/* ------------------------------------------------------------------ */
+
+@layer components {
+  .prose-eisa {
+    --prose-metin: var(--color-ink);
+    --prose-soluk: var(--color-muted);
+    --prose-baslik: var(--color-dark);
+    --prose-cizgi: var(--color-line);
+    --prose-kod-zemin: #eef2f1;
+    --prose-tablo-zemin: #f3f6f5;
+    color: var(--prose-metin);
+    font-size: 1.0625rem;
+    line-height: 1.75;
+    max-width: 72ch;
+  }
+  .prose-eisa > :first-child {
+    margin-top: 0;
+  }
+  .prose-eisa > :last-child {
+    margin-bottom: 0;
+  }
+  .prose-eisa p {
+    margin-block: 1.1em;
+  }
+  .prose-eisa h2 {
+    color: var(--prose-baslik);
+    font-family: var(--font-display);
+    font-size: 1.625rem;
+    line-height: 1.25;
+    font-weight: 700;
+    margin-top: 2.2em;
+    margin-bottom: 0.7em;
+  }
+  .prose-eisa h3 {
+    color: var(--prose-baslik);
+    font-family: var(--font-display);
+    font-size: 1.3rem;
+    line-height: 1.35;
+    font-weight: 650;
+    margin-top: 1.8em;
+    margin-bottom: 0.5em;
+  }
+  .prose-eisa h4 {
+    color: var(--prose-baslik);
+    font-family: var(--font-display);
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-top: 1.5em;
+    margin-bottom: 0.4em;
+  }
+  .prose-eisa a {
+    color: var(--color-primary);
+    font-weight: 500;
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+    transition: color 0.2s;
+  }
+  .prose-eisa a:hover {
+    color: var(--color-primary-hover);
+  }
+  .prose-eisa strong {
+    color: var(--prose-baslik);
+    font-weight: 650;
+  }
+  .prose-eisa ul,
+  .prose-eisa ol {
+    margin-block: 1.1em;
+    padding-left: 1.4em;
+  }
+  .prose-eisa ul {
+    list-style: none;
+  }
+  .prose-eisa ul > li {
+    position: relative;
+  }
+  .prose-eisa ul > li::before {
+    content: "";
+    position: absolute;
+    left: -1.1em;
+    top: 0.72em;
+    width: 0.4em;
+    height: 0.4em;
+    border-radius: 999px;
+    background: var(--color-primary);
+  }
+  .prose-eisa ol {
+    list-style: decimal;
+  }
+  .prose-eisa ol > li::marker {
+    color: var(--color-primary);
+    font-weight: 600;
+  }
+  .prose-eisa li {
+    margin-block: 0.4em;
+  }
+  .prose-eisa blockquote {
+    margin-block: 1.6em;
+    padding: 1em 1.25em;
+    border-left: 3px solid var(--color-primary);
+    background: rgb(237 28 36 / 0.05);
+    border-radius: 0 0.75rem 0.75rem 0;
+    color: var(--prose-baslik);
+    font-style: italic;
+  }
+  .prose-eisa hr {
+    margin-block: 2.5em;
+    border: 0;
+    border-top: 1px solid var(--prose-cizgi);
+  }
+  .prose-eisa code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.875em;
+    background: var(--prose-kod-zemin);
+    padding: 0.15em 0.4em;
+    border-radius: 0.375rem;
+  }
+  .prose-eisa pre {
+    margin-block: 1.6em;
+    padding: 1em 1.25em;
+    overflow-x: auto;
+    background: var(--color-dark);
+    color: #e6ecea;
+    border-radius: 0.875rem;
+    font-size: 0.875rem;
+    line-height: 1.6;
+  }
+  .prose-eisa pre code {
+    background: transparent;
+    padding: 0;
+    color: inherit;
+  }
+  .prose-eisa img {
+    border-radius: 1rem;
+    height: auto;
+  }
+  .prose-eisa figure {
+    margin-block: 2em;
+  }
+  .prose-eisa figcaption {
+    margin-top: 0.6em;
+    font-size: 0.875rem;
+    color: var(--prose-soluk);
+    text-align: center;
+  }
+  .prose-eisa table {
+    width: 100%;
+    margin-block: 1.6em;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 0.9375rem;
+    border: 1px solid var(--prose-cizgi);
+    border-radius: 0.875rem;
+    overflow: hidden;
+    display: block;
+    overflow-x: auto;
+  }
+  .prose-eisa th,
+  .prose-eisa td {
+    padding: 0.7em 0.9em;
+    text-align: left;
+    vertical-align: top;
+    border-bottom: 1px solid var(--prose-cizgi);
+  }
+  .prose-eisa thead th {
+    background: var(--prose-tablo-zemin);
+    color: var(--prose-baslik);
+    font-weight: 600;
+  }
+  .prose-eisa tbody tr:last-child td {
+    border-bottom: 0;
+  }
+
+  /* Koyu zemin varyantı */
+  .prose-eisa-koyu {
+    --prose-metin: rgb(255 255 255 / 0.78);
+    --prose-soluk: rgb(255 255 255 / 0.55);
+    --prose-baslik: #ffffff;
+    --prose-cizgi: rgb(255 255 255 / 0.12);
+    --prose-kod-zemin: rgb(255 255 255 / 0.08);
+    --prose-tablo-zemin: rgb(255 255 255 / 0.05);
+  }
+
+  /* Geniş varyant (zengin_metin genislik: genis) */
+  .prose-eisa-genis {
+    max-width: 90ch;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Azaltılmış hareket                                                  */
+/* ------------------------------------------------------------------ */
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto !important;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  /* Sürekli dekoratif animasyonları tamamen kapat */
+  .animate-marquee,
+  .animate-yuzme,
+  .animate-nabiz,
+  .animate-yavas-don,
+  .animate-parilti {
+    animation: none !important;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Blok animasyonları                                                  */
+/* ------------------------------------------------------------------ */
+
+@theme {
+  --animate-kaydir-ipucu: kaydir-ipucu 1.8s ease-in-out infinite;
+  --animate-aurora: aurora 14s ease-in-out infinite alternate;
+
+  @keyframes kaydir-ipucu {
+    0% {
+      transform: translateY(0);
+      opacity: 1;
+    }
+    70% {
+      transform: translateY(12px);
+      opacity: 0;
+    }
+    100% {
+      transform: translateY(0);
+      opacity: 0;
+    }
+  }
+  @keyframes aurora {
+    0% {
+      transform: translate3d(-8%, -4%, 0) scale(1);
+    }
+    50% {
+      transform: translate3d(6%, 6%, 0) scale(1.15);
+    }
+    100% {
+      transform: translate3d(10%, -6%, 0) scale(0.95);
+    }
+  }
+}
+
+/*
+ * SSR dostu giriş animasyonu: JS/hidrasyon beklemeden ilk boyamada çalışır (LCP metni gizli kalmaz).
+ *   <span class="giris" style="--gecikme: 0.3s">…</span>
+ */
+@keyframes giris-yuksel {
+  from {
+    opacity: 0;
+    transform: translateY(0.6em);
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: blur(0);
+  }
+}
+@utility giris {
+  animation: giris-yuksel 0.9s var(--ease-eisa) both;
+  animation-delay: var(--gecikme, 0s);
+}
+
+/* SVG çizgi çizme: stroke-dasharray/offset = pathLength (pathLength="1" ile kullanın). */
+@keyframes cizgi-ciz {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@utility ciz {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: cizgi-ciz 0.9s var(--ease-eisa) forwards;
+  animation-delay: var(--gecikme, 0s);
+}
+
+/* Özel range kaydırıcı (kazanç hesaplayıcı) */
+@utility kaydirici {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--color-primary) 0%,
+    var(--color-primary) var(--dolu, 50%),
+    rgb(255 255 255 / 0.12) var(--dolu, 50%),
+    rgb(255 255 255 / 0.12) 100%
+  );
+  cursor: pointer;
+  &::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 999px;
+    background: #fff;
+    border: 6px solid var(--color-primary);
+    box-shadow: 0 0 0 6px rgb(237 28 36 / 0.25), 0 6px 18px rgb(0 0 0 / 0.4);
+    transition: transform 0.2s var(--ease-eisa);
+  }
+  &::-moz-range-thumb {
+    width: 1.25rem;
+    height: 1.25rem;
+    border-radius: 999px;
+    background: #fff;
+    border: 6px solid var(--color-primary);
+    box-shadow: 0 0 0 6px rgb(237 28 36 / 0.25), 0 6px 18px rgb(0 0 0 / 0.4);
+  }
+  &:active::-webkit-slider-thumb {
+    transform: scale(1.12);
+  }
+  &:focus-visible {
+    outline: 2px solid #ff5a60;
+    outline-offset: 6px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-kaydir-ipucu,
+  .animate-aurora {
+    animation: none !important;
+  }
+}
+/* Hareket eden çizgi parçası (SVG, pathLength="1" + stroke-dasharray="0.22 0.78") */
+@theme {
+  --animate-akis: akis 3.2s linear infinite;
+  @keyframes akis {
+    from {
+      stroke-dashoffset: 1;
+    }
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-akis {
+    animation: none !important;
+  }
+}

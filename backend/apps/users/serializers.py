@@ -7,6 +7,14 @@ from apps.pharmacies.models import Eczane
 from .models import Kullanici
 
 
+def _editor_eczanesiz(attrs, instance=None):
+    """`editor` rolü (yalnızca web sitesi) bir eczaneye bağlanamaz; eczane alanı temizlenir."""
+    rol = attrs.get("rol", getattr(instance, "rol", None))
+    if rol == Kullanici.Rol.EDITOR:
+        attrs["eczane"] = None
+    return attrs
+
+
 class KullaniciSerializer(serializers.ModelSerializer):
     """Profil endpoint'i için (kendi profili)."""
 
@@ -40,6 +48,9 @@ class KullaniciAdminSerializer(serializers.ModelSerializer):
     def get_full_name(self, obj):
         return f"{obj.first_name} {obj.last_name}".strip() or obj.username
 
+    def validate(self, attrs):
+        return _editor_eczanesiz(attrs, self.instance)
+
 
 class KullaniciCreateSerializer(serializers.ModelSerializer):
     """Yeni kullanıcı oluşturma."""
@@ -57,6 +68,9 @@ class KullaniciCreateSerializer(serializers.ModelSerializer):
     def validate_password(self, value):
         validate_password(value)
         return value
+
+    def validate(self, attrs):
+        return _editor_eczanesiz(attrs, self.instance)
 
     def create(self, validated_data):
         password = validated_data.pop("password")

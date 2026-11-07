@@ -1,5 +1,13 @@
 # DB and API Contracts
 
+## İş takibi dosya contract'ı (2026-11-07)
+
+- `gorev_dosyalar`: id, gorev_id FK CASCADE, ad (255), object_key (512, unique), content_type (100), boyut ve BaseModel audit alanları; migration `gorevler/0004_gorevdosya`.
+- Görev list/detail/create/update yanıtlarına salt okunur `dosyalar: [{id, ad, content_type, boyut, olusturulma_tarihi}]` eklenir. Eski JSON yazma contract'ı korunur.
+- `POST /api/is-takip/gorevler/{id}/dosyalar/`: multipart `dosya`; 201 dosya metadata. PDF, DOC/DOCX, XLS/XLSX; 25 MB. Geçersiz dosya 400, storage hatası 503. Her istek bir dosya yükler.
+- `GET /api/is-takip/gorevler/{id}/dosyalar/{dosya_id}/`: özgün byte stream; `?indir=1` attachment; PDF varsayılan inline. Kalıcı endpoint, imzalı süreli URL yok. Tüm işlemler SuperAdmin ve dosya/görev eşleşmesi kontrolü yapar. Özel dosyalar public medya proxy allow-list'ine eklenmez.
+- Aynı GET `?onizleme=metin`: yalnız DOCX, `{paragraflar: [string]}`; en fazla 2000 paragraf, biçim/görsel içermez. Desteklenmeyen/bozuk önizleme 400; eksik nesne 404. Stream `Cache-Control: private, no-store` ve `nosniff` kullanır.
+
 **Amaç:** Backend DB şeması, API endpoint'leri ve frontend/kiosk'un beklediği request/response yapılarını dokümante etmek.
 
 ---
@@ -481,7 +489,7 @@ X-Kiosk-Build-Number: <BUILD_LABEL>  # örn: 2026.09.29+prod.17
 | GET  | `/api/kiosk/v1/catalog/` | Kategori/soru/cevap/etken madde/danışma |
 | GET  | `/api/kiosk/v1/playlist/?date=YYYY-MM-DD` | Günün 24 saatlik playlist'i |
 | POST | `/api/kiosk/v1/sessions/` | Oturum outbox (idempotent) — `OturumLoguItemSerializer` |
-| POST | `/api/kiosk/v1/proof-of-play/` | Reklam gösterim (PlayLog) toplu |
+| POST | `/api/kiosk/v1/proof-of-play/` | Sponsorluk gösterim (PlayLog) toplu |
 | POST | `/api/kiosk/v1/diagnostics/` | Diagnostic outbox (DB'ye yazılmaz, JSON stdout) |
 
 **Kaldırılan (hard cutover):** eski id-tabanlı kiosk yolları ve eski bootstrap yolu kaldırıldı. Kiosk oturumları artık `/api/kiosk/v1/sessions/` kullanır; `/api/analytics/sessions/` GET panel/eczacı içindir.

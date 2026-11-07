@@ -182,7 +182,7 @@ Oge degistiginde onceki slot icin impression backend'e loglanir
 > **Onemli:** `estimated_start_offset_seconds` saat-mutlak (0..3599) oldugundan
 > dongu suresi `loop_duration_seconds` (60) DEGIL, tam saat (3600) olmalidir.
 > Aksi halde yalnizca ilk dakikanin (loop 0) ogeleri oynar; PER_HOUR/PER_DAY
-> reklamlar hic gosterilmez.
+> sponsorluk içerikleri hic gosterilmez.
 
 ### Saatlik Dongu
 - Playlist ogeleri saat-mutlak offset'e gore duvar saatiyle hizalanir.

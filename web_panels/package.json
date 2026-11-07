@@ -17,11 +17,18 @@
     "@fontsource/plus-jakarta-sans": "^5.2.8",
     "@fontsource/syne": "^5.2.7",
     "@fortawesome/fontawesome-free": "^7.2.0",
+    "@phosphor-icons/vue": "^2.2.1",
+    "@tiptap/extension-image": "^3.33.0",
+    "@tiptap/extension-table": "^3.33.0",
+    "@tiptap/pm": "^3.33.0",
+    "@tiptap/starter-kit": "^3.33.0",
+    "@tiptap/vue-3": "^3.33.0",
     "axios": "^1.7.0",
     "pinia": "^2.2.0",
     "vue": "^3.5.0",
     "vue-router": "^4.4.0",
     "vue-sonner": "^2.0.9",
+    "vuedraggable": "^4.1.0",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

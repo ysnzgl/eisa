@@ -1,0 +1,364 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# e-isa Kurumsal Site (Next.js 16, standalone) — K3s / Rancher Deployment
+# Namespace: eisa-app      Host: eisa.com.tr  (www.eisa.com.tr → eisa.com.tr 301)
+# Rehber:    docs/rancher-deployment-updated.md §5
+#
+# ÖN KOŞULLAR (apply'dan önce):
+#   1. eisa-app-secrets içinde şu iki anahtar olmalı (backend ile AYNI değerler):
+#        WEBSITE_SERVER_TOKEN  → site ↔ API app-key  (X-Website-Token)
+#        REVALIDATE_SECRET     → API → site yayın bildirimi (X-Revalidate-Secret)
+#      Anahtar yoksa pod CreateContainerConfigError ile BAŞLAMAZ (bilinçli: anahtarsız
+#      çalışan site olmaz). Ekleme komutu rehberde §6.2 (mevcut anahtarları SİLMEZ).
+#   2. Backend (eisa-app-production.yaml) bu sürümle güncellenmiş ve migrate edilmiş olmalı.
+#   3. Traefik ≥ 2.11 (ipAllowList). Kontrol:
+#        kubectl -n kube-system get deploy traefik -o jsonpath='{.spec.template.spec.containers[0].image}'
+#
+# DEPLOY:
+#   .\deploy\deploy-site.ps1 -Tag 2.0.0 -Apply          (build + push + apply + rollout)
+#   veya: kubectl apply -f deploy/eisa-site-production.yaml
+#         kubectl -n eisa-app rollout status deployment/eisa-site --timeout=180s
+#
+# GÜVENLİK ÖZETİ:
+#   - Tarayıcı API'ye bağlanmaz; site sunucusu API'ye cluster içinden + app-key ile gider.
+#   - /api/revalidate dışarıya kapalı (yalnızca backend → pod, headless service üzerinden).
+#   - Non-root (uid 1001), salt-okunur kök FS, tüm capability'ler kapalı, SA token yok.
+#   - Ek ağ izolasyonu (opsiyonel): deploy/eisa-site-networkpolicy.yaml
+#
+# NOT: Eski statik sitenin (nginx, port 8080) yerini alır; Deployment/Service/Ingress adları
+# ve namespace aynıdır, apply edildiğinde yerinde güncellenir, DNS değişmez.
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eisa-site
+  namespace: eisa-app
+  labels:
+    app.kubernetes.io/name: eisa-site
+    app.kubernetes.io/component: frontend
+    app.kubernetes.io/part-of: eisa
+    app.kubernetes.io/version: "2.0.0"
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: eisa-site
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: eisa-site
+        app.kubernetes.io/component: frontend
+        app.kubernetes.io/part-of: eisa
+        app.kubernetes.io/version: "2.0.0"
+    spec:
+      # Pod Kubernetes API'sine erişmez; servis hesabı token'ı bağlanmaz.
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 30
+      imagePullSecrets:
+        - name: eisa-regcred
+      # web_site/Dockerfile: nextjs (uid 1001) / nodejs (gid 1001)
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: site
+          # Rehber §4'teki registry ile aynı. Her sürümde tag artırılır; "latest" kullanılmaz.
+          image: 10.200.202.20:30500/eisa-site:2.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: PORT
+              value: "3000"
+            # K8s HOSTNAME'i pod adına ayarlar; Next standalone bunu bind adresi olarak
+            # kullandığı için açıkça 0.0.0.0 verilir.
+            - name: HOSTNAME
+              value: "0.0.0.0"
+            - name: NEXT_TELEMETRY_DISABLED
+              value: "1"
+            # Sunucu tarafı istekler cluster içinden (eisa-api Service: 80 → 8080).
+            # Django bu yolları HTTPS yönlendirmesinden muaf tutar (SECURE_REDIRECT_EXEMPT).
+            - name: API_INTERNAL_URL
+              value: "http://eisa-api.eisa-app.svc.cluster.local"
+            # Medya yolunun önüne eklenir; görseller Next görsel optimizasyonu üzerinden sunulur.
+            - name: MEDIA_BASE_URL
+              value: "https://api.eisa.com.tr"
+            - name: SITE_URL
+              value: "https://eisa.com.tr"
+            # ── Gizli anahtarlar (eisa-app-secrets; Git'e yazılmaz) ─────────────
+            - name: WEBSITE_SERVER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: eisa-app-secrets
+                  key: WEBSITE_SERVER_TOKEN
+                  optional: false
+            - name: REVALIDATE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: eisa-app-secrets
+                  key: REVALIDATE_SECRET
+                  optional: false
+          # /api/health API'ye dokunmadan 200 döner (API geçici kesintisi site pod'larını düşürmez).
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 3
+            failureThreshold: 20
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            # Kök FS salt-okunur; Next'in yazdığı dizinler aşağıda emptyDir olarak bağlanır.
+            # (Docker --read-only ile doğrulandı: ISR ve revalidate hatasız çalışır.)
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: next-cache
+              mountPath: /app/.next/cache
+            - name: route-cache
+              mountPath: /app/.next/server/route-cache
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "160Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+      volumes:
+        # Görsel optimizasyon + fetch önbelleği
+        - name: next-cache
+          emptyDir:
+            sizeLimit: 512Mi
+        # ISR sayfa önbelleği (Next 16). Bağlanmazsa sayfalar yalnızca bellekte tutulur ve
+        # loglarda "Failed to update prerender cache" görülür.
+        - name: route-cache
+          emptyDir:
+            sizeLimit: 256Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+---
+# Güncelleme / node bakımı sırasında en az 1 pod ayakta kalır.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: eisa-site
+  namespace: eisa-app
+  labels:
+    app.kubernetes.io/name: eisa-site
+    app.kubernetes.io/part-of: eisa
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: eisa-site
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: eisa-site
+  namespace: eisa-app
+  labels:
+    app.kubernetes.io/name: eisa-site
+    app.kubernetes.io/component: frontend
+    app.kubernetes.io/part-of: eisa
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: eisa-site
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+---
+# Headless Service: DNS sorgusu tüm hazır pod IP'lerini döner. Backend, yayın sonrası
+# revalidate isteğini her pod'a ayrı ayrı POST eder (ISR önbelleği pod başınadır).
+# Backend ConfigMap: SITE_REVALIDATE_HEADLESS_HOST=eisa-site-headless.eisa-app.svc.cluster.local:3000
+apiVersion: v1
+kind: Service
+metadata:
+  name: eisa-site-headless
+  namespace: eisa-app
+  labels:
+    app.kubernetes.io/name: eisa-site
+    app.kubernetes.io/component: frontend
+    app.kubernetes.io/part-of: eisa
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: eisa-site
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http
+      protocol: TCP
+---
+# www.eisa.com.tr → https://eisa.com.tr (kalıcı 301, yol korunur)
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: eisa-site-www-redirect
+  namespace: eisa-app
+  labels:
+    app.kubernetes.io/name: eisa-site
+    app.kubernetes.io/part-of: eisa
+spec:
+  redirectRegex:
+    regex: "^https?://www\\.eisa\\.com\\.tr/(.*)"
+    replacement: "https://eisa.com.tr/${1}"
+    permanent: true
+---
+# Güvenlik başlıkları (Next ayrıca X-Frame-Options, nosniff, Referrer-Policy verir).
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: eisa-site-guvenlik-basliklari
+  namespace: eisa-app
+  labels:
+    app.kubernetes.io/name: eisa-site
+    app.kubernetes.io/part-of: eisa
+spec:
+  headers:
+    stsSeconds: 31536000
+    # Alt alan adları (api, portal, files, demo) kendi ingress'lerinde yönetilir; burada dahil edilmez.
+    stsIncludeSubdomains: false
+    stsPreload: false
+    forceSTSHeader: true
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: eisa-site
+  namespace: eisa-app
+  labels:
+    app.kubernetes.io/name: eisa-site
+    app.kubernetes.io/component: frontend
+    app.kubernetes.io/part-of: eisa
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    # <namespace>-<middleware adı>@kubernetescrd. Redirect regex'i yalnızca www'ye uyar.
+    traefik.ingress.kubernetes.io/router.middlewares: eisa-app-eisa-site-www-redirect@kubernetescrd,eisa-app-eisa-site-guvenlik-basliklari@kubernetescrd
+spec:
+  ingressClassName: traefik
+  tls:
+    - secretName: eisa-site-tls
+      hosts:
+        - eisa.com.tr
+        - www.eisa.com.tr
+  rules:
+    - host: eisa.com.tr
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: eisa-site
+                port:
+                  name: http
+    - host: www.eisa.com.tr
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: eisa-site
+                port:
+                  name: http
+---
+# /api/revalidate yalnızca backend → pod (headless service) yolundan çağrılır; internete kapatılır.
+# (Uç ayrıca X-Revalidate-Secret ister — iki katmanlı koruma.)
+# ipAllowList yalnızca loopback → dışarıdan gelen her istek 403. Traefik ≥ 2.11 / v3.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: eisa-site-ic-yollar
+  namespace: eisa-app
+  labels:
+    app.kubernetes.io/name: eisa-site
+    app.kubernetes.io/part-of: eisa
+spec:
+  ipAllowList:
+    sourceRange:
+      - 127.0.0.1/32
+---
+# Daha uzun (özgül) yol kuralı Traefik'te "/" kuralından önceliklidir. TLS sertifikasını
+# eisa-site Ingress'i üretir; burada aynı secret yalnızca kullanılır (cert-manager anotasyonu yok).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: eisa-site-ic-yollar
+  namespace: eisa-app
+  labels:
+    app.kubernetes.io/name: eisa-site
+    app.kubernetes.io/part-of: eisa
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.middlewares: eisa-app-eisa-site-ic-yollar@kubernetescrd
+spec:
+  ingressClassName: traefik
+  tls:
+    - secretName: eisa-site-tls
+      hosts:
+        - eisa.com.tr
+        - www.eisa.com.tr
+  rules:
+    - host: eisa.com.tr
+      http:
+        paths:
+          - path: /api/revalidate
+            pathType: Prefix
+            backend:
+              service:
+                name: eisa-site
+                port:
+                  name: http
+    - host: www.eisa.com.tr
+      http:
+        paths:
+          - path: /api/revalidate
+            pathType: Prefix
+            backend:
+              service:
+                name: eisa-site
+                port:
+                  name: http

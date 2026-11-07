@@ -28,7 +28,7 @@ from apps.core.uow import UnitOfWork
 
 from .auth import KioskAppKeyAuthentication
 from .models import Eczane, Kiosk, KioskAudioAsset, KioskEczaneAtama, KioskIdleAudio, KioskProvisioningRequest
-from .permissions import IsKiosk, IsSuperAdmin
+from .permissions import IsKiosk, IsSuperAdmin, IsSuperAdminOrEczaci
 from .serializers import (
     EczaneSerializer,
     KioskAudioAssetSerializer,
@@ -344,9 +344,9 @@ class EczaneViewSet(viewsets.ModelViewSet):
         return qs
 
     def get_permissions(self):
-        from rest_framework.permissions import IsAuthenticated
+        # Listeleme/detay: superadmin + eczaci (editor rolu eczane verisi goremez).
         if self.action in ("list", "retrieve"):
-            return [IsAuthenticated()]
+            return [IsSuperAdminOrEczaci()]
         return [IsSuperAdmin()]
 
     def perform_create(self, serializer):

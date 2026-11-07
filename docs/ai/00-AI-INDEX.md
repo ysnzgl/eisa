@@ -16,11 +16,11 @@
 
 ## Proje Özeti
 
-**e-isa:** Eczanelerde konumlanmış kiosk'lar üzerinden demografik/anonim kullanıcı danışmanlığı ve DOOH (Digital Out-Of-Home) reklam sistemi.
+**e-isa:** Eczanelerde konumlanmış kiosk'lar üzerinden demografik/anonim kullanıcı danışmanlığı ve DOOH (Digital Out-Of-Home) sponsorluk yayın sistemi.
 
 **Temel akış:**  
 Kullanıcı → Demografi seçimi → Kategori seçimi → Sorulara cevap → Etken madde önerileri + QR kod → Eczacıya danışma  
-**Reklam akışı:**  
+**Sponsorluk akışı:**  
 Backend'de kampanya/creative tanımı → Merkezi playlist üretimi → Kiosk'a senkronizasyon → Offline oynatım → Proof-of-play log toplama
 
 ---
@@ -32,7 +32,7 @@ Backend'de kampanya/creative tanımı → Merkezi playlist üretimi → Kiosk'a 
 | `backend` | Django 5 + DRF + PostgreSQL | Merkezi API, kampanya/creative/playlist yönetimi, kullanıcı/eczane/ürün veritabanı | [01-backend.md](01-backend.md) |
 | `web_panels` | Vue 3 + Vite + Pinia + Vue Router | Admin/Pharmacist paneli, kampanya/playlist/fiyat/kullanıcı/cihaz yönetimi | [02-web-panels.md](02-web-panels.md) |
 | `kiosk_edge/api-node` | Node.js + Fastify + SQLite | Kiosk'taki lokal API servisi, offline-first, backend senkronizasyonu, QR üretimi | [03-kiosk-edge-api-node.md](03-kiosk-edge-api-node.md) |
-| `kiosk_edge/ui` | Svelte 5 | Kiosk kullanıcı arayüzü, kategori/soru akışı, QR gösterimi, reklam oynatımı | [04-kiosk-edge-ui.md](04-kiosk-edge-ui.md) |
+| `kiosk_edge/ui` | Svelte 5 | Kiosk kullanıcı arayüzü, kategori/soru akışı, QR gösterimi, sponsorluk oynatımı | [04-kiosk-edge-ui.md](04-kiosk-edge-ui.md) |
 
 ---
 
@@ -86,7 +86,7 @@ Backend (Kategori/Soru models) → web_panels (MedicalLogic/DanismaYonetimi) →
 
 > Not: Kategori sırası `sira` alanıyla yönetilir. Kök seviyedeki kategoriler yalnızca aynı root seti içinde unique `sira` taşır; alt kategoriler için benzersizlik yalnızca aynı `bagli_kategori` kapsamında geçerlidir. `backend/scripts/update_root_category_order.sql` dosyası canlı DB'ye uygulanan root sırasını hazırlar.
 
-### 2. Reklam Slot/Playlist Akışı *(2026-10-16 cihaz bazlı yeniden tasarım)*
+### 2. Sponsorluk Slot/Playlist Akışı *(2026-10-16 cihaz bazlı yeniden tasarım)*
 Backend (Campaign/Creative/**KioskSponsorship**) → web_panels (KioskSponsorship/SponsorshipDefinitions) → `sponsorship_engine.py` (tek yerleşim motoru) → Playlist/PlaylistItem → Kiosk ping → kiosk_edge/api-node playlist sync → SQLite (playlists/playlist_items) → kiosk_edge/ui (AdStrip)
 
 ### 3. Kullanıcı Session/Log Akışı
@@ -111,14 +111,14 @@ SuperAdmin → web_panels AbonelikYonetimi → `Sozlesme` (+ opsiyonel `CihazOde
 - **Kategori:** Kullanıcının yakındığı şikayet türü (uyku, enerji, bağışıklık vb.). `sira` alanı ile root/child sıralaması kontrol edilir; aynı parent altında tekrar eden `sira` yoktur, fakat farklı parent'lar arasında aynı `sira` kullanılabilir.
 - **Soru:** Kategoriye bağlı, hedeflenmiş sorular (yaş/cinsiyet/etken madde filtrelenebilir)
 - **Danışma:** Eczacıya direkt danışma kategorisi (soru akışı gerektirmez)
-- **Campaign (Sponsorluk):** DOOH reklam sponsorluğu (advertiser_name serbest metin, başlangıç/bitiş tarihi, status ACTIVE/PAUSED/COMPLETED). İl/ilçe/eczane hedefleme veya öncelik/garanti **yoktur** (2026-10-16).
+- **Campaign (Sponsorluk):** DOOH sponsorluğu (advertiser_name serbest metin, başlangıç/bitiş tarihi, status ACTIVE/PAUSED/COMPLETED). İl/ilçe/eczane hedefleme veya öncelik/garanti **yoktur** (2026-10-16).
 - **Creative:** Kampanyaya ait medya (görsel/video URL + süre)
 - **KioskSponsorship:** Bir sponsorluğun bir kiosk'a (cihaz) atanması — tek zaman penceresi (window_start/end_minute) + pencere içinde günlük toplam gösterim `count`, `active_weekdays` (ISO 1-7, null=her gün), opsiyonel start/end_date, is_active. Unique(kiosk, campaign). ScheduleRule/DeliveryRule/kota kavramlarının yerini aldı (2026-10-16).
-- **Playlist:** Kiosk için üretilmiş 60sn reklam döngüsü (date/hour bazlı); yalnız kampanya creative'lerinden oluşur (campaign-only). Uygun creative yoksa playlist boş kalır (boş playlist geçerli) → kiosk kendi idle (bekleme) ekranını gösterir. Filler YOK.
+- **Playlist:** Kiosk için üretilmiş 60sn sponsorluk döngüsü (date/hour bazlı); yalnız kampanya creative'lerinden oluşur (campaign-only). Uygun creative yoksa playlist boş kalır (boş playlist geçerli) → kiosk kendi idle (bekleme) ekranını gösterir. Filler YOK.
 - **IdleScreenContent:** Bekleme (idle) ekranı başlık/metin içeriği — panelde "İçerik Yönetimi" (app: campaigns, tablo `dooh_idle_screen_contents`; `baslik`, `metin`, `aktif`). Medya/HTML yok, düz metin. Eski **HouseAd** sistemi uçtan uca kaldırıldı (2026-08-16).
 - **BarkodLogo:** Kiosk fiş baskısında e-ISA başlığının yerini alan logo (UUID PK, ad, media_url, checksum, baslangic/bitis_zamani, aktif, gunluk_baski_limiti, hedef_kiosklar M2M). DOOH sisteminden bağımsız. Backend: `apps.barkod_logo`. Kiosk: `barkodLogoService.js`.
 - **OturumLogu:** KVKK uyumlu anonim kullanıcı session (yaş aralığı, cinsiyet, kategori, QR kodu, tamamlanma durumu, **barkod_logo FK** *(2026-08-11)*).
-- **PlayLog:** Reklam gösterim kanıtı / proof-of-play (creative_id, played_at, duration_played; playlist creative-only)
+- **PlayLog:** Sponsorluk gösterim kanıtı / proof-of-play (creative_id, played_at, duration_played; playlist creative-only)
 - **Dil / i18n:** Kiosk UI TR/EN çift dil *(2026-09-29)*. Sabit metinler `i18n.js` (`$t`); DB içeriği `_en` alanlarıyla (`Kategori.ad_en`, `Soru.metin_en`, `Danisma.ad_en`, `Cevap.metin_en`, `IdleScreenContent.baslik_en/metin_en`). Köşe `LanguageToggle` butonu, seçim `localStorage`. Boş `_en` → Türkçe fallback.
 - **Kiosk:** Fiziksel cihaz (mac_adresi, uygulama_anahtari, eczane, aktif/online durumu) ve cihaz-bazlı UI zamanlayıcı/ses listesi. Sesler provisioning sonrası ilk sync'te edge'e indirilir; ilk ses idle gecikmesi sonunda, devamındakiler etkileşime kadar tekrar aralığıyla sırayla çalınır. Build/sürüm takibi için kiosk her merkezi çağrıda `X-Kiosk-Build-Number` gönderir; backend `kiosk_build_number` alanında saklar.
 - **Eczane:** Kiosk'un bulunduğu fiziksel lokasyon (il/ilçe, sahip, telefon)

@@ -1,4 +1,4 @@
-"""Reklam (DOOH sponsorluk) URL yonlendirmeleri."""
+"""DOOH sponsorluk URL yonlendirmeleri."""
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 

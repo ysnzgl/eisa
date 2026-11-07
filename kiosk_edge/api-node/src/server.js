@@ -1,4 +1,4 @@
-﻿// E-ISA Kiosk Lokal API â€” Fastify uygulamasi (Turkce sema).
+// E-ISA Kiosk Lokal API â€” Fastify uygulamasi (Turkce sema).
 // Svelte UI yalnizca bu API ile (localhost:8765) konusur. Offline-First.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -688,7 +688,7 @@ export async function buildServer({ db, settings, logger, maintenance = null }) 
     return { last_qr_created_at: payload.olusturulma_tarihi || row.olusturulma_tarihi || null };
   });
 
-  // â”€â”€ reklamlar / DOOH assets (geriye dÃ¶nÃ¼k uyumluluk) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â”€â”€ sponsorluk / DOOH assets (geriye dÃ¶nÃ¼k uyumluluk) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   app.get('/api/reklamlar/aktif', async () => {
     const creatives = db
       .prepare('SELECT id, media_url, duration_seconds, type FROM creatives WHERE aktif = 1')

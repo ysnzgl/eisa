@@ -276,7 +276,7 @@ useIdleRefresh(loadDashboard);
       <template #aside>
         <div class="dash-bottom-grid dash-bottom-grid--stacked">
 
-      <!-- Son Reklamlar -->
+      <!-- Son Sponsorluklar -->
       <div class="eisa-panel">
         <div class="eisa-panel-header">
           <div>

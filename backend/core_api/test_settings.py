@@ -22,3 +22,10 @@ REST_FRAMEWORK["DEFAULT_THROTTLE_CLASSES"] = []
 
 # Sentry devre dışı
 SENTRY_DSN = ""
+
+# Web sitesi: testlerde siteye HTTP revalidate çağrısı yapılmaz, medya lokal diske yazılır.
+SITE_REVALIDATE_URLS = []
+SITE_REVALIDATE_HEADLESS_HOST = ""
+WEBSITE_MEDIA_LOCAL = True
+# Testler boş veritabanı bekler; başlangıç içeriği testlerde açıkça yüklenir.
+WEBSITE_AUTO_SEED = False

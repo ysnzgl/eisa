@@ -1,4 +1,4 @@
-﻿"""Kiosk API facade â€” view'ler.
+"""Kiosk API facade â€” view'ler.
 
 Kiosk <-> Main API operasyonel yuzeyinin tamami burada toplanir. Domain
 modelleri ve serializer'lari YENIDEN KULLANILIR; is mantigi kopyalanmaz
@@ -517,7 +517,7 @@ class KioskSessionsView(KioskAPIView):
 
 
 class KioskProofOfPlayView(KioskAPIView):
-    """POST /api/kiosk/v1/proof-of-play/ - reklam gosterim (PlayLog) toplu-yazma.
+    """POST /api/kiosk/v1/proof-of-play/ - sponsorluk gosterim (PlayLog) toplu-yazma.
 
     Faz 3: play_event_id ile idempotent ingest. Ayni olay tekrar gonderildiginde
     mukerrer PlayLog olusturmaz. Eski kiosk surumleri (play_event_id=null) onceki

@@ -1,7 +1,7 @@
-﻿"""
+"""
 Analitik gorunumleri.
 
-Kiosk: oturum ve reklam gosterim verilerini toplu gonderir (idempotent).
+Kiosk: oturum ve sponsorluk gosterim verilerini toplu gonderir (idempotent).
 Admin: istatistikler ve sayfalanmis liste.
 
 Yazma yolu UoW uzerindendir; ancak kiosk push akisinda kullanici yoktur
@@ -767,7 +767,7 @@ class KioskActivityView(APIView):
 class CampaignImpressionView(APIView):
     """GET /api/analytics/campaign-impressions/
 
-    Kiosk'tan gelen reklam gösterim kayıtları (PlayLog).
+    Kiosk'tan gelen sponsorluk gösterim kayıtları (PlayLog).
 
     Admin: tüm kayıtlar; il_id/ilce_id/eczane_id/kiosk_id/campaign_id filtresi.
     Eczacı: yalnız kendi eczanesine ait kiosk kayıtları.

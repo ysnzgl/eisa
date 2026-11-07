@@ -1,0 +1,54 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# e-isa Site — NetworkPolicy (OPSİYONEL, ek sıkılaştırma)
+# Site pod'larının 3000 portuna yalnızca şunlar erişir:
+#   - Traefik (dış trafik, kube-system)
+#   - eisa-api pod'ları (yayın sonrası revalidate)
+#   - Node IP'si (kubelet probe'ları)
+# K3s'te NetworkPolicy denetleyicisi (kube-router) varsayılan olarak açıktır.
+#
+# UYGULAMADAN ÖNCE doğrulayın (etiketler farklıysa site erişilemez olur):
+#   kubectl -n kube-system get pods -l app.kubernetes.io/name=traefik      # en az 1 pod dönmeli
+#   kubectl -n eisa-app get pods -l app.kubernetes.io/name=eisa-api         # en az 1 pod dönmeli
+#   kubectl get nodes -o wide                                               # INTERNAL-IP (10.200.202.20)
+# Uygula:  kubectl apply -f deploy/eisa-site-networkpolicy.yaml
+# Geri al: kubectl -n eisa-app delete networkpolicy eisa-site-ingress
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: eisa-site-ingress
+  namespace: eisa-app
+  labels:
+    app.kubernetes.io/name: eisa-site
+    app.kubernetes.io/part-of: eisa
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: eisa-site
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
+      ports:
+        - port: 3000
+          protocol: TCP
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: eisa-api
+      ports:
+        - port: 3000
+          protocol: TCP
+    # kubelet probe'ları node IP'sinden gelir (tek node: app-k3s-vm).
+    - from:
+        - ipBlock:
+            cidr: 10.200.202.20/32
+      ports:
+        - port: 3000
+          protocol: TCP

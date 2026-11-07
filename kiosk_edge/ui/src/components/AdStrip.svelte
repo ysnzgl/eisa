@@ -16,7 +16,7 @@
   // Backend playlist'leri bir SAATLİK döngü üretir: estimated_start_offset_seconds
   // 0..3599 (loop_index*60 + slot offset). Slot hizalaması bu nedenle saatin
   // tamamı (3600sn) üzerinden yapılmalıdır; aksi halde yalnızca ilk dakikanın
-  // (loop 0) öğeleri oynar, PER_HOUR/PER_DAY reklamlar hiç gösterilmez.
+  // (loop 0) öğeleri oynar, PER_HOUR/PER_DAY sponsorluk içerikleri hiç gösterilmez.
   const HOUR_SECONDS = 3600;
 
   // Duvar saatini Europe/Istanbul'a göre hesapla (cihaz TZ'sinden bağımsız).
@@ -49,7 +49,7 @@
   const keyOf = (it) =>
     it ? String(it.id ?? `${it.asset_id ?? it.asset_type ?? 'creative'}:${off(it)}`) : null;
 
-  // O an gösterilen reklam slotunun gerçek izlenme süresini backend'e logla.
+  // O an gösterilen sponsorluk slotunun gerçek izlenme süresini backend'e logla.
   // Faz 3: play_event_id ile idempotent; beklenen süre ile karşılaştırarak
   // COMPLETED (tam oynatıldı) veya INTERRUPTED (erken kesildi) durumunu belirle.
   function logCurrentImpression(statusOverride) {

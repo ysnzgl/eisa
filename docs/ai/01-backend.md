@@ -1,5 +1,11 @@
 # Backend — Django 5 + DRF + PostgreSQL
 
+## İş takibi dosyaları (2026-11-07)
+
+`apps.gorevler.GorevDosya` (migration 0004): Gorev FK, özgün ad, object_key, MIME, boyut ve BaseModel audit alanları. Dosyalar mevcut StorageService ile RustFS `is-takip/<gorev_id>/<uuid>.<ext>` altında tutulur. Uygulama TTL/expiration veya presigned URL kullanmaz. Bucket lifecycle kurallarının `is-takip/` nesnelerini silmemesi gerekir; bu altyapı ayarı dağıtımda kontrol edilmelidir. Genel/public medya proxy'sine açılmaz; tüm dosya işlemleri IsSuperAdmin kontrolündedir. İş silindiğinde dosya metadata'sı cascade silinir, RustFS nesnesi otomatik silinmez.
+
+PDF, DOC/DOCX, XLS/XLSX; dosya başına 25 MB. Uzantı + dosya imzası/OOXML girdileri doğrulanır; OOXML açılmış toplam boyutu 100 MB ile sınırlıdır. Bu kontrol tam Office uyumluluk veya antivirüs taraması değildir. DOCX önizleme yalnız metin döndürür (document.xml en fazla 5 MB, ilk 2000 paragraf); bozuk/şifreli belgeler indirerek açılır.
+
 **Amaç:** Merkezi API servisi, kampanya/creative/playlist yönetimi, kullanıcı/eczane/ürün veritabanı, duyuru/nöbet akışları ve kiosk senkronizasyon endpoint'leri.
 
 ---
@@ -199,13 +205,13 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 - Migration `announcements.0001_initial`, `DUTY_NEXT_MONTH_MISSING` ve `DUTY_CURRENT_MONTH_MISSING` kayıtlarını `system_key` üzerinden idempotent `get_or_create` ile seed eder.
 
 ### Campaigns (`apps.campaigns`) *(2026-10-16 cihaz bazlı yeniden tasarım)*
-- `Campaign` (Sponsorluk): Reklam sponsorluğu (id UUID, `advertiser_name` [serbest metin, blank], name, start_date, end_date, status [ACTIVE/PAUSED/COMPLETED]). Türetilen `effective_state` (ACTIVE & henüz başlamamış → SCHEDULED). Tablo `dooh_campaigns`. **Kaldırıldı:** target_scope, follows, priority, advertiser_id, target_pharmacies, is_guaranteed, impression_goal, frequency_cap_per_hour.
+- `Campaign` (Sponsorluk): Sponsorluk kampanyası (id UUID, `advertiser_name` [serbest metin, blank], name, start_date, end_date, status [ACTIVE/PAUSED/COMPLETED]). Türetilen `effective_state` (ACTIVE & henüz başlamamış → SCHEDULED). Tablo `dooh_campaigns`. **Kaldırıldı:** target_scope, follows, priority, advertiser_id, target_pharmacies, is_guaranteed, impression_goal, frequency_cap_per_hour.
 - `Creative`: Kampanyaya ait medya (campaign FK, media_url [IdleScreen portrait, kalıcı], **active_media_url** [AdStrip alt alan ~1080x768, blank], duration_seconds [1..60 DB constraint; grid {15,30,45,60} `is_grid_compliant`], name, checksum, object_key [S3 key], active_object_key).
 - `KioskSponsorship` (tablo `dooh_kiosk_sponsorships`): Bir sponsorluğun bir kiosk'a atanması. Alanlar: kiosk FK, campaign FK, `window_start_minute` [0..1439], `window_end_minute` [1..1440, exclusive, > start], `count` [≥1, pencere içinde günlük toplam gösterim], `active_weekdays` [JSON ISO 1-7, null/[]=her gün], `start_date`/`end_date` [opsiyonel DateField, kampanya aralığıyla kesişir], `is_active`. Unique(kiosk, campaign) + pencere/count CheckConstraint'leri. **ScheduleRule/DeliveryRule/PlanningRun/CampaignTotalAllocation/KioskDayQuota/CampaignTarget/KioskDesiredBundle yerini aldı** (migration 0033 veri temizliği + 0034 şema).
 - `Playlist`: Kiosk için üretilmiş playlist (kiosk FK, target_date, target_hour [Istanbul yereli], loop_duration_seconds [60], version; unique kiosk+date+hour).
 - `PlaylistItem`: Playlist öğeleri (playlist FK, creative FK [creative-only; `clean()` creative zorunlu], playback_order, estimated_start_offset_seconds [saat-mutlak 0..3599]).
 - `IdleScreenContent` *(2026-08-16)*: Bekleme ekranı başlık/metin idle içeriği — "İçerik Yönetimi" (id BigAutoField, `baslik` [CharField≤250, serializer ≤100], **`baslik_en`** *(2026-09-29, TR/EN, blank)*, `metin` [CharField≤1000, serializer ≤300], **`metin_en`** *(blank)*, `aktif` [bool default True], `kategori` FK nullable, olusturulma/guncellenme_tarihi). Tablo `dooh_idle_screen_contents`. Boş `_en` → kioskta Türkçe alana döner. Medya/HTML YOK, düz metin. Eski `HouseAd` modeli kaldırıldı (migration 0027).
-- `PlayLog`: Reklam gösterim logu / proof-of-play (kiosk FK, creative FK nullable SET_NULL, played_at, duration_played, play_event_id [nullable UUID, idempotency], status [STARTED/COMPLETED/FAILED/INTERRUPTED], occurred_at/received_at).
+- `PlayLog`: Sponsorluk gösterim logu / proof-of-play (kiosk FK, creative FK nullable SET_NULL, played_at, duration_played, play_event_id [nullable UUID, idempotency], status [STARTED/COMPLETED/FAILED/INTERRUPTED], occurred_at/received_at).
 - `GenerationJob`: Async playlist üretim job'u + DB-backed queue (id UUID, target_date, kiosk FK nullable [NULL=tüm aktif kiosk], status [PENDING/RUNNING/DONE/FAILED/RETRY], triggered_by [manual/nightly/campaign_change], payload JSON, attempt_count/max_attempts, worker_id/lock_expires_at, dedupe_key `kd:{kiosk_id}:{date}`).
 - `PharmacyCampaign` *(2026-07-31, 2026-08-01)*: Eczacı paneli kampanyası (id UUID, name, media_url, object_key, start_at, end_at, duration_seconds [izin: 15/30/60], is_active, target_pharmacies M2M Eczane, target_iller M2M Il, target_ilceler M2M Ilce). Kiosk DOOH sisteminden **bağımsız**. Feed: OR mantığıyla; hiç hedefi olmayan feed'e girmez. Migration 0022+0024.
 
@@ -231,7 +237,7 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 
 ---
 
-## Kategori, Reklam, Kiosk, Log/Session İle İlgili Backend Mantığı
+## Kategori, Sponsorluk, Kiosk, Log/Session İle İlgili Backend Mantığı
 
 ### Kategori Akışı
 1. SuperAdmin → web_panels MedicalLogic → `POST /api/products/kategoriler/` → `Kategori` model kaydı
@@ -239,7 +245,7 @@ gunicorn core_api.wsgi --bind 0.0.0.0:8000  # Prod
 3. Backend → kategorileri + hedef_cinsiyet + hedef_yas_araliklari ile JSON response
 4. Kiosk edge API → SQLite `kategoriler` tablosuna upsert
 
-### Reklam (Sponsorluk) Akışı *(2026-10-16 cihaz bazlı)*
+### Sponsorluk Akışı *(2026-10-16 cihaz bazlı)*
 1. SuperAdmin → web_panels SponsorshipDefinitions → `POST /api/campaigns/v2/campaigns/` → `Campaign` (sponsorluk) kaydı
 2. SuperAdmin → Creative upload → `POST /api/campaigns/upload-media/` → MinIO/S3'e upload → `POST /api/campaigns/v2/creatives/` → `Creative` kaydı
 3. SuperAdmin → kiosk'a atama → `PUT /api/campaigns/v2/sponsorship-kiosks/{id}/sponsorships/` veya `POST /api/campaigns/v2/campaigns/{id}/assign-kiosks/` → `KioskSponsorship` kaydı (kapasite doğrulanır; aşım → 400 `capacity_exceeded`)

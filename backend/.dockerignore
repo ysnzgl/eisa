@@ -1,0 +1,25 @@
+# Backend Docker imajına GİRMEYECEK dosyalar.
+# Ortam dosyaları: değerler K8s ConfigMap/Secret ile verilir; imajda sır taşınmaz
+# (python-decouple .env'i otomatik okuduğu için imaja girerse ConfigMap'te olmayan
+# anahtarlarda geliştirme değerleri devreye girer).
+.env
+.env.*
+!.env.example
+
+# Yerel veri / çıktı
+db_dev.sqlite3
+*.sqlite3
+media/
+logs/
+backups/
+_tmp_patch.py
+
+# Python / test önbellekleri
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+.vscode/

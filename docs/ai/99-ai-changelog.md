@@ -1,4 +1,10 @@
-﻿# AI Changelog — Dokümantasyon ve Kod Değişiklikleri
+# AI Changelog — Dokümantasyon ve Kod Değişiklikleri
+
+## 2026-11-07
+### İş Takibi — Kalıcı dosya ekleri
+**Değişiklik:** PDF, Word, Excel ekleri RustFS'te saklanır; SuperAdmin kontrollü indirme, PDF/Excel ve DOCX metin önizlemesi eklendi. TTL/presigned URL kullanılmaz; 25 MB sınırı, imza kontrolü, OOXML açılmış boyut sınırı vardır. Yükleme hatasında başarılı iş ve dosyalar korunur.
+**Dosyalar:** `backend/apps/gorevler/{models,serializers,views,documents}.py`, migration 0004, `GorevYonetimi.vue`, `GorevDosyalar.vue`, `web_panels/nginx.conf`, ilgili docs ve testler.
+**Etki:** API yanıtına geriye uyumlu dosyalar alanı ve dosya endpoint'leri eklendi; backend migration ve portal dağıtımı gerekir. RustFS lifecycle'da `is-takip/` expiration olmaması altyapıda doğrulanmalıdır. Eski DOC yalnız indirilir; Office düzeni/görselleri önizlemede korunmaz.
 
 **Amaç:** AI tarafından yapılan değişikliklerin kısa kaydı.
 **Format:** Tarih — Değişiklik (max 10 satır/kayıt)
@@ -312,7 +318,7 @@
 
 ### [Kiosk UI] Idle ekranı beyaz marka tasarımına geçirildi
 
-- Reklamsız tam ekran idle fallback beyaz/açık zemine alındı; EKG, CTA, karşılama ve sponsor kartı koyu gri + e-isa kırmızısı kontrastla yeniden uyarlandı. Üst logo açık cam kartta koyu varyanta geçti; kampanya oynatımı ve alt banttaki koyu `AdPromo` tasarımı değişmedi. Kiosk UI 67 test ve production build ile doğrulandı.
+- Sponsor içeriği olmayan tam ekran idle fallback beyaz/açık zemine alındı; EKG, CTA, karşılama ve sponsor kartı koyu gri + e-isa kırmızısı kontrastla yeniden uyarlandı. Üst logo açık cam kartta koyu varyanta geçti; kampanya oynatımı ve alt banttaki koyu `AdPromo` tasarımı değişmedi. Kiosk UI 67 test ve production build ile doğrulandı.
 
 ## 2026-09-13
 
@@ -430,7 +436,7 @@
 
 ### [Kiosk UI] İdeal/Attractor Ekranına Dekoratif EKG Animasyonu
 
-**Değişiklik:** Reklam olmadığında gösterilen sponsor fallback ekranına (AdPromo.svelte large varyant) sağlık teknolojisi temalı dekoratif animasyon eklendi.
+**Değişiklik:** Sponsorluk olmadığında gösterilen sponsor fallback ekranına (AdPromo.svelte large varyant) sağlık teknolojisi temalı dekoratif animasyon eklendi.
 
 **Animasyon özellikleri:**
 - Yatay EKG çizgisi (soldan sağa ilerleyen parlak enerji izi, SVG `stroke-dasharray` + `stroke-dashoffset` animasyon)
@@ -840,7 +846,7 @@
 
 ### [Kiosk UI] İdeal/Attractor Ekranına Dekoratif EKG Animasyonu
 
-**Değişiklik:** Reklam olmadığında gösterilen sponsor fallback ekranına (AdPromo.svelte large varyant) sağlık teknolojisi temalı dekoratif animasyon eklendi.
+**Değişiklik:** Sponsorluk olmadığında gösterilen sponsor fallback ekranına (AdPromo.svelte large varyant) sağlık teknolojisi temalı dekoratif animasyon eklendi.
 
 **Animasyon özellikleri:**
 - Yatay EKG çizgisi (soldan sağa ilerleyen parlak enerji izi, SVG `stroke-dasharray` + `stroke-dashoffset` animasyon)
@@ -1606,7 +1612,7 @@ PlacementEngine V2 shadow mode. V1 scheduler korunur, değiştirilmez. V2 parale
 ### Kiosk UI — Normal Idle Ekranı Kaldırıldı + Bileşen Refactor
 **Değişiklik:** Açılışta gelen "normal idle" bekleme ekranı kaldırıldı; uygulama artık doğrudan çekici (attractor) ekranla açılıyor. Tekrar eden parçalar bileşene çıkarıldı.
 **Detay:**
-1. `IdleScreen.svelte` artık tek-durumlu attractor: açılışta anında gösterilir (10sn bekleme + iki-durumlu screensaver mantığı kaldırıldı). Reklam varsa görseller döner, yoksa `<AdPromo large />`. Eski `.screen-idle`/`.idle-*` markup ve CSS silindi.
+1. `IdleScreen.svelte` artık tek-durumlu attractor: açılışta anında gösterilir (10sn bekleme + iki-durumlu screensaver mantığı kaldırıldı). Sponsorluk varsa görseller döner, yoksa `<AdPromo large />`. Eski `.screen-idle`/`.idle-*` markup ve CSS silindi.
 2. `MediaView.svelte` (YENİ) — URL uzantısına göre `<video>`/`<img>` render eden ortak bileşen; AdStrip + IdleScreen kullanıyor (kopyalanan img/video mantığı tekilleştirildi).
 3. `ScreenHeader.svelte` (YENİ) — Logo + opsiyonel subtitle; Welcome/Demographics/Category/Consult/Question ekranlarındaki tekrarlanan `kiosk-header` markup'ı bununla değiştirildi.
 **Dosyalar:** `IdleScreen.svelte`, `MediaView.svelte` (YENİ), `ScreenHeader.svelte` (YENİ), `AdStrip.svelte`, `Welcome/Category/Consult/Demographics/QuestionScreen.svelte`, `app.css` (ölü idle stilleri temizlendi)
@@ -1618,8 +1624,8 @@ PlacementEngine V2 shadow mode. V1 scheduler korunur, değiştirilmez. V2 parale
 **Değişiklik:** 4 UI iyileştirmesi yapıldı.
 **Detay:**
 1. `Logo.svelte` (YENİ) + `assets/eisa-logo.svg` & `eisa-logo-light.svg` — tüm "e-İSA" yazıları resmi marka logosu ile değiştirildi (koyu zeminde beyaz varyant).
-2. `AdPromo.svelte` (YENİ) — dönen "Bu Alana Reklam Verebilirsiniz" tasarımı ortak bileşene çıkarıldı; AdStrip (reklam yokken) ve IdleScreen ekran koruyucusunda (reklam yokken, `large`) kullanılıyor.
-3. IdleScreen `ss-overlay-text` ekranın ÜSTÜNE konumlandırıldı; ekran koruyucu artık stok görseller yerine reklam yoksa AdPromo döndürüyor.
+2. `AdPromo.svelte` (YENİ) — dönen "Bu Alana Sponsor Olabilirsiniz" tasarımı ortak bileşene çıkarıldı; AdStrip (sponsorluk yokken) ve IdleScreen ekran koruyucusunda (sponsorluk yokken, `large`) kullanılıyor.
+3. IdleScreen `ss-overlay-text` ekranın ÜSTÜNE konumlandırıldı; ekran koruyucu artık stok görseller yerine sponsorluk yoksa AdPromo döndürüyor.
 4. App.svelte global inaktivite `10s → 20s`; idle/wifi dışındaki HER ekranda 20sn işlemsizlikte idle'a döner (`finalizeAbandonedSession()` ile terk edilmiş oturum analitiği korunur).
 **Dosyalar:** `Logo.svelte`, `AdPromo.svelte`, `IdleScreen.svelte`, `AdStrip.svelte`, `App.svelte`, `Welcome/Category/Consult/Demographics/QuestionScreen.svelte`, `app.css`, `assets/eisa-logo*.svg`
 **Doküman:** 04-kiosk-edge-ui.md güncellendi.
@@ -1627,10 +1633,10 @@ PlacementEngine V2 shadow mode. V1 scheduler korunur, değiştirilmez. V2 parale
 **Breaking:** Yok.
 
 ### Kiosk ↔ Backend DOOH Uyum Denetimi — TZ + Slot + Ölü Endpoint Düzeltmeleri
-**Değişiklik:** Reklam gösterim mantığının backend ile uyumu denetlendi; 3 gerçek hata düzeltildi.
+**Değişiklik:** Sponsorluk gösterim mantığının backend ile uyumu denetlendi; 3 gerçek hata düzeltildi.
 **Hatalar:**
-1. **Zaman dilimi (TZ):** Kiosk playlist'i UTC saatine göre seçiyordu; backend `target_hour` Istanbul yereli (USE_TZ, Europe/Istanbul) → reklamlar ~3 saat kayıyordu.
-2. **Slot ölçeği:** `estimated_start_offset_seconds` saat-mutlak (0..3599) iken AdStrip slot döngüsü 60sn'e göre sarıyordu → sadece ilk dakikanın öğeleri oynuyor, PER_HOUR/PER_DAY reklamlar hiç görünmüyordu.
+1. **Zaman dilimi (TZ):** Kiosk playlist'i UTC saatine göre seçiyordu; backend `target_hour` Istanbul yereli (USE_TZ, Europe/Istanbul) → sponsorluk içerikleri ~3 saat kayıyordu.
+2. **Slot ölçeği:** `estimated_start_offset_seconds` saat-mutlak (0..3599) iken AdStrip slot döngüsü 60sn'e göre sarıyordu → sadece ilk dakikanın öğeleri oynuyor, PER_HOUR/PER_DAY sponsorluk içerikleri hiç görünmüyordu.
 3. **Ölü endpoint:** `server.js` `/api/lookups/iller*` kaldırılmış SQLite tablolarını (db.js v9) sorguluyordu.
 **Dosyalar:**
 - `kiosk_edge/api-node/src/timezone.js` (YENİ — `istanbulNow()`)

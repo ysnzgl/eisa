@@ -1,4 +1,8 @@
-﻿# Web Panels — Vue 3 + Vite + Pinia + Tailwind CSS
+# Web Panels — Vue 3 + Vite + Pinia + Tailwind CSS
+
+## İş takibi ekleri (2026-11-07)
+
+`GorevYonetimi.vue` + `components/GorevDosyalar.vue`: yeni/düzenlenen işe çoklu PDF/Word/Excel seçilir, Kaydet sırasında iş kaydından sonra sırayla yüklenir. Hata durumunda kayıtlı iş ID'si ve yüklenemeyen dosyalar korunur; tekrar Kaydet iş veya başarılı ekleri çoğaltmaz. Listede ek sayısı, modalda dosya adı/boyutu, İndir ve desteklenen türlerde Önizle bulunur. PDF: tarayıcı iframe/blob; XLS/XLSX: mevcut xlsx ile sayfa seçimi, ilk 200 satır/50 sütun; DOCX: Vue metin interpolasyonu, ilk 2000 paragraf; DOC: yalnız indirme. Harici Office viewer kullanılmaz. Blob URL'leri kapanışta temizlenir. Nginx CSP `frame-src 'self' blob:` PDF önizlemesine izin verir.
 
 **Amaç:** Admin ve Pharmacist panelleri; kampanya/playlist/fiyat/kullanıcı/cihaz yönetimi, QR tarama, session raporları.
 
@@ -298,7 +302,7 @@ window.EISA_API_BASE_URL = 'http://localhost:8000';
 ### 1. Sponsorluk Tanımları (SponsorshipDefinitions.vue)
 
 **Route:** `/admin/campaigns` (SuperAdmin)
-**Yapı:** İkonlu KPI kartları (Toplam/Aktif/Duraklatıldı/Kiosk Ataması) + panel içinde arama ve segment durum filtresi + liste (thumbnail, reklam veren alt satırı, tarih aralığı, medya/kiosk sayı rozetleri, durum pill) + 3 adımlı modal (ikonlu stepper; tamamlanan adıma tıklayıp geri dönülür).
+**Yapı:** İkonlu KPI kartları (Toplam/Aktif/Duraklatıldı/Kiosk Ataması) + panel içinde arama ve segment durum filtresi + liste (thumbnail, sponsor alt satırı, tarih aralığı, medya/kiosk sayı rozetleri, durum pill) + 3 adımlı modal (ikonlu stepper; tamamlanan adıma tıklayıp geri dönülür).
 **Stil notu:** Stiller scoped `sd-*` sınıflarındadır. Teleport edilen modallar `.eisa-page` CSS token'larını (`--border`, `--faint` vb.) miras almadığı için `.sd-drawer`/`.sd-assign-modal` bu token'ları yerel tanımlar. İkon+metin çiftleri `inline-flex` + `fa-fw` ile hizalanır; tablo hücresine (`td`) doğrudan `display:flex` verilmez (aksiyonlar iç `div`'de).
 
 | Sekme | Açıklama |

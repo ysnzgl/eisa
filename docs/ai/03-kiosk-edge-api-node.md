@@ -215,7 +215,7 @@ Toplanan veriler `device_metadata` JSON alanı olarak `KioskProvisioningRequest`
 
 ---
 
-## Reklam, Kategori, Session/Log Akışındaki Rolü
+## Sponsorluk, Kategori, Session/Log Akışındaki Rolü
 
 ### Kategori Akışı
 1. Backend → `/api/kiosk/v1/sync/` endpoint'i → kategorileri JSON döner
@@ -223,7 +223,7 @@ Toplanan veriler `device_metadata` JSON alanı olarak `KioskProvisioningRequest`
 3. Kiosk UI → `GET http://localhost:5234/categories` → SQLite'dan aktif kategorileri çeker
 4. Filtreleme: Kullanıcının yaş/cinsiyet bilgisine göre `hedef_yas_araliklari` ve `hedef_cinsiyet_id` kontrolü
 
-### Reklam Akışı
+### Sponsorluk Akışı
 1. Backend → playlist üretir, kiosk için `Playlist` + `PlaylistItem` kayıtları
 2. Kiosk edge scheduler → `pingAndSyncPlaylist` → yeni playlist versiyonu varsa indir
 3. SQLite → `playlists` ve `playlist_items` tablolarına kayıt (backend her yeniden üretimde yeni playlist id verir; upsert öncesi aynı `target_date+target_hour` slotunun item'ları silinir, aksi halde FK ihlali tüm sync'i geri alır)
@@ -257,7 +257,7 @@ Toplanan veriler `device_metadata` JSON alanı olarak `KioskProvisioningRequest`
 6. Backend → `OturumLogu` modeline kayıt (idempotency_anahtari ile duplikasyon koruması)
 
 ### Impression Log Akışı
-1. Kiosk UI AdStrip → bir reklam slotu gösterilir → `shownAt` timestamp
+1. Kiosk UI AdStrip → bir sponsorluk slotu gösterilir → `shownAt` timestamp
 2. Slot değişince önceki slotun gerçek izlenme süresi hesaplanır (`durationMs`)
 3. Kiosk UI → `POST http://127.0.0.1:8765/api/reklam-gosterim` → payload
    ```json

@@ -14,7 +14,9 @@ data:
   EISA_ENVIRONMENT: "production"
 
   DJANGO_DEBUG: "0"
-  DJANGO_ALLOWED_HOSTS: "api.eisa.com.tr"
+  # Cluster içi host'lar: eisa-site sunucusu API'ye http://eisa-api.eisa-app.svc.cluster.local
+  # üzerinden erişir; bu Host header'ı izinli olmazsa Django 400 döner.
+  DJANGO_ALLOWED_HOSTS: "api.eisa.com.tr,eisa-api.eisa-app.svc.cluster.local,eisa-api.eisa-app.svc,eisa-api"
   CORS_ALLOWED_ORIGINS: "https://portal.eisa.com.tr"
   CORS_ALLOW_CREDENTIALS: "True"
   CSRF_TRUSTED_ORIGINS: "https://portal.eisa.com.tr,https://api.eisa.com.tr"
@@ -58,6 +60,21 @@ data:
   THROTTLE_ADMIN_SENSITIVE: "10/hour"
 
   API_BASE_URL: "https://api.eisa.com.tr"
+
+  # Web sitesi (apps/website) — bkz. docs/web-sitesi/CONTRACT.md §1, §6
+  # Önizleme linki ve canonical için public site adresi.
+  SITE_PUBLIC_URL: "https://eisa.com.tr"
+  # Revalidate fan-out: headless service DNS'i tüm site pod IP'lerine çözülür,
+  # her birine http://<ip>:3000/api/revalidate POST edilir.
+  SITE_REVALIDATE_HEADLESS_HOST: "eisa-site-headless.eisa-app.svc.cluster.local:3000"
+  # Ek/sabit revalidate URL'leri (virgülle ayrılmış). Headless host kullanıldığı için boş.
+  SITE_REVALIDATE_URLS: ""
+
+  # NOT — Secret anahtarları (eisa-app-secrets, bu dosyada TUTULMAZ):
+  #   REVALIDATE_SECRET:    "CHANGE_ME"  # backend ↔ site ortak, rastgele ≥ 32 karakter
+  #   WEBSITE_SERVER_TOKEN: "CHANGE_ME"  # backend ↔ site ortak, rastgele ≥ 32 karakter
+  # Mevcut secret'a eklemek için: docs/rancher-deployment-updated.md §6.2 (patch; diğer anahtarları silmez).
+  # Backend bu anahtarları envFrom/secretRef ile, eisa-site ise secretKeyRef ile okur.
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -302,6 +319,56 @@ spec:
             backend:
               service:
                 name: eisa-portal
+                port:
+                  number: 80
+---
+# Web sitesi public/önizleme uçları yalnızca site sunucusuna (cluster içi) açıktır.
+# Site API'ye http://eisa-api.eisa-app.svc.cluster.local üzerinden gider; bu yollar internete kapatılır.
+# (Uygulama katmanında ayrıca X-Website-Token zorunlu — iki katmanlı koruma.)
+# ipAllowList: Traefik ≥ 2.11 / v3. Yalnızca loopback → dışarıdan gelen her istek 403.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: eisa-api-website-ic-yollar
+  namespace: eisa-app
+spec:
+  ipAllowList:
+    sourceRange:
+      - 127.0.0.1/32
+---
+# Daha uzun (özgül) yol kuralı Traefik'te "/" kuralından önceliklidir. TLS sertifikası eisa-app
+# Ingress'i tarafından üretilir; burada aynı secret yalnızca kullanılır (cert-manager anotasyonu yok).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: eisa-api-website-ic-yollar
+  namespace: eisa-app
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.middlewares: eisa-app-eisa-api-website-ic-yollar@kubernetescrd
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - api.eisa.com.tr
+      secretName: eisa-app-tls
+  rules:
+    - host: api.eisa.com.tr
+      http:
+        paths:
+          - path: /api/website/public
+            pathType: Prefix
+            backend:
+              service:
+                name: eisa-api
+                port:
+                  number: 80
+          - path: /api/website/preview
+            pathType: Prefix
+            backend:
+              service:
+                name: eisa-api
                 port:
                   number: 80
 ---
