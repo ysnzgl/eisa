@@ -23,7 +23,7 @@ async function makeApp() {
     "INSERT INTO yas_araliklari (kod, ad, alt_sinir, ust_sinir) VALUES ('26-35','26-35',26,35)",
   ).run();
 
-  // 1 kategori + 2 soru + 1 aktif reklam asset
+  // 1 kategori + 2 soru + 1 aktif sponsorluk asset
   db.prepare(
     `INSERT INTO kategoriler (id, slug, ad, ikon, hassas, aktif, sira)
      VALUES (1, 'enerji', 'Enerji', 'fa-bolt', 0, 1, 2)`,
@@ -388,7 +388,7 @@ describe('Kiosk API (Turkce sema)', () => {
     expect(r.json()).toEqual({ last_qr_created_at: '2026-09-13T10:20:00.000Z' });
   });
 
-  it('GET /api/reklamlar/aktif aktif reklami doner', async () => {
+  it('GET /api/reklamlar/aktif aktif sponsorluk icerigini doner', async () => {
     const r = await app.inject({ method: 'GET', url: '/api/reklamlar/aktif' });
     expect(r.statusCode).toBe(200);
     const data = r.json();

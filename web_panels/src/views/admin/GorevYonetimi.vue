@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import { toast } from 'vue-sonner';
 import { http } from '../../services/api';
 import { useConfirm } from '../../composables/useConfirm.js';
+import GorevDosyalar from '../../components/GorevDosyalar.vue';
 
 const { confirm } = useConfirm();
 
@@ -12,6 +13,7 @@ const loading = ref(true);
 const saving = ref(false);
 const modalOpen = ref(false);
 const selected = ref(null);
+const pendingFiles = ref([]);
 const filters = reactive({ q: '', durum: '' });
 
 const statuses = [
@@ -46,6 +48,7 @@ const emptyForm = () => ({ baslik: '', icerik: '', durum: 'YENI', atanan_kullani
 const form = reactive(emptyForm());
 
 function resetForm() {
+  pendingFiles.value = [];
   Object.assign(form, emptyForm());
   selected.value = null;
 }
@@ -56,6 +59,7 @@ function openCreate() {
 }
 
 function openEdit(item) {
+  pendingFiles.value = [];
   selected.value = item;
   Object.assign(form, {
     baslik: item.baslik,
@@ -67,6 +71,7 @@ function openEdit(item) {
 }
 
 function closeModal() {
+  if (saving.value) return;
   modalOpen.value = false;
   resetForm();
 }
@@ -98,15 +103,27 @@ async function save() {
       durum: form.durum,
       atanan_kullanici_id: form.atanan_kullanici_id,
     };
-    if (selected.value) {
-      await http.patch(`/api/is-takip/gorevler/${selected.value.id}/`, payload);
-      toast.success('İş güncellendi.');
-    } else {
-      await http.post('/api/is-takip/gorevler/', payload);
-      toast.success('İş oluşturuldu.');
+    const { data: saved } = selected.value
+      ? await http.patch(`/api/is-takip/gorevler/${selected.value.id}/`, payload)
+      : await http.post('/api/is-takip/gorevler/', payload);
+    selected.value = saved;
+    while (pendingFiles.value.length) {
+      const data = new FormData();
+      data.append('dosya', pendingFiles.value[0]);
+      try {
+        const { data: uploaded } = await http.post(`/api/is-takip/gorevler/${saved.id}/dosyalar/`, data);
+        selected.value.dosyalar.push(uploaded);
+        pendingFiles.value.shift();
+      } catch {
+        toast.error('İş kaydedildi. Yüklenemeyen dosyalar seçili kaldı; Kaydet ile tekrar deneyebilirsiniz.');
+        await loadData();
+        return;
+      }
     }
+    toast.success('İş ve dosyalar kaydedildi.');
     await loadData();
-    closeModal();
+    modalOpen.value = false;
+    resetForm();
   } catch (error) {
     toast.error(error?.response?.data?.detail || 'İş kaydedilemedi.');
   } finally {
@@ -207,6 +224,7 @@ onMounted(loadData);
               <td>
                 <strong>{{ item.baslik }}</strong>
                 <div class="cell-muted cell-clamp">{{ item.icerik }}</div>
+                <small v-if="item.dosyalar?.length" class="cell-muted"><i class="fa-solid fa-paperclip"></i> {{ item.dosyalar.length }} dosya</small>
               </td>
               <td><span class="eisa-pill" :class="statusClass[item.durum]">{{ item.durum_ad }}</span></td>
               <td>{{ item.atanan_kullanici_adi || '—' }}</td>
@@ -276,6 +294,12 @@ onMounted(loadData);
                   </select>
                 </label>
               </div>
+              <GorevDosyalar
+                v-model="pendingFiles"
+                :gorev-id="selected?.id"
+                :dosyalar="selected?.dosyalar || []"
+                :disabled="saving"
+              />
             </div>
 
             <div class="eisa-modal-footer">

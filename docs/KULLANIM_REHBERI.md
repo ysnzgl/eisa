@@ -1,5 +1,11 @@
 # e-isa Admin Panel — Kullanım Rehberi
 
+## İş Takibine Dosya Ekleme
+
+İş Takibi → Yeni İş veya mevcut işi açın → Dosyalar alanından birden fazla PDF, Word (.doc/.docx) veya Excel (.xls/.xlsx) seçin → Kaydet. Dosya başına sınır 25 MB'dir. Kaydedilen dosyalar işin içinde listelenir; İndir ile özgün dosya alınır. Dosyalar RustFS'te tutulur ve uygulama tarafından zaman aşımıyla silinmez; erişim yalnız SuperAdmin içindir.
+
+Önizle ile PDF tarayıcıda, Excel sayfa seçilerek ilk 200 satır/50 sütun olarak, DOCX ise ilk 2000 paragraf metni olarak açılır. Word görselleri ve sayfa düzeni için dosyayı indirin; eski .doc dosyalarında yalnız indirme desteklenir. Yükleme hatası olursa iş kaydı korunur; açık pencerede Kaydet ile kalan dosyalar tekrar yüklenir.
+
 > **Hedef Kitle:** SuperAdmin rolüne sahip sistem yöneticileri  
 > **Erişim URL:** `/admin` (ör. `https://panel.eisa.com.tr/admin`)  
 > **Versiyon:** Faz 7 (DOOH v2 Canonical)
@@ -72,7 +78,7 @@ Sol menüden **Kampanyalar** (`/admin/campaigns`) → **+ Yeni Kampanya**. Form 
 | Alan | Zorunlu | Açıklama |
 |------|---------|----------|
 | Kampanya Adı | ✅ | Dahili takip için isim (ör. `Magnezyum Yaz 2026`) |
-| Reklamveren | ❌ | Reklam sahibi firma adı (serbest metin — `advertiser_name`) |
+| Sponsor | ❌ | Sponsor firma adı (serbest metin — `advertiser_name`) |
 | Başlangıç Tarihi | ✅ | Sponsorluğun yayına gireceği tarih |
 | Bitiş Tarihi | ✅ | Sona ereceği tarih (başlangıçtan sonra olmalı) |
 | Durum | ✅ | `ACTIVE` / `PAUSED` / `COMPLETED` |
@@ -162,7 +168,7 @@ Böylece kaydetmeden önce kapasiteyi doğrulayabilirsin.
 
 | İşlem | Nasıl |
 |-------|-------|
-| Arama | Sağ üstteki arama kutusuna kampanya adı / reklamveren yaz |
+| Arama | Sağ üstteki arama kutusuna kampanya adı / sponsor yaz |
 | Durum filtresi | "Tüm Durumlar" dropdown'u |
 | Düzenle | Satırdaki kalem ikonu → Bilgiler/Medya/Kiosklar |
 | Sil | Çöp kutusu → onay |
@@ -199,7 +205,7 @@ ACTIVE ⇄ PAUSED
 
 **1) Sponsorluk tanımı (Kampanyalar → + Yeni):**
 ```
-Bilgiler → Ad: Magnezyum Yaz 2026 | Reklamveren: ABC İlaç
+Bilgiler → Ad: Magnezyum Yaz 2026 | Sponsor: ABC İlaç
           Başlangıç: 2026-08-01 | Bitiş: 2026-08-11 | Durum: ACTIVE
 Medya    → magnezyum_15sn.mp4 | Süre: 15 sn
 Kiosklar → Hedef kiosku ata

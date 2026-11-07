@@ -8,7 +8,7 @@
 
 Akis:
 1. Pull katalog: /api/kiosk/v1/catalog/
-2. Pull kiosk reklam + lookup + cihaz ayarı/idle ses manifesti: /api/kiosk/v1/sync/
+2. Pull kiosk sponsorluk + lookup + cihaz ayarı/idle ses manifesti: /api/kiosk/v1/sync/
 3. Ping versiyon kontrolu: /api/kiosk/v1/ping/
 4. Playlist guncelleme: /api/kiosk/v1/playlist/?date=YYYY-MM-DD
 5. Push oturum outbox: /api/kiosk/v1/sessions/
@@ -16,7 +16,7 @@ Akis:
 
 ## 2) Veri Guncelligi Stratejisi
 
-- Katalog ve reklamlar periyodik pull ile yenilenir.
+- Katalog ve sponsorluk içerikleri periyodik pull ile yenilenir.
 - Cihaz-bazli is zamanlayicilari `device_config` ile `kiosk_device_config` tablosuna yazilir. Provisioning onay yanitindaki manifest hemen uygulanip sesler indirilir; ilk full pull ve sonraki periyodik pull'lar ayni cache'i uzlastirir.
 - Playlist icin versiyon tabanli delta-sync kullanilir:
   - ping.playlist_version > local_version ise playlist yeniden cekilir.
@@ -29,7 +29,7 @@ Akis:
   - Soru/cevap ve lookup verileri local SQLite'tan okunur.
   - Oturum ve impression olaylari outbox'a yazilir.
   - Ag geri geldiginde otomatik push edilir.
-- Reklam medya dosyalari local diskte cache'lenir.
+- Sponsorluk medya dosyalari local diskte cache'lenir.
   - UI media_url olarak once lokal endpoint kullanir: /api/media/{assetType}/{assetId}
   - Lokal dosya yoksa remote_media_url fallback yapilir.
 - Kiosk idle ses listesi `kiosk_device_audio_files` tablosu ve ayri lokal dosyalar olarak cache'lenir:

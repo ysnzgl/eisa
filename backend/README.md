@@ -183,7 +183,7 @@ backend/
     ├── users/             # Özel kullanıcı modeli + JWT auth
     ├── pharmacies/        # Eczane yönetimi, AppKey, izinler
     ├── products/          # Ürün kataloğu
-    ├── campaigns/         # Kampanya + reklam yönetimi
+    ├── campaigns/         # Kampanya + sponsorluk yönetimi
     └── analytics/         # Anonim anket logları
 ```
 

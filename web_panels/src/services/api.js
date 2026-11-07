@@ -85,6 +85,9 @@ function _humanError(error) {
   return 'Beklenmeyen bir hata oluştu.';
 }
 
+// `__silent` çağrı yapan ekranlar kendi toast'larında aynı Türkçe mesajı kullanabilsin.
+export { _humanError as humanError };
+
 // ERR-001: Tüm response'ları merkezi olarak yakala. 401 ise sessizce refresh
 // dener; diğer hatalar kullanıcıya toast olarak gösterilir.
 http.interceptors.response.use(

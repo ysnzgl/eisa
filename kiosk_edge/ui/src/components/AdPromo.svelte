@@ -1,6 +1,6 @@
 <script>
   // İlan olmadigi her yerde gosterilen sik, donen "Bu Alana İlan
-  // Verebilirsiniz" tasarimi. Hem reklam bandinda (AdStrip) hem de ekran
+  // Verebilirsiniz" tasarimi. Hem sponsorluk bandinda (AdStrip) hem de ekran
   // koruyucuda (IdleScreen) kullanilir.
   //
   // large varyanti (idle/attractor): heartbeat animasyonu + üstte başlık (fade),

@@ -1,4 +1,4 @@
-"""Reklam medya yukleme view'i.
+"""Sponsorluk medya yukleme view'i.
 
 DOOH v2 mimarisi tum kampanya/playlist isini ``views_v2`` icindeki
 viewset'lerden yapar. Burada sadece ortak medya upload endpoint'i kalir.

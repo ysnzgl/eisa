@@ -269,7 +269,7 @@ function initSchema(db, options = {}) {
     );
     CREATE INDEX IF NOT EXISTS kiosk_event_outbox_pending ON kiosk_event_outbox(sent_at);
 
-    -- LOCAL MEDIA CACHE (offline reklam oynatimi)
+    -- LOCAL MEDIA CACHE (offline sponsorluk icerigi oynatimi)
     CREATE TABLE IF NOT EXISTS media_cache (
       asset_id        TEXT    NOT NULL,
       asset_type      TEXT    NOT NULL CHECK(asset_type IN ('creative','house_ad')),

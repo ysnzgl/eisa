@@ -1,4 +1,4 @@
-"""Reklam sponsorlugu serileştiricileri.
+"""Sponsorluk kampanyasi serileştiricileri.
 
 ``CampaignSerializer`` / ``CreativeSerializer`` / ``KioskSponsorship*`` yonetim
 DTO'lari ve kiosk-edge DTO'lari (``KioskCreativeSyncSerializer``,

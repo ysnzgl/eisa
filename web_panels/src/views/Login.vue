@@ -26,7 +26,7 @@ async function submit() {
   errorMsg.value = '';
   try {
     await auth.login(username.value.trim(), password.value);
-    router.push(auth.role === 'superadmin' ? '/admin' : '/pharmacist');
+    router.push(auth.anaSayfa);
   } catch (error) {
     const status = error?.response?.status;
     const detail = error?.response?.data?.detail;

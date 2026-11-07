@@ -1,5 +1,9 @@
 # Cross-Project Flows — Backend ↔ web_panels ↔ kiosk_edge
 
+## İş takibi ek dosya akışı (2026-11-07)
+
+SuperAdmin → iş oluştur/düzenle + dosya seç → iş JSON kaydı → dosya başına multipart `/api/is-takip/gorevler/{id}/dosyalar/` → dosya doğrulama → RustFS `is-takip/` nesnesi → UoW GorevDosya metadata → işte dosya listesi. İndir/Önizle → aynı görev altındaki dosya GET endpoint'i → yetki kontrolü → RustFS stream veya DOCX metni → panelde yerel önizleme. Süreli URL ve otomatik dosya expiration yok; bucket lifecycle ayrıca `is-takip/` için expiration içermemelidir. Kiosk/edge/sync etkilenmez.
+
 **Amaç:** Proje bileşenleri arasındaki kritik veri akışlarını kompakt şekilde dokümante etmek.
 
 ---
@@ -218,7 +222,7 @@ kiosk_edge/ui (CategoryScreen)
 
 ---
 
-## 2. Reklam Slot Akışı
+## 2. Sponsorluk Slot Akışı
 
 ### Backend (Kampanya + Playlist) → kiosk_edge → Backend (Proof-of-Play)
 
@@ -327,14 +331,14 @@ kiosk_edge/ui (AdStrip component)
 
 ---
 
-## 3. Reklam Impression / Play Log Akışı
+## 3. Sponsorluk Impression / Play Log Akışı
 
 ### kiosk_edge/ui → kiosk_edge/api-node → Backend
 
 **3.1. Impression Kaydı (Kiosk UI)**
 ```
 kiosk_edge/ui (AdStrip)
-  → Reklam slotu gösterilir → shownAt = ISO timestamp
+  → Sponsorluk slotu gösterilir → shownAt = ISO timestamp
   → Slot değişince → duration_played = (now - shownAt) saniye
   → POST http://127.0.0.1:8765/api/reklam-gosterim
     {

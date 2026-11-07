@@ -64,7 +64,7 @@ Bootstrap akis:
 | POST | `/api/oturum/gonder` | — | Anket → outbox |
 | GET | `/api/oturum/:qr` | `Bearer PROVISIONING_SECRET` | QR ile oturum |
 | GET | `/api/reklamlar/aktif` | — | Aktif kampanyalar |
-| POST | `/api/reklam-gosterim` | — | Reklam gösterim logu |
+| POST | `/api/reklam-gosterim` | — | Sponsorluk gösterim logu |
 
 ## Üretim Dağıtımı
 

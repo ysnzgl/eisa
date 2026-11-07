@@ -148,7 +148,7 @@
       <MediaView
         src={asset.media_url}
         type={asset.media_type}
-        alt={asset.name ?? 'Reklam'}
+        alt={asset.name ?? 'Sponsor içeriği'}
         playing={true}
         class={mode === 'fullscreen' ? 'player-media' : 'player-media player-media--behind'}
         on:error={handleMediaError}
@@ -159,7 +159,7 @@
         <MediaView
           src={asset.active_media_url}
           type={asset.media_type}
-          alt={asset.name ?? 'Reklam'}
+          alt={asset.name ?? 'Sponsor içeriği'}
           playing={true}
           class={mode === 'strip' ? 'player-media player-media--strip' : 'player-media player-media--strip player-media--behind'}
         />

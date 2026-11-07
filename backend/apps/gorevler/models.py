@@ -32,3 +32,15 @@ class Gorev(BaseModel):
 
     def __str__(self) -> str:
         return self.baslik
+
+
+class GorevDosya(BaseModel):
+    gorev = models.ForeignKey(Gorev, on_delete=models.CASCADE, related_name="dosyalar")
+    ad = models.CharField(max_length=255)
+    object_key = models.CharField(max_length=512, unique=True)
+    content_type = models.CharField(max_length=100)
+    boyut = models.PositiveBigIntegerField()
+
+    class Meta:
+        db_table = "gorev_dosyalar"
+        ordering = ("olusturulma_tarihi",)

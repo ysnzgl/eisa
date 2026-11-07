@@ -1,6 +1,8 @@
 {
   "scripts": {
-    "dev:all": "concurrently -n web,backend,scheduler,kiosk-api,kiosk-ui -c blue,magenta,yellow,cyan,green \"npm --prefix web_panels run dev\" \"cd backend && py manage.py runserver\" \"cd backend && py manage.py run_scheduler\" \"npm --prefix kiosk_edge/api-node run dev\" \"npm --prefix kiosk_edge/ui run dev\""
+    "dev:all": "concurrently -n web,backend,scheduler,kiosk-api,kiosk-ui,site -c blue,magenta,yellow,cyan,green,red \"npm --prefix web_panels run dev\" \"cd backend && py manage.py runserver\" \"cd backend && py manage.py run_scheduler\" \"npm --prefix kiosk_edge/api-node run dev\" \"npm --prefix kiosk_edge/ui run dev\" \"npm --prefix web_site run dev\"",
+    "dev:web": "concurrently -n backend,portal,site -c magenta,blue,red \"cd backend && py manage.py runserver 8000 --settings=core_api.settings_dev_sqlite\" \"npm --prefix web_panels run dev\" \"npm --prefix web_site run dev\"",
+    "dev:site": "npm --prefix web_site run dev"
   },
   "devDependencies": {
     "concurrently": "^9.0.0"

@@ -1,4 +1,4 @@
-"""Kullanici modeli — Panel girisi (SuperAdmin / Eczaci) JWT tasiyicisi."""
+"""Kullanici modeli — Panel girisi (SuperAdmin / Eczaci / Editor) JWT tasiyicisi."""
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 
@@ -9,6 +9,9 @@ class Kullanici(AbstractUser):
     class Rol(models.TextChoices):
         SUPERADMIN = "superadmin", "Super Admin"
         ECZACI = "pharmacist", "Eczaci"
+        # Yalnizca "Web Sitesi" modulunu yonetir (apps.website admin API).
+        # Eczane veya superadmin yetkisi YOKTUR; eczane alani her zaman bos kalir.
+        EDITOR = "editor", "Editör"
 
     rol = models.CharField(max_length=16, choices=Rol.choices, default=Rol.ECZACI)
     eczane = models.ForeignKey(

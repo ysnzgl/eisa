@@ -1,6 +1,7 @@
 /**
  * Vue Router — Rol bazlı (RBAC) yönlendirme.
- * SuperAdmin -> /admin/*, Eczacı -> /pharmacist/*
+ * SuperAdmin -> /admin/*, Eczacı -> /pharmacist/*,
+ * Editör (Web Sitesi) -> yalnız /admin/web-sitesi/* (SuperAdmin de erişir)
  */
 import { createRouter, createWebHistory } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
@@ -34,6 +35,24 @@ const routes = [
       { path: 'announcements', component: () => import('../views/admin/AnnouncementManagement.vue') },
     ]
   },
+  // Web Sitesi (eisa.com.tr CMS) — '/admin' parent'ından AYRI üst seviye rota:
+  // '/admin' superadmin'e kilitli olduğundan editor yalnız bu ağaca girebilir.
+  {
+    path: '/admin/web-sitesi',
+    component: () => import('../views/admin/AdminLayout.vue'),
+    meta: { roles: ['superadmin', 'editor'] },
+    children: [
+      { path: '',            component: () => import('../views/admin/web-sitesi/WebSitesiSayfalar.vue') },
+      { path: 'sayfalar/:id', component: () => import('../views/admin/web-sitesi/SayfaEditoru.vue') },
+      { path: 'menuler',     component: () => import('../views/admin/web-sitesi/WebSitesiMenuler.vue') },
+      { path: 'blog',        component: () => import('../views/admin/web-sitesi/BlogYazilar.vue') },
+      { path: 'blog/:id',    component: () => import('../views/admin/web-sitesi/BlogYaziEditoru.vue') },
+      { path: 'medya',       component: () => import('../views/admin/web-sitesi/MedyaKutuphanesi.vue') },
+      { path: 'basvurular',  component: () => import('../views/admin/web-sitesi/Basvurular.vue') },
+      { path: 'ayarlar',     component: () => import('../views/admin/web-sitesi/SiteAyarlari.vue') },
+      { path: 'yardim',      component: () => import('../views/admin/web-sitesi/Yardim.vue') },
+    ]
+  },
   {
     path: '/pharmacist',
     component: () => import('../views/admin/AdminLayout.vue'),
@@ -52,18 +71,27 @@ const routes = [
 
 const router = createRouter({ history: createWebHistory(), routes });
 
-// RBAC guard
-router.beforeEach((to) => {
-  const auth = useAuthStore();
+/**
+ * RBAC kararı (test edilebilir saf fonksiyon).
+ * Dönüş: true (geç) | { path } (yönlendir).
+ */
+export function yetkiKontrolu(to, auth) {
   const required = to.meta?.roles;
   if (!required) return true;
   if (!auth.isAuthenticated) return { path: '/login' };
-  if (!required.includes(auth.role)) return { path: '/login' };
+  if (!required.includes(auth.role)) {
+    // Editör yalnız Web Sitesi modülünü kullanır; başka panele girmeye çalışırsa oraya döner.
+    if (auth.role === 'editor') return { path: '/admin/web-sitesi' };
+    return { path: '/login' };
+  }
   // Panel kısıtlı eczacı yalnız Hesabım ve Ödemeler'e erişebilir.
   if (auth.role === 'pharmacist' && auth.panelKisitli && to.path !== '/pharmacist/hesabim') {
     return { path: '/pharmacist/hesabim' };
   }
   return true;
-});
+}
+
+// RBAC guard
+router.beforeEach((to) => yetkiKontrolu(to, useAuthStore()));
 
 export default router;

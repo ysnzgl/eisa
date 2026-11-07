@@ -33,6 +33,7 @@ import '@fontsource/dm-mono/400.css';
 import '@fontsource/dm-mono/500.css';
 import 'vue-sonner/style.css';
 import './styles.css';
+import './components/website/website.css';
 
 const app = createApp(App).use(createPinia()).use(router);
 

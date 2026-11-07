@@ -6,7 +6,7 @@ from core_api.cookie_jwt import JWTCookieAuthentication as JWTAuthentication
 
 from apps.core.uow import UnitOfWork
 from apps.pharmacies.auth import KioskAppKeyAuthentication
-from apps.pharmacies.permissions import IsKioskOrAuthenticated, IsSuperAdmin
+from apps.pharmacies.permissions import IsKioskOrAuthenticated, IsSuperAdmin, IsSuperAdminOrEczaci
 
 from .models import Cevap, Danisma, EtkenMadde, Kategori, Soru, SoruEtkenMadde
 from .serializers import (
@@ -158,9 +158,9 @@ class EtkenMaddeViewSet(_UoWWritableViewSet):
     permission_classes = [IsSuperAdmin]
 
     def get_permissions(self):
+        # Okuma: superadmin + eczaci (editor rolu katalog verisi goremez).
         if self.action in ("list", "retrieve"):
-            from rest_framework.permissions import IsAuthenticated
-            return [IsAuthenticated()]
+            return [IsSuperAdminOrEczaci()]
         return [IsSuperAdmin()]
 
     def get_queryset(self):

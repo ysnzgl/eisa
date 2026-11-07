@@ -3,7 +3,7 @@
  * Sponsorluk Tanımları — DOOH sponsorlukların (campaign) tanım ekranı.
  *
  * Basitleştirilmiş 3 adımlı drawer:
- *   1) Bilgiler : ad, reklam veren, başlangıç/bitiş, durum
+ *   1) Bilgiler : ad, sponsor, başlangıç/bitiş, durum
  *   2) Medya    : creative yükle (bekleme + işlem ekranı medyası, süre)
  *   3) Kiosklar : atanmış kioskların salt-okunur listesi + "Kiosklara Ata"
  *
@@ -398,7 +398,7 @@ onMounted(refresh);
       <div class="sd-toolbar">
         <div class="eisa-search-wrap sd-search">
           <i class="fa-solid fa-magnifying-glass"></i>
-          <input v-model="search" class="eisa-field eisa-search-field" placeholder="Ad / reklam veren ara…" />
+          <input v-model="search" class="eisa-field eisa-search-field" placeholder="Ad / sponsor ara…" />
         </div>
         <div class="sd-segment" role="tablist" aria-label="Durum filtresi">
           <button v-for="f in STATUS_FILTERS" :key="f.value" type="button" role="tab"
@@ -429,7 +429,7 @@ onMounted(refresh);
                   </span>
                   <div class="sd-name-meta">
                     <strong class="sd-name">{{ c.name }}</strong>
-                    <span class="sd-sub"><i class="fa-regular fa-building fa-fw"></i>{{ c.advertiser_name || 'Reklam veren yok' }}</span>
+                    <span class="sd-sub"><i class="fa-regular fa-building fa-fw"></i>{{ c.advertiser_name || 'Sponsor yok' }}</span>
                   </div>
                 </div>
               </td>
@@ -495,7 +495,7 @@ onMounted(refresh);
                   <input v-model="form.name" class="eisa-field" placeholder="Örn. Bayer Yaz Kampanyası" />
                 </div>
                 <div class="eisa-form-row">
-                  <label class="eisa-field-label">Reklam veren</label>
+                  <label class="eisa-field-label">Sponsor</label>
                   <input v-model="form.advertiser_name" class="eisa-field" placeholder="Örn. Bayer İlaç" />
                 </div>
                 <div class="eisa-form-row">

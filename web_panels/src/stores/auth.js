@@ -17,6 +17,12 @@ export const useAuthStore = defineStore('auth', {
     // Rol set edilmişse kullanıcı login olmuş kabul edilir; gerçek doğrulama
     // backend tarafından her API çağrısında çerez ile yapılır.
     isAuthenticated: (s) => !!s.role,
+    // Login sonrası / rol bazlı varsayılan açılış sayfası.
+    anaSayfa: (s) => {
+      if (s.role === 'superadmin') return '/admin';
+      if (s.role === 'editor') return '/admin/web-sitesi';
+      return '/pharmacist';
+    },
   },
   actions: {
     setBilling({ demo, panelKisitli }) {

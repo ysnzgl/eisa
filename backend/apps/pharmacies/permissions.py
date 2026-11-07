@@ -45,14 +45,33 @@ class IsKiosk(BasePermission):
 
 
 class IsKioskOrAuthenticated(BasePermission):
-    """Kiosk (App-Key) veya JWT panel kullanicisi."""
+    """Kiosk (App-Key) veya JWT panel kullanicisi (superadmin / eczaci; editor HARIC)."""
 
     message = "Kimlik dogrulamasi gereklidir."
 
     def has_permission(self, request, view):
         if request.user and isinstance(request.user, Kullanici):
-            return True
+            return request.user.rol in (Kullanici.Rol.SUPERADMIN, Kullanici.Rol.ECZACI)
         return isinstance(request.auth, str)
+
+
+class IsSuperAdminOrEczaci(BasePermission):
+    """
+    Eczane paneli kullanicisi: superadmin veya eczaci.
+
+    `editor` rolu (yalnizca web sitesi yonetimi) bilincli olarak HARIC tutulur; eskiden
+    `IsAuthenticated` ile acik olan eczane/destek/katalog okuma uclari bunu kullanir.
+    """
+
+    message = "Bu islem icin eczaci veya super admin yetkisi gereklidir."
+
+    def has_permission(self, request, view):
+        user = request.user
+        return bool(
+            user
+            and isinstance(user, Kullanici)
+            and user.rol in (Kullanici.Rol.SUPERADMIN, Kullanici.Rol.ECZACI)
+        )
 
 
 # Geriye donuk uyumluluk takma adlari

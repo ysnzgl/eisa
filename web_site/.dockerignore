@@ -1,0 +1,28 @@
+# Bağımlılıklar imaj içinde npm ci ile kurulur
+node_modules
+npm-debug.log*
+
+# Next.js çıktıları (paralel dev dizinleri dahil: .next-*)
+.next
+.next-*
+out
+build
+coverage
+*.tsbuildinfo
+next-env.d.ts
+
+# Ortam dosyaları imaja girmez (değerler ENV / --build-arg ile verilir)
+.env
+.env.*
+!.env.example
+
+# Araç / editör
+.git
+.gitignore
+.vscode
+.idea
+.DS_Store
+Dockerfile
+.dockerignore
+*.md
+!src/**/*.md

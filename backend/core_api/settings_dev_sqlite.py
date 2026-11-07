@@ -25,6 +25,10 @@ CACHES = {
     }
 }
 
+# Web sitesi medyası: lokal geliştirmede S3/RustFS yerine MEDIA_ROOT/website/ (CONTRACT §5 Medya).
+from decouple import config as _config  # noqa: E402
+WEBSITE_MEDIA_LOCAL = _config("WEBSITE_MEDIA_LOCAL", default=True, cast=bool)
+
 # Dev server için tüm logları dosyaya da yaz (500 traceback için)
 import pathlib as _pl
 _LOG_DIR = _pl.Path(BASE_DIR) / "logs"
