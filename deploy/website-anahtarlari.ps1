@@ -53,6 +53,8 @@ function Yaz([string]$durum, [string]$mesaj) {
 function Kc {
     # Not: Adı 'kubectl' olamaz — PowerShell'de fonksiyon, aynı adlı programdan önce çözülür (sonsuz özyineleme).
     # Native komut hatası PS 5.1'de istisna üretmez; çıkış kodunu kontrol ederiz.
+    # PS 5.1: 'Stop' tercihinde native stderr satırı istisnaya dönüşür; burada yerel olarak gevşetilir.
+    $ErrorActionPreference = 'Continue'
     $cikti = & kubectl @args 2>&1
     return [pscustomobject]@{ Kod = $LASTEXITCODE; Cikti = ($cikti | Out-String).Trim() }
 }
@@ -130,7 +132,7 @@ function Durum-Raporu {
         $container = $OKUYANLAR[$dep]
         foreach ($ad in $ANAHTARLAR) {
             if (-not $degerler.ContainsKey($ad)) { continue }
-            $r = Kc -n $Namespace exec deploy/$dep -c $container -- sh -c "printf %s `$$ad | sha256sum"
+            $r = Kc -n $Namespace exec deploy/$dep -c $container '--' sh -c "printf %s `$$ad | sha256sum"
             if ($r.Kod -ne 0) { Yaz 'UYARI' "$dep/$ad kontrol edilemedi (pod yok veya hazır değil)"; continue }
             $podOzet = ($r.Cikti -split '\s+')[0]
             if ($podOzet -eq (Sha256 $degerler[$ad])) { Yaz 'OK' "$dep → $ad güncel" }
@@ -139,12 +141,12 @@ function Durum-Raporu {
     }
 
     Write-Host "`n── Uçtan uca ──" -ForegroundColor Cyan
-    $r = Kc -n $Namespace exec deploy/eisa-site -c site -- sh -c "wget -q -S -O /dev/null --header X-Website-Token:`$WEBSITE_SERVER_TOKEN $API_ADRESI 2>&1 | head -n 1"
+    $r = Kc -n $Namespace exec deploy/eisa-site -c site '--' sh -c "wget -q -S -O /dev/null --header X-Website-Token:`$WEBSITE_SERVER_TOKEN $API_ADRESI 2>&1 | head -n 1"
     if ($r.Cikti -match ' 200 ') { Yaz 'OK' "Site → API app-key ile erişiyor (200)" }
     elseif ($r.Cikti -match ' 404 ') { Yaz 'HATA' "API site anahtarını reddediyor (404): değerler uyuşmuyor veya API'de varsayılan değer" }
     else { Yaz 'UYARI' "Site → API kontrol edilemedi: $($r.Cikti)" }
 
-    $r = Kc -n $Namespace exec deploy/eisa-api -c api -- python manage.py check
+    $r = Kc -n $Namespace exec deploy/eisa-api -c api '--' python manage.py check
     if ($r.Cikti -match 'website\.W00\d') { Yaz 'HATA' "Backend güvenlik uyarısı: $([regex]::Matches($r.Cikti, 'website\.W00\d') -join ', ')" }
     elseif ($r.Kod -eq 0) { Yaz 'OK' "Backend 'manage.py check' web sitesi uyarısı vermiyor" }
     else { Yaz 'UYARI' "manage.py check çalıştırılamadı" }
