@@ -1,0 +1,32 @@
+2:"$Sreact.fragment"
+3:"/_next/static/chunks/1ua2kfq9s-me6.js"
+4:I[39756,["$3"],"default"]
+5:I[37457,["$3"],"default"]
+a:"/_next/static/chunks/1req64vnc4znu.js"
+b:"/_next/static/chunks/2e0f0owjwoe-i.js"
+c:"/_next/static/chunks/3nmi2oa4l-4p9.js"
+d:"/_next/static/chunks/0o5-f4-qfnzdd.js"
+e:I[45901,["$a","$b","$c","$d"],"HataSahnesi"]
+f:I[42296,["$a","$b","$c","$d"],"MagneticButton"]
+10:I[40300,["$a","$b","$c","$d"],"AkilliLink"]
+11:I[97367,["$3"],"OutletBoundary"]
+12:"$Sreact.suspense"
+15:"ViewportBoundary"
+16:I[97367,["$3"],"$15"]
+17:"MetadataBoundary"
+18:I[97367,["$3"],"$17"]
+19:I[27201,["$3"],"IconMark"]
+7:X
+7:C
+8:X
+9:[["children",{"s":"__PAGE__","h":160,"d":{"r":["$","$2","c",{"children":[["$","$Le",null,{"kod":"404","baslik":"Aradığınız sayfa bulunamadı","aciklama":"Sayfa taşınmış, kaldırılmış ya da adres yanlış yazılmış olabilir. Aşağıdaki bağlantılarla devam edebilirsiniz.","children":[["$","$Lf",null,{"children":["$","$L10",null,{"href":"/","className":"group/buton relative inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-buton font-semibold transition-[background-color,border-color,color,box-shadow,transform] duration-300 ease-eisa active:scale-[0.98] h-12 px-6 text-[0.9375rem] bg-primary-aa text-white shadow-cta hover:bg-primary-hover","children":[["$","span",null,{"children":"Anasayfaya dön"}],["$","svg",null,{"xmlns":"http://www.w3.org/2000/svg","width":"1em","height":"1em","fill":"currentColor","viewBox":"0 0 256 256","aria-hidden":true,"className":"size-4 transition-transform duration-300 group-hover/buton:translate-x-0.5","children":[false,"$undefined",["$","path",null,{"d":"M224.49,136.49l-72,72a12,12,0,0,1-17-17L187,140H40a12,12,0,0,1,0-24H187L135.51,64.48a12,12,0,0,1,17-17l72,72A12,12,0,0,1,224.49,136.49Z"}]]}]]}]}],["$","$L10",null,{"href":"/blog","className":"group/buton relative inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-buton font-semibold transition-[background-color,border-color,color,box-shadow,transform] duration-300 ease-eisa active:scale-[0.98] h-12 px-6 text-[0.9375rem] border border-zemin-cizgi bg-zemin-kart text-zemin-baslik shadow-kart hover:border-primary/40 hover:shadow-kart-hover","children":[["$","span",null,{"children":"Blog"}],null]}],["$","$L10",null,{"href":"/iletisim","className":"group/buton relative inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-buton font-semibold transition-[background-color,border-color,color,box-shadow,transform] duration-300 ease-eisa active:scale-[0.98] h-12 px-6 text-[0.9375rem] text-zemin-baslik hover:text-zemin-vurgu px-2!","children":[["$","span",null,{"children":"İletişim"}],["$","svg",null,{"xmlns":"http://www.w3.org/2000/svg","width":"1em","height":"1em","fill":"currentColor","viewBox":"0 0 256 256","aria-hidden":true,"className":"size-4 transition-transform duration-300 group-hover/buton:translate-x-0.5","children":[false,"$undefined","$9:0:1:d:r:props:children:0:props:children:0:props:children:props:children:1:props:children:2"]}]]}]]}],[["$","script","script-0",{"src":"/_next/static/chunks/0o5-f4-qfnzdd.js","async":true}]],["$","$L11",null,{"children":["$","$12",null,{"name":"Next.MetadataOutlet","children":"$@13"}]}]]}],"p":"$@14","v":null,"s":"$8"}}]]
+1:[["children",{"s":"/_not-found","h":64,"d":{"r":["$","$2","c",{"children":[null,["$","$L4",null,{"parallelRouterKey":"children","template":["$","$L5",null,{}]}]]}],"p":"$@6","v":"$7","s":"$8"},"c":"$Q9"}]]
+0:{"t":{"t":{"s":"","h":16,"c":"$Q1"},"h":{"r":["$","$2","h",{"children":[["$","meta",null,{"name":"robots","content":"noindex"}],["$","$L16",null,{"children":[["$","meta","0",{"charSet":"utf-8"}],["$","meta","1",{"name":"viewport","content":"width=device-width, initial-scale=1"}],["$","meta","2",{"name":"theme-color","content":"#0b0f14"}],["$","meta","3",{"name":"color-scheme","content":"light"}]]}],["$","$L18",null,{"children":[["$","div",null,{"hidden":true,"children":["$","$12",null,{"name":"Next.Metadata","children":[["$","title","0",{"children":"Sayfa bulunamadı | e-isa"}],["$","meta","1",{"name":"description","content":"e-isa, eczanelerde reçete bekleme süresini yapay zeka destekli sağlık okuryazarlığı ve eczacı kontrollü danışmanlık deneyimine dönüştüren modern kiosk ekosistemidir."}],["$","meta","2",{"name":"application-name","content":"e-isa"}],["$","meta","3",{"name":"author","content":"Eisa Bilişim Teknolojileri A.Ş."}],["$","meta","4",{"name":"publisher","content":"Eisa Bilişim Teknolojileri A.Ş."}],["$","meta","5",{"name":"robots","content":"index, follow"}],["$","meta","6",{"name":"format-detection","content":"telephone=no, address=no, email=no"}],["$","meta","7",{"property":"og:title","content":"Sayfa bulunamadı | e-isa"}],["$","meta","8",{"property":"og:description","content":"e-isa, eczanelerde reçete bekleme süresini yapay zeka destekli sağlık okuryazarlığı ve eczacı kontrollü danışmanlık deneyimine dönüştüren modern kiosk ekosistemidir."}],["$","meta","9",{"property":"og:site_name","content":"e-isa"}],["$","meta","10",{"property":"og:locale","content":"tr_TR"}],["$","meta","11",{"property":"og:image","content":"http://localhost:3000/opengraph-image?3d9bb7711d130f63"}],["$","meta","12",{"property":"og:image:type","content":"image/png"}],["$","meta","13",{"property":"og:image:width","content":"1200"}],["$","meta","14",{"property":"og:image:height","content":"630"}],["$","meta","15",{"property":"og:image:alt","content":"e-isa — Eczanenizdeki reçete bekleme süresini sağlık okuryazarlığına dönüştürün"}],["$","meta","16",{"property":"og:type","content":"website"}],["$","meta","17",{"name":"twitter:card","content":"summary_large_image"}],["$","meta","18",{"name":"twitter:title","content":"Sayfa bulunamadı | e-isa"}],["$","meta","19",{"name":"twitter:description","content":"e-isa, eczanelerde reçete bekleme süresini yapay zeka destekli sağlık okuryazarlığı ve eczacı kontrollü danışmanlık deneyimine dönüştüren modern kiosk ekosistemidir."}],["$","meta","20",{"name":"twitter:image","content":"http://localhost:3000/opengraph-image"}],["$","link","21",{"rel":"icon","href":"/icon.svg?icon.1h3c5mg_8iha9.svg","sizes":"any","type":"image/svg+xml"}],["$","$L19","22",{}]]}]}],null]}],["$","meta",null,{"name":"next-size-adjust","content":""}]]}],"p":"$@1a","v":null,"s":"$8"}},"a":"$@1b","u":"$@1c","b":"_u5ZUScItH2_fMHjS-WDp"}
+13:null
+1c:true
+8:300
+8:C
+1b:0
+6:"$undefined"
+1a:"$undefined"
+14:"$undefined"

@@ -1,0 +1,1 @@
+{"version":4,"routes":{"/":{},"/teknoloji":{},"/sponsorlar":{},"/hakkimizda":{},"/iletisim":{},"/kvkk":{},"/cerez-politikasi":{}},"dynamicRoutes":{"/[[...slug]]":{"dataRoute":null,"dataRouteRegex":null,"fallback":null,"fallbackRevalidate":false,"fallbackSourceRoute":"/[[...slug]]","routeRegex":"^(?:\\/(.+?))?(?:\\/)?$","allowHeader":[]}},"notFoundRoutes":[]}

@@ -1,0 +1,15 @@
+{
+  "node": {
+    "6099ab6d5321057cb8041034012958498a0ad30876": {
+      "workers": {
+        "app/[[...slug]]/page": {
+          "moduleId": 74861,
+          "async": false
+        }
+      },
+      "exportedName": "basvuruGonder",
+      "filename": "src/app/actions/basvuru.ts"
+    }
+  },
+  "edge": {}
+}
