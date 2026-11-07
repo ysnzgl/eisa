@@ -288,7 +288,7 @@ Kademe seçimi: kaydırıcı değeri `v` için `etkilesim_min <= v <= etkilesim_
   - Çözüm (`bolum` anasayfa `#nasil-calisir`), alt öğeler: Nasıl Çalışır `#nasil-calisir`, Eczacı Kontrolü `#eczaci-kontrolu`, Müşteri Yolculuğu `#yolculuk`, Kazanç Modeli `#kazanc`, SSS `#sss`
   - Teknoloji, Sponsorlar, Blog
   - Kurumsal (`sayfa` hakkimizda), alt öğeler: Hakkımızda, İletişim
-  - **1 Ay Ücretsiz Pilot** (`bolum` anasayfa `#pilot`, `cta=true`)
+  - **Ücretsiz Pilot** (`bolum` anasayfa `#pilot`, `cta=true`)
 - `footer`:
   - Ürün: Nasıl Çalışır, Teknoloji, Kazanç Modeli, SSS
   - Kurumsal: Hakkımızda, Sponsorlar, Blog, İletişim
@@ -305,7 +305,7 @@ Kademe seçimi: kaydırıcı değeri `v` için `etkilesim_min <= v <= etkilesim_
 - 3 yayınlanmış yazı (Türkçe, özgün, temkinli dil):
   1. "Reçete bekleme süresi eczane için neden bir fırsat?"
   2. "Dürtme (nudge) yaklaşımı sağlık okuryazarlığına nasıl katkı sağlar?"
-  3. "e-isa 1 aylık ücretsiz pilot süreci nasıl işler?"
+  3. "e-isa ücretsiz pilot süreci nasıl işler?"
 
 ## 10. Site Tasarım Kuralları (özet)
 

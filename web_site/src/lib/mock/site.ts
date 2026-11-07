@@ -54,7 +54,7 @@ export const mockSite: SiteData = {
           { id: 12, etiket: "İletişim", href: "/iletisim", yeni_sekme: false, cta: false, cocuklar: [] },
         ],
       },
-      { id: 13, etiket: "1 Ay Ücretsiz Pilot", href: "/#pilot", yeni_sekme: false, cta: true, cocuklar: [] },
+      { id: 13, etiket: "Ücretsiz Pilot", href: "/#pilot", yeni_sekme: false, cta: true, cocuklar: [] },
     ],
     footer: [
       {

@@ -17,9 +17,9 @@ const YAZAR = "e-isa Ekibi";
 export const mockBlogYazilari: BlogDetay[] = [
   {
     slug: "pilot-sureci-nasil-isler",
-    baslik: "e-isa 1 aylık ücretsiz pilot süreci nasıl işler?",
+    baslik: "e-isa ücretsiz pilot süreci nasıl işler?",
     ozet:
-      "Başvurudan kuruluma, veri takibinden değerlendirme toplantısına kadar 30 günlük ücretsiz pilot sürecin adımlarını özetledik.",
+      "Başvurudan kuruluma, veri takibinden değerlendirme toplantısına kadar ücretsiz pilot sürecin adımlarını özetledik.",
     kapak: null,
     kategori: duyuru,
     etiketler: ["pilot", "kurulum", "e-isa"],
@@ -27,7 +27,7 @@ export const mockBlogYazilari: BlogDetay[] = [
     yayin_tarihi: "2026-11-05T09:00:00Z",
     okuma_suresi: 4,
     seo: {
-      baslik: "1 Aylık Ücretsiz Pilot Süreci Nasıl İşler?",
+      baslik: "Ücretsiz Pilot Süreci Nasıl İşler?",
       aciklama: "e-isa pilot süreci: başvuru, kurulum, eğitim, izleme ve değerlendirme adımları.",
       og_gorsel: null,
     },
@@ -40,7 +40,7 @@ export const mockBlogYazilari: BlogDetay[] = [
 <h2>3. Kısa eğitim</h2>
 <p>Eczane ekibine QR / fiş akışını ve sonuçların nasıl değerlendirileceğini anlatırız. e-isa'nın ürettiği çıktı bir <strong>ön inceleme</strong>dir; son değerlendirme her zaman eczacıdadır.</p>
 <h2>4. İzleme ve geri bildirim</h2>
-<p>30 gün boyunca etkileşim sayısı, kategori dağılımı ve danışmanlık sürecine etkisi gibi göstergeleri birlikte izleriz. Saha ekibimiz süreç boyunca yanınızdadır.</p>
+<p>Pilot süreci boyunca etkileşim sayısı, kategori dağılımı ve danışmanlık sürecine etkisi gibi göstergeleri birlikte izleriz. Saha ekibimiz süreç boyunca yanınızdadır.</p>
 <h2>5. Değerlendirme</h2>
 <p>Pilot sonunda verileri birlikte değerlendiririz. Devam edip etmeme kararı tamamen sizindir.</p>
 <blockquote>Pilot süreçte paylaşılan rakamlar eczaneye özgüdür; başka eczaneler için garanti veya taahhüt niteliği taşımaz.</blockquote>

@@ -132,7 +132,7 @@ onBeforeUnmount(() => {
         <div class="ws-arama" role="dialog" aria-modal="true" aria-label="Sitede ara">
           <div class="ws-arama-girdi">
             <i class="fa-solid" :class="yukleniyor ? 'fa-circle-notch fa-spin' : 'fa-magnifying-glass'"></i>
-            <input ref="girdi" v-model="q" type="search" placeholder="Sitede ara… (ör. pilot, eczacı onayı, 1 ay ücretsiz)"
+            <input ref="girdi" v-model="q" type="search" placeholder="Sitede ara… (ör. pilot, eczacı onayı)"
               aria-label="Aranacak ifade" aria-controls="ws-arama-sonuclar" autocomplete="off" spellcheck="false"
               @keydown="girdiKlavye" />
             <kbd>Esc</kbd>

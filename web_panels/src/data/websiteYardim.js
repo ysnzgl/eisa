@@ -99,7 +99,7 @@ export const YARDIM_KONULARI = [
     rota: '/admin/web-sitesi/menuler',
     ozet: 'Sitenin üst menüsü (header), alt bilgi menüsü (footer) ve en alttaki yasal bağlantılar buradan yönetilir.',
     maddeler: [
-      { baslik: 'Header', metin: 'Sayfanın üstündeki ana menü. "CTA" işaretli öğe kırmızı buton olarak sağda gösterilir (ör. "1 Ay Ücretsiz Pilot").' },
+      { baslik: 'Header', metin: 'Sayfanın üstündeki ana menü. "CTA" işaretli öğe kırmızı buton olarak sağda gösterilir (ör. "Ücretsiz Pilot").' },
       { baslik: 'Footer', metin: 'Her üst öğe bir sütundur, altındaki öğeler o sütunun bağlantılarıdır.' },
       { baslik: 'Footer alt', metin: 'En alttaki KVKK, Çerez Politikası gibi yasal bağlantılar.' },
       { baslik: 'Bağlantı türleri', metin: 'Sayfa: sitedeki bir sayfa. Bölüm: bir sayfadaki belirli blok (bağlantı kimliği ile). Blog: blog listesi. Dış bağlantı: başka bir site.' },

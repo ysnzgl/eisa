@@ -147,7 +147,7 @@ web_site/
 | `gorsel_metin` | Görsel + metin (sol/sağ), parallax |
 | `logo_bandi` | Sponsor/partner logoları, kayan marquee |
 | `sss` | Accordion + FAQPage JSON-LD |
-| `cta_banner` | Güçlü çağrı bandı (ör. 1 Ay Ücretsiz Pilot) |
+| `cta_banner` | Güçlü çağrı bandı (ör. Ücretsiz Pilot) |
 | `basvuru_formu` | Tip parametreli (pilot/sponsor/genel), KVKK onaylı |
 | `blog_son_yazilar` | Son N yazı kartı |
 | `ekip` | Hakkımızda için kişi kartları |

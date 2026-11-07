@@ -60,7 +60,7 @@ def test_seed_icerik_ve_idempotent(site_istemci):
     assert site["ayarlar"]["firma_unvani"] == "Eisa Bilişim Teknolojileri A.Ş."
     assert [s["platform"] for s in site["ayarlar"]["sosyal_linkler"]] == ["linkedin", "instagram"]
     header = site["menuler"]["header"]
-    assert [o["etiket"] for o in header] == ["Çözüm", "Teknoloji", "Sponsorlar", "Blog", "Kurumsal", "1 Ay Ücretsiz Pilot"]
+    assert [o["etiket"] for o in header] == ["Çözüm", "Teknoloji", "Sponsorlar", "Blog", "Kurumsal", "Ücretsiz Pilot"]
     assert [c["href"] for c in header[0]["cocuklar"]] == ["/#nasil-calisir", "/#eczaci-kontrolu", "/#yolculuk", "/#kazanc", "/#sss"]
     assert header[5] ["href"] == "/#pilot" and header[5]["cta"] is True
     assert [c["href"] for c in header[4]["cocuklar"]] == ["/hakkimizda", "/iletisim"]

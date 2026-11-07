@@ -69,7 +69,7 @@ ANASAYFA = [
             {"ikon": "ClockCounterClockwise", "metin": "60 saniyede kategorik ön hazırlık"},
             {"ikon": "Package", "metin": "Marka değil, ihtiyaç kategorisi sunar"},
             {"ikon": "ShieldCheck", "metin": "Son değerlendirme eczacı kontrolündedir"},
-            {"ikon": "CheckCircle", "metin": "1 ay ücretsiz pilot süreç"},
+            {"ikon": "CheckCircle", "metin": "Ücretsiz pilot süreç"},
         ],
         "butonlar": [
             _buton("Pilot Süreci İncele", "/#pilot", "birincil"),
@@ -210,10 +210,10 @@ ANASAYFA = [
         "kategori_slug": "",
     }),
     _blok("basvuru_formu", {
-        "ust_baslik": "1 Ay Ücretsiz Pilot",
+        "ust_baslik": "Ücretsiz Pilot",
         "baslik": "Pilot Süreç: Veri Konuşsun, Kararı Siz Verin",
         "aciklama": (
-            "e-isa'yı varsayımlarla değil, eczanenizin kendi verileriyle değerlendirin. 30 günlük pilot "
+            "e-isa'yı varsayımlarla değil, eczanenizin kendi verileriyle değerlendirin."
             "süreçte kişi etkileşimini, danışmanlık akışını ve sepet ortalamasındaki değişimi gözlemleyin."
         ),
         "form_tipi": "pilot",
@@ -298,9 +298,9 @@ TEKNOLOJI = [
         "arka_plan": "acik",
     }),
     _blok("cta_banner", {
-        "rozet": "1 Ay Ücretsiz",
+        "rozet": "Ücretsiz Deneme",
         "baslik": "e-isa'yı Eczanenizde Deneyin",
-        "metin": "30 günlük pilot süreçle e-isa'yı kendi verilerinizle değerlendirin.",
+        "metin": "pilot süreçle e-isa'yı kendi verilerinizle değerlendirin.",
         "butonlar": [_buton("Pilot Başvurusu Yap", "/#pilot", "birincil")],
         "stil": "kirmizi",
     }),
@@ -657,7 +657,7 @@ MENULER = {
             _m("Hakkımızda", "sayfa", "hakkimizda"),
             _m("İletişim", "sayfa", "iletisim"),
         ]),
-        _m("1 Ay Ücretsiz Pilot", "bolum", "anasayfa", "pilot", cta=True),
+        _m("Ücretsiz Pilot", "bolum", "anasayfa", "pilot", cta=True),
     ],
     "footer": [
         _m("Ürün", "bolum", "anasayfa", "nasil-calisir", cocuklar=[
@@ -725,14 +725,14 @@ _YAZI_2 = """
 """
 
 _YAZI_3 = """
-<p>e-isa’yı eczanenizde varsayımlarla değil, kendi verilerinizle değerlendirebilmeniz için 1 aylık ücretsiz pilot süreç sunuyoruz. Bu yazıda sürecin nasıl işlediğini adım adım özetliyoruz.</p>
+<p>e-isa’yı eczanenizde varsayımlarla değil, kendi verilerinizle değerlendirebilmeniz için ücretsiz pilot süreç sunuyoruz. Bu yazıda sürecin nasıl işlediğini adım adım özetliyoruz.</p>
 <h2>1. Başvuru ve ön görüşme</h2>
 <p>Sitedeki pilot başvuru formunu doldurduğunuzda ekibimiz sizinle iletişime geçer. Kısa bir görüşmede eczanenizin yerleşimini, yoğun saatleri ve beklentilerinizi konuşuruz.</p>
 <h2>2. Kurulum</h2>
 <p>Kompakt pilot ünite, banko akışını engellemeyecek en uygun noktaya kurulur. Kurulum ve yapılandırma ekibimiz tarafından yapılır; eczane ekibine ek iş yükü getirmemesi hedeflenir.</p>
 <h2>3. Kısa eğitim</h2>
 <p>Eczane ekibine kiosk akışı ve QR/fiş ile gelen ön incelemenin nasıl okunacağı hakkında kısa bir bilgilendirme yapılır. Unutmayın: e-isa yalnızca ihtiyaç kategorisi sunar, son değerlendirme her zaman eczacıdadır.</p>
-<h2>4. 30 gün boyunca izleme</h2>
+<h2>4. Pilot süreci boyunca izleme</h2>
 <p>Pilot süresince etkileşim sayıları ve kategori dağılımı gibi anonim veriler düzenli olarak sizinle paylaşılır. Saha ekibimiz süreç boyunca ulaşılabilir durumdadır.</p>
 <h2>5. Birlikte değerlendirme</h2>
 <p>Pilot sonunda sonuçları birlikte değerlendiririz. Devam etmek isteyip istemediğinize, eczanenizin verilerine bakarak siz karar verirsiniz. Pilot sürecin sonuçları, gelecekteki performans için bir garanti değil, eczanenize özgü bir gözlemdir.</p>
@@ -760,8 +760,8 @@ BLOG_YAZILARI = [
     },
     {
         "slug": "e-isa-1-aylik-ucretsiz-pilot-sureci-nasil-isler",
-        "baslik": "e-isa 1 aylık ücretsiz pilot süreci nasıl işler?",
-        "ozet": "Başvurudan kuruluma, 30 günlük izlemeden ortak değerlendirmeye kadar pilot sürecin adımları.",
+        "baslik": "e-isa ücretsiz pilot süreci nasıl işler?",
+        "ozet": "Başvurudan kuruluma, izlemeden ortak değerlendirmeye kadar pilot sürecin adımları.",
         "kategori": "duyurular",
         "etiketler": ["pilot", "duyuru"],
         "icerik_html": _YAZI_3,

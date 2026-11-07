@@ -32,12 +32,12 @@ def test_menu_put_href_cozumu_ve_public_filtre(editor_client, site_istemci, sayf
         _oge("Blog", "blog"),
         _oge("Taslak", "sayfa", taslak.pk, cocuklar=[_oge("Taslağın çocuğu", "blog")]),
         _oge("WhatsApp", "dis", url="https://wa.me/905550000000"),
-        _oge("1 Ay Ücretsiz Pilot", "bolum", ana.pk, "pilot", cta=True),
+        _oge("Ücretsiz Pilot", "bolum", ana.pk, "pilot", cta=True),
     ]
     yanit = editor_client.put(f"{MENU}header/", govde, format="json")
     assert yanit.status_code == 200, yanit.data
     admin_agac = yanit.data
-    assert [o["etiket"] for o in admin_agac] == ["Çözüm", "Teknoloji", "Blog", "Taslak", "WhatsApp", "1 Ay Ücretsiz Pilot"]
+    assert [o["etiket"] for o in admin_agac] == ["Çözüm", "Teknoloji", "Blog", "Taslak", "WhatsApp", "Ücretsiz Pilot"]
     assert set(admin_agac[0]) == {
         "id", "etiket", "link_tipi", "sayfa_id", "bolum_anchor", "url", "yeni_sekme", "cta", "aktif", "href", "cocuklar",
     }
@@ -49,7 +49,7 @@ def test_menu_put_href_cozumu_ve_public_filtre(editor_client, site_istemci, sayf
     site = site_istemci.get("/api/website/public/site/")
     assert site.status_code == 200 and site["Cache-Control"] == "public, max-age=60"
     header = site.data["menuler"]["header"]
-    assert [o["etiket"] for o in header] == ["Çözüm", "Teknoloji", "Blog", "WhatsApp", "1 Ay Ücretsiz Pilot"]
+    assert [o["etiket"] for o in header] == ["Çözüm", "Teknoloji", "Blog", "WhatsApp", "Ücretsiz Pilot"]
     assert set(header[0]) == {"id", "etiket", "href", "yeni_sekme", "cta", "cocuklar"}
     assert [c["etiket"] for c in header[0]["cocuklar"]] == ["SSS"]  # taslak sayfaya bağlı ve pasif alt öğe gizli
     assert header[0]["cocuklar"][0]["href"] == "/#sss"

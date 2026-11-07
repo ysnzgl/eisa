@@ -45,7 +45,7 @@ const anasayfa: PageData = {
         { ikon: "ClockCounterClockwise", metin: "60 saniyede kategorik ön hazırlık" },
         { ikon: "Package", metin: "Marka değil, ihtiyaç kategorisi önerir" },
         { ikon: "ShieldCheck", metin: "Son değerlendirme eczacı kontrolündedir" },
-        { ikon: "CheckCircle", metin: "1 ay ücretsiz pilot süreç" },
+        { ikon: "CheckCircle", metin: "Ücretsiz pilot süreç" },
       ],
       butonlar: [
         { etiket: "Pilot Süreci İncele", href: "/#pilot", stil: "birincil" },
@@ -237,10 +237,10 @@ const anasayfa: PageData = {
       adet: 3,
     }),
     blok("b_10", "basvuru_formu", "pilot", {
-      ust_baslik: "1 ay ücretsiz",
+      ust_baslik: "ücretsiz deneme",
       baslik: "Pilot Süreç: e-isa Konuşsun, Ön İnceleme Sizde Olsun",
       aciklama:
-        "e-isa'yı varsayımlarla değil, eczanenizin kendi verileriyle değerlendirin. 30 günlük pilot süreçte etkileşimi, danışmanlık sürecini ve sepet ortalamasındaki değişimi birlikte gözlemleyelim.",
+        "e-isa'yı varsayımlarla değil, eczanenizin kendi verileriyle değerlendirin. Pilot süreçte etkileşimi, danışmanlık sürecini ve sepet ortalamasındaki değişimi birlikte gözlemleyelim.",
       form_tipi: "pilot",
       maddeler: [
         { ikon: "Storefront", baslik: "Kompakt Pilot Ünite", metin: "Pratik test için hazır kurulum." },
@@ -278,7 +278,7 @@ const teknoloji: PageData = {
       alt_metin:
         "Kompakt donanım, sade arayüz ve merkezi yönetilen yazılım: e-isa, eczanenize teknolojik bir dokunuş katarken operasyonel yük getirmez.",
       butonlar: [
-        { etiket: "1 Ay Ücretsiz Pilot", href: "/#pilot", stil: "birincil" },
+        { etiket: "Ücretsiz Pilot", href: "/#pilot", stil: "birincil" },
         { etiket: "Nasıl Çalışır?", href: "/#nasil-calisir", stil: "hayalet" },
       ],
     }),
@@ -337,7 +337,7 @@ const teknoloji: PageData = {
       arka_plan: "acik",
     }),
     blok("b_25", "cta_banner", "", {
-      rozet: "1 ay ücretsiz",
+      rozet: "Ücretsiz Deneme",
       baslik: "e-isa'yı eczanenizde ücretsiz deneyin",
       metin: "Pilot süreçte veriler konuşsun, kararı siz verin.",
       butonlar: [
