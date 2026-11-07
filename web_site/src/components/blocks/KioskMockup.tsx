@@ -255,7 +255,7 @@ function DonguEkrani({ durum }: { durum: number }) {
             transition={{ duration: 2.2, ease: "easeInOut", repeat: Infinity }}
           />
         </div>
-        <p className="mt-5 font-display text-[0.95rem] font-bold text-dark">Fişinizi eczacınıza iletin</p>
+        <p className="mt-5 font-display text-[0.95rem] font-bold text-dark">QR kodu eczacınıza iletin</p>
         <p className="mt-1 text-[0.68rem] text-muted">QR kod ile öneri saniyeler içinde eczacı panelinde</p>
       </div>
     );
