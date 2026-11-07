@@ -1,0 +1,15 @@
+{
+  "/[[...slug]]/page": "app/[[...slug]]/page.js",
+  "/_global-error/page": "app/_global-error/page.js",
+  "/_not-found/page": "app/_not-found/page.js",
+  "/api/health/route": "app/api/health/route.js",
+  "/api/preview/exit/route": "app/api/preview/exit/route.js",
+  "/api/preview/route": "app/api/preview/route.js",
+  "/api/revalidate/route": "app/api/revalidate/route.js",
+  "/blog/[slug]/page": "app/blog/[slug]/page.js",
+  "/blog/page": "app/blog/page.js",
+  "/icon.svg/route": "app/icon.svg/route.js",
+  "/opengraph-image/route": "app/opengraph-image/route.js",
+  "/robots.txt/route": "app/robots.txt/route.js",
+  "/sitemap.xml/route": "app/sitemap.xml/route.js"
+}

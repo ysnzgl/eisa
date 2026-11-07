@@ -1,0 +1,35 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/[[...slug]]/layout,_N_T_/[[...slug]]/page,_N_T_/hakkimizda,site,sayfa:hakkimizda"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/_index",
+    "/$oc$slug/__PAGE__"
+  ],
+  "prefetchHints": {
+    "hints": 0,
+    "slots": {
+      "children": {
+        "hints": 64,
+        "slots": {
+          "children": {
+            "hints": 160,
+            "slots": null
+          }
+        }
+      }
+    }
+  },
+  "routeCache": {
+    "key": "/route-cache/APP_PAGE/cfdc6c70ccd796dc9270f170c3e116c6360ac38e66271b851aae907bf628aac0/$/hakkimizda",
+    "owner": {
+      "kind": "APP_PAGE",
+      "sourceRoute": "/[[...slug]]/page"
+    },
+    "isFallback": false
+  }
+}
