@@ -113,3 +113,75 @@ def test_contract_uses_company_definition():
     assert "E-İSA Teknoloji A.Ş." in html
     assert "Teknoloji Caddesi No: 1 / Melikgazi / Kayseri" in html
     assert "Mimarsinan / 1234567890" in html
+
+
+@pytest.fixture
+def payment_client(eczane):
+    # Sözleşmesiz/kısıtlı eczacı da ödeme bilgilerini okuyabilmeli.
+    user = Kullanici.objects.create_user(
+        username="payment-pharmacist", password="strong-secret",
+        rol=Kullanici.Rol.ECZACI, eczane=eczane,
+    )
+    client = APIClient()
+    client.force_authenticate(user)
+    return client
+
+
+def test_pharmacist_payment_details_expose_only_selected_active_account(payment_client):
+    company = SirketProfili.objects.create(**company_payload())
+    BankaHesabi.objects.create(
+        sirket=company, banka_adi="Diğer Banka", hesap_sahibi="E-İSA",
+        iban="GB82WEST12345698765432", sira=0,
+    )
+    account = BankaHesabi.objects.create(
+        sirket=company, banka_adi="Ödeme Bankası", hesap_sahibi="E-İSA",
+        iban="TR330006100519786457841326", sube_adi="Merkez",
+        varsayilan=True, sira=10, aciklama="Yönetim notu",
+    )
+    response = payment_client.get(reverse("sirket-odeme-bilgileri"))
+    assert response.status_code == 200
+    assert response.data == {"banka_hesabi": {
+        "banka_adi": account.banka_adi, "hesap_sahibi": account.hesap_sahibi,
+        "iban": account.iban, "sube_adi": account.sube_adi,
+    }}
+
+    account.aktif = False
+    account.save()
+    fallback = payment_client.get(reverse("sirket-odeme-bilgileri"))
+    assert fallback.data["banka_hesabi"]["banka_adi"] == "Diğer Banka"
+
+
+def test_payment_details_without_active_account(payment_client):
+    url = reverse("sirket-odeme-bilgileri")
+    assert payment_client.get(url).data == {"banka_hesabi": None}
+    assert not SirketProfili.objects.exists()
+    company = SirketProfili.objects.create(**company_payload())
+    BankaHesabi.objects.create(
+        sirket=company, banka_adi="Pasif Banka", hesap_sahibi="E-İSA",
+        iban="TR330006100519786457841326", aktif=False,
+    )
+    assert payment_client.get(url).data == {"banka_hesabi": None}
+
+
+@pytest.mark.parametrize("method", ["post", "put", "patch", "delete"])
+def test_pharmacist_cannot_write_payment_details(payment_client, method):
+    response = getattr(payment_client, method)(reverse("sirket-odeme-bilgileri"), {}, format="json")
+    assert response.status_code == 405
+
+
+def test_payment_details_reject_anonymous_and_editor():
+    client = APIClient()
+    url = reverse("sirket-odeme-bilgileri")
+    assert client.get(url).status_code in (401, 403)
+    editor = Kullanici.objects.create_user(
+        username="payment-editor", password="strong-secret", rol=Kullanici.Rol.EDITOR,
+    )
+    client.force_authenticate(editor)
+    assert client.get(url).status_code == 403
+
+
+def test_pharmacist_still_cannot_access_company_management(payment_client):
+    assert payment_client.get(reverse("sirket-profili")).status_code == 403
+    assert payment_client.patch(reverse("sirket-profili"), {}, format="json").status_code == 403
+    assert payment_client.get(reverse("sirket-banka-hesabi-list")).status_code == 403
+    assert payment_client.post(reverse("sirket-banka-hesabi-list"), {}, format="json").status_code == 403

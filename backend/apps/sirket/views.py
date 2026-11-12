@@ -3,10 +3,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.uow import UnitOfWork
-from apps.pharmacies.permissions import IsSuperAdmin
+from apps.pharmacies.permissions import IsSuperAdmin, IsSuperAdminOrEczaci
 
 from .models import BankaHesabi, SirketProfili
-from .serializers import BankaHesabiSerializer, SirketProfiliSerializer
+from .serializers import BankaHesabiSerializer, OdemeBankaHesabiSerializer, SirketProfiliSerializer
 
 
 def get_company():
@@ -20,6 +20,21 @@ def get_company():
     with UnitOfWork() as uow:
         uow.add(company)
     return company
+
+
+class OdemeBilgileriView(APIView):
+    permission_classes = [IsSuperAdminOrEczaci]
+
+    def get(self, request):
+        company = SirketProfili.objects.first()
+        account = (
+            company.banka_hesaplari.filter(aktif=True)
+            .order_by("-varsayilan", "sira", "banka_adi", "id").first()
+            if company else None
+        )
+        return Response({
+            "banka_hesabi": OdemeBankaHesabiSerializer(account).data if account else None,
+        })
 
 
 class SirketProfiliView(APIView):

@@ -70,6 +70,13 @@ class BankaHesabiSerializer(serializers.ModelSerializer):
         return instance
 
 
+class OdemeBankaHesabiSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BankaHesabi
+        fields = ("banka_adi", "hesap_sahibi", "iban", "sube_adi")
+        read_only_fields = fields
+
+
 class SirketProfiliSerializer(serializers.ModelSerializer):
     banka_hesaplari = BankaHesabiSerializer(many=True, read_only=True)
 

@@ -1,5 +1,10 @@
 import { http } from './api';
 
+export async function getOdemeBilgileri() {
+  const { data } = await http.get('/api/sirket/odeme-bilgileri/');
+  return data;
+}
+
 export async function getSirketProfili() {
   const { data } = await http.get('/api/sirket/profil/');
   return data;

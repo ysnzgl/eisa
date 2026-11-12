@@ -2,6 +2,27 @@
 
 Kapsam: yeni Ek-1/Ek-2 belge seti, tahsis, ayrı abonelik/cihaz faturaları, öteleme, bölge ve tarife yönetimi, sponsor tahsilatı ve katkı hakedişleri.
 
+## Eczacı ödeme ekranı yetki düzeltmesi — 13 Kasım 2026
+
+**Sorun:** Eczacı Hesabım ve Ödemeler sayfasını açtığında EFT/havale bilgilerini yükleyen `loadBankaBilgisi()`, `GET /api/sirket/profil/` isteği gönderiyordu. Bu uç yalnız süper admine açık olduğundan 403 ve `Bu islem icin super admin yetkisi gereklidir.` mesajı dönüyordu. Sayfadaki `catch` banka hesabını boş bıraksa da ortak Axios hata mekanizması mesajı kullanıcıya gösteriyordu.
+
+**Düzeltme:** `HesabimOdemeler.vue`, `services/sirket.js` içindeki `getOdemeBilgileri()` üzerinden yeni okuma ucunu kullanır:
+
+| Özellik | Davranış |
+|---|---|
+| İstek | `GET /api/sirket/odeme-bilgileri/` |
+| Yetki | Eczacı veya süper admin; sözleşmesiz/kısıtlı eczacı da okuyabilir. Kimliksiz kullanıcı ve editör erişemez. |
+| Yanıt | `{"banka_hesabi": {"banka_adi": "…", "hesap_sahibi": "…", "iban": "…", "sube_adi": "…"}}` |
+| Hesap seçimi | Yalnız aktif hesaplar; önce varsayılan, sonra `sira`, `banka_adi`, `id` sırası. |
+| Hesap bulunamazsa | Şirket profili veya aktif hesap yoksa 200 ve `{"banka_hesabi": null}`; okuma sırasında şirket kaydı oluşturulmaz. Ekran mevcut banka bilgileri yüklenemedi uyarısını gösterir. |
+| Yazma işlemleri | Yeni uçta POST/PUT/PATCH/DELETE desteklenmez. Şirket profili ve banka hesabı yönetimi yalnız süper admine açık kalır. |
+
+Yeni yanıt şirketin diğer bilgilerini, banka yönetim notlarını veya tüm hesap listesini içermez. Yetki hatası yalnızca gizlenmemiş; yanlış yönetim API çağrısı kaldırılmıştır.
+
+**Doğrulama:** `backend` dizininde `..\\.venv\\Scripts\\python.exe -m pytest apps/sirket/tests/test_company_api.py` ile 14 test geçti. Testler seçilen hesabın alanlarını, pasif varsayılan hesaptan aktif hesaba dönüşü, hesap bulunmamasını, sözleşmesiz eczacı erişimini, yazma yasağını ve yönetim uçlarının eczacıya kapalı kalmasını kapsar. `web_panels` dizininde `npm.cmd run build` ve `git diff --check` başarılıdır. Bu düzeltme için tarayıcıda uçtan uca doğrulama yapılmadı.
+
+**Dağıtım:** Veritabanı migration'ı gerekmez. Backend yeni uçla birlikte dağıtılmalı ve panel yeniden derlenip dağıtılmalıdır. Bu kayıt yerel kod/test sonucudur; canlıya dağıtım yapıldığı anlamına gelmez.
+
 ## Kullanıcı incelemesi sonrası ekran ve belge düzeltmeleri
 
 - `docs/abonelik-sozlesme*.md` kararları yeniden incelendi. Birleşik ticari ayar ekranı kaldırıldı. Bölge, tarife ve sponsor tahsilatı ayrı menü ve sayfalardır; eski ayar bağlantısı tarifeye yönlenir.

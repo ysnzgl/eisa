@@ -11,7 +11,7 @@ import {
   getOdemelerim, getHareketlerim, getTaleplerim, createTalep,
   onaylaSozlesme, getIslakImzaUrl,
 } from '../../services/abonelik';
-import { getSirketProfili } from '../../services/sirket';
+import { getOdemeBilgileri } from '../../services/sirket';
 import { listMySponsorContributions } from '../../services/dooh';
 import SozlesmeMatbu from '../../components/shared/SozlesmeMatbu.vue';
 
@@ -76,11 +76,8 @@ const odemeKritik = computed(() =>
 
 async function loadBankaBilgisi() {
   try {
-    const data = await getSirketProfili();
-    const bankalar = Array.isArray(data?.banka_hesaplari) ? data.banka_hesaplari : [];
-    bankaHesabi.value = bankalar.find((b) => b.varsayilan && b.aktif)
-      || bankalar.find((b) => b.aktif)
-      || null;
+    const data = await getOdemeBilgileri();
+    bankaHesabi.value = data?.banka_hesabi || null;
   } catch {
     bankaHesabi.value = null;
   }
