@@ -5,20 +5,29 @@ DTO'lari ve kiosk-edge DTO'lari (``KioskCreativeSyncSerializer``,
 ``KioskPlaylistSerializer``, ``ProofOfPlay*Serializer``).
 """
 from django.conf import settings
+import uuid
+from django.db import transaction
+from django.db.models import Q
+from django.utils import timezone
 from rest_framework import serializers
 
 from apps.core.media_proxy import media_proxy_url
 
 from .models import (
+    Bolge,
+    BolgeKapsam,
     Campaign,
     Creative,
     GenerationJob,
     IdleScreenContent,
+    KatkiHakedis,
     KioskSponsorship,
     PharmacyCampaign,
     PlayLog,
     Playlist,
     PlaylistItem,
+    SponsorTahsilat,
+    SponsorlukTarifesi,
 )
 from .services.sponsorship_engine import hhmm_to_minute
 
@@ -119,6 +128,129 @@ class CreativeSerializer(serializers.ModelSerializer):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+class BolgeKapsamSerializer(serializers.ModelSerializer):
+    il_adi = serializers.CharField(source="il.ad", read_only=True)
+    ilce_adi = serializers.CharField(source="ilce.ad", read_only=True, default="")
+
+    class Meta:
+        model = BolgeKapsam
+        fields = ("id", "bolge", "il", "il_adi", "ilce", "ilce_adi")
+        read_only_fields = ("bolge",)
+
+    def validate(self, attrs):
+        il = attrs.get("il") or getattr(self.instance, "il", None)
+        ilce = attrs.get("ilce", getattr(self.instance, "ilce", None))
+        if ilce and il and ilce.il_id != il.id:
+            raise serializers.ValidationError({"ilce": "İlçe seçilen ile ait olmalıdır."})
+        return attrs
+
+
+class BolgeSerializer(serializers.ModelSerializer):
+    kapsamlar = BolgeKapsamSerializer(many=True, required=False)
+    gecerlilik_baslangic = serializers.DateField(default=timezone.localdate, required=False)
+
+    class Meta:
+        model = Bolge
+        fields = ("id", "kod", "ad", "gecerlilik_baslangic", "gecerlilik_bitis",
+                  "aktif", "aciklama", "kapsamlar")
+        extra_kwargs = {"kod": {"required": False}}
+
+    def validate(self, attrs):
+        start = attrs.get("gecerlilik_baslangic", getattr(self.instance, "gecerlilik_baslangic", None))
+        end = attrs.get("gecerlilik_bitis", getattr(self.instance, "gecerlilik_bitis", None))
+        if start and end and end < start:
+            raise serializers.ValidationError({"gecerlilik_bitis": "Bitiş başlangıçtan önce olamaz."})
+        scopes = attrs.get("kapsamlar")
+        if scopes is None:
+            scopes = list(self.instance.kapsamlar.all()) if self.instance else []
+            scopes = [{"il": row.il, "ilce": row.ilce} for row in scopes]
+        if not scopes:
+            raise serializers.ValidationError({"kapsamlar": "En az bir il/ilçe kapsamı gereklidir."})
+        seen = []
+        for row in scopes:
+            il_id, ilce_id = row["il"].pk, row.get("ilce").pk if row.get("ilce") else None
+            if any(il_id == old_il and (ilce_id is None or old_ilce is None or ilce_id == old_ilce)
+                   for old_il, old_ilce in seen):
+                raise serializers.ValidationError({"kapsamlar": "Aynı il/ilçe kapsamı tekrarlanamaz veya ilin tamamıyla çakışamaz."})
+            seen.append((il_id, ilce_id))
+            if attrs.get("aktif", getattr(self.instance, "aktif", True)):
+                qs = BolgeKapsam.objects.filter(il_id=il_id, bolge__aktif=True).exclude(bolge=self.instance)
+                if ilce_id:
+                    qs = qs.filter(Q(ilce_id=ilce_id) | Q(ilce__isnull=True))
+                if end:
+                    qs = qs.filter(bolge__gecerlilik_baslangic__lte=end)
+                qs = qs.filter(Q(bolge__gecerlilik_bitis__isnull=True) | Q(bolge__gecerlilik_bitis__gte=start))
+                if qs.exists():
+                    raise serializers.ValidationError({"kapsamlar": "Bu il/ilçe aynı tarihlerde başka bir aktif bölgeye bağlı."})
+        return attrs
+
+    def _save_kapsamlar(self, instance, kapsamlar):
+        if kapsamlar is None:
+            return
+        instance.kapsamlar.all().delete()
+        for row in kapsamlar:
+            BolgeKapsam.objects.create(bolge=instance, **row)
+
+    @transaction.atomic
+    def create(self, validated_data):
+        kapsamlar = validated_data.pop("kapsamlar", [])
+        validated_data.setdefault("kod", "B-" + uuid.uuid4().hex[:20])
+        instance = super().create(validated_data)
+        self._save_kapsamlar(instance, kapsamlar)
+        return instance
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        kapsamlar = validated_data.pop("kapsamlar", None)
+        instance = super().update(instance, validated_data)
+        self._save_kapsamlar(instance, kapsamlar)
+        return instance
+
+
+class SponsorlukTarifesiSerializer(serializers.ModelSerializer):
+    tur_display = serializers.CharField(source="get_tur_display", read_only=True)
+    kod = serializers.CharField(required=False, default=lambda: "T-" + uuid.uuid4().hex[:20])
+
+    class Meta:
+        model = SponsorlukTarifesi
+        fields = ("id", "kod", "ad", "tur", "tur_display", "min_cihaz", "max_cihaz",
+                  "brut_bedel", "kdv_orani", "gecerlilik_baslangic",
+                  "gecerlilik_bitis", "aktif", "aciklama")
+        extra_kwargs = {"kod": {"required": False}}
+
+    def create(self, validated_data):
+        validated_data.setdefault("kod", "T-" + uuid.uuid4().hex[:20])
+        return super().create(validated_data)
+
+    def validate(self, attrs):
+        min_cihaz = attrs.get("min_cihaz", getattr(self.instance, "min_cihaz", 1))
+        max_cihaz = attrs.get("max_cihaz", getattr(self.instance, "max_cihaz", None))
+        start = attrs.get("gecerlilik_baslangic", getattr(self.instance, "gecerlilik_baslangic", None))
+        end = attrs.get("gecerlilik_bitis", getattr(self.instance, "gecerlilik_bitis", None))
+        if max_cihaz is not None and max_cihaz < min_cihaz:
+            raise serializers.ValidationError({"max_cihaz": "Üst cihaz sınırı alt sınırdan küçük olamaz."})
+        if start and end and end < start:
+            raise serializers.ValidationError({"gecerlilik_bitis": "Bitiş başlangıçtan önce olamaz."})
+        if min_cihaz < 1:
+            raise serializers.ValidationError({"min_cihaz": "Alt cihaz sınırı en az 1 olmalıdır."})
+        if attrs.get("brut_bedel", getattr(self.instance, "brut_bedel", 0)) < 0:
+            raise serializers.ValidationError({"brut_bedel": "Bedel negatif olamaz."})
+        if attrs.get("kdv_orani", getattr(self.instance, "kdv_orani", 20)) not in (0, 1, 10, 20):
+            raise serializers.ValidationError({"kdv_orani": "Geçersiz KDV oranı."})
+        if attrs.get("aktif", getattr(self.instance, "aktif", True)):
+            qs = SponsorlukTarifesi.objects.filter(
+                kod=attrs.get("kod", getattr(self.instance, "kod", "")), aktif=True,
+            )
+            if self.instance:
+                qs = qs.exclude(pk=self.instance.pk)
+            if end:
+                qs = qs.filter(gecerlilik_baslangic__lte=end)
+            qs = qs.filter(Q(gecerlilik_bitis__isnull=True) | Q(gecerlilik_bitis__gte=start))
+            if qs.exists():
+                raise serializers.ValidationError({"gecerlilik_baslangic": "Aynı tarife kodunun geçerlilik tarihleri çakışamaz."})
+        return attrs
+
+
 class CampaignSerializer(serializers.ModelSerializer):
     creatives = CreativeSerializer(many=True, read_only=True)
     effective_state = serializers.SerializerMethodField()
@@ -128,11 +260,12 @@ class CampaignSerializer(serializers.ModelSerializer):
         model = Campaign
         fields = [
             "id", "advertiser_name", "name", "start_date", "end_date",
-            "status", "effective_state", "creatives", "assigned_kiosk_count",
+            "status", "sponsorluk_tarifesi", "tarife_snapshot", "bolge",
+            "effective_state", "creatives", "assigned_kiosk_count",
             "olusturulma_tarihi", "guncellenme_tarihi", "surum",
         ]
         read_only_fields = (
-            "id", "effective_state", "creatives", "assigned_kiosk_count",
+            "id", "tarife_snapshot", "effective_state", "creatives", "assigned_kiosk_count",
             "olusturulma_tarihi", "guncellenme_tarihi", "surum",
         )
 
@@ -149,7 +282,107 @@ class CampaignSerializer(serializers.ModelSerializer):
         end = attrs.get("end_date", getattr(self.instance, "end_date", None))
         if start and end and start >= end:
             raise serializers.ValidationError({"end_date": "end_date, start_date'ten sonra olmalidir."})
+        tarife = attrs.get("sponsorluk_tarifesi", getattr(self.instance, "sponsorluk_tarifesi", None))
+        if tarife is None and (self.instance is None or self.instance.sponsorluk_tarifesi_id):
+            raise serializers.ValidationError({"sponsorluk_tarifesi": "Yeni kampanyada sponsorluk tarifesi zorunludur."})
+        if tarife:
+            changed = self.instance is None or self.instance.sponsorluk_tarifesi_id != tarife.pk
+            snapshot = self.instance.tarife_snapshot if self.instance and not changed else {}
+            if changed and not tarife.aktif:
+                raise serializers.ValidationError({"sponsorluk_tarifesi": "Pasif tarife yeni kampanyaya seçilemez."})
+            if changed or "start_date" in attrs:
+                ref_date = timezone.localtime(start).date()
+                validity_start = str(snapshot.get("gecerlilik_baslangic") or tarife.gecerlilik_baslangic)
+                validity_end = snapshot.get("gecerlilik_bitis") if snapshot else tarife.gecerlilik_bitis
+                if str(ref_date) < validity_start or (validity_end and str(ref_date) > str(validity_end)):
+                    raise serializers.ValidationError({"sponsorluk_tarifesi": "Tarife kampanya başlangıcında geçerli değildir."})
+            bolge = attrs.get("bolge", getattr(self.instance, "bolge", None))
+            if (snapshot.get("tur") or tarife.tur) == SponsorlukTarifesi.Tur.BOLGE and not bolge:
+                raise serializers.ValidationError({"bolge": "Bölge tarifesinde bölge seçimi zorunludur."})
+            if changed or not snapshot:
+                attrs["tarife_snapshot"] = {
+                    "id": tarife.id, "kod": tarife.kod, "ad": tarife.ad, "tur": tarife.tur,
+                    "min_cihaz": tarife.min_cihaz, "max_cihaz": tarife.max_cihaz,
+                    "brut_bedel": str(tarife.brut_bedel), "kdv_orani": tarife.kdv_orani,
+                    "gecerlilik_baslangic": str(tarife.gecerlilik_baslangic),
+                    "gecerlilik_bitis": str(tarife.gecerlilik_bitis) if tarife.gecerlilik_bitis else None,
+                }
         return attrs
+
+
+class SponsorTahsilatSerializer(serializers.ModelSerializer):
+    campaign_ad = serializers.CharField(source="campaign.name", read_only=True)
+    hakedis_sayisi = serializers.IntegerField(source="hakedisler.count", read_only=True)
+
+    class Meta:
+        model = SponsorTahsilat
+        fields = ("id", "campaign", "campaign_ad", "brut_tutar", "tahsilat_tarihi",
+                  "donem_baslangic", "donem_bitis", "yontem", "referans", "aciklama",
+                  "hakedis_sayisi", "hesaplanma_tarihi", "hesap_ozeti", "olusturulma_tarihi")
+        read_only_fields = ("id", "campaign_ad", "hakedis_sayisi", "hesaplanma_tarihi", "hesap_ozeti", "olusturulma_tarihi")
+
+    def validate(self, attrs):
+        if self.instance and (self.instance.hesaplanma_tarihi or self.instance.hakedisler.exists()):
+            raise serializers.ValidationError("Katkısı hesaplanmış tahsilat değiştirilemez.")
+        if attrs.get("brut_tutar", getattr(self.instance, "brut_tutar", 0)) <= 0:
+            raise serializers.ValidationError({"brut_tutar": "Tahsilat sıfırdan büyük olmalıdır."})
+        start = attrs.get("donem_baslangic", getattr(self.instance, "donem_baslangic", None))
+        end = attrs.get("donem_bitis", getattr(self.instance, "donem_bitis", None))
+        if start and end and end <= start:
+            raise serializers.ValidationError({"donem_bitis": "Dönem bitişi başlangıçtan sonra olmalıdır."})
+        if attrs.get("tahsilat_tarihi", getattr(self.instance, "tahsilat_tarihi", timezone.localdate())) > timezone.localdate():
+            raise serializers.ValidationError({"tahsilat_tarihi": "Fiili tahsilat tarihi gelecekte olamaz."})
+        return attrs
+
+
+class KatkiHakedisSerializer(serializers.ModelSerializer):
+    eczane_ad = serializers.CharField(source="eczane.ad", read_only=True)
+    campaign_ad = serializers.CharField(source="tahsilat.campaign.name", read_only=True)
+    donem_baslangic = serializers.DateField(source="tahsilat.donem_baslangic", read_only=True)
+    donem_bitis = serializers.DateField(source="tahsilat.donem_bitis", read_only=True)
+
+    class Meta:
+        model = KatkiHakedis
+        fields = ("id", "tahsilat", "campaign_ad", "donem_baslangic", "donem_bitis",
+                  "eczane", "eczane_ad", "uygun_cihaz_gun",
+                  "toplam_uygun_cihaz_gun", "brut_havuz", "brut_pay", "hesap_detayi",
+                  "durum", "bildirim_tarihi", "eczane_fatura_no",
+                  "eczane_fatura_teblig_tarihi", "odeme_son_tarihi", "odenme_tarihi")
+        read_only_fields = ("id", "tahsilat", "eczane", "uygun_cihaz_gun",
+                            "toplam_uygun_cihaz_gun", "brut_havuz", "brut_pay", "hesap_detayi",
+                            "bildirim_tarihi", "odeme_son_tarihi")
+
+    def validate(self, attrs):
+        import datetime as dt
+        teblig = attrs.get("eczane_fatura_teblig_tarihi", getattr(self.instance, "eczane_fatura_teblig_tarihi", None))
+        fatura_no = attrs.get("eczane_fatura_no", getattr(self.instance, "eczane_fatura_no", ""))
+        odeme = attrs.get("odenme_tarihi", getattr(self.instance, "odenme_tarihi", None))
+        if teblig and not fatura_no.strip():
+            raise serializers.ValidationError({"eczane_fatura_no": "Tebliğ tarihiyle birlikte eczane fatura numarası gereklidir."})
+        if (teblig and teblig > timezone.localdate()) or (odeme and odeme > timezone.localdate()):
+            raise serializers.ValidationError("Fiili tebliğ/ödeme tarihi gelecekte olamaz.")
+        if odeme and (not teblig or odeme < teblig):
+            raise serializers.ValidationError({"odenme_tarihi": "Ödeme, eczane faturası tebliğinden önce kaydedilemez."})
+        durum = attrs.get("durum", getattr(self.instance, "durum", None))
+        if durum == KatkiHakedis.Durum.ODENDI and not odeme:
+            raise serializers.ValidationError({"odenme_tarihi": "Ödendi durumunda ödeme tarihi zorunludur."})
+        if odeme and durum != KatkiHakedis.Durum.ODENDI:
+            raise serializers.ValidationError({"durum": "Ödeme tarihi girildiğinde durum Ödendi olmalıdır."})
+        if self.instance and self.instance.odenme_tarihi:
+            raise serializers.ValidationError("Ödenmiş hakediş bu uçtan değiştirilemez.")
+        attrs["odeme_son_tarihi"] = teblig + dt.timedelta(days=15) if teblig else None
+        return attrs
+
+
+class KatkiHakedisimSerializer(KatkiHakedisSerializer):
+    """Eczaneye yalnız kendi hesabını açar; sponsor kimliği ve iç kayıtlar gösterilmez."""
+
+    class Meta(KatkiHakedisSerializer.Meta):
+        fields = ("id", "donem_baslangic", "donem_bitis", "uygun_cihaz_gun",
+                  "toplam_uygun_cihaz_gun", "brut_havuz", "brut_pay", "durum",
+                  "bildirim_tarihi", "eczane_fatura_no", "eczane_fatura_teblig_tarihi",
+                  "odeme_son_tarihi", "odenme_tarihi")
+        read_only_fields = fields
 
 
 # ─────────────────────────────────────────────────────────────────────────────

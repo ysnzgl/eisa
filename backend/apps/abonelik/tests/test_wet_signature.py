@@ -55,6 +55,7 @@ def test_admin_approval_count_only_includes_unsigned_digital(wet_contract, admin
 
 
 def test_digital_approval_still_required(wet_contract):
+    wet_contract.sozlesme_surumu = 'LEGACY'
     wet_contract.imza_tipi = 'DIJITAL'
     wet_contract.save()
     assert wet_contract.onay_gerekli is True

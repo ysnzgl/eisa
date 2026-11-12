@@ -15,7 +15,7 @@ from django.shortcuts import get_object_or_404
 from django.db import transaction
 from django.db.models import Count, F, Max
 from django.utils import timezone
-from rest_framework import status, viewsets
+from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -27,10 +27,11 @@ from apps.audit.models import DenetimLogu, kayit_birak
 from apps.core.uow import UnitOfWork
 
 from .auth import KioskAppKeyAuthentication
-from .models import Eczane, Kiosk, KioskAudioAsset, KioskEczaneAtama, KioskIdleAudio, KioskProvisioningRequest
+from .models import Eczane, FizikselCihaz, Kiosk, KioskAudioAsset, KioskEczaneAtama, KioskIdleAudio, KioskProvisioningRequest
 from .permissions import IsKiosk, IsSuperAdmin, IsSuperAdminOrEczaci
 from .serializers import (
     EczaneSerializer,
+    FizikselCihazSerializer,
     KioskAudioAssetSerializer,
     KioskProvisioningApproveSerializer,
     KioskProvisioningRejectSerializer,
@@ -251,6 +252,9 @@ class KioskProvisioningApproveView(APIView):
             )
             with UnitOfWork(user=request.user) as uow:
                 uow.add(new_kiosk)
+                if serializer.validated_data.get("fiziksel_cihaz_id"):
+                    from .device_inventory import eslestir_cihaz
+                    eslestir_cihaz(serializer.validated_data["fiziksel_cihaz_id"], new_kiosk.pk, user=request.user)
                 uow.add(KioskEczaneAtama(
                     kiosk=new_kiosk, eczane=eczane, baslangic_zamani=now,
                     tasiyan_admin=request.user,
@@ -329,6 +333,42 @@ class KioskProvisioningRejectView(APIView):
 
 # ── Eczane & Kiosk CRUD Gorunumleri ─────────────────────────────────────────
 
+class FizikselCihazViewSet(mixins.CreateModelMixin, mixins.ListModelMixin,
+                          mixins.RetrieveModelMixin, mixins.UpdateModelMixin,
+                          viewsets.GenericViewSet):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsSuperAdmin]
+    serializer_class = FizikselCihazSerializer
+    queryset = FizikselCihaz.objects.select_related("eczane", "kiosk").all()
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if self.request.query_params.get("eczane"):
+            from django.db.models import Q
+            qs = qs.filter(Q(eczane_id=self.request.query_params["eczane"]) | Q(eczane__isnull=True))
+        if self.request.query_params.get("eslesmemis") in ("1", "true"):
+            qs = qs.filter(kiosk__isnull=True, aktif=True)
+        return qs
+
+    def perform_create(self, serializer):
+        with UnitOfWork(user=self.request.user) as uow:
+            serializer.instance = uow.add(FizikselCihaz(**serializer.validated_data))
+
+    def perform_update(self, serializer):
+        with UnitOfWork(user=self.request.user) as uow:
+            for field, value in serializer.validated_data.items():
+                setattr(serializer.instance, field, value)
+            uow.update(serializer.instance)
+
+    @action(detail=True, methods=["post"], url_path="eslestir")
+    def eslestir(self, request, pk=None):
+        from .device_inventory import eslestir_cihaz
+        self.get_object()
+        kiosk = get_object_or_404(Kiosk, pk=request.data.get("kiosk"))
+        device = eslestir_cihaz(pk, kiosk.pk, user=request.user)
+        return Response(self.get_serializer(device).data)
+
+
 class EczaneViewSet(viewsets.ModelViewSet):
     """Eczane CRUD. Listeleme/detay: tum auth; yazma: super admin (UoW)."""
 
@@ -367,15 +407,16 @@ class EczaneViewSet(viewsets.ModelViewSet):
 
     def _create_sozlesme(self, uow, eczane, sozlesme_data):
         """Eczane ile birlikte gelen sözleşmeyi aynı transaction'da oluşturur."""
-        from apps.abonelik.models import Sozlesme
+        from apps.abonelik.services import sozlesme_olustur
         from apps.abonelik.serializers import SozlesmeSerializer
 
         payload = {**sozlesme_data, "eczane": eczane.pk}
+        planlar = payload.pop("cihaz_planlari", None)
         ser = SozlesmeSerializer(data=payload)
         ser.is_valid(raise_exception=True)
         data = dict(ser.validated_data)
         data["eczane"] = eczane
-        uow.add(Sozlesme(**data))
+        sozlesme_olustur(data, planlar=planlar, user=self.request.user)
 
 
     def perform_update(self, serializer):
@@ -713,6 +754,10 @@ class KioskViewSet(viewsets.ModelViewSet):
                 kiosk.eczane = target
                 kiosk.eczane_kiosk_no = new_no
                 uow.update(kiosk, update_fields=["eczane_id", "eczane_kiosk_no"])
+                physical = FizikselCihaz.objects.select_for_update().filter(kiosk=kiosk).first()
+                if physical:
+                    physical.eczane = target
+                    uow.update(physical, update_fields=["eczane"])
             # UoW optimistic UPDATE kullandığı için Django post_save sinyali
             # otomatik tetiklenmez; mevcut invalidation receiver'ını aynı
             # old/new kapsam bilgisiyle çağır.

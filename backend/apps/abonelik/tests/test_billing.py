@@ -177,12 +177,15 @@ def test_oteleme_sifir_ise_ilk_fatura_baslangic_ayinda_olur(db, eczane):
         durum=CihazOdemePlani.Durum.AKTIF,
     )
 
-    created = services.faturala_aylik_birlesik(bugun=dt.date(2026, 2, 3))
+    assert services.faturala_aylik_birlesik(bugun=dt.date(2026, 2, 3)) == 0
+    created = services.faturala_aylik_birlesik(bugun=dt.date(2026, 2, 15))
 
-    assert created == 1
-    f = Fatura.objects.get(tip=Fatura.Tip.BIRLESIK)
-    assert f.donem == "2026-02"
-    assert f.kalemler.count() == 2
+    assert created == 2
+    invoices = Fatura.objects.filter(donem="2026-02").order_by("tip")
+    assert set(invoices.values_list("tip", flat=True)) == {
+        Fatura.Tip.KULLANIM_BEDELI, Fatura.Tip.CIHAZ_TAKSIT,
+    }
+    assert all(f.kalemler.count() == 1 for f in invoices)
 
 
 def test_kullanim_bedeli_idempotent(sozlesme):
@@ -238,20 +241,15 @@ def test_cihaz_taksiti_ardisik_donemler(cihaz_plani):
     assert all(f.tutar == Decimal("12000.00") for f in faturalar)
 
 
-def test_tek_aylik_fatura_icerisinde_tum_odemeler_toplanir(cihaz_plani, sozlesme):
-    created = services.faturala_aylik_birlesik(bugun=dt.date(2026, 6, 3))
-    assert created == 1
+def test_abonelik_otelemesi_cihaz_taksitlerini_biriktirmez(cihaz_plani, sozlesme):
+    created = services.faturala_aylik_birlesik(bugun=dt.date(2026, 7, 1))
+    assert created == 5  # Ocak-Nisan cihaz, Temmuz abonelik
 
-    f = Fatura.objects.get(tip=Fatura.Tip.BIRLESIK, donem="2026-07")
-    assert f.tutar == Decimal("15900.00")
-    assert Fatura.objects.filter(
-        tip__in=(
-            Fatura.Tip.KULLANIM_BEDELI,
-            Fatura.Tip.CIHAZ_TAKSIT,
-            Fatura.Tip.CIHAZ_KIRA,
-        )
-    ).count() == 0
-    assert f.kalemler.count() == 2
+    f = Fatura.objects.get(tip=Fatura.Tip.KULLANIM_BEDELI, donem="2026-07")
+    assert f.tutar == Decimal("3900.00")
+    assert Fatura.objects.filter(tip=Fatura.Tip.CIHAZ_TAKSIT).count() == 4
+    assert f.kalemler.count() == 1
+    assert FaturaKalemi.objects.filter(tip=FaturaKalemi.KalemTip.CIHAZ_TAKSIT).count() == 4
 
 
 # ── Cihaz ötelemesi (abonelikten bağımsız) ────────────────────────────
@@ -272,23 +270,96 @@ def cihaz_plani_otelemeli(db, sozlesme):
 
 def test_cihaz_otelemesi_abonelikten_once_tek_cihaz_faturasi(cihaz_plani_otelemeli):
     # prox=2026-02: cihaz vadesi geldi, abonelik henüz gelmedi → tek kalemli cihaz faturası.
-    created = services.faturala_aylik_birlesik(bugun=dt.date(2026, 1, 3))
+    created = services.faturala_aylik_birlesik(bugun=dt.date(2026, 2, 1))
     assert created == 1
-    f = Fatura.objects.get(tip=Fatura.Tip.BIRLESIK, donem="2026-02")
+    f = Fatura.objects.get(tip=Fatura.Tip.CIHAZ_TAKSIT, donem="2026-02")
     assert f.kalemler.count() == 1
     assert f.kalemler.first().tip == FaturaKalemi.KalemTip.CIHAZ_TAKSIT
     assert f.tutar == Decimal("10000.00")  # 120000 / 12
 
 
-def test_cihaz_ve_abonelik_kesisince_tek_birlesik_fatura(cihaz_plani_otelemeli):
-    # Şub-Haz arası cihaz-only faturalar, Temmuz'da abonelik + cihaz tek birleşik fatura.
-    for ay in range(1, 6):  # prox = Şub..Haz
-        services.faturala_aylik_birlesik(bugun=dt.date(2026, ay, 3))
-    created = services.faturala_aylik_birlesik(bugun=dt.date(2026, 6, 3))  # prox=2026-07
-    assert created == 1
-    f = Fatura.objects.get(tip=Fatura.Tip.BIRLESIK, donem="2026-07")
-    assert f.kalemler.count() == 2  # abonelik + cihaz taksiti
-    assert f.tutar == Decimal("13900.00")  # 3900 + 10000
+def test_cihaz_ve_abonelik_kesisince_ayri_faturalar(cihaz_plani_otelemeli):
+    # Şubat-Haziran cihaz faturaları; Temmuz'da abonelik ve cihaz ayrı faturalar.
+    for ay in range(2, 7):
+        services.faturala_aylik_birlesik(bugun=dt.date(2026, ay, 1))
+    created = services.faturala_aylik_birlesik(bugun=dt.date(2026, 7, 1))
+    assert created == 2
+    july = Fatura.objects.filter(donem="2026-07")
+    assert set(july.values_list("tip", flat=True)) == {
+        Fatura.Tip.KULLANIM_BEDELI, Fatura.Tip.CIHAZ_TAKSIT,
+    }
+    assert sum((f.tutar for f in july), Decimal("0.00")) == Decimal("13900.00")
+    assert all(f.kalemler.count() == 1 for f in july)
+
+
+def test_abonelik_faturasi_kesimden_yedi_is_gunu_sonra_vadeli(db, eczane):
+    s = Sozlesme.objects.create(
+        eczane=eczane, sozlesme_tipi_ay=24,
+        baslangic_tarihi=dt.date(2026, 11, 6), oteleme_ay=0,
+        aylik_kullanim_bedeli=Decimal("1000.00"), kdv_orani=20,
+    )
+    assert services.faturala_aylik_birlesik(bugun=dt.date(2026, 11, 6), sozlesme_id=s.id) == 1
+    f = Fatura.objects.get(sozlesme=s, tip=Fatura.Tip.KULLANIM_BEDELI)
+    assert f.kesim_tarihi == dt.date(2026, 11, 6)
+    assert f.vade_tarihi == dt.date(2026, 11, 17)
+    assert f.matrah == Decimal("1000.00")
+    assert f.kdv_tutari == Decimal("200.00")
+    assert f.tutar == Decimal("1200.00")
+
+
+def test_abonelik_ve_cihaz_otelemesi_bagimsizdir(db, eczane):
+    s = Sozlesme.objects.create(
+        eczane=eczane, sozlesme_tipi_ay=24,
+        baslangic_tarihi=dt.date(2026, 1, 8), oteleme_ay=2,
+        aylik_kullanim_bedeli=Decimal("3900.00"),
+    )
+    p = CihazOdemePlani.objects.create(
+        sozlesme=s, tip=CihazOdemePlani.Tip.SATILIK, adet=1,
+        pesin_fiyat=Decimal("6000.00"), taksit_sayisi=1, oteleme_ay=0,
+        baslangic_tarihi=dt.date(2026, 1, 8),
+    )
+    services.faturala_aylik_birlesik(bugun=dt.date(2026, 1, 8), sozlesme_id=s.id)
+    ocak = Fatura.objects.get(sozlesme=s, donem="2026-01")
+    assert list(ocak.kalemler.values_list("tip", flat=True)) == [FaturaKalemi.KalemTip.CIHAZ_TAKSIT]
+    services.faturala_aylik_birlesik(bugun=dt.date(2026, 3, 8), sozlesme_id=s.id)
+    mart = Fatura.objects.get(sozlesme=s, donem="2026-03")
+    assert list(mart.kalemler.values_list("tip", flat=True)) == [FaturaKalemi.KalemTip.ABONELIK]
+    assert p.oteleme_ay == 0
+
+
+def test_ayni_ayda_iki_cihaz_plani_ayri_faturalanir(db, eczane):
+    s = Sozlesme.objects.create(
+        eczane=eczane, sozlesme_tipi_ay=24,
+        baslangic_tarihi=dt.date(2026, 1, 8), oteleme_ay=2,
+    )
+    plans = [CihazOdemePlani.objects.create(
+        sozlesme=s, tip=CihazOdemePlani.Tip.SATILIK, adet=1,
+        pesin_fiyat=Decimal(amount), taksit_sayisi=1,
+        baslangic_tarihi=dt.date(2026, 1, 8),
+    ) for amount in ("6000.00", "8000.00")]
+
+    assert services.faturala_ayri(bugun=dt.date(2026, 1, 8), sozlesme_id=s.id) == 2
+    invoices = Fatura.objects.filter(tip=Fatura.Tip.CIHAZ_TAKSIT, donem="2026-01")
+    assert invoices.count() == 2
+    assert set(invoices.values_list("cihaz_plani_id", flat=True)) == {p.id for p in plans}
+
+
+def test_ayri_faturalama_son_taksitte_plani_tamamlar(db, eczane):
+    s = Sozlesme.objects.create(
+        eczane=eczane, sozlesme_tipi_ay=24,
+        baslangic_tarihi=dt.date(2026, 1, 8), oteleme_ay=2,
+    )
+    plan = CihazOdemePlani.objects.create(
+        sozlesme=s, tip=CihazOdemePlani.Tip.SATILIK, adet=1,
+        pesin_fiyat=Decimal("6000.00"), taksit_sayisi=2,
+        baslangic_tarihi=dt.date(2026, 1, 8),
+    )
+
+    services.faturala_ayri(bugun=dt.date(2026, 2, 8), sozlesme_id=s.id)
+
+    plan.refresh_from_db()
+    assert plan.durum == CihazOdemePlani.Durum.TAMAMLANDI
+    assert Fatura.objects.filter(cihaz_plani=plan).count() == 2
 
 
 def test_cihaz_taksiti_idempotent_ayni_ay(cihaz_plani):
@@ -581,16 +652,17 @@ def test_talep_yeni_onay_detayli_sozlesme(db, eczane):
     assert CihazOdemePlani.objects.filter(sozlesme=s, taksit_sayisi=4).exists()
 
 
-def test_talep_yeni_onay_kiralik_cihaz(db, eczane):
+def test_talep_yeni_onay_tahsis_cihaz(db, eczane):
     t = SozlesmeTalebi.objects.create(
         eczane=eczane, talep_tipi=SozlesmeTalebi.Tip.YENI,
         istenen_tur=Sozlesme.Tur.STANDART, istenen_tip_ay=12,
     )
     services.karar_ver_talep(t, onayla=True, detail_data={
-        "cihaz_durumu": "KIRALIK",
-        "cihaz_kira_bedeli": "900.00",
+        "cihaz_durumu": "TAHSIS",
+        "cihaz_planlari": [{"tip": "TAHSIS", "adet": 1}],
     })
     s = Sozlesme.objects.get(eczane=eczane, durum=Sozlesme.Durum.AKTIF)
-    assert s.cihaz_durumu == "KIRALIK"
-    assert s.cihaz_kira_bedeli == Decimal("900.00")
+    assert s.cihaz_durumu == "TAHSIS"
+    assert s.cihaz_kira_bedeli == Decimal("0.00")
+    assert s.cihaz_planlari.get().tip == "TAHSIS"
 

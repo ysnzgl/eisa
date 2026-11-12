@@ -15,6 +15,7 @@ def sozlesme(db, eczane):
         eczane=eczane, sozlesme_tipi_ay=24,
         baslangic_tarihi=dt.date(2026, 1, 1),
         aylik_kullanim_bedeli=Decimal("3900.00"), kdv_orani=20,
+        imza_tipi=Sozlesme.ImzaTipi.DIJITAL, sozlesme_surumu="LEGACY",
         durum=Sozlesme.Durum.AKTIF,
     )
 

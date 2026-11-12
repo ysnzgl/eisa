@@ -1,5 +1,13 @@
 # Backend — Django 5 + DRF + PostgreSQL
 
+## Abonelik sözleşmesi ve sponsorluk mali akışı (2026-11-08)
+
+Kullanıcı incelemesi düzeltmesi: `pharmacies.0019` fiziksel seri envanterini, `abonelik.0025` ödeme planı-cihaz bağını ekler. Provizyon ve mevcut kiosk eşleştirmesi aynı atomik servisle yapılır. Kaynak DOCX'ler SHA-256 kaydıyla `backend/contract_templates` içinde saklanır; yeni sürümde görüntüleme tam doldurulan DOCX'ten HTML üretir. Admin ve eczacı indirmesi aynı üreticiyi kullanır; eczacı sorgusu kendi eczanesiyle sınırlanır. Ek-2 manuel 4/5/7 bölümleri ve Ek-1 sabit paket/teyit hükümleri korunur. Bölge/tarife API'sinde kullanıcıdan kod istenmez.
+
+`abonelik` migration 0020-0024; Tahsis cihaz modeli, gerçek kesim/hizmet/vergi alanları, resmi tatil takvimi, iki ayrı ıslak imza belgesi, varsayılan ıslak imza, bölge/tarife snapshot'ları ve ayrı fatura tekilliklerini ekler. Mevcut sözleşmeler `LEGACY` olarak korunur; yalnız yeni `2026-EK1` kayıtları yeni belge setini kullanır. Yeni dönemlerde abonelik ve her cihaz ödeme planı ayrı fatura üretir; ötelemeler ve kesimden 7 iş günü sonraki vadeler birbirinden bağımsızdır. Eski `BIRLESIK` kayıtları mali geçmiş için okunur, yeni birleşik fatura üretilmez. `contract_docx.py`, ortamda tanımlı onaylı Ek-1/Ek-2 DOCX şablonlarının yalnız değişken hücrelerini doldurur ve eksik alan kontrolü sunar.
+
+`campaigns` migration 0036-0037; tarihli bölge/tarife, kampanya tarife snapshot'ı, sponsor tahsilatı, değişmez hesap özeti ve eczane katkı hakedişini ekler. Katkı havuzu fiili brüt tahsilatın %15'idir; hizmet aralığını kapsayan abonelik faturası ve mevcut cihaz atama tarihçesi üzerinden cihaz-gün oranıyla dağıtılır. Öteleme günleri paydaya girmez ve geriye dönük hak doğurmaz; teknik fatura eksikliğinde hesap hata vererek bekler. Bölge paydası yalnız yayın atamalarıyla daraltılmaz. Eczane faturası tebliğinden 15 gün sonra katkı ödeme vadesi üretilir. Hesaplanmış tahsilat değiştirilemez; sıfır sonuç da kesin hesap olarak korunur. Ara bildirim, mahsup, iade ve eksik cihaz geçmişiyle ilgili açık işler kod inceleme raporunda listelenir.
+
 ## İş takibi dosyaları (2026-11-07)
 
 `apps.gorevler.GorevDosya` (migration 0004): Gorev FK, özgün ad, object_key, MIME, boyut ve BaseModel audit alanları. Dosyalar mevcut StorageService ile RustFS `is-takip/<gorev_id>/<uuid>.<ext>` altında tutulur. Uygulama TTL/expiration veya presigned URL kullanmaz. Bucket lifecycle kurallarının `is-takip/` nesnelerini silmemesi gerekir; bu altyapı ayarı dağıtımda kontrol edilmelidir. Genel/public medya proxy'sine açılmaz; tüm dosya işlemleri IsSuperAdmin kontrolündedir. İş silindiğinde dosya metadata'sı cascade silinir, RustFS nesnesi otomatik silinmez.

@@ -6,10 +6,13 @@ Yetkiler:
 """
 from __future__ import annotations
 
+import io
 import logging
 from decimal import Decimal
 
 from django.utils import timezone
+from django.http import FileResponse
+from django.shortcuts import get_object_or_404
 from rest_framework import mixins, parsers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -17,7 +20,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.uow import UnitOfWork
-from apps.pharmacies.permissions import IsEczaci, IsSuperAdmin
+from apps.pharmacies.permissions import IsEczaci, IsSuperAdmin, IsSuperAdminOrEczaci
 from core_api.cookie_jwt import JWTCookieAuthentication as JWTAuthentication
 
 from . import services
@@ -38,6 +41,32 @@ from .serializers import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _new_wet_contract_notice(sozlesme, kind="EK1"):
+    if sozlesme.sozlesme_surumu == "2026-EK1":
+        from .contract_docx import ContractTemplateError, contract_preview_html
+        from rest_framework.exceptions import ValidationError
+        try:
+            rendered, missing = contract_preview_html(sozlesme, kind)
+        except ContractTemplateError as exc:
+            raise ValidationError({"detail": str(exc)})
+        return {"html": rendered, "dondurulmus": False, "belge_seti": "EK1_EK2",
+                "belge_turu": kind, "eksik_alanlar": missing}
+    return None
+
+
+def _generated_contract_response(sozlesme, kind):
+    from .contract_docx import ContractTemplateError, generate_contract_docx
+    try:
+        content, fields = generate_contract_docx(sozlesme, kind)
+    except ContractTemplateError as exc:
+        return Response({"detail": str(exc)}, status=400)
+    response = FileResponse(io.BytesIO(content), as_attachment=True,
+        filename=f"sozlesme-{sozlesme.pk}-{kind.lower()}.docx",
+        content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    response["X-Eisa-Missing-Field-Count"] = str(len(fields))
+    return response
 
 
 # ── Admin: Sözleşme yönetimi ────────────────────────────────────────────────
@@ -75,54 +104,18 @@ class SozlesmeViewSet(viewsets.ModelViewSet):
         Gövdeye eklenen `cihaz_planlari` listesi sözleşmeyle aynı transaction'da
         yazılır; biri başarısız olursa hiçbiri kaydedilmez (ya hep ya hiç).
         """
-        from django.db import transaction
-
-        planlar = request.data.pop("cihaz_planlari", None) if hasattr(request.data, "pop") else None
-        serializer = self.get_serializer(data=request.data)
+        data = request.data.copy()
+        planlar = data.pop("cihaz_planlari", None)
+        serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
-        with transaction.atomic():
-            with UnitOfWork(user=request.user) as uow:
-                instance = Sozlesme(**serializer.validated_data)
-                uow.add(instance)
-            serializer.instance = instance
-            if isinstance(planlar, list):
-                self._kaydet_cihaz_planlari(instance, planlar)
+        serializer.instance = services.sozlesme_olustur(
+            serializer.validated_data, planlar=planlar, user=request.user,
+        )
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     def _kaydet_cihaz_planlari(self, sozlesme, planlar):
-        """Cihaz planlarını replace-all mantığıyla kaydeder; başlangıcı ötelemeden türetir."""
-        existing = {p.id: p for p in sozlesme.cihaz_planlari.all()}
-        incoming_ids: set[int] = set()
-        for item in planlar:
-            plan_id = item.get("id")
-            try:
-                plan_id = int(plan_id) if plan_id is not None else None
-            except (TypeError, ValueError):
-                plan_id = None
-            instance = existing.get(plan_id) if plan_id else None
-            ser = CihazOdemePlaniSerializer(
-                instance=instance, data=item, partial=instance is not None
-            )
-            ser.is_valid(raise_exception=True)
-            data = dict(ser.validated_data)
-            # Cihaz faturasının ilk dönemi = sözleşme başlangıcı + cihaz ötelemesi.
-            oteleme = int(data.get("oteleme_ay", getattr(instance, "oteleme_ay", 0)) or 0)
-            data["baslangic_tarihi"] = services.add_months(sozlesme.baslangic_tarihi, oteleme)
-            if instance:
-                for f, v in data.items():
-                    setattr(instance, f, v)
-                instance.save()
-                incoming_ids.add(plan_id)
-            else:
-                CihazOdemePlani(sozlesme=sozlesme, **data).save()
-        for pid, plan in existing.items():
-            if pid not in incoming_ids:
-                if Fatura.objects.filter(cihaz_plani=plan).exists():
-                    plan.durum = CihazOdemePlani.Durum.IPTAL
-                    plan.save(update_fields=["durum"])
-                else:
-                    plan.delete()
+        services.kaydet_cihaz_planlari(sozlesme, planlar, user=self.request.user)
 
     def perform_update(self, serializer):
         instance = serializer.instance
@@ -130,6 +123,22 @@ class SozlesmeViewSet(viewsets.ModelViewSet):
             setattr(instance, field, value)
         with UnitOfWork(user=self.request.user) as uow:
             uow.update(instance)
+
+    def update(self, request, *args, **kwargs):
+        from django.db import transaction
+        data = request.data.copy()
+        planlar = data.pop("cihaz_planlari", None)
+        if planlar is not None and not isinstance(planlar, list):
+            return Response({"cihaz_planlari": "Liste bekleniyor."}, status=400)
+        with transaction.atomic():
+            instance = get_object_or_404(self.get_queryset().select_for_update(), pk=kwargs["pk"])
+            serializer = self.get_serializer(instance, data=data, partial=kwargs.get("partial", False))
+            serializer.is_valid(raise_exception=True)
+            self.perform_update(serializer)
+            if planlar is not None:
+                self._kaydet_cihaz_planlari(instance, planlar)
+            instance._prefetched_objects_cache = {}
+        return Response(serializer.data)
 
     @action(detail=True, methods=["put"], url_path="cihaz-planlari")
     def cihaz_planlari_guncelle(self, request, pk=None):
@@ -146,6 +155,8 @@ class SozlesmeViewSet(viewsets.ModelViewSet):
 
         with transaction.atomic():
             self._kaydet_cihaz_planlari(sozlesme, request.data)
+
+        sozlesme._prefetched_objects_cache = {}
 
         qs = CihazOdemePlani.objects.filter(sozlesme=sozlesme)
         return Response(CihazOdemePlaniSerializer(qs, many=True).data)
@@ -165,29 +176,65 @@ class SozlesmeViewSet(viewsets.ModelViewSet):
         sozlesme = self.get_object()
         if sozlesme.onayli_sozlesme_metni:
             return Response({"html": sozlesme.onayli_sozlesme_metni, "dondurulmus": True})
+        notice = _new_wet_contract_notice(sozlesme, (request.query_params.get("belge_turu") or "EK1").upper())
+        if notice:
+            return Response(notice)
         html = render_sozlesme_html(sozlesme) + onay_blogu_html(sozlesme)
         return Response({"html": html, "dondurulmus": False})
+
+    @action(detail=True, methods=["get"], url_path="belge-veri-kontrol")
+    def belge_veri_kontrol(self, request, pk=None):
+        """Word çıktısında elle tamamlanması gereken alanları bildirir."""
+        from .contract_docx import missing_fields
+
+        sozlesme = self.get_object()
+        if sozlesme.sozlesme_surumu != "2026-EK1":
+            return Response({"detail": "Eski sözleşme yeni belge şablonuyla oluşturulamaz."}, status=400)
+        kind = (request.query_params.get("belge_turu") or "EK1").upper()
+        if kind not in ("EK1", "EK2"):
+            return Response({"detail": "belge_turu EK1 veya EK2 olmalıdır."}, status=400)
+        fields = missing_fields(sozlesme, kind)
+        return Response({"belge_turu": kind, "eksik_alanlar": fields, "hazir": not fields})
+
+    @action(detail=True, methods=["get"], url_path="belge-olustur")
+    def belge_olustur(self, request, pk=None):
+        """Onaylı Word şablonundan doldurulmuş Ek-1 veya Ek-2 üretir."""
+        sozlesme = self.get_object()
+        kind = (request.query_params.get("belge_turu") or "EK1").upper()
+        return _generated_contract_response(sozlesme, kind)
 
     @action(detail=True, methods=["post"], url_path="islak-imza-yukle",
             parser_classes=[parsers.MultiPartParser, parsers.FormParser])
     def islak_imza_yukle(self, request, pk=None):
-        """Islak imzalı belgeyi RustFS'e yükler; object key'i sozlesme.islak_imza_url'ye yazar."""
+        """Ana sözleşme/Ek-1 veya Ek-2 ıslak imzalı belgesini ayrı saklar."""
         sozlesme = self.get_object()
         belge = request.FILES.get("belge")
+        belge_turu = (request.data.get("belge_turu") or "SOZLESME_EK1").upper()
+        if belge_turu not in ("SOZLESME_EK1", "EK2"):
+            return Response({"detail": "belge_turu SOZLESME_EK1 veya EK2 olmalıdır."}, status=status.HTTP_400_BAD_REQUEST)
         if not belge:
             return Response({"detail": "Dosya gerekli (alan adı: belge)."}, status=status.HTTP_400_BAD_REQUEST)
         try:
             from apps.core.services.storage_service import StorageService
             storage = StorageService()
-            object_key = storage.upload_file(belge, prefix=f"sozlesmeler/{pk}")
+            object_key = storage.upload_file(belge, prefix=f"sozlesmeler/{pk}/{belge_turu.lower()}")
         except Exception as exc:
             logger.exception("Islak imza yükleme hatası")
             return Response({"detail": f"Depolama hatası: {exc}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        sozlesme.islak_imza_url = object_key
         sozlesme.imza_tipi = Sozlesme.ImzaTipi.ISLAK
-        sozlesme.eczaci_onay_tarihi = timezone.now()
-        sozlesme.save(update_fields=["islak_imza_url", "imza_tipi", "eczaci_onay_tarihi"])
-        return Response({"object_key": object_key, "imza_tipi": sozlesme.imza_tipi})
+        now = timezone.now()
+        if belge_turu == "EK2":
+            sozlesme.ek2_islak_imza_url = object_key
+            sozlesme.ek2_islak_yukleme_tarihi = now
+            fields = ["ek2_islak_imza_url", "ek2_islak_yukleme_tarihi", "imza_tipi"]
+        else:
+            sozlesme.islak_imza_url = object_key
+            sozlesme.islak_yukleme_tarihi = now
+            fields = ["islak_imza_url", "islak_yukleme_tarihi", "imza_tipi"]
+        # Dosya yükleme zamanı dijital onay veya gerçek imza zamanı değildir.
+        sozlesme.save(update_fields=fields)
+        return Response({"object_key": object_key, "belge_turu": belge_turu,
+                         "imza_tipi": sozlesme.imza_tipi})
 
     @action(detail=True, methods=["post"], url_path="uzat")
     def uzat(self, request, pk=None):
@@ -280,17 +327,13 @@ class FaturaViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.G
 
     @action(detail=False, methods=["post"], url_path="faturalandir")
     def faturalandir(self, request):
-        """Aylık faturalandırmayı tek birleşik fatura olarak üretir.
-
-        Eski ayrı kullanım/cihaz faturaları yerine tek aylık birleşik fatura
-        oluşturulur. Böylece tüm ödemeler aynı fatura ve aynı tarih altında görünür.
-        """
-        birlesik = services.faturala_aylik_birlesik()
+        """Abonelik ve cihaz faturalarını ayrı ayrı üretir."""
+        ayri = services.faturala_ayri()
         gecikmis = services.guncelle_gecikmis_faturalar()
         return Response({
-            "birlesik_fatura": birlesik,
+            "ayri_fatura": ayri,
             "gecikmis": gecikmis,
-            "toplam_yeni": birlesik,
+            "toplam_yeni": ayri,
         })
 
     @action(detail=True, methods=["get"], url_path="yeniden-olustur-onizleme")
@@ -505,7 +548,10 @@ class SozlesmeOnaylaView(APIView):
         if not sozlesme.onay_gerekli:
             return Response(SozlesmeSerializer(sozlesme).data)  # idempotent
         ip = request.META.get("REMOTE_ADDR", "")
-        services.sozlesme_onayla(sozlesme, ip_address=ip, user=request.user)
+        try:
+            services.sozlesme_onayla(sozlesme, ip_address=ip, user=request.user)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=400)
         sozlesme.refresh_from_db()
         return Response(SozlesmeSerializer(sozlesme).data)
 
@@ -525,33 +571,52 @@ class SozlesmeMetniView(APIView):
             return Response({"detail": "Sözleşme bulunamadı."}, status=status.HTTP_404_NOT_FOUND)
         if sozlesme.onayli_sozlesme_metni:
             return Response({"html": sozlesme.onayli_sozlesme_metni, "dondurulmus": True})
+        notice = _new_wet_contract_notice(sozlesme, (request.query_params.get("belge_turu") or "EK1").upper())
+        if notice:
+            return Response(notice)
         html = render_sozlesme_html(sozlesme) + onay_blogu_html(sozlesme)
         return Response({"html": html, "dondurulmus": False})
+
+
+class SozlesmeBelgeOlusturView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsEczaci]
+
+    def get(self, request, pk):
+        sozlesme = get_object_or_404(Sozlesme, pk=pk, eczane_id=request.user.eczane_id)
+        return _generated_contract_response(sozlesme, (request.query_params.get("belge_turu") or "EK1").upper())
 
 
 class SozlesmeIslakImzaIndir(APIView):
     """GET /api/abonelik/sozlesmeler/{pk}/islak-imza-indir/ — ıslak imza belgesini proxy et."""
 
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsSuperAdmin]
+    permission_classes = [IsSuperAdminOrEczaci]
 
     def get(self, request, pk):
         from django.http import StreamingHttpResponse
         import mimetypes
 
-        sozlesme = Sozlesme.objects.filter(pk=pk).first()
+        qs = Sozlesme.objects.filter(pk=pk)
+        if request.user.rol == "pharmacist":
+            qs = qs.filter(eczane_id=request.user.eczane_id)
+        sozlesme = qs.first()
         if sozlesme is None:
             return Response({"detail": "Sözleşme bulunamadı."}, status=status.HTTP_404_NOT_FOUND)
-        if not sozlesme.islak_imza_url:
+        belge_turu = (request.query_params.get("belge_turu") or "SOZLESME_EK1").upper()
+        if belge_turu not in ("SOZLESME_EK1", "EK2"):
+            return Response({"detail": "Geçersiz belge türü."}, status=400)
+        object_key = sozlesme.ek2_islak_imza_url if belge_turu == "EK2" else sozlesme.islak_imza_url
+        if not object_key:
             return Response({"detail": "Islak imza belgesi yüklenmemiş."}, status=status.HTTP_404_NOT_FOUND)
 
         try:
             from apps.core.services.storage_service import StorageService
             storage = StorageService()
-            response_obj = storage.client.get_object(storage.bucket_name, sozlesme.islak_imza_url)
-            content_type, _ = mimetypes.guess_type(sozlesme.islak_imza_url)
+            response_obj = storage.client.get_object(storage.bucket_name, object_key)
+            content_type, _ = mimetypes.guess_type(object_key)
             content_type = content_type or "application/octet-stream"
-            filename = sozlesme.islak_imza_url.rsplit("/", 1)[-1]
+            filename = object_key.rsplit("/", 1)[-1]
             http_response = StreamingHttpResponse(
                 streaming_content=response_obj,
                 content_type=content_type,

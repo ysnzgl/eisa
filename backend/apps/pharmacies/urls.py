@@ -5,6 +5,7 @@ from rest_framework.routers import DefaultRouter
 from .dashboard import EczaciDashboardView, EczaciLeaderboardView
 from .views import (
     EczaneViewSet,
+    FizikselCihazViewSet,
     KioskProvisioningApproveView,
     KioskProvisioningDetailView,
     KioskProvisioningListView,
@@ -14,6 +15,7 @@ from .views import (
 
 kiosk_router = DefaultRouter()
 kiosk_router.register(r"kiosks", KioskViewSet, basename="kiosk")
+kiosk_router.register(r"cihazlar", FizikselCihazViewSet, basename="fiziksel-cihaz")
 
 urlpatterns = [
     path("me/dashboard/", EczaciDashboardView.as_view(), name="eczaci-dashboard"),

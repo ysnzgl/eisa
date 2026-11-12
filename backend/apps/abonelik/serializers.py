@@ -77,11 +77,15 @@ class FaturaKalemiSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = FaturaKalemi
-        fields = ("id", "tip", "tip_display", "cihaz_plani", "taksit_no", "tutar", "aciklama")
+        fields = ("id", "tip", "tip_display", "cihaz_plani", "taksit_no", "tutar",
+                  "matrah", "kdv_orani", "kdv_tutari", "tevkifat_orani",
+                  "tevkifat_tutari", "aciklama")
         read_only_fields = fields
 
 
 class CihazOdemePlaniSerializer(serializers.ModelSerializer):
+    baslangic_tarihi = serializers.DateField(required=False)
+    taksit_sayisi = serializers.IntegerField(required=False, min_value=0, max_value=12)
     toplam_tutar = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     taksit_tutari = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     cihaz_kdv_tutari = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
@@ -96,16 +100,25 @@ class CihazOdemePlaniSerializer(serializers.ModelSerializer):
     class Meta:
         model = CihazOdemePlani
         fields = (
-            "id", "sozlesme", "tip", "adet", "cihaz_bilgisi", "cihaz_kdv_orani", "tevkifat_orani",
+            "id", "sozlesme", "tip", "adet", "cihaz_bilgisi", "cihazlar", "cihaz_kdv_orani", "tevkifat_orani",
             "pesin_fiyat", "vade_farki_orani", "taksit_sayisi", "oteleme_ay",
-            "aylik_kira_bedeli",
+            "aylik_kira_bedeli", "tahsis_bedeli", "donanim_degeri",
             "baslangic_tarihi", "durum", "durum_display",
             "toplam_tutar", "taksit_tutari", "odeme_tipi", "odeme_tutari", "odeme_etiketi",
             "cihaz_kdv_tutari", "tevkifat_tutari", "kdv_dahil_toplam", "kdv_dahil_taksit",
         )
         read_only_fields = ("sozlesme",)
 
+    def to_internal_value(self, data):
+        data = data.copy()
+        for field in ("pesin_fiyat", "aylik_kira_bedeli", "tahsis_bedeli", "donanim_degeri"):
+            if data.get(field) == "":
+                data[field] = None
+        return super().to_internal_value(data)
+
     def validate(self, attrs):
+        if attrs.get("taksit_sayisi") == 0:
+            attrs["taksit_sayisi"] = 1
         tip = attrs.get("tip") or getattr(self.instance, "tip", CihazOdemePlani.Tip.SATILIK)
         if self.instance is None and "cihaz_kdv_orani" not in attrs:
             from .services import aktif_fiyat
@@ -114,13 +127,34 @@ class CihazOdemePlaniSerializer(serializers.ModelSerializer):
                 attrs["cihaz_kdv_orani"] = fiyat.cihaz_kdv_orani
         taksit = attrs.get("taksit_sayisi", getattr(self.instance, "taksit_sayisi", 1))
         if tip == CihazOdemePlani.Tip.SATILIK:
-            if attrs.get("pesin_fiyat") is None and self.instance is None:
+            if attrs.get("pesin_fiyat", getattr(self.instance, "pesin_fiyat", None)) is None:
                 raise serializers.ValidationError({"pesin_fiyat": "Satılık cihaz için peşin fiyat zorunludur."})
             if taksit is not None and not (1 <= int(taksit) <= 12):
                 raise serializers.ValidationError({"taksit_sayisi": "Taksit sayısı 1–12 arasında olmalıdır."})
         elif tip == CihazOdemePlani.Tip.KIRALIK:
-            if attrs.get("aylik_kira_bedeli") is None and self.instance is None:
+            if self.instance is None or self.instance.tip != tip:
+                raise serializers.ValidationError({"tip": "Yeni cihaz planlarında Kiralık yerine Tahsis seçilmelidir."})
+            if attrs.get("aylik_kira_bedeli", getattr(self.instance, "aylik_kira_bedeli", None)) is None:
                 raise serializers.ValidationError({"aylik_kira_bedeli": "Kiralık cihaz için aylık kira bedeli zorunludur."})
+        elif tip == CihazOdemePlani.Tip.TAHSIS:
+            attrs["aylik_kira_bedeli"] = None
+            attrs["pesin_fiyat"] = None
+            attrs["vade_farki_orani"] = 0
+            attrs["taksit_sayisi"] = 1
+        for field in ("pesin_fiyat", "aylik_kira_bedeli", "tahsis_bedeli", "donanim_degeri", "vade_farki_orani"):
+            value = attrs.get(field, getattr(self.instance, field, None))
+            if value is not None and value < 0:
+                raise serializers.ValidationError({field: "Tutar sıfırdan küçük olamaz."})
+        if attrs.get("adet", getattr(self.instance, "adet", 1)) < 1:
+            raise serializers.ValidationError({"adet": "Cihaz adedi en az 1 olmalıdır."})
+        kdv = attrs.get("cihaz_kdv_orani", getattr(self.instance, "cihaz_kdv_orani", 0))
+        if attrs.get("tevkifat_orani", getattr(self.instance, "tevkifat_orani", "")) and not kdv:
+            raise serializers.ValidationError({"tevkifat_orani": "Tevkifat için önce KDV oranı seçilmelidir."})
+        devices = attrs.get("cihazlar")
+        if devices and len(devices) != attrs.get("adet", getattr(self.instance, "adet", 1)):
+            raise serializers.ValidationError({"cihazlar": "Seçilen seri numarası sayısı cihaz adediyle aynı olmalıdır."})
+        if devices and len({device.pk for device in devices}) != len(devices):
+            raise serializers.ValidationError({"cihazlar": "Aynı cihaz bir planda tekrar seçilemez."})
         return attrs
 
 
@@ -152,6 +186,9 @@ class SozlesmeSerializer(serializers.ModelSerializer):
             "baslangic_tarihi", "oteleme_ay", "aylik_kullanim_bedeli",
             "kdv_orani", "tevkifat_orani", "iptal_ceza_orani",
             "eczaci_onay_tarihi", "imza_tipi", "islak_imza_url", "onay_gerekli",
+            "ek2_islak_imza_url", "islak_yukleme_tarihi", "ek2_islak_yukleme_tarihi",
+            "gercek_imza_tarihi", "sozlesme_surumu", "bolge_snapshot",
+            "sponsorluk_tarifeleri_snapshot",
             "cihaz_durumu", "cihaz_kira_bedeli",
             "ek_ay_toplam", "ek_gun_toplam", "onceki_sozlesme",
             "durum", "durum_display", "notlar",
@@ -160,10 +197,17 @@ class SozlesmeSerializer(serializers.ModelSerializer):
             "cihaz_planlari",
             "kdv_tutari", "kdv_dahil_aylik", "tevkifat_tutari", "net_odeme", "iptal_ceza_tutari",
         )
-        read_only_fields = ("ek_ay_toplam", "ek_gun_toplam", "eczaci_onay_tarihi")
+        read_only_fields = ("ek_ay_toplam", "ek_gun_toplam", "eczaci_onay_tarihi",
+                            "islak_yukleme_tarihi", "ek2_islak_yukleme_tarihi",
+                            "bolge_snapshot", "sponsorluk_tarifeleri_snapshot", "sozlesme_surumu",
+                            "islak_imza_url", "ek2_islak_imza_url")
 
     def validate(self, attrs):
         from apps.abonelik import services
+
+        version = getattr(self.instance, "sozlesme_surumu", "2026-EK1")
+        if version == "2026-EK1" and attrs.get("imza_tipi", getattr(self.instance, "imza_tipi", "ISLAK")) == "DIJITAL":
+            raise serializers.ValidationError({"imza_tipi": "Yeni belge seti şu anda ıslak imzayla kullanılır; dijital imza entegrasyonu henüz devrede değildir."})
 
         tur = attrs.get("tur") or getattr(self.instance, "tur", Sozlesme.Tur.STANDART)
         if self.instance is None and tur == Sozlesme.Tur.STANDART:
@@ -181,7 +225,7 @@ class SozlesmeSerializer(serializers.ModelSerializer):
         oteleme_ay = attrs.get("oteleme_ay", getattr(self.instance, "oteleme_ay", 0))
         ek_ay_toplam = attrs.get("ek_ay_toplam", getattr(self.instance, "ek_ay_toplam", 0))
         ek_gun_toplam = attrs.get("ek_gun_toplam", getattr(self.instance, "ek_gun_toplam", 0))
-        cihaz_durumu = attrs.get("cihaz_durumu", getattr(self.instance, "cihaz_durumu", Sozlesme.CihazDurum.SATILIK))
+        cihaz_durumu = attrs.get("cihaz_durumu", getattr(self.instance, "cihaz_durumu", Sozlesme.CihazDurum.TAHSIS))
         cihaz_kira_bedeli = attrs.get("cihaz_kira_bedeli", getattr(self.instance, "cihaz_kira_bedeli", None))
         kdv_orani = attrs.get("kdv_orani", getattr(self.instance, "kdv_orani", 0))
         tevkifat_orani = attrs.get("tevkifat_orani", getattr(self.instance, "tevkifat_orani", ""))
@@ -205,12 +249,15 @@ class SozlesmeSerializer(serializers.ModelSerializer):
                 })
             attrs["demo_gun"] = None
 
-        if cihaz_durumu == Sozlesme.CihazDurum.KIRALIK:
-            if cihaz_kira_bedeli is None or float(cihaz_kira_bedeli) <= 0:
-                raise serializers.ValidationError({
-                    "cihaz_kira_bedeli": "Kiralık cihaz için kira bedeli girilmelidir."
-                })
-        else:
+        if attrs.get("aylik_kullanim_bedeli", getattr(self.instance, "aylik_kullanim_bedeli", 0)) < 0:
+            raise serializers.ValidationError({"aylik_kullanim_bedeli": "Bedel sıfırdan küçük olamaz."})
+        if cihaz_durumu == Sozlesme.CihazDurum.KIRALIK and (
+            self.instance is None or self.instance.cihaz_durumu != cihaz_durumu
+        ):
+            raise serializers.ValidationError({
+                "cihaz_durumu": "Yeni sözleşmelerde Kiralık yerine Tahsis seçilmelidir."
+            })
+        elif cihaz_durumu != Sozlesme.CihazDurum.KIRALIK:
             attrs["cihaz_kira_bedeli"] = "0.00"
 
         # Aynı eczane için AKTIF sözleşme tarih aralığı çakışması engeli.
@@ -287,7 +334,9 @@ class FaturaSerializer(serializers.ModelSerializer):
         fields = (
             "id", "eczane", "eczane_ad", "sozlesme", "cihaz_plani",
             "tip", "tip_display", "donem", "taksit_no", "tutar",
-            "vade_tarihi", "durum", "durum_display", "odenme_tarihi", "aciklama",
+            "kesim_tarihi", "hizmet_baslangic", "hizmet_bitis",
+            "matrah", "kdv_tutari", "tevkifat_tutari", "vade_tarihi",
+            "durum", "durum_display", "odenme_tarihi", "aciklama",
             "kalemler", "surum", "iptal_nedeni", "iptal_tarihi", "islemler", "aktif_tahsilat_var",
         )
         read_only_fields = fields

@@ -94,11 +94,14 @@ class Sozlesme(BaseModel):
 
     class CihazDurum(models.TextChoices):
         SATILIK = "SATILIK", "Satılık"
-        KIRALIK = "KIRALIK", "Kiralık"
+        TAHSIS = "TAHSIS", "Tahsis"
+        # Eski kayıtların migration sırasında TAHSIS'e çevrilebilmesi için
+        # geçici geriye dönük değer. Yeni kayıt kabul edilmez.
+        KIRALIK = "KIRALIK", "Kiralık (eski kayıt)"
 
     cihaz_durumu = models.CharField(
-        max_length=12, choices=CihazDurum.choices, default=CihazDurum.SATILIK,
-        help_text="Cihaz satılık mı kiralık mı?",
+        max_length=12, choices=CihazDurum.choices, default=CihazDurum.TAHSIS,
+        help_text="Cihaz edinim modeli: satış veya mülkiyeti e-isa'da kalan tahsis.",
     )
     cihaz_kira_bedeli = models.DecimalField(
         max_digits=12, decimal_places=2, default=Decimal("0.00"),
@@ -129,13 +132,23 @@ class Sozlesme(BaseModel):
         ISLAK = "ISLAK", "Islak İmza"
 
     imza_tipi = models.CharField(
-        max_length=8, choices=ImzaTipi.choices, default=ImzaTipi.DIJITAL,
+        max_length=8, choices=ImzaTipi.choices, default=ImzaTipi.ISLAK,
         help_text="Dijital (eczacı ekrandan onaylar) veya ıslak (taranıp yüklenir).",
     )
     islak_imza_url = models.CharField(
         max_length=500, blank=True, default="",
         help_text="RustFS/S3 yolu — ıslak imzalı belge (expiring URL değil, kalıcı path).",
     )
+    ek2_islak_imza_url = models.CharField(
+        max_length=500, blank=True, default="",
+        help_text="Ek-2 ıslak imzalı teslim/zimmet tutanağının kalıcı depolama yolu.",
+    )
+    islak_yukleme_tarihi = models.DateTimeField(null=True, blank=True)
+    ek2_islak_yukleme_tarihi = models.DateTimeField(null=True, blank=True)
+    gercek_imza_tarihi = models.DateField(null=True, blank=True)
+    sozlesme_surumu = models.CharField(max_length=32, default="2026-EK1")
+    bolge_snapshot = models.JSONField(default=dict, blank=True)
+    sponsorluk_tarifeleri_snapshot = models.JSONField(default=list, blank=True)
     onayli_sozlesme_metni = models.TextField(
         blank=True, default="",
         help_text="Dijital onay anındaki tam sözleşme metni (HTML). Onaylandıktan sonra değişmez.",
@@ -250,15 +263,26 @@ class Sozlesme(BaseModel):
 
     @property
     def iptal_ceza_tutari(self) -> Decimal:
-        """Erken iptal ceza: kalan_ay × katsayi × aylık_bedel."""
-        if not self.iptal_ceza_orani or self.is_demo:
+        """Madde 18.2: kalan ücretli süre, en az 2 en fazla 12 aylık bedel.
+
+        Fesih istisnası/gerekçesi işlem anında ayrıca değerlendirilir. Bu özellik
+        yalnız standart cezaya tabi senaryonun tutarını gösterir.
+        """
+        if self.is_demo:
             return Decimal("0.00")
         from django.utils import timezone
-        kalan_gun = max(0, (self.bitis_tarihi - timezone.localdate()).days)
-        kalan_ay = Decimal(str(kalan_gun)) / 30
-        return (
-            self.aylik_kullanim_bedeli * kalan_ay * self.iptal_ceza_orani
-        ).quantize(Decimal("0.01"))
+        if self.sozlesme_surumu == "LEGACY":
+            kalan_gun = max(0, (self.bitis_tarihi - timezone.localdate()).days)
+            return (self.aylik_kullanim_bedeli * Decimal(kalan_gun) / 30
+                    * self.iptal_ceza_orani).quantize(Decimal("0.01"))
+        ucret_baslangici = self.kullanim_bedeli_baslangic
+        hesap_baslangici = max(timezone.localdate(), ucret_baslangici)
+        kalan_gun = max(0, (self.bitis_tarihi - hesap_baslangici).days)
+        if kalan_gun == 0:
+            return Decimal("0.00")
+        kalan_ay = Decimal(str(kalan_gun)) / Decimal("30")
+        sinirli_ay = min(Decimal("12"), max(Decimal("2"), kalan_ay))
+        return (self.aylik_kullanim_bedeli * sinirli_ay).quantize(Decimal("0.01"))
 
 
 class SozlesmeUzatma(BaseModel):
@@ -293,12 +317,21 @@ class CihazOdemePlani(BaseModel):
 
     class Tip(models.TextChoices):
         SATILIK = "SATILIK", "Satılık"
-        KIRALIK = "KIRALIK", "Kiralık"
+        TAHSIS = "TAHSIS", "Tahsis"
+        KIRALIK = "KIRALIK", "Kiralık (eski kayıt)"
 
     class TaksitSayisi(models.IntegerChoices):
         TAKSIT_1 = 1, "1 Taksit (Peşin)"
+        TAKSIT_2 = 2, "2 Taksit"
+        TAKSIT_3 = 3, "3 Taksit"
         TAKSIT_4 = 4, "4 Taksit"
+        TAKSIT_5 = 5, "5 Taksit"
+        TAKSIT_6 = 6, "6 Taksit"
+        TAKSIT_7 = 7, "7 Taksit"
         TAKSIT_8 = 8, "8 Taksit"
+        TAKSIT_9 = 9, "9 Taksit"
+        TAKSIT_10 = 10, "10 Taksit"
+        TAKSIT_11 = 11, "11 Taksit"
         TAKSIT_12 = 12, "12 Taksit"
 
     class Durum(models.TextChoices):
@@ -309,6 +342,8 @@ class CihazOdemePlani(BaseModel):
     sozlesme = models.ForeignKey(
         Sozlesme, on_delete=models.CASCADE, related_name="cihaz_planlari"
     )
+    cihazlar = models.ManyToManyField("pharmacies.FizikselCihaz", blank=True,
+                                      related_name="odeme_planlari")
     tip = models.CharField(
         max_length=8, choices=Tip.choices, default=Tip.SATILIK,
         help_text="Satılık (peşin+taksit) veya kiralık (aylık kira).",
@@ -339,6 +374,15 @@ class CihazOdemePlani(BaseModel):
     aylik_kira_bedeli = models.DecimalField(
         max_digits=12, decimal_places=2, null=True, blank=True,
         help_text="Birim aylık kira bedeli (TL). Kiralıkta zorunlu.",
+    )
+    tahsis_bedeli = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text="Varsa sözleşmede kararlaştırılan tahsis bedeli. Ödeme sıklığı "
+                  "hukuki/ticari karar verilmeden otomatik faturalanmaz.",
+    )
+    donanim_degeri = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text="Hasar/kalan değer hesabında kullanılacak birim donanım değeri.",
     )
     # Ortak: KDV + tevkifat
     cihaz_kdv_orani = models.PositiveSmallIntegerField(
@@ -476,6 +520,22 @@ class FiyatTanimi(BaseModel):
         return f"Fiyat {self.gecerlilik_baslangic} — abonelik {self.abonelik_bedeli} TL"
 
 
+class ResmiTatil(models.Model):
+    """İş günü hesabında atlanacak resmi tatil günü."""
+
+    tarih = models.DateField(unique=True)
+    ad = models.CharField(max_length=128)
+
+    class Meta:
+        db_table = "abonelik_resmi_tatiller"
+        ordering = ("tarih",)
+        verbose_name = "Resmi Tatil"
+        verbose_name_plural = "Resmi Tatiller"
+
+    def __str__(self):  # pragma: no cover
+        return f"{self.tarih} — {self.ad}"
+
+
 class Fatura(BaseModel):
     """Cariye borç olarak yansıyan faturalandırma kalemi."""
 
@@ -483,6 +543,7 @@ class Fatura(BaseModel):
         KULLANIM_BEDELI = "KULLANIM_BEDELI", "Kullanım Bedeli"
         CIHAZ_TAKSIT = "CIHAZ_TAKSIT", "Cihaz Taksiti"
         CIHAZ_KIRA = "CIHAZ_KIRA", "Cihaz Kira Bedeli"
+        # Yalnız geçmiş mali kayıtların okunabilmesi için korunur; yeni üretimde kullanılmaz.
         BIRLESIK = "BIRLESIK", "Birleşik Aylık Fatura"
         ACMA_KAPAMA = "ACMA_KAPAMA", "Açma/Kapama Bedeli"
 
@@ -513,6 +574,12 @@ class Fatura(BaseModel):
         help_text="Cihaz taksitleri için sıra numarası.",
     )
     tutar = models.DecimalField(max_digits=12, decimal_places=2)
+    kesim_tarihi = models.DateField(null=True, blank=True, db_index=True)
+    hizmet_baslangic = models.DateField(null=True, blank=True)
+    hizmet_bitis = models.DateField(null=True, blank=True)
+    matrah = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    kdv_tutari = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    tevkifat_tutari = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     vade_tarihi = models.DateField(db_index=True)
     durum = models.CharField(
         max_length=16, choices=Durum.choices, default=Durum.BEKLIYOR, db_index=True
@@ -528,18 +595,17 @@ class Fatura(BaseModel):
         verbose_name = "Fatura"
         verbose_name_plural = "Faturalar"
         constraints = [
-            # Cihaz taksitleri: aynı eczane + tip + dönem + taksit için tek fatura.
+            # Her cihaz planı aynı tip ve dönem için yalnız bir fatura üretebilir.
             models.UniqueConstraint(
-                fields=["eczane", "tip", "donem", "taksit_no"],
-                condition=models.Q(taksit_no__isnull=False),
-                name="uniq_fatura_eczane_tip_donem_taksit",
+                fields=["cihaz_plani", "tip", "donem"],
+                condition=models.Q(cihaz_plani__isnull=False),
+                name="uniq_fatura_plan_tip_donem",
             ),
-            # Kullanım bedeli (taksit_no NULL): NULL'lar benzersiz sayıldığından
-            # partial index ile aynı eczane + tip + dönem için tekillik zorlanır.
+            # Cihaz planına bağlı olmayan kalemlerde eczane + tip + dönem tekildir.
             models.UniqueConstraint(
                 fields=["eczane", "tip", "donem"],
-                condition=models.Q(taksit_no__isnull=True),
-                name="uniq_fatura_eczane_tip_donem_notaksit",
+                condition=models.Q(cihaz_plani__isnull=True, taksit_no__isnull=True),
+                name="uniq_fatura_plansiz_tip_donem",
             ),
         ]
 
@@ -606,7 +672,7 @@ class FaturaIslem(BaseModel):
 
 
 class FaturaKalemi(BaseModel):
-    """Aylık birleşik faturanın kalem satırları (abonelik, cihaz taksit, kira, açma-kapama)."""
+    """Faturanın abonelik, cihaz taksit, kira veya açma-kapama kalem satırı."""
 
     class KalemTip(models.TextChoices):
         ABONELIK = "ABONELIK", "Abonelik Bedeli"
@@ -624,6 +690,11 @@ class FaturaKalemi(BaseModel):
     )
     taksit_no = models.PositiveSmallIntegerField(null=True, blank=True)
     tutar = models.DecimalField(max_digits=12, decimal_places=2)
+    matrah = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    kdv_orani = models.PositiveSmallIntegerField(default=0)
+    kdv_tutari = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    tevkifat_orani = models.CharField(max_length=4, blank=True, default="")
+    tevkifat_tutari = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     aciklama = models.CharField(max_length=255, blank=True, default="")
 
     class Meta:

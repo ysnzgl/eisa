@@ -33,6 +33,8 @@ Thumbs.db
 # Logs
 *.log
 logs/
+web_panels/test-results/
+web_panels/playwright-report/
 
 docs/rancher-deployment-updated.md
 

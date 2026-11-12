@@ -1,5 +1,26 @@
 # AI Changelog — Dokümantasyon ve Kod Değişiklikleri
 
+## 2026-11-08
+
+### Sözleşme ekranları, fiziksel seri ve tam belge önizlemesi
+
+**Panel:** Bölge/tarife/tahsilat ayrı sayfalar; ortak `styles.css` ve tanım/modal bileşenleri, mobil kaydırma. Bölge yalnız ad ve il/ilçe kapsamı alır; tüm ilçeler desteklenir, kod sorulmaz. Cihaz Tanımları ve provizyonda seri seçimi eklendi.
+**Backend/belge:** Fiziksel cihaz envanteri ve plan ilişkisi (`pharmacies.0019`, `abonelik.0025`) yerelde uygulandı. Gerçek kaynak DOCX'ten tam Ek-1/Ek-2 önizlemesi ve iki rol için kontrollü Word indirme; gerçek seri/garanti, edinim ve taksit tarihleri. Manuel bölümler ve sabit paket/teyit satırları korunur. Eski yerel `--noreload` backend yeniden başlatılarak yeni endpoint'lerdeki 404 giderildi.
+**Doğrulama:** Geniş backend turunda 304, panelde 199 test geçti. Son belge düzeltmelerinden sonra 14 odak test ve 7 izole Edge görsel akış testi geçti; gerçek şablondan oluşturulan önizleme ekran görüntüleri incelendi. Production build, Django/migration kontrolleri başarılı. Ayrıntı ve açık işler sözleşme kod inceleme raporunda.
+
+### Sözleşme geçişi kod incelemesi düzeltmeleri
+
+**Mali:** Yeniden hesaplamada KDV/tevkifat, ay sonu gün ankrajı, gerçek kesimden vade, son taksit kuruş farkı ve tüm sözleşme giriş yollarında ilk fatura/snapshot düzeltildi. Sözleşme-plan düzenlemesi atomikleştirildi; LEGACY ceza/kiralama şartları korundu.
+**Belge/tarife:** Yeni belgede eski metne dijital onay engellendi; imzalı belge indirmede eczane izolasyonu, Ek-2 manuel bölüm koruması ve Word ad alanı koruması eklendi. Kampanya tarife snapshot'ı sabitlendi; bölge/tarife çakışma kontrolleri tamamlandı.
+**Katkı:** Hizmet aralığı ve cihaz atama tarihçesiyle gün hesabı, bölge paydası, kuruş dağıtımı, kilitli/idempotent hesap, eczane veri gizliliği, tebliğ + 15 gün vade ve yönetim kaydı eklendi. Migration `campaigns.0037` yerelde uygulandı. Ayrıntılar ve açık işler `docs/abonelik-sozlesme-kod-inceleme.md` dosyasında.
+**Doğrulama:** 239 modül testi + 2 son kampanya silme testi (241 backend), 199 panel testi, production build, Django check ve migration check başarılı.
+
+### Abonelik sözleşmesi Ek-1/Ek-2, faturalama ve sponsorluk mali akışı
+
+**Değişiklik:** Tahsis modeli, abonelik/cihaz için bağımsız öteleme, gerçek kesimden 7 iş günü vade ve kalem bazlı vergi snapshot'ı eklendi. Birleşik yeni fatura üretimi kapatıldı; abonelik ile her cihaz ödeme planı ayrı faturalanır. Eski `BIRLESIK` kayıtları değiştirilmeden mali geçmişte korunur. Islak imzalı ana belge/Ek-2 ayrı saklanır; yükleme hizmeti veya faturayı başlatmaz/durdurmaz. Onaylı Word şablonları sabit maddeler korunarak dinamik tablo ve alanlarla indirilebilir.
+**Sponsorluk:** Tarihli bölge/tarife yönetimi ve kampanya-tarife zorunluluğu eklendi. Fiili sponsor tahsilatının %15'i aktif ve kullanım faturası bulunan cihaz-günlere dağıtılır; hakediş eczaneye bildirilir. Öteleme döneminde pay doğmaz/birikmez.
+**Doğrulama:** Migration'lar yerelde uygulandı; Django check/migration check, ayrı faturalama dahil 81 odak backend testi ve web panel production build başarılı.
+
 ## 2026-11-07
 ### İş Takibi — Kalıcı dosya ekleri
 **Değişiklik:** PDF, Word, Excel ekleri RustFS'te saklanır; SuperAdmin kontrollü indirme, PDF/Excel ve DOCX metin önizlemesi eklendi. TTL/presigned URL kullanılmaz; 25 MB sınırı, imza kontrolü, OOXML açılmış boyut sınırı vardır. Yükleme hatasında başarılı iş ve dosyalar korunur.

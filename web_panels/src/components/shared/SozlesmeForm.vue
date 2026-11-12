@@ -1,5 +1,7 @@
 <script setup>
-import { computed, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
+import EisaMultiLookup from './EisaMultiLookup.vue';
+import { listPhysicalDevices } from '../../services/inventory';
 
 const props = defineProps({
   form: { type: Object, required: true },
@@ -17,6 +19,26 @@ const TEVKIFAT_SECENEKLER = [
 ];
 
 const isDemo = computed(() => props.form.tur === 'DEMO');
+const physicalDevices = ref([]);
+const inventoryLoading = ref(false);
+const inventoryError = ref('');
+const deviceOptions = computed(() => physicalDevices.value.map(device => ({
+  id: device.id, label: device.seri_no, sub: `${device.marka} ${device.model} ${device.eczane_ad || 'Stokta'}`,
+})));
+watch(() => props.form.eczane, async (pharmacy) => {
+  inventoryLoading.value = true; inventoryError.value = '';
+  try { const { data } = await listPhysicalDevices(pharmacy ? { eczane: pharmacy } : {}); physicalDevices.value = Array.isArray(data) ? data : data.results || []; }
+  catch { inventoryError.value = 'Cihaz kayıtları yüklenemedi. Cihaz Tanımları ekranını kontrol edin.'; }
+  finally { inventoryLoading.value = false; }
+}, { immediate: true });
+function selectDevices(plan, ids) {
+  plan.cihazlar = ids;
+  if (ids.length) {
+    plan.adet = ids.length;
+    const devices = physicalDevices.value.filter(device => ids.includes(device.id));
+    plan.cihaz_bilgisi = [...new Set(devices.map(device => `${device.marka} ${device.model}`.trim()))].join('; ');
+  }
+}
 const toplamAy = computed(() =>
   (Number(props.form.sozlesme_tipi_ay) || 0) + (Number(props.form.oteleme_ay) || 0));
 
@@ -37,7 +59,7 @@ function planToplamSatilik(p) {
 function planToplamKiralik(p) {
   return (Number(p.aylik_kira_bedeli) || 0) * (Number(p.adet) || 1);
 }
-function planToplam(p) { return p.tip === 'KIRALIK' ? planToplamKiralik(p) : planToplamSatilik(p); }
+function planToplam(p) { return p.tip === 'TAHSIS' ? 0 : (p.tip === 'KIRALIK' ? planToplamKiralik(p) : planToplamSatilik(p)); }
 function planKdvTutari(p) { return planToplam(p) * (Number(p.cihaz_kdv_orani) || 0) / 100; }
 function planKdvDahil(p) { return planToplam(p) + planKdvTutari(p); }
 function planTevkifatKesri(p) {
@@ -54,13 +76,14 @@ function planTaksit(p) {
 }
 
 const planlar = computed(() => props.form.cihaz_planlari || []);
-const toplamSatilikKdvDahil = computed(() => planlar.value.filter(p => p.tip !== 'KIRALIK').reduce((s, p) => s + planKdvDahil(p), 0));
+const toplamSatilikKdvDahil = computed(() => planlar.value.filter(p => p.tip === 'SATILIK').reduce((s, p) => s + planKdvDahil(p), 0));
 const toplamKiralikAylik = computed(() => planlar.value.filter(p => p.tip === 'KIRALIK').reduce((s, p) => s + planKdvDahil(p), 0));
 
 const emptyPlan = () => ({
-  tip: 'SATILIK', adet: 1, cihaz_bilgisi: '',
+  tip: 'TAHSIS', adet: 1, cihaz_bilgisi: '',
+  cihazlar: [],
   pesin_fiyat: '', vade_farki_orani: '0.00', taksit_sayisi: 1,
-  aylik_kira_bedeli: '',
+  aylik_kira_bedeli: '', tahsis_bedeli: '', donanim_degeri: '',
   cihaz_kdv_orani: props.form.cihaz_kdv_orani ?? 0, tevkifat_orani: '',
   oteleme_ay: 0,
   baslangic_tarihi: props.form.baslangic_tarihi || '',
@@ -131,9 +154,8 @@ function fmtTL(v) {
             <option v-for="t in TEVKIFAT_SECENEKLER" :key="t.value" :value="t.value">{{ t.label }}</option>
           </select>
         </label>
-        <label class="eisa-form-row"><span class="eisa-field-label">Erken İptal Ceza Katsayısı</span>
-          <div class="eisa-input-group"><input type="number" step="0.1" min="0" v-model="form.iptal_ceza_orani" class="eisa-field" placeholder="2" /><span class="eisa-input-suffix">× aylık</span></div>
-        </label>
+        <p class="eisa-reset-info eisa-form-row"><i class="fa-solid fa-scale-balanced"></i>
+          Erken fesih cezası sözleşmedeki kalan ücretli süre ve 2–12 aylık sınırla hesaplanır.</p>
         <div class="sf-tutar-grid eisa-form-row-full">
           <div class="sf-tutar-kalem"><span>Matrah</span><strong>{{ fmtTL(form.aylik_kullanim_bedeli) }}</strong></div>
           <template v-if="hasAbKdv">
@@ -160,19 +182,19 @@ function fmtTL(v) {
       <div class="sf-section-body">
         <p class="eisa-reset-info" style="margin:0 0 .6rem;">
           <i class="fa-solid fa-circle-info"></i>
-          Tüm cihaz bedelleri, abonelik ile aynı tarihte tek birleşik faturada tahsil edilir.
+          Abonelik ve cihaz ötelemesi ayrı uygulanır. Tahsis, ödeme sıklığı belirlenmedikçe cihaz faturası üretmez.
         </p>
         <div v-for="(p, i) in form.cihaz_planlari" :key="i" class="sf-plan-card">
           <div class="sf-plan-card-header">
             <span>
               <i class="fa-solid fa-display"></i> Cihaz {{ i + 1 }}
-              <span class="eisa-pill" :class="p.tip === 'KIRALIK' ? 'eisa-pill-warning' : 'eisa-pill-info'" style="margin-left:.4rem;font-size:.72rem;">{{ p.tip === 'KIRALIK' ? 'Kiralık' : 'Satılık' }}</span>
+              <span class="eisa-pill" :class="p.tip === 'TAHSIS' ? 'eisa-pill-warning' : 'eisa-pill-info'" style="margin-left:.4rem;font-size:.72rem;">{{ p.tip === 'TAHSIS' ? 'Tahsis' : p.tip === 'KIRALIK' ? 'Kiralık (eski)' : 'Satılık' }}</span>
             </span>
             <button type="button" class="sf-plan-remove" @click="removePlan(i)"><i class="fa-solid fa-xmark"></i></button>
           </div>
           <div class="eisa-form-grid" style="margin:0;">
             <label class="eisa-form-row"><span class="eisa-field-label">Tip</span>
-              <select v-model="p.tip" class="eisa-field"><option value="SATILIK">Satılık</option><option value="KIRALIK">Kiralık</option></select>
+              <select v-model="p.tip" class="eisa-field"><option value="TAHSIS">Tahsis</option><option value="SATILIK">Satılık</option><option v-if="p.tip === 'KIRALIK'" value="KIRALIK">Kiralık (eski kayıt)</option></select>
             </label>
             <label class="eisa-form-row"><span class="eisa-field-label">Adet</span>
               <input type="number" min="1" max="99" v-model.number="p.adet" class="eisa-field" />
@@ -180,6 +202,11 @@ function fmtTL(v) {
             <label class="eisa-form-row eisa-form-row-full"><span class="eisa-field-label">Cihaz Bilgisi</span>
               <input type="text" v-model="p.cihaz_bilgisi" class="eisa-field" placeholder="Marka/model, model no, notlar" />
             </label>
+            <div class="eisa-form-row eisa-form-row-full"><span class="eisa-field-label">Fiziksel cihazlar / seri numaraları</span>
+              <EisaMultiLookup :model-value="p.cihazlar || []" :options="deviceOptions" :loading="inventoryLoading" placeholder="Kayıtlı seri numarasını seçin…" @update:model-value="selectDevices(p, $event)" />
+              <span class="eisa-form-note">Seçilen cihazlar Ek-1 ve Ek-2’ye aktarılır. Yeni cihazı Cihaz Tanımları ekranından kaydedebilirsiniz.</span>
+              <span v-if="inventoryError" class="eisa-form-note" role="alert">{{ inventoryError }}</span>
+            </div>
             <template v-if="p.tip === 'SATILIK'">
               <label class="eisa-form-row"><span class="eisa-field-label">Birim Peşin Fiyat</span>
                 <div class="eisa-input-group sf-pesin-group"><input type="number" step="0.01" min="0" v-model="p.pesin_fiyat" class="eisa-field" /><span class="eisa-input-suffix">₺</span></div>
@@ -187,17 +214,22 @@ function fmtTL(v) {
               <label class="eisa-form-row"><span class="eisa-field-label">Vade Farkı</span>
                 <div class="eisa-input-group"><input type="number" step="0.01" min="0" v-model="p.vade_farki_orani" class="eisa-field" :disabled="Number(p.taksit_sayisi) <= 1" /><span class="eisa-input-suffix">%</span></div>
               </label>
-              <label class="eisa-form-row"><span class="eisa-field-label">Taksit Sayısı (1–12)</span>
-                <input type="number" min="1" max="12" v-model.number="p.taksit_sayisi" class="eisa-field" />
+              <label class="eisa-form-row"><span class="eisa-field-label">Taksit Sayısı (0 = peşin, en çok 12)</span>
+                <input type="number" min="0" max="12" v-model.number="p.taksit_sayisi" class="eisa-field" />
               </label>
             </template>
-            <label v-else class="eisa-form-row"><span class="eisa-field-label">Birim Aylık Kira</span>
-              <div class="eisa-input-group"><input type="number" step="0.01" min="0" v-model="p.aylik_kira_bedeli" class="eisa-field" /><span class="eisa-input-suffix">₺</span></div>
-            </label>
+            <template v-else-if="p.tip === 'TAHSIS'">
+              <label class="eisa-form-row"><span class="eisa-field-label">Tahsis Bedeli</span>
+                <div class="eisa-input-group"><input type="number" step="0.01" min="0" v-model="p.tahsis_bedeli" class="eisa-field" /><span class="eisa-input-suffix">₺</span></div>
+              </label>
+              <label class="eisa-form-row"><span class="eisa-field-label">Birim Donanım Değeri</span>
+                <div class="eisa-input-group"><input type="number" step="0.01" min="0" v-model="p.donanim_degeri" class="eisa-field" /><span class="eisa-input-suffix">₺</span></div>
+              </label>
+            </template>
             <label class="eisa-form-row"><span class="eisa-field-label">Cihaz Öteleme (ay)</span>
               <input type="number" min="0" max="36" v-model.number="p.oteleme_ay" class="eisa-field" />
             </label>
-            <label class="eisa-form-row"><span class="eisa-field-label">KDV Oranı</span>
+            <label v-if="p.tip === 'SATILIK'" class="eisa-form-row"><span class="eisa-field-label">KDV Oranı</span>
               <select v-model.number="p.cihaz_kdv_orani" class="eisa-field">
                 <option v-for="k in KDV_SECENEKLER" :key="k.value" :value="k.value">{{ k.label }}</option>
               </select>
@@ -208,7 +240,7 @@ function fmtTL(v) {
               </select>
             </label>
           </div>
-          <div class="sf-tutar-grid" style="margin-top:.5rem;">
+          <div v-if="p.tip === 'SATILIK'" class="sf-tutar-grid" style="margin-top:.5rem;">
             <div class="sf-tutar-kalem">
               <span>{{ p.tip === 'KIRALIK' ? 'Aylık' : 'Toplam' }}</span>
               <strong>{{ fmtTL(planToplam(p)) }}</strong>

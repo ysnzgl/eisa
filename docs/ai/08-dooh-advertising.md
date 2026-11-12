@@ -1,5 +1,9 @@
 # DOOH Advertising System — Kiosk Sponsorluk (cihaz bazlı)
 
+## Ticari tanımlar ve eczane katkısı (2026-11-08)
+
+Yeni kampanya, kampanya başlangıcında geçerli bir `SponsorlukTarifesi` seçmeden kaydedilemez; bölge tarifesinde `Bolge` zorunludur ve tarife verisi kampanyaya snapshot edilir. Sıradan düzenlemeler bu fiyatı değiştirmez. Sponsor tahsilatı ayrı kaydedilir. Tahsil edilen KDV dahil brüt tutarın %15'i, hizmet dönemini kapsayan abonelik faturası ve cihaz atama tarihçesine göre uygun cihaz-günlere dağıtılır. Bölge havuzu bölgenin uygun cihazlarını kapsar; yalnız yayın atamalarına indirgenmez. Öteleme hariç tutulur, teknik fatura eksikliği hesaplamayı bekletir. Sonuç tahsilat satırı kilitlenerek hesaplanır; sıfır hesap da `campaigns.0037` ile korunur. Eczacıya sponsor kimliği ve iç hesap verileri açılmaz. Eczane fatura numarası/tebliği ve fiili ödeme yönetim ekranında izlenir; tebliğ + 15 gün vade hesaplanır. Ara bildirim, mahsup/iade ve eski cihaz geçmişi açık işleri `docs/abonelik-sozlesme-kod-inceleme.md` içindedir.
+
 **Amaç:** Kiosk sponsorluk (DOOH) mimarisini, cihaz bazlı atama modelini, yerleşim motorunu, playlist üretimini ve proof-of-play akışını dokümante etmek. Eczacı paneli kampanya sistemi (PharmacyCampaign) de bu dokümana dahildir.
 
 > **2026-10-16 yeniden tasarım (temiz başlangıç):** İl/ilçe/eczane hedefleme, ScheduleRule/DeliveryRule frekansları,

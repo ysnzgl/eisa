@@ -1,5 +1,15 @@
 # DB and API Contracts
 
+## Fiziksel cihaz ve belge API'leri (2026-11-08)
+
+- `pharmacies.0019`: `FizikselCihaz` (tekil seri, marka/model/ekran, garanti, donanım değeri, opsiyonel eczane ve tekil kiosk bağı). `abonelik.0025`: cihaz ödeme planında fiziksel cihaz M2M bağı.
+- SuperAdmin `GET|POST /api/pharmacies/cihazlar/`, `GET|PATCH /{id}/`; `POST /{id}/eslestir/` gövdesi `{kiosk: id}`. Listede `eczane` stok ve o eczanenin cihazlarını, `eslesmemis` aktif eşleşmemiş cihazları filtreler.
+- Provizyon `approve` gövdesine `fiziksel_cihaz_id` eklendi. Panelde zorunlu seçimdir; eski API istemcileri için opsiyoneldir. Eczane ve tekillik doğrulamasıyla kiosk/seri eşleştirmesi atomiktir.
+- Sözleşme `cihaz_planlari[].cihazlar` fiziksel cihaz ID listesidir; seçim varsa adetle eşit olmalıdır. Diğer eczaneye ait/pasif cihaz ve aynı istekte tekrar seçim reddedilir.
+- Admin `/api/abonelik/sozlesmeler/{id}/metin/?belge_turu=EK1|EK2`, eczacı `/api/abonelik/sozlesmelerim/{id}/metin/`: yeni sürümde tam doldurulan HTML + `belge_seti`, `belge_turu`, `eksik_alanlar`.
+- Her iki rol için aynı sözleşme yolunda `belge-olustur/?belge_turu=EK1|EK2`: DOCX indirme. Eczacı sorgusu kendi eczanesiyle sınırlıdır. Eski sözleşme yeni şablonla üretilemez. İmzalı dosya indirme ayrı endpoint'tir.
+- Bölge/tarife kaydında `kod` artık istemci için zorunlu değildir; sunucu dahili değer üretir. Bölge başlangıcı gönderilmezse bugün kullanılır.
+
 ## İş takibi dosya contract'ı (2026-11-07)
 
 - `gorev_dosyalar`: id, gorev_id FK CASCADE, ad (255), object_key (512, unique), content_type (100), boyut ve BaseModel audit alanları; migration `gorevler/0004_gorevdosya`.

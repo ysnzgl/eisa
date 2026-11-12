@@ -6,6 +6,7 @@ motoru (``services/sponsorship_engine.py``) saatlik ``Playlist`` / ``PlaylistIte
 kayitlarini uretir.
 """
 import uuid
+from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -23,6 +24,84 @@ def _https_url_validator(value: str) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 # Campaign (Sponsorluk) — basitlestirilmis
 # ─────────────────────────────────────────────────────────────────────────────
+
+
+class Bolge(BaseModel):
+    """İl/ilçe kapsamından bağımsız yönetilen sözleşmesel sponsorluk bölgesi."""
+
+    kod = models.CharField(max_length=32, unique=True)
+    ad = models.CharField(max_length=128)
+    gecerlilik_baslangic = models.DateField()
+    gecerlilik_bitis = models.DateField(null=True, blank=True)
+    aktif = models.BooleanField(default=True)
+    aciklama = models.TextField(blank=True, default="")
+
+    class Meta:
+        db_table = "sponsorluk_bolgeleri"
+        ordering = ("ad",)
+
+    def __str__(self):  # pragma: no cover
+        return self.ad
+
+
+class BolgeKapsam(BaseModel):
+    """Bölgenin il veya daha dar ilçe eşleşmesi."""
+
+    bolge = models.ForeignKey(Bolge, on_delete=models.CASCADE, related_name="kapsamlar")
+    il = models.ForeignKey("lookups.Il", on_delete=models.PROTECT, related_name="sponsorluk_bolge_kapsamlari")
+    ilce = models.ForeignKey(
+        "lookups.Ilce", null=True, blank=True, on_delete=models.PROTECT,
+        related_name="sponsorluk_bolge_kapsamlari",
+    )
+
+    class Meta:
+        db_table = "sponsorluk_bolge_kapsamlari"
+        ordering = ("il__ad", "ilce__ad")
+        constraints = [
+            models.UniqueConstraint(fields=("bolge", "il", "ilce"), name="uniq_bolge_il_ilce"),
+        ]
+
+    def clean(self):
+        super().clean()
+        if self.ilce_id and self.ilce.il_id != self.il_id:
+            raise ValidationError({"ilce": "İlçe seçilen ile ait olmalıdır."})
+
+
+class SponsorlukTarifesi(BaseModel):
+    """Kampanyanın bağlanacağı tarihli ve sürümlü sponsorluk tarifesi."""
+
+    class Tur(models.TextChoices):
+        ECZANE = "ECZANE", "Eczane Sponsorluğu"
+        BOLGE = "BOLGE", "Bölge Sponsorluğu"
+
+    kod = models.CharField(max_length=40)
+    ad = models.CharField(max_length=160)
+    tur = models.CharField(max_length=12, choices=Tur.choices)
+    min_cihaz = models.PositiveSmallIntegerField(default=1)
+    max_cihaz = models.PositiveSmallIntegerField(null=True, blank=True)
+    brut_bedel = models.DecimalField(max_digits=14, decimal_places=2)
+    kdv_orani = models.PositiveSmallIntegerField(default=20)
+    gecerlilik_baslangic = models.DateField(db_index=True)
+    gecerlilik_bitis = models.DateField(null=True, blank=True, db_index=True)
+    aktif = models.BooleanField(default=True)
+    aciklama = models.TextField(blank=True, default="")
+
+    class Meta:
+        db_table = "sponsorluk_tarifeleri"
+        ordering = ("-gecerlilik_baslangic", "tur", "min_cihaz")
+        constraints = [
+            models.UniqueConstraint(fields=("kod", "gecerlilik_baslangic"), name="uniq_tarife_kod_baslangic"),
+        ]
+
+    def clean(self):
+        super().clean()
+        if self.max_cihaz is not None and self.max_cihaz < self.min_cihaz:
+            raise ValidationError({"max_cihaz": "Üst cihaz sınırı alt sınırdan küçük olamaz."})
+        if self.gecerlilik_bitis and self.gecerlilik_bitis < self.gecerlilik_baslangic:
+            raise ValidationError({"gecerlilik_bitis": "Bitiş başlangıçtan önce olamaz."})
+
+    def __str__(self):  # pragma: no cover
+        return self.ad
 
 
 class Campaign(BaseModel):
@@ -45,6 +124,15 @@ class Campaign(BaseModel):
     start_date = models.DateTimeField()
     end_date = models.DateTimeField()
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.ACTIVE)
+    sponsorluk_tarifesi = models.ForeignKey(
+        SponsorlukTarifesi, null=True, blank=True, on_delete=models.PROTECT,
+        related_name="kampanyalar",
+        help_text="Eski kampanyalarda boş olabilir; yeni kampanyalarda zorunludur.",
+    )
+    tarife_snapshot = models.JSONField(default=dict, blank=True)
+    bolge = models.ForeignKey(
+        Bolge, null=True, blank=True, on_delete=models.PROTECT, related_name="kampanyalar"
+    )
 
     class Meta:
         db_table = "dooh_campaigns"
@@ -72,6 +160,63 @@ class Campaign(BaseModel):
             return "SCHEDULED"
         return self.status
 
+
+class SponsorTahsilat(BaseModel):
+    """Sponsor faturasından ayrı, fiilen alınan brüt tahsilat kaydı."""
+
+    campaign = models.ForeignKey(Campaign, on_delete=models.PROTECT, related_name="tahsilatlar")
+    brut_tutar = models.DecimalField(max_digits=14, decimal_places=2)
+    tahsilat_tarihi = models.DateField(db_index=True)
+    donem_baslangic = models.DateField()
+    donem_bitis = models.DateField()
+    yontem = models.CharField(max_length=32, blank=True, default="")
+    referans = models.CharField(max_length=128, blank=True, default="")
+    aciklama = models.TextField(blank=True, default="")
+    hesaplanma_tarihi = models.DateTimeField(null=True, blank=True)
+    hesap_ozeti = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        db_table = "sponsor_tahsilatlari"
+        ordering = ("-tahsilat_tarihi", "-id")
+
+    def clean(self):
+        super().clean()
+        if self.brut_tutar <= 0:
+            raise ValidationError({"brut_tutar": "Tahsilat sıfırdan büyük olmalıdır."})
+        if self.donem_bitis <= self.donem_baslangic:
+            raise ValidationError({"donem_bitis": "Dönem bitişi başlangıçtan sonra olmalıdır."})
+
+
+class KatkiHakedis(BaseModel):
+    """Tahsilatın %15'inden oluşan eczane payının değişmez hesap kaydı."""
+
+    class Durum(models.TextChoices):
+        HESAPLANDI = "HESAPLANDI", "Hesaplandı"
+        BILDIRILDI = "BILDIRILDI", "Bildirildi"
+        FATURA_BEKLIYOR = "FATURA_BEKLIYOR", "Eczane faturası bekleniyor"
+        ODENDI = "ODENDI", "Ödendi"
+        IPTAL = "IPTAL", "İptal"
+
+    tahsilat = models.ForeignKey(SponsorTahsilat, on_delete=models.PROTECT, related_name="hakedisler")
+    eczane = models.ForeignKey("pharmacies.Eczane", on_delete=models.PROTECT, related_name="katki_hakedisleri")
+    uygun_cihaz_gun = models.DecimalField(max_digits=12, decimal_places=2)
+    toplam_uygun_cihaz_gun = models.DecimalField(max_digits=12, decimal_places=2)
+    brut_havuz = models.DecimalField(max_digits=14, decimal_places=2)
+    brut_pay = models.DecimalField(max_digits=14, decimal_places=2)
+    hesap_detayi = models.JSONField(default=dict)
+    durum = models.CharField(max_length=20, choices=Durum.choices, default=Durum.HESAPLANDI)
+    bildirim_tarihi = models.DateTimeField(null=True, blank=True)
+    eczane_fatura_no = models.CharField(max_length=64, blank=True, default="")
+    eczane_fatura_teblig_tarihi = models.DateField(null=True, blank=True)
+    odeme_son_tarihi = models.DateField(null=True, blank=True)
+    odenme_tarihi = models.DateField(null=True, blank=True)
+
+    class Meta:
+        db_table = "sponsorluk_katki_hakedisleri"
+        ordering = ("-id",)
+        constraints = [
+            models.UniqueConstraint(fields=("tahsilat", "eczane"), name="uniq_tahsilat_eczane_hakedis"),
+        ]
 
 class Creative(BaseModel):
     """Bir sponsorluga ait yayinlanabilir medya (gorsel/video)."""

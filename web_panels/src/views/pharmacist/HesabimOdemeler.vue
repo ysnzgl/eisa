@@ -12,6 +12,7 @@ import {
   onaylaSozlesme, getIslakImzaUrl,
 } from '../../services/abonelik';
 import { getSirketProfili } from '../../services/sirket';
+import { listMySponsorContributions } from '../../services/dooh';
 import SozlesmeMatbu from '../../components/shared/SozlesmeMatbu.vue';
 
 const loading = ref(false);
@@ -20,6 +21,7 @@ const faturalar = ref([]);
 const odemeler = ref([]);
 const hareketler = ref([]);
 const talepler = ref([]);
+const katkilar = ref([]);
 const odenenId = ref(null);
 const bankaHesabi = ref(null);
 
@@ -87,14 +89,16 @@ async function loadBankaBilgisi() {
 async function load() {
   loading.value = true;
   try {
-    const [h, f, o, hr, t] = await Promise.all([
+    const [h, f, o, hr, t, k] = await Promise.all([
       getHesabim(), getFaturalarim(), getOdemelerim(), getHareketlerim(), getTaleplerim(),
+      listMySponsorContributions(),
     ]);
     hesap.value = h.data;
     faturalar.value = Array.isArray(f.data) ? f.data : (f.data?.results ?? []);
     odemeler.value = o.data ?? [];
     hareketler.value = hr.data ?? [];
     talepler.value = t.data ?? [];
+    katkilar.value = Array.isArray(k.data) ? k.data : (k.data?.results ?? []);
     await loadBankaBilgisi();
   } catch (e) {
     toast.error(e?.response?.data?.detail || 'Hesap bilgileri yüklenemedi.');
@@ -209,6 +213,7 @@ function tipLabel(t) {
     KULLANIM_BEDELI: 'Kullanım Bedeli',
     CIHAZ_TAKSIT: 'Cihaz Taksiti',
     CIHAZ_KIRA: 'Cihaz Kira Bedeli',
+    BIRLESIK: 'Birleşik Aylık Fatura (Eski)',
   }[t] || t;
 }
 const HAREKET_ICON = {
@@ -359,7 +364,7 @@ const HAREKET_ICON = {
               <td>{{ f.taksit_no ?? '—' }}</td>
               <td>
                 {{ fmtTL(f.tutar) }}
-                <!-- Kalem detayları (birleşik fatura) -->
+                <!-- Fatura kalem detayları -->
                 <ul v-if="f.kalemler && f.kalemler.length" style="margin:.3rem 0 0;padding-left:1rem;font-size:.75rem;color:#6B7280;">
                   <li v-for="k in f.kalemler" :key="k.id">{{ k.tip_display }}: {{ fmtTL(k.tutar) }}</li>
                 </ul>
@@ -376,6 +381,16 @@ const HAREKET_ICON = {
             </tr>
             <tr v-if="!faturalar.length && !loading"><td colspan="7" class="empty-row">Faturanız bulunmuyor.</td></tr>
           </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section v-if="katkilar.length" class="eisa-panel">
+      <div class="eisa-panel-header"><h3 class="eisa-panel-title">Sponsorluk Katkı Paylarım</h3></div>
+      <div class="eisa-table-wrap">
+        <table class="eisa-table">
+          <thead><tr><th>Dönem</th><th>Uygun cihaz-gün</th><th>Brüt katkı</th><th>Ödeme vadesi</th><th>Durum</th></tr></thead>
+          <tbody><tr v-for="row in katkilar" :key="row.id"><td>{{ row.donem_baslangic }} – {{ row.donem_bitis }}</td><td>{{ row.uygun_cihaz_gun }}</td><td>{{ fmtTL(row.brut_pay) }}</td><td>{{ row.odeme_son_tarihi || 'Fatura bekleniyor' }}</td><td><span class="eisa-pill eisa-pill-success">{{ row.durum }}</span></td></tr></tbody>
         </table>
       </div>
     </section>

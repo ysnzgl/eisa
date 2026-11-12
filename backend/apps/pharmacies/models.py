@@ -249,6 +249,30 @@ class KioskEczaneAtama(BaseModel):
         ]
 
 
+class FizikselCihaz(BaseModel):
+    """Yazılım provizyonundan önce seri numarasıyla kaydedilen fiziksel donanım."""
+
+    seri_no = models.CharField(max_length=128, unique=True)
+    marka = models.CharField(max_length=100, blank=True, default="")
+    model = models.CharField(max_length=150)
+    ekran_boyutu = models.CharField(max_length=40, blank=True, default="")
+    garanti_ay = models.PositiveSmallIntegerField(null=True, blank=True)
+    donanim_degeri = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    eczane = models.ForeignKey(Eczane, null=True, blank=True, on_delete=models.PROTECT,
+                              related_name="fiziksel_cihazlar")
+    kiosk = models.OneToOneField(Kiosk, null=True, blank=True, on_delete=models.PROTECT,
+                                 related_name="fiziksel_cihaz")
+    aktif = models.BooleanField(default=True)
+    notlar = models.TextField(blank=True, default="")
+
+    class Meta:
+        db_table = "pharmacies_fiziksel_cihazlar"
+        ordering = ("seri_no",)
+
+    def __str__(self):
+        return f"{self.marka} {self.model} — {self.seri_no}".strip()
+
+
 class KioskProvisioningRequest(BaseModel):
     """
     Henuz kayitli olmayan kiosk cihazlarinin onay talepleri.

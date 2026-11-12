@@ -12,7 +12,7 @@ import {
   iptalSozlesme, listTalepler, kararVerTalep, listOdemeler,
   getFaturaAdmin,
   listFiyatlar, createFiyat, deleteFiyat, getAktifFiyat, faturalandir,
-  uploadIslakImza, getIslakImzaUrl,
+  uploadIslakImza, getIslakImzaUrl, getContractDataCheck, downloadGeneratedContract,
 } from '../../services/abonelik';
 import { getPharmacies } from '../../services/devices';
 import SozlesmeForm from '../../components/shared/SozlesmeForm.vue';
@@ -27,6 +27,23 @@ const route = useRoute();
 const { confirm } = useConfirm();
 const { exportToExcel, exporting } = useExcelExport();
 const tab = ref('sozlesmeler');
+
+async function downloadContract(kind) {
+  if (!editingId.value) return toast.info('Belge oluşturmak için önce sözleşmeyi kaydedin.');
+  try {
+    const [{ data: check }, response] = await Promise.all([
+      getContractDataCheck(editingId.value, kind),
+      downloadGeneratedContract(editingId.value, kind),
+    ]);
+    const url = URL.createObjectURL(response.data);
+    const link = document.createElement('a');
+    link.href = url; link.download = `sozlesme-${editingId.value}-${kind.toLowerCase()}.docx`;
+    link.click(); URL.revokeObjectURL(url);
+    if (check.eksik_alanlar?.length) {
+      toast.warning(`Belge oluşturuldu. Elle tamamlanacak alanlar: ${check.eksik_alanlar.join(', ')}`);
+    } else toast.success('Doldurulmuş Word belgesi indirildi.');
+  } catch (e) { toast.error(e?.response?.data?.detail || 'Word belgesi oluşturulamadı.'); }
+}
 
 const sozlesmeler = ref([]);
 const faturalar = ref([]);
@@ -120,7 +137,6 @@ const fiyatForm = reactive({
   cihaz_kira_bedeli: '0.00',
   acma_kapama_orani: DEFAULT_ACMA_KAPAMA_ORANI.toFixed(2),
   acma_kapama_bedeli: '0.00',
-  iptal_ceza_orani: '2.00',
   gecerlilik_baslangic: today(),
   aciklama: '',
 });
@@ -162,7 +178,6 @@ async function openFiyat() {
       aktifFiyat.value?.acma_kapama_bedeli || '0.00',
     ),
     acma_kapama_bedeli: aktifFiyat.value?.acma_kapama_bedeli || '0.00',
-    iptal_ceza_orani: aktifFiyat.value?.iptal_ceza_orani || '2.00',
     gecerlilik_baslangic: today(),
     aciklama: '',
   });
@@ -174,9 +189,8 @@ async function saveFiyat() {
     Number(fiyatForm.abonelik_bedeli) < 0
     || Number(fiyatForm.cihaz_kira_bedeli) < 0
     || Number(fiyatForm.acma_kapama_orani) < 0
-    || Number(fiyatForm.iptal_ceza_orani) < 0
   ) {
-    toast.error('Bedeller ve ceza çarpanı 0 veya üzeri olmalı.'); return;
+    toast.error('Bedeller 0 veya üzeri olmalı.'); return;
   }
   fiyatSaving.value = true;
   try {
@@ -186,7 +200,6 @@ async function saveFiyat() {
       abonelik_bedeli: String(fiyatForm.abonelik_bedeli),
       cihaz_kira_bedeli: String(fiyatForm.cihaz_kira_bedeli),
       acma_kapama_bedeli: String(fiyatForm.acma_kapama_bedeli),
-      iptal_ceza_orani: String(fiyatForm.iptal_ceza_orani),
       gecerlilik_baslangic: fiyatForm.gecerlilik_baslangic,
       aciklama: fiyatForm.aciklama,
     });
@@ -238,6 +251,7 @@ const formOpen = ref(false);
 const editingId = ref(null);
 const saving = ref(false);
 const islakImzaDosya = ref(null);      // seçilen dosya (File obj)
+const ek2IslakImzaDosya = ref(null);
 const islakImzaYukleniyor = ref(false);
 const emptySozlesme = () => ({
   eczane: null,
@@ -247,7 +261,7 @@ const emptySozlesme = () => ({
   baslangic_tarihi: '',
   oteleme_ay: 0,
   aylik_kullanim_bedeli: aktifFiyat.value?.abonelik_bedeli ?? '3900.00',
-  cihaz_durumu: 'SATILIK',
+  cihaz_durumu: 'TAHSIS',
   cihaz_kira_bedeli: '',
   pesin_fiyat: '',
   vade_farki_orani: '0.00',
@@ -259,8 +273,11 @@ const emptySozlesme = () => ({
   cihaz_kdv_orani: aktifFiyat.value?.cihaz_kdv_orani ?? 0,
   tevkifat_orani: '',
   iptal_ceza_orani: aktifFiyat.value?.iptal_ceza_orani ?? '2.00',
-  imza_tipi: 'DIJITAL',
+  imza_tipi: 'ISLAK',
+  sozlesme_surumu: '2026-EK1',
+  gercek_imza_tarihi: '',
   islak_imza_url: '',
+  ek2_islak_imza_url: '',
   cihaz_planlari: [],
 });
 const form = reactive(emptySozlesme());
@@ -383,6 +400,7 @@ function openKarar(t, onayla) {
   if (onayla && t.talep_tipi === 'YENI') {
     Object.assign(kararSozlesme, emptySozlesme());
     kararSozlesme.tur = t.istenen_tur || 'STANDART';
+    kararSozlesme.eczane = t.eczane;
     kararSozlesme.sozlesme_tipi_ay = Number(t.istenen_tip_ay || 24);
     kararSozlesme.demo_gun = Number(t.istenen_demo_gun || 30);
     kararSozlesme.baslangic_tarihi = '';
@@ -409,9 +427,6 @@ async function saveKarar() {
   if (kararForm.onayla && tip === 'YENI') {
     const f = kararSozlesme;
     if (!f.baslangic_tarihi) { toast.error('Başlangıç tarihi girin.'); return; }
-    if (f.cihaz_durumu === 'KIRALIK' && Number(f.cihaz_kira_bedeli || 0) <= 0) {
-      toast.error('Kiralık cihaz için kira bedeli girin.'); return;
-    }
     Object.assign(detail, {
       istenen_tur: f.tur,
       istenen_tip_ay: Number(f.sozlesme_tipi_ay || 0),
@@ -488,7 +503,7 @@ function openEdit(s) {
     baslangic_tarihi: s.baslangic_tarihi,
     oteleme_ay: s.oteleme_ay,
     aylik_kullanim_bedeli: s.aylik_kullanim_bedeli,
-    cihaz_durumu: s.cihaz_durumu || 'SATILIK',
+    cihaz_durumu: s.cihaz_durumu || 'TAHSIS',
     cihaz_kira_bedeli: s.cihaz_kira_bedeli || '0.00',
     pesin_fiyat: s.cihaz_plani?.pesin_fiyat || '',
     vade_farki_orani: s.cihaz_plani?.vade_farki_orani || '0.00',
@@ -499,10 +514,14 @@ function openEdit(s) {
     kdv_orani: s.kdv_orani || 0,
     tevkifat_orani: s.tevkifat_orani || '',
     iptal_ceza_orani: s.iptal_ceza_orani || '0.00',
-    imza_tipi: s.imza_tipi || 'DIJITAL',
+    imza_tipi: s.imza_tipi || 'ISLAK',
+    sozlesme_surumu: s.sozlesme_surumu || 'LEGACY',
+    gercek_imza_tarihi: s.gercek_imza_tarihi || '',
     islak_imza_url: s.islak_imza_url || '',
+    ek2_islak_imza_url: s.ek2_islak_imza_url || '',
     cihaz_planlari: (s.cihaz_planlari || []).map(p => ({
       id: p.id,
+      cihazlar: p.cihazlar || [],
       tip: p.tip || 'SATILIK',
       adet: p.adet || 1,
       cihaz_bilgisi: p.cihaz_bilgisi || '',
@@ -510,6 +529,8 @@ function openEdit(s) {
       vade_farki_orani: p.vade_farki_orani || '0.00',
       taksit_sayisi: p.taksit_sayisi || 1,
       aylik_kira_bedeli: p.aylik_kira_bedeli || '',
+      tahsis_bedeli: p.tahsis_bedeli || '',
+      donanim_degeri: p.donanim_degeri || '',
       cihaz_kdv_orani: p.cihaz_kdv_orani || 0,
       tevkifat_orani: p.tevkifat_orani || '',
       oteleme_ay: p.oteleme_ay ?? 0,
@@ -532,22 +553,20 @@ async function saveSozlesme() {
       baslangic_tarihi: form.baslangic_tarihi,
       oteleme_ay: form.oteleme_ay,
       aylik_kullanim_bedeli: form.aylik_kullanim_bedeli,
-      cihaz_durumu: 'SATILIK',
-      cihaz_kira_bedeli: '0.00',
+      cihaz_durumu: form.sozlesme_surumu === 'LEGACY' ? form.cihaz_durumu : (form.cihaz_planlari?.some((p) => p.tip === 'SATILIK') ? 'SATILIK' : 'TAHSIS'),
+      cihaz_kira_bedeli: form.sozlesme_surumu === 'LEGACY' ? (form.cihaz_kira_bedeli || '0.00') : '0.00',
       notlar: form.notlar,
       kdv_orani: Number(form.kdv_orani || 0),
       tevkifat_orani: form.tevkifat_orani || '',
       iptal_ceza_orani: String(form.iptal_ceza_orani || '0.00'),
-      imza_tipi: form.imza_tipi || 'DIJITAL',
-      islak_imza_url: form.islak_imza_url || '',
+      imza_tipi: form.imza_tipi || 'ISLAK',
+      gercek_imza_tarihi: form.gercek_imza_tarihi || null,
+      cihaz_planlari: form.cihaz_planlari || [],
     };
 
     let saved;
     if (editingId.value) {
       saved = await updateSozlesme(editingId.value, payload);
-      if (form.cihaz_planlari && form.cihaz_planlari.length > 0) {
-        await saveCihazPlanlari(editingId.value, form.cihaz_planlari);
-      }
     } else {
       // Atomik: sözleşme + cihaz planları tek istekte (ya hep ya hiç).
       saved = await createSozlesme({ ...payload, cihaz_planlari: form.cihaz_planlari || [] });
@@ -558,7 +577,7 @@ async function saveSozlesme() {
     if (targetId && form.imza_tipi === 'ISLAK' && islakImzaDosya.value) {
       islakImzaYukleniyor.value = true;
       try {
-        const { data } = await uploadIslakImza(targetId, islakImzaDosya.value);
+        const { data } = await uploadIslakImza(targetId, islakImzaDosya.value, 'SOZLESME_EK1');
         form.islak_imza_url = data.object_key;
       } catch (e) {
         toast.error(e?.response?.data?.detail || 'Belge yüklenemedi.');
@@ -566,6 +585,14 @@ async function saveSozlesme() {
         islakImzaDosya.value = null;
         islakImzaYukleniyor.value = false;
       }
+    }
+    if (targetId && form.imza_tipi === 'ISLAK' && ek2IslakImzaDosya.value) {
+      islakImzaYukleniyor.value = true;
+      try {
+        const { data } = await uploadIslakImza(targetId, ek2IslakImzaDosya.value, 'EK2');
+        form.ek2_islak_imza_url = data.object_key;
+      } catch (e) { toast.error(e?.response?.data?.detail || 'Ek-2 yüklenemedi.'); }
+      finally { ek2IslakImzaDosya.value = null; islakImzaYukleniyor.value = false; }
     }
     toast.success(editingId.value ? 'Sözleşme güncellendi.' : 'Sözleşme oluşturuldu.');
     closeForm();
@@ -1351,10 +1378,9 @@ function fmtDate(iso) {
                 <span class="eisa-field-label">Açma/Kapama Bedeli (Hesaplanan TL)</span>
                 <input type="text" :value="fmtTL(fiyatForm.acma_kapama_bedeli)" class="eisa-field" readonly />
               </label>
-              <label class="eisa-form-row">
-                <span class="eisa-field-label">Ceza Çarpanı (× aylık)</span>
-                <input type="number" step="0.01" min="0" v-model="fiyatForm.iptal_ceza_orani" class="eisa-field" />
-              </label>
+              <div class="eisa-reset-info eisa-form-row"><i class="fa-solid fa-scale-balanced"></i>
+                Erken fesih cezası fiyat tanımından alınmaz; sözleşmedeki 2–12 aylık kural uygulanır.
+              </div>
               <label class="eisa-form-row">
                 <span class="eisa-field-label">Geçerlilik Başlangıcı</span>
                 <input type="date" v-model="fiyatForm.gecerlilik_baslangic" class="eisa-field" />
@@ -1374,7 +1400,7 @@ function fmtDate(iso) {
             <h4 class="eisa-field-label" style="margin-top:1rem;">Tarihçe</h4>
             <div class="eisa-table-wrap">
               <table class="eisa-table">
-                <thead><tr><th>Geçerlilik</th><th>Abonelik</th><th>Abonelik KDV</th><th>Cihaz Kira</th><th>Cihaz KDV</th><th>Aç/Kapa</th><th>Ceza Çarpanı</th><th>Açıklama</th><th></th></tr></thead>
+                <thead><tr><th>Geçerlilik</th><th>Abonelik</th><th>Abonelik KDV</th><th>Cihaz Kira</th><th>Cihaz KDV</th><th>Aç/Kapa</th><th>Açıklama</th><th></th></tr></thead>
                 <tbody>
                   <tr v-for="fp in fiyatlar" :key="fp.id">
                     <td class="cell-muted">{{ fp.gecerlilik_baslangic }}</td>
@@ -1383,7 +1409,6 @@ function fmtDate(iso) {
                     <td>{{ fmtTL(fp.cihaz_kira_bedeli) }}</td>
                     <td>%{{ fp.cihaz_kdv_orani ?? 0 }}</td>
                     <td>{{ fmtTL(fp.acma_kapama_bedeli) }}</td>
-                    <td>×{{ fp.iptal_ceza_orani }}</td>
                     <td class="cell-muted">{{ fp.aciklama || '—' }}</td>
                     <td class="cell-actions"><div class="ay-row-actions">
                       <button class="eisa-icon-btn ay-icon-action ay-icon-action--danger" title="Sil" aria-label="Sil" @click="deleteFiyatItem(fp)">
@@ -1391,7 +1416,7 @@ function fmtDate(iso) {
                       </button>
                     </div></td>
                   </tr>
-                  <tr v-if="!fiyatlar.length"><td colspan="9" class="empty-row">Henüz fiyat tanımı yok.</td></tr>
+                  <tr v-if="!fiyatlar.length"><td colspan="8" class="empty-row">Henüz fiyat tanımı yok.</td></tr>
                 </tbody>
               </table>
             </div>
@@ -1419,10 +1444,10 @@ function fmtDate(iso) {
               <div class="eisa-info-box eisa-form-row-full">
                 Bu işlem sözleşmenin durumunu <strong>İptal</strong> yapar ve sözleşme tarihçesine iptal satırı ekler.
               </div>
-              <div v-if="iptalHedef?.iptal_ceza_orani > 0" class="eisa-error-banner eisa-form-row-full">
+              <div v-if="Number(iptalHedef?.iptal_ceza_tutari) > 0" class="eisa-error-banner eisa-form-row-full">
                 <i class="fa-solid fa-triangle-exclamation"></i>
-                <span>Erken iptal cezası: <strong>{{ fmtTL(iptalHedef.iptal_ceza_tutari) }}</strong>
-                  (%{{ iptalHedef.iptal_ceza_orani }} × {{ iptalHedef.kalan_gun }} kalan gün)</span>
+                <span>Standart erken fesih hesabı: <strong>{{ fmtTL(iptalHedef.iptal_ceza_tutari) }}</strong>
+                  (kalan ücretli süre, 2–12 aylık sınır). Fesih istisnası işlem gerekçesine göre ayrıca değerlendirilir.</span>
               </div>
               <label class="eisa-form-row eisa-form-row-full">
                 <span class="eisa-field-label">İptal Nedeni (opsiyonel)</span>
@@ -1473,13 +1498,26 @@ function fmtDate(iso) {
             <div class="sf-section" style="margin-top:.5rem;">
               <div class="sf-section-header"><i class="fa-solid fa-signature"></i> İmza Tipi</div>
               <div class="eisa-form-grid sf-section-body">
+                <div v-if="editingId" class="eisa-form-row eisa-form-row-full">
+                  <span class="eisa-field-label">Otomatik Doldurulan Word Belgeleri</span>
+                  <div style="display:flex;flex-wrap:wrap;gap:.5rem;">
+                    <button type="button" class="eisa-btn eisa-btn-ghost eisa-btn--sm" @click="downloadContract('EK1')">
+                      <i class="fa-solid fa-file-word"></i> Ana Sözleşme ve Ek-1'i İndir
+                    </button>
+                    <button type="button" class="eisa-btn eisa-btn-ghost eisa-btn--sm" @click="downloadContract('EK2')">
+                      <i class="fa-solid fa-file-word"></i> Ek-2'yi İndir
+                    </button>
+                  </div>
+                  <span class="cell-muted" style="font-size:.78rem;">Eksik seri no, teslim personeli ve teslim saati belgede açıkça işaretlenir; 4, 5 ve 7. bölümler elle doldurulur.</span>
+                </div>
                 <label class="eisa-form-row">
                   <span class="eisa-field-label">İmza Tipi</span>
                   <select v-model="form.imza_tipi" class="eisa-field">
-                    <option value="DIJITAL">Dijital İmza (eczacı ekrandan onaylar)</option>
+                    <option value="DIJITAL" :disabled="form.sozlesme_surumu !== 'LEGACY'">Dijital İmza (entegrasyon bekleniyor)</option>
                     <option value="ISLAK">Islak İmza (taranıp yüklenir)</option>
                   </select>
                 </label>
+                <label class="eisa-form-row"><span class="eisa-field-label">Gerçek imza tarihi</span><input v-model="form.gercek_imza_tarihi" type="date" class="eisa-field" /></label>
                 <label v-if="form.imza_tipi === 'ISLAK'" class="eisa-form-row eisa-form-row-full">
                   <span class="eisa-field-label">
                     Taranmış Belge
@@ -1506,9 +1544,22 @@ function fmtDate(iso) {
                     </span>
                   </div>
                 </label>
+                <label v-if="form.imza_tipi === 'ISLAK'" class="eisa-form-row eisa-form-row-full">
+                  <span class="eisa-field-label">Ek-2 Teslim ve Zimmet Tutanağı</span>
+                  <div style="display:flex;flex-direction:column;gap:.4rem;">
+                    <label class="eisa-btn eisa-btn-ghost eisa-btn--sm" style="cursor:pointer;width:fit-content;">
+                      <i class="fa-solid fa-upload"></i>
+                      {{ ek2IslakImzaDosya ? ek2IslakImzaDosya.name : 'Ek-2 Dosyası Seç' }}
+                      <input type="file" accept=".pdf,.jpg,.jpeg,.png,.tiff" style="display:none;"
+                             @change="ek2IslakImzaDosya = $event.target.files[0]" />
+                    </label>
+                    <a v-if="form.ek2_islak_imza_url" :href="getIslakImzaUrl(editingId, 'EK2')"
+                       target="_blank" class="cell-muted">Yüklenen Ek-2'yi görüntüle</a>
+                  </div>
+                </label>
                 <p v-if="form.imza_tipi === 'ISLAK'" class="eisa-reset-info eisa-form-row-full">
                   <i class="fa-solid fa-circle-info"></i>
-                  Islak imzalı sözleşme eczacı ekranına onay için düşmez. Taranan belgeyi RustFS'e yükleyip kalıcı path girin (expiring URL değil).
+                  Ana sözleşme/Ek-1 ile Ek-2 ayrı saklanır. Dosyanın yüklenme zamanı sözleşme başlangıcını, faturayı veya gerçek imza tarihini değiştirmez.
                 </p>
               </div>
             </div>

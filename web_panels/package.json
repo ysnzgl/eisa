@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest",
+    "test:visual": "playwright test",
     "test:coverage": "vitest --coverage"
   },
   "dependencies": {
@@ -32,6 +33,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.0",
     "@vitejs/plugin-vue": "^6.0.7",
     "@vue/test-utils": "^2.4.0",
     "autoprefixer": "^10.4.0",

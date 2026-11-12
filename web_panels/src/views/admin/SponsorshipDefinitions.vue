@@ -18,6 +18,7 @@ import {
   listCampaignsV2, createCampaignV2, updateCampaignV2,
   bulkActionCampaignsV2, createCreative, uploadMedia,
   getCampaignKiosks, assignKiosksToCampaign, listSponsorshipKiosks,
+  listSponsorshipTariffs, listSponsorshipRegions,
 } from '../../services/dooh.js';
 import EisaDeleteConfirm from '../../components/shared/EisaDeleteConfirm.vue';
 import EisaMultiLookup from '../../components/shared/EisaMultiLookup.vue';
@@ -56,6 +57,8 @@ function thumbOf(c) {
 
 // ─── Liste ────────────────────────────────────────────────────────────────────
 const campaigns = ref([]);
+const tariffs = ref([]);
+const regions = ref([]);
 const loading   = ref(false);
 const search    = ref('');
 const statusFilter = ref('ALL');
@@ -68,6 +71,16 @@ async function refresh() {
   } catch {
     toast.error('Sponsorluklar yüklenemedi.');
   } finally { loading.value = false; }
+}
+
+async function loadCommercialDefinitions() {
+  try {
+    const [tariffResponse, regionResponse] = await Promise.all([
+      listSponsorshipTariffs({ aktif: 1 }), listSponsorshipRegions(),
+    ]);
+    tariffs.value = Array.isArray(tariffResponse.data) ? tariffResponse.data : (tariffResponse.data?.results ?? []);
+    regions.value = Array.isArray(regionResponse.data) ? regionResponse.data : (regionResponse.data?.results ?? []);
+  } catch { toast.error('Tarife ve bölge tanımları yüklenemedi.'); }
 }
 
 const filtered = computed(() => {
@@ -101,6 +114,7 @@ const emptyForm = () => ({
   name: '', advertiser_name: '',
   start_date: _defaultStart(), end_date: _defaultEnd(),
   status: 'ACTIVE',
+  sponsorluk_tarifesi: '', bolge: '',
   creatives: [],
 });
 const form = reactive(emptyForm());
@@ -120,6 +134,8 @@ async function openEdit(c) {
     start_date: c.start_date?.slice(0, 16) ?? '',
     end_date: c.end_date?.slice(0, 16) ?? '',
     status: c.status,
+    sponsorluk_tarifesi: c.sponsorluk_tarifesi || '',
+    bolge: c.bolge || '',
     creatives: (c.creatives ?? []).map((cr) => ({
       id: cr.id, name: cr.name || 'Mevcut medya',
       duration_seconds: cr.duration_seconds,
@@ -142,6 +158,9 @@ function validateStep(n) {
     if (!form.name.trim()) return 'Sponsorluk adı zorunlu.';
     if (!form.start_date || !form.end_date) return 'Başlangıç ve bitiş tarihi zorunlu.';
     if (new Date(form.end_date) <= new Date(form.start_date)) return 'Bitiş tarihi başlangıçtan sonra olmalı.';
+    if (!form.sponsorluk_tarifesi) return 'Sponsorluk tarifesi zorunlu.';
+    const selectedTariff = tariffs.value.find((x) => String(x.id) === String(form.sponsorluk_tarifesi));
+    if (selectedTariff?.tur === 'BOLGE' && !form.bolge) return 'Bölge tarifesinde bölge seçimi zorunlu.';
   }
   if (n === 2 && !form.creatives.length) return 'En az bir medya yükleyin.';
   return null;
@@ -199,6 +218,8 @@ function buildCampaignPayload() {
     start_date: new Date(form.start_date).toISOString(),
     end_date: new Date(form.end_date).toISOString(),
     status: form.status,
+    sponsorluk_tarifesi: Number(form.sponsorluk_tarifesi),
+    bolge: form.bolge ? Number(form.bolge) : null,
   };
 }
 
@@ -236,7 +257,9 @@ async function save() {
     if (editingId.value) loadAssignedKiosks(editingId.value);
   } catch (e) {
     const cap = extractCapacityError(e);
-    stepError.value = cap?.detail || e?.response?.data?.detail || 'Kayıt başarısız.';
+    const apiErrors = e?.response?.data;
+    stepError.value = cap?.detail || apiErrors?.sponsorluk_tarifesi?.[0]
+      || apiErrors?.bolge?.[0] || apiErrors?.detail || 'Kayıt başarısız.';
   } finally { saving.value = false; }
 }
 
@@ -359,7 +382,7 @@ function kioskNameById(id) {
   return k ? k.ad : `#${id}`;
 }
 
-onMounted(refresh);
+onMounted(() => Promise.all([refresh(), loadCommercialDefinitions()]));
 </script>
 
 <template>
@@ -504,6 +527,22 @@ onMounted(refresh);
                     <option value="ACTIVE">Aktif</option>
                     <option value="PAUSED">Duraklatıldı</option>
                     <option value="COMPLETED">Tamamlandı</option>
+                  </select>
+                </div>
+                <div class="eisa-form-row">
+                  <label class="eisa-field-label">Sponsorluk Tarifesi *</label>
+                  <select v-model="form.sponsorluk_tarifesi" class="eisa-field">
+                    <option value="">Seçiniz…</option>
+                    <option v-for="tariff in tariffs" :key="tariff.id" :value="tariff.id">
+                      {{ tariff.ad }} · {{ Number(tariff.brut_bedel).toLocaleString('tr-TR') }} TL
+                    </option>
+                  </select>
+                </div>
+                <div class="eisa-form-row">
+                  <label class="eisa-field-label">Bölge</label>
+                  <select v-model="form.bolge" class="eisa-field">
+                    <option value="">Bölgesiz / eczane bazlı</option>
+                    <option v-for="region in regions" :key="region.id" :value="region.id">{{ region.ad }}</option>
                   </select>
                 </div>
                 <div class="eisa-form-row eisa-form-row-full">

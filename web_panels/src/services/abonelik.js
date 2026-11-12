@@ -21,16 +21,27 @@ export const updateSozlesme = (id, data) =>
 export const saveCihazPlanlari = (sozlesmeId, plans) =>
   http.put(`/api/abonelik/sozlesmeler/${sozlesmeId}/cihaz-planlari/`, plans);
 
-export const uploadIslakImza = (sozlesmeId, file) => {
+export const uploadIslakImza = (sozlesmeId, file, belgeTuru = 'SOZLESME_EK1') => {
   const fd = new FormData();
   fd.append('belge', file);
+  fd.append('belge_turu', belgeTuru);
   return http.post(`/api/abonelik/sozlesmeler/${sozlesmeId}/islak-imza-yukle/`, fd, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
 };
 
-export const getIslakImzaUrl = (sozlesmeId) =>
-  `/api/abonelik/sozlesmeler/${sozlesmeId}/islak-imza-indir/`;
+export const getIslakImzaUrl = (sozlesmeId, belgeTuru = 'SOZLESME_EK1') =>
+  `/api/abonelik/sozlesmeler/${sozlesmeId}/islak-imza-indir/?belge_turu=${belgeTuru}`;
+
+export const getContractDataCheck = (sozlesmeId, belgeTuru = 'EK1') =>
+  http.get(`/api/abonelik/sozlesmeler/${sozlesmeId}/belge-veri-kontrol/`, {
+    params: { belge_turu: belgeTuru },
+  });
+
+export const downloadGeneratedContract = (sozlesmeId, belgeTuru = 'EK1', role = 'admin') =>
+  http.get(`/api/abonelik/${role === 'eczaci' ? 'sozlesmelerim' : 'sozlesmeler'}/${sozlesmeId}/belge-olustur/`, {
+    params: { belge_turu: belgeTuru }, responseType: 'blob',
+  });
 
 export const uzatSozlesme = (sozlesmeId, data) =>
   http.post(`/api/abonelik/sozlesmeler/${sozlesmeId}/uzat/`, data);

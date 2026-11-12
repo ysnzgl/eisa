@@ -1,7 +1,7 @@
 """Eczane ve kiosk serileştiricileri."""
 from rest_framework import serializers
 
-from .models import Eczane, Kiosk, KioskAudioAsset, KioskEczaneAtama, KioskIdleAudio, KioskProvisioningRequest
+from .models import Eczane, FizikselCihaz, Kiosk, KioskAudioAsset, KioskEczaneAtama, KioskIdleAudio, KioskProvisioningRequest
 
 
 class EczaneSerializer(serializers.ModelSerializer):
@@ -256,11 +256,44 @@ class KioskProvisioningRequestSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class FizikselCihazSerializer(serializers.ModelSerializer):
+    eczane_ad = serializers.CharField(source="eczane.ad", read_only=True, default="")
+    kiosk_ad = serializers.CharField(source="kiosk.ad", read_only=True, default="")
+    kiosk_mac = serializers.CharField(source="kiosk.mac_adresi", read_only=True, default="")
+
+    class Meta:
+        model = FizikselCihaz
+        fields = ("id", "seri_no", "marka", "model", "ekran_boyutu", "garanti_ay",
+                  "donanim_degeri", "eczane", "eczane_ad", "kiosk", "kiosk_ad", "kiosk_mac",
+                  "aktif", "notlar", "surum")
+        read_only_fields = ("kiosk", "surum")
+
+    def validate_seri_no(self, value):
+        value = value.strip().upper()
+        qs = FizikselCihaz.objects.filter(seri_no__iexact=value)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError("Bu seri numarası zaten kayıtlı.")
+        return value
+
+    def validate(self, attrs):
+        pharmacy = attrs.get("eczane", getattr(self.instance, "eczane", None))
+        if self.instance and self.instance.kiosk_id and (
+            not pharmacy or self.instance.kiosk.eczane_id != pharmacy.pk
+        ):
+            raise serializers.ValidationError({"eczane": "Eşleşmiş cihazın eczanesi kiosk taşıma işlemiyle değiştirilmelidir."})
+        if attrs.get("donanim_degeri") is not None and attrs["donanim_degeri"] < 0:
+            raise serializers.ValidationError({"donanim_degeri": "Donanım değeri negatif olamaz."})
+        return attrs
+
+
 class KioskProvisioningApproveSerializer(serializers.Serializer):
     """Cihaz onaylama isteği — eczane ve kiosk adı zorunlu."""
 
     eczane_id = serializers.IntegerField()
     ad = serializers.CharField(max_length=50)
+    fiziksel_cihaz_id = serializers.IntegerField(required=False, allow_null=True)
 
 
 class KioskProvisioningRejectSerializer(serializers.Serializer):

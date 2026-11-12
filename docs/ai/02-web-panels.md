@@ -1,5 +1,14 @@
 # Web Panels — Vue 3 + Vite + Pinia + Tailwind CSS
 
+## Sözleşme ekranları ve fiziksel cihazlar (2026-11-08)
+
+- Bölge `/admin/regions`, tarife `/admin/sponsorship-tariffs`, sponsor mali işlemleri `/admin/sponsor-payments` ayrı ekranlardır. Eski `/admin/sponsorship-settings` tarifeye yönlenir.
+- Bölge formu ad, il ve ilçe kapsamı alır; boş ilçe tüm ilçeler demektir. Kullanıcıya kod/tarih sorulmaz; dahili kimlik API'de üretilir. Tarifenin geçerlilik tarihleri kendi ekranındadır.
+- `DefinitionPage.vue` ve `DefinitionDialog.vue` ortak sayfa/modal kalıplarını ve `styles.css` değişkenlerini kullanır. Uzun modal gövdesi kayar, mobilde alt işlem düğmeleri erişilebilir kalır.
+- `/admin/device-inventory`: fiziksel seri, marka/model, ekran, garanti ve ayrılan eczane kaydı. `/admin/devices/pending`: onayda eczane + kayıtlı fiziksel cihaz seçilir. Seri MAC/UUID'den türetilmez. Sözleşme formundaki cihaz planları bu envantere bağlanır.
+- `SozlesmeMatbu.vue`: yeni kayıt için tam doldurulmuş ana sözleşme/Ek-1 ve Ek-2 sekmeleri; Word indir, yazdır/PDF, eksik alan listesi ve hata/yeniden deneme. Eski dijital metin yalnız LEGACY'de korunur.
+- `npx playwright test`: izole Edge, sentetik API kayıtları, masaüstü/mobil ekranlar ve indirme akışı. Gerçek hesap veya kullanıcı tarayıcısı kullanılmaz. Tam sözleşme HTML fixture'ı `backend/scripts/export_contract_visual_fixture.py` ile gerçek şablonlardan üretilir.
+
 ## İş takibi ekleri (2026-11-07)
 
 `GorevYonetimi.vue` + `components/GorevDosyalar.vue`: yeni/düzenlenen işe çoklu PDF/Word/Excel seçilir, Kaydet sırasında iş kaydından sonra sırayla yüklenir. Hata durumunda kayıtlı iş ID'si ve yüklenemeyen dosyalar korunur; tekrar Kaydet iş veya başarılı ekleri çoğaltmaz. Listede ek sayısı, modalda dosya adı/boyutu, İndir ve desteklenen türlerde Önizle bulunur. PDF: tarayıcı iframe/blob; XLS/XLSX: mevcut xlsx ile sayfa seçimi, ilk 200 satır/50 sütun; DOCX: Vue metin interpolasyonu, ilk 2000 paragraf; DOC: yalnız indirme. Harici Office viewer kullanılmaz. Blob URL'leri kapanışta temizlenir. Nginx CSP `frame-src 'self' blob:` PDF önizlemesine izin verir.

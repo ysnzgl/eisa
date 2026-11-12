@@ -284,7 +284,8 @@ export async function listProvisioningRequests(filters = {}) {
 export async function approveProvisioningRequest(id, data) {
   const { data: result } = await http.post(
     `/api/pharmacies/kiosks/provisioning/${id}/approve/`,
-    { eczane_id: data.eczane_id, ad: data.ad },
+    { eczane_id: data.eczane_id, ad: data.ad,
+      ...(data.fiziksel_cihaz_id ? { fiziksel_cihaz_id: data.fiziksel_cihaz_id } : {}) },
   );
   return mapProvisioningRequestFromApi(result);
 }

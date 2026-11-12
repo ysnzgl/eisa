@@ -1,16 +1,5 @@
 {
-  "node": {
-    "60d94374f20878874fb67ce4e3ee2857f4d28230ac": {
-      "workers": {
-        "app/[[...slug]]/page": {
-          "moduleId": "[project]/.next-internal/server/app/[[...slug]]/page/actions.js { ACTIONS_MODULE0 => \"[project]/src/app/actions/basvuru.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
-          "async": false
-        }
-      },
-      "filename": "src/app/actions/basvuru.ts",
-      "exportedName": "basvuruGonder"
-    }
-  },
+  "node": {},
   "edge": {},
   "encryptionKey": "y3kdW/zuYwm9KZNYoqk1oCWoez1M3p6iyZOUQ7j1LmA="
 }

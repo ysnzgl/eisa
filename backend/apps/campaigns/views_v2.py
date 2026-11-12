@@ -17,12 +17,14 @@ import zoneinfo
 from typing import List, Optional
 
 from django.db import transaction
+from django.db.models.deletion import ProtectedError
 from django.db.models import Count, Q
 from django.http import StreamingHttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from rest_framework import status, viewsets
+from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -33,23 +35,32 @@ from apps.pharmacies.permissions import IsSuperAdmin, IsEczaci
 from core_api.cookie_jwt import JWTCookieAuthentication as JWTAuthentication
 
 from .models import (
+    Bolge,
     Campaign,
     Creative,
     GenerationJob,
     IdleScreenContent,
+    KatkiHakedis,
     KioskSponsorship,
     PharmacyCampaign,
     Playlist,
+    SponsorTahsilat,
+    SponsorlukTarifesi,
 )
 from .serializers import (
+    BolgeSerializer,
     CampaignSerializer,
     CreativeSerializer,
     GenerationJobSerializer,
     IdleScreenContentSerializer,
+    KatkiHakedisSerializer,
+    KatkiHakedisimSerializer,
     KioskSponsorshipItemSerializer,
     KioskSponsorshipReadSerializer,
     PharmacyCampaignFeedSerializer,
     PharmacyCampaignSerializer,
+    SponsorTahsilatSerializer,
+    SponsorlukTarifesiSerializer,
 )
 from .services import sponsorship_engine as engine
 from .services.sponsorship_engine import hhmm_to_minute, second_to_hhmmss
@@ -152,6 +163,96 @@ def _validate_campaign_assignments(campaign: Campaign, creatives_override=None) 
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+class _CommercialAuditMixin:
+    def perform_create(self, serializer):
+        serializer.save(olusturan=self.request.user, guncelleyen=self.request.user)
+
+    def perform_update(self, serializer):
+        serializer.save(guncelleyen=self.request.user, surum=serializer.instance.surum + 1)
+
+    def perform_destroy(self, instance):
+        try:
+            super().perform_destroy(instance)
+        except ProtectedError:
+            raise ValidationError({"detail": "Kullanılan ticari tanım silinemez; pasife alınabilir."})
+
+
+class BolgeViewSet(_CommercialAuditMixin, viewsets.ModelViewSet):
+    queryset = Bolge.objects.prefetch_related("kapsamlar__il", "kapsamlar__ilce").all()
+    serializer_class = BolgeSerializer
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsSuperAdmin]
+
+
+class SponsorlukTarifesiViewSet(_CommercialAuditMixin, viewsets.ModelViewSet):
+    queryset = SponsorlukTarifesi.objects.all()
+    serializer_class = SponsorlukTarifesiSerializer
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsSuperAdmin]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if self.request.query_params.get("aktif") in ("1", "true"):
+            today = _today_istanbul()
+            qs = qs.filter(aktif=True, gecerlilik_baslangic__lte=today).filter(
+                Q(gecerlilik_bitis__isnull=True) | Q(gecerlilik_bitis__gte=today)
+            )
+        return qs
+
+
+class SponsorTahsilatViewSet(_CommercialAuditMixin, mixins.CreateModelMixin, mixins.ListModelMixin,
+                            mixins.RetrieveModelMixin, mixins.UpdateModelMixin,
+                            viewsets.GenericViewSet):
+    queryset = SponsorTahsilat.objects.select_related("campaign").prefetch_related("hakedisler").all()
+    serializer_class = SponsorTahsilatSerializer
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsSuperAdmin]
+
+    @transaction.atomic
+    def update(self, request, *args, **kwargs):
+        self.queryset = self.queryset.select_for_update()
+        return super().update(request, *args, **kwargs)
+
+    @action(detail=True, methods=["post"], url_path="katki-hesapla")
+    def katki_hesapla(self, request, pk=None):
+        from .services.contributions import hesapla_ve_kaydet
+        try:
+            rows = hesapla_ve_kaydet(self.get_object())
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(KatkiHakedisSerializer(rows, many=True).data, status=status.HTTP_201_CREATED)
+
+
+class KatkiHakedisViewSet(_CommercialAuditMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin,
+                         mixins.UpdateModelMixin, viewsets.GenericViewSet):
+    queryset = KatkiHakedis.objects.select_related("eczane", "tahsilat__campaign").all()
+    serializer_class = KatkiHakedisSerializer
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsSuperAdmin]
+
+    @transaction.atomic
+    def update(self, request, *args, **kwargs):
+        self.queryset = self.queryset.select_for_update()
+        return super().update(request, *args, **kwargs)
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if self.request.query_params.get("eczane"):
+            qs = qs.filter(eczane_id=self.request.query_params["eczane"])
+        return qs
+
+
+class KatkiHakedislerimView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsEczaci]
+
+    def get(self, request):
+        rows = KatkiHakedis.objects.select_related("eczane", "tahsilat__campaign").filter(
+            eczane_id=request.user.eczane_id
+        )
+        return Response(KatkiHakedisimSerializer(rows, many=True).data)
+
+
 class CampaignViewSet(viewsets.ModelViewSet):
     queryset = Campaign.objects.prefetch_related("creatives").all()
     serializer_class = CampaignSerializer
@@ -193,6 +294,8 @@ class CampaignViewSet(viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         instance: Campaign = self.get_object()
+        if instance.tahsilatlar.exists():
+            raise ValidationError({"detail": "Tahsilatı bulunan kampanya silinemez; duraklatılabilir."})
         campaign_id = instance.id
         with UnitOfWork(user=request.user) as uow:
             uow.delete(instance)
@@ -235,6 +338,8 @@ class CampaignViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         qs = Campaign.objects.filter(pk__in=ids)
+        if action_name == "delete" and qs.filter(tahsilatlar__isnull=False).exists():
+            raise ValidationError({"detail": "Tahsilatı bulunan kampanyalar silinemez; duraklatılabilir."})
         updated = 0
         affected: List = []
         with UnitOfWork(user=request.user) as uow:

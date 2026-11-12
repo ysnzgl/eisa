@@ -4,11 +4,14 @@ from rest_framework.routers import DefaultRouter
 
 from .views import MediaUploadView
 from .views_v2 import (
+    BolgeViewSet,
     CampaignViewSet,
     CreativeViewSet,
     GenerationJobListView,
     GenerationJobView,
     IdleScreenContentViewSet,
+    KatkiHakedisViewSet,
+    KatkiHakedislerimView,
     KioskDayStreamView,
     PharmacyCampaignViewSet,
     PlaylistGenerateView,
@@ -17,11 +20,17 @@ from .views_v2 import (
     SponsorshipKioskListView,
     SponsorshipKioskPreviewView,
     SponsorshipKioskSimulateView,
+    SponsorTahsilatViewSet,
+    SponsorlukTarifesiViewSet,
 )
 
 # DOOH v2 router
 v2_router = DefaultRouter()
 v2_router.register(r"campaigns", CampaignViewSet, basename="dooh-campaign")
+v2_router.register(r"bolgeler", BolgeViewSet, basename="sponsorluk-bolge")
+v2_router.register(r"tarifeler", SponsorlukTarifesiViewSet, basename="sponsorluk-tarife")
+v2_router.register(r"tahsilatlar", SponsorTahsilatViewSet, basename="sponsor-tahsilat")
+v2_router.register(r"katki-hakedisleri", KatkiHakedisViewSet, basename="katki-hakedis")
 v2_router.register(r"creatives", CreativeViewSet, basename="dooh-creative")
 v2_router.register(r"idle-contents", IdleScreenContentViewSet, basename="dooh-idle-content")
 v2_router.register(r"pharmacy-campaigns", PharmacyCampaignViewSet, basename="pharmacy-campaign")
@@ -46,6 +55,7 @@ urlpatterns = [
     path("v2/playlists/jobs/", GenerationJobListView.as_view(), name="dooh-playlist-job-list"),
     path("v2/playlists/jobs/<uuid:job_id>/", GenerationJobView.as_view(), name="dooh-playlist-job-detail"),
     path("v2/playlists/day-stream/", KioskDayStreamView.as_view(), name="dooh-kiosk-day-stream"),
+    path("v2/katki-hakedislerim/", KatkiHakedislerimView.as_view(), name="katki-hakedislerim"),
 
     path("v2/", include(v2_router.urls)),
 ]

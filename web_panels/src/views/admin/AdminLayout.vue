@@ -124,6 +124,7 @@ const adminNavGroups = [
   ] },
   { key: 'eczane', title: 'Eczane & Kiosk', icon: 'fa-store', items: [
     { to: '/admin/devices',          icon: 'fa-display',     label: 'Eczane & Cihaz', badgeKey: 'bekleyenCihazlar' },
+    { to: '/admin/device-inventory', icon: 'fa-boxes-stacked', label: 'Cihaz Tanımları' },
     { to: '/admin/kiosk-activities', icon: 'fa-wave-square', label: 'Kiosk Hareketleri' },
   ] },
   { key: 'kiosk-icerik', title: 'Kiosk İçeriği', icon: 'fa-dna', items: [
@@ -135,6 +136,9 @@ const adminNavGroups = [
     { to: '/admin/dooh/control-center', icon: 'fa-gauge-high', label: 'Kontrol Merkezi' },
     { to: '/admin/kiosk-sponsorships',  icon: 'fa-display',    label: 'Kiosk Sponsorluk' },
     { to: '/admin/campaigns',           icon: 'fa-bullhorn',   label: 'Sponsorluk Tanımları' },
+    { to: '/admin/regions', icon: 'fa-map-location-dot', label: 'Bölge Tanımları' },
+    { to: '/admin/sponsorship-tariffs', icon: 'fa-tags', label: 'Sponsorluk Tarifeleri' },
+    { to: '/admin/sponsor-payments', icon: 'fa-building-columns', label: 'Sponsor Tahsilatları' },
     { to: '/admin/pharmacy-campaigns',  icon: 'fa-prescription-bottle-medical', label: 'Eczacı Ekran Sponsorluk' },
     { to: '/admin/barkod-logolar',      icon: 'fa-barcode',    label: 'Barkod Logo Sponsorluk' },
   ] },

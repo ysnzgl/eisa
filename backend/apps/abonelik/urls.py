@@ -12,6 +12,7 @@ from .views import (
     OdemelerimView,
     OdemelerView,
     SozlesmeIslakImzaIndir,
+    SozlesmeBelgeOlusturView,
     SozlesmeMetniView,
     SozlesmeOnaylaView,
     SozlesmeTalebiViewSet,
@@ -35,6 +36,7 @@ urlpatterns = [
     path("taleplerim/", TaleplerimView.as_view(), name="abonelik-taleplerim"),
     path("sozlesmelerim/<int:pk>/onayla/", SozlesmeOnaylaView.as_view(), name="abonelik-sozlesme-onayla"),
     path("sozlesmelerim/<int:pk>/metin/", SozlesmeMetniView.as_view(), name="abonelik-sozlesme-metin-eczaci"),
+    path("sozlesmelerim/<int:pk>/belge-olustur/", SozlesmeBelgeOlusturView.as_view(), name="abonelik-sozlesme-belge-eczaci"),
     path("sozlesmeler/<int:pk>/islak-imza-indir/", SozlesmeIslakImzaIndir.as_view(), name="abonelik-sozlesme-islak-imza-indir"),
     path("", include(router.urls)),
 ]

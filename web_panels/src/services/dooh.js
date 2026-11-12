@@ -14,6 +14,37 @@ import { http } from './api';
 export const listCampaignsV2 = (params = {}) =>
   http.get('/api/campaigns/v2/campaigns/', { params });
 
+export const listSponsorshipTariffs = (params = {}) =>
+  http.get('/api/campaigns/v2/tarifeler/', { params });
+export const createSponsorshipTariff = (data) =>
+  http.post('/api/campaigns/v2/tarifeler/', data);
+export const updateSponsorshipTariff = (id, data) =>
+  http.patch(`/api/campaigns/v2/tarifeler/${id}/`, data);
+export const deleteSponsorshipTariff = (id) =>
+  http.delete(`/api/campaigns/v2/tarifeler/${id}/`);
+
+export const listSponsorshipRegions = (params = {}) =>
+  http.get('/api/campaigns/v2/bolgeler/', { params });
+export const createSponsorshipRegion = (data) =>
+  http.post('/api/campaigns/v2/bolgeler/', data);
+export const updateSponsorshipRegion = (id, data) =>
+  http.patch(`/api/campaigns/v2/bolgeler/${id}/`, data);
+export const deleteSponsorshipRegion = (id) =>
+  http.delete(`/api/campaigns/v2/bolgeler/${id}/`);
+
+export const listSponsorCollections = (params = {}) =>
+  http.get('/api/campaigns/v2/tahsilatlar/', { params });
+export const createSponsorCollection = (data) =>
+  http.post('/api/campaigns/v2/tahsilatlar/', data);
+export const calculateSponsorContribution = (id) =>
+  http.post(`/api/campaigns/v2/tahsilatlar/${id}/katki-hesapla/`);
+export const listSponsorContributions = (params = {}) =>
+  http.get('/api/campaigns/v2/katki-hakedisleri/', { params });
+export const updateSponsorContribution = (id, data) =>
+  http.patch(`/api/campaigns/v2/katki-hakedisleri/${id}/`, data);
+export const listMySponsorContributions = () =>
+  http.get('/api/campaigns/v2/katki-hakedislerim/');
+
 export const getCampaignV2 = (id) =>
   http.get(`/api/campaigns/v2/campaigns/${id}/`);
 

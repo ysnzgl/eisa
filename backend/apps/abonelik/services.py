@@ -13,12 +13,12 @@ import datetime as _dt
 import logging
 from decimal import Decimal
 
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, models, transaction
 from django.utils import timezone
 
 from apps.core.uow import UnitOfWork
 
-from .models import CihazOdemePlani, Fatura, FiyatTanimi, Odeme, Sozlesme
+from .models import CihazOdemePlani, Fatura, FiyatTanimi, Odeme, ResmiTatil, Sozlesme
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +48,28 @@ def add_days(d: _dt.date, days: int) -> _dt.date:
     return d + _dt.timedelta(days=int(days))
 
 
+def add_business_days(d: _dt.date, days: int) -> _dt.date:
+    """Kesim gününü saymadan hafta sonu ve kayıtlı resmi tatilleri atlar."""
+    remaining = int(days)
+    current = d
+    if remaining < 0:
+        raise ValueError("İş günü sayısı negatif olamaz.")
+    if remaining == 0:
+        return current
+    # Aralık küçük olsa da tek tek sorgu üretmemek için geniş bir tatil kümesi al.
+    window_end = d + _dt.timedelta(days=remaining * 3 + 14)
+    holidays = set(
+        ResmiTatil.objects.filter(tarih__gt=d, tarih__lte=window_end)
+        .values_list("tarih", flat=True)
+    )
+    while remaining:
+        current += _dt.timedelta(days=1)
+        if current.weekday() >= 5 or current in holidays:
+            continue
+        remaining -= 1
+    return current
+
+
 # ── Fiyat tanımı (parametre) ─────────────────────────────────────────────────
 
 def aktif_fiyat(*, bugun: _dt.date | None = None) -> FiyatTanimi | None:
@@ -58,6 +80,127 @@ def aktif_fiyat(*, bugun: _dt.date | None = None) -> FiyatTanimi | None:
         .order_by("-gecerlilik_baslangic", "-id")
         .first()
     )
+
+
+def sozlesme_ticari_snapshot(eczane, *, belge_tarihi: _dt.date) -> tuple[dict, list]:
+    """Eczanenin ilgili bölgesini ve tarihte geçerli tarifeleri dondurur."""
+    from django.db.models import Q
+    from apps.campaigns.models import BolgeKapsam, SponsorlukTarifesi
+
+    kapsam = (
+        BolgeKapsam.objects.filter(
+            bolge__aktif=True,
+            bolge__gecerlilik_baslangic__lte=belge_tarihi,
+            il_id=eczane.il_id,
+        )
+        .filter(Q(bolge__gecerlilik_bitis__isnull=True) |
+                Q(bolge__gecerlilik_bitis__gte=belge_tarihi))
+        .filter(Q(ilce_id=eczane.ilce_id) | Q(ilce__isnull=True))
+        .select_related("bolge", "il", "ilce")
+        .order_by(models.Case(
+            models.When(ilce_id=eczane.ilce_id, then=models.Value(0)),
+            default=models.Value(1), output_field=models.IntegerField(),
+        ), "bolge_id")
+        .first()
+    )
+    bolge = {}
+    if kapsam:
+        bolge = {
+            "id": kapsam.bolge_id, "kod": kapsam.bolge.kod, "ad": kapsam.bolge.ad,
+            "il": kapsam.il.ad, "ilce": kapsam.ilce.ad if kapsam.ilce else None,
+            "gecerlilik_baslangic": str(kapsam.bolge.gecerlilik_baslangic),
+            "gecerlilik_bitis": str(kapsam.bolge.gecerlilik_bitis) if kapsam.bolge.gecerlilik_bitis else None,
+        }
+    tarifeler = SponsorlukTarifesi.objects.filter(
+        aktif=True, gecerlilik_baslangic__lte=belge_tarihi,
+    ).filter(Q(gecerlilik_bitis__isnull=True) | Q(gecerlilik_bitis__gte=belge_tarihi))
+    snapshots = [{
+        "id": t.id, "kod": t.kod, "ad": t.ad, "tur": t.tur,
+        "min_cihaz": t.min_cihaz, "max_cihaz": t.max_cihaz,
+        "brut_bedel": str(t.brut_bedel), "kdv_orani": t.kdv_orani,
+        "gecerlilik_baslangic": str(t.gecerlilik_baslangic),
+        "gecerlilik_bitis": str(t.gecerlilik_bitis) if t.gecerlilik_bitis else None,
+    } for t in tarifeler]
+    return bolge, snapshots
+
+
+@transaction.atomic
+def sozlesme_olustur(validated_data, *, planlar=None, user=None):
+    """Tüm giriş yollarında sözleşme, ticari snapshot ve ilk borçlar birlikte yazılır."""
+    from rest_framework.exceptions import ValidationError
+
+    if planlar is not None and not isinstance(planlar, list):
+        raise ValidationError({"cihaz_planlari": "Liste bekleniyor."})
+    data = dict(validated_data)
+    bolge, tarifeler = sozlesme_ticari_snapshot(data["eczane"], belge_tarihi=timezone.localdate())
+    data.update(bolge_snapshot=bolge, sponsorluk_tarifeleri_snapshot=tarifeler)
+    with UnitOfWork(user=user) as uow:
+        sozlesme = uow.add(Sozlesme(**data))
+        if planlar is not None:
+            kaydet_cihaz_planlari(sozlesme, planlar, user=user)
+        faturala_ayri(bugun=timezone.localdate(), sozlesme_id=sozlesme.pk)
+    return sozlesme
+
+
+@transaction.atomic
+def kaydet_cihaz_planlari(sozlesme, planlar, *, user=None):
+    """Planları kimliklerini koruyarak kaydeder; faturalanmış planlar silinmez."""
+    from rest_framework.exceptions import ValidationError
+    from .models import FaturaKalemi
+    from .serializers import CihazOdemePlaniSerializer
+
+    existing = {p.id: p for p in sozlesme.cihaz_planlari.all()}
+    incoming = set()
+    selected_devices = set()
+    with UnitOfWork(user=user) as uow:
+        for raw in planlar:
+            if not isinstance(raw, dict):
+                raise ValidationError({"cihaz_planlari": "Her cihaz planı nesne olmalıdır."})
+            item = dict(raw)
+            plan_id = item.get("id")
+            if plan_id is not None:
+                try:
+                    plan_id = int(plan_id)
+                except (TypeError, ValueError):
+                    raise ValidationError({"cihaz_planlari": "Geçersiz cihaz planı kimliği."})
+                if plan_id not in existing or plan_id in incoming:
+                    raise ValidationError({"cihaz_planlari": "Cihaz planı bu sözleşmeye ait değil veya tekrarlanmış."})
+                incoming.add(plan_id)
+            instance = existing.get(plan_id)
+            item.setdefault("baslangic_tarihi", sozlesme.baslangic_tarihi)
+            ser = CihazOdemePlaniSerializer(instance=instance, data=item, partial=instance is not None)
+            ser.is_valid(raise_exception=True)
+            data = dict(ser.validated_data)
+            devices = data.pop("cihazlar", None)
+            if devices is not None:
+                from apps.pharmacies.models import FizikselCihaz
+                for device in FizikselCihaz.objects.select_for_update().filter(pk__in=[d.pk for d in devices]):
+                    if device.pk in selected_devices:
+                        raise ValidationError({"cihazlar": "Aynı seri numarası birden fazla planda seçilemez."})
+                    if not device.aktif or device.eczane_id not in (None, sozlesme.eczane_id):
+                        raise ValidationError({"cihazlar": f"{device.seri_no} başka bir eczaneye ait veya pasif."})
+                    selected_devices.add(device.pk)
+                    device.eczane_id = sozlesme.eczane_id
+                    uow.update(device, update_fields=["eczane"])
+                if devices and not data.get("cihaz_bilgisi"):
+                    data["cihaz_bilgisi"] = "; ".join(dict.fromkeys(f"{d.marka} {d.model}".strip() for d in devices))
+            oteleme = data.get("oteleme_ay", getattr(instance, "oteleme_ay", 0))
+            data["baslangic_tarihi"] = add_months(sozlesme.baslangic_tarihi, oteleme)
+            if instance:
+                for field, value in data.items():
+                    setattr(instance, field, value)
+                uow.update(instance)
+            else:
+                instance = uow.add(CihazOdemePlani(sozlesme=sozlesme, **data))
+            if devices is not None:
+                instance.cihazlar.set(devices)
+        for plan_id, plan in existing.items():
+            if plan_id not in incoming:
+                if Fatura.objects.filter(cihaz_plani=plan).exists() or FaturaKalemi.objects.filter(cihaz_plani=plan).exists():
+                    plan.durum = CihazOdemePlani.Durum.IPTAL
+                    uow.update(plan, update_fields=["durum"])
+                else:
+                    uow.delete(plan)
 
 
 def sozlesme_bitis_hesapla(
@@ -463,157 +606,221 @@ def _olustur_acma_kapama_fatura(fatura: Fatura, *, user=None) -> None:
         pass
 
 
-def faturala_aylik_birlesik(*, bugun: _dt.date | None = None) -> int:
-    """Aktif sözleşmeler için gelecek ayın tek faturasını üretir.
+def faturala_ayri(*, bugun: _dt.date | None = None,
+                  sozlesme_id: int | None = None) -> int:
+    """Abonelik ve her cihaz planı için bağımsız faturalar üretir.
 
-    Abonelik ve cihaz (taksit/kira) bileşenleri bağımsız öteleme sürelerine
-    sahiptir. Bir ayda yalnızca vadesi gelen bileşenler faturaya kalem olarak
-    eklenir: abonelik ve cihaz aynı aya denk gelirse tek birleşik faturada iki
-    kalem; yalnız biri denk gelirse tek kalemli fatura. Vade = sözleşme
-    başlangıç günü fatura ayında (tüm faturalar sözleşme tarihiyle eşleniktir).
+    Gelecek dönem peşinen kesilmez. Abonelik ve cihaz ötelemeleri ayrıdır;
+    her faturanın vadesi kendi kesim tarihinden 7 iş günü sonradır.
+    Eski birleşik faturada aynı kalem varsa ikinci kez borç doğurmaz.
     """
     from .models import CihazOdemePlani, FaturaKalemi
 
     bugun = bugun or timezone.localdate()
-    prox = add_months(bugun, 1)
-    donem = donem_str(prox)
-    prox_ay = _dt.date(prox.year, prox.month, 1)
     olusturulan = 0
-
     sozlesmeler = (
         Sozlesme.objects.filter(durum=Sozlesme.Durum.AKTIF, tur=Sozlesme.Tur.STANDART)
         .prefetch_related("cihaz_planlari")
-        .select_related("eczane")
     )
+    if sozlesme_id is not None:
+        sozlesmeler = sozlesmeler.filter(pk=sozlesme_id)
+
     for sozlesme in sozlesmeler:
-        bitis = sozlesme.bitis_tarihi
-        bitis_ay = _dt.date(bitis.year, bitis.month, 1)
-        # Öteleme yoksa ilk fatura sözleşme başlangıç ayı ile aynı dönemde kesilir.
-        if sozlesme.oteleme_ay == 0:
-            target_ay = _dt.date(sozlesme.baslangic_tarihi.year, sozlesme.baslangic_tarihi.month, 1)
-        else:
-            target_ay = prox_ay
-        # Sözleşme bitişini aşan dönemde hiçbir bileşen faturalanmaz.
-        if target_ay > bitis_ay:
-            continue
-        # Birleşik fatura zaten varsa atla.
-        donem = donem_str(target_ay)
-        if Fatura.objects.filter(eczane_id=sozlesme.eczane_id, donem=donem,
-                                 tip=Fatura.Tip.BIRLESIK).exists():
-            continue
-
-        vade = _vade_sozlesme_gun(sozlesme.baslangic_tarihi.day, target_ay)
-        kalemler = []
-        toplam = Decimal("0.00")
-
-        # 1. Abonelik bedeli — yalnızca kendi öteleme dönemi dolduğunda eklenir.
-        ab_bas = sozlesme.kullanim_bedeli_baslangic
-        ab_bas_ay = _dt.date(ab_bas.year, ab_bas.month, 1)
-        if target_ay >= ab_bas_ay:
-            kalemler.append(dict(
-                tip=FaturaKalemi.KalemTip.ABONELIK,
-                cihaz_plani=None, taksit_no=None,
-                tutar=sozlesme.aylik_kullanim_bedeli,
-                aciklama=f"{donem} abonelik bedeli",
-            ))
-            toplam += sozlesme.aylik_kullanim_bedeli
-
-        # 2. Kiralık cihazlar
-        for plan in sozlesme.cihaz_planlari.filter(
-            durum=CihazOdemePlani.Durum.AKTIF, tip=CihazOdemePlani.Tip.KIRALIK
-        ):
-            if not plan.aylik_kira_bedeli:
-                continue
-            bas_ay = _dt.date(plan.baslangic_tarihi.year, plan.baslangic_tarihi.month, 1)
-            if target_ay < bas_ay:
-                continue
-            kalemler.append(dict(
-                tip=FaturaKalemi.KalemTip.CIHAZ_KIRA,
-                cihaz_plani=plan, taksit_no=None,
-                tutar=plan.toplam_tutar,
-                aciklama=f"{donem} cihaz kira ({plan.adet} adet)",
-            ))
-            toplam += plan.toplam_tutar
-
-        # 3. Satılık cihaz taksitleri / peşin fiyatları
-        for plan in sozlesme.cihaz_planlari.filter(
-            durum=CihazOdemePlani.Durum.AKTIF, tip=CihazOdemePlani.Tip.SATILIK
-        ):
-            if not plan.pesin_fiyat:
-                continue
-            bas_ay = _dt.date(plan.baslangic_tarihi.year, plan.baslangic_tarihi.month, 1)
-            if target_ay < bas_ay:
-                continue
-
-            if plan.odeme_tipi == "PESIN":
-                if FaturaKalemi.objects.filter(cihaz_plani=plan, tip=FaturaKalemi.KalemTip.CIHAZ_TAKSIT).exists():
-                    if plan.durum != CihazOdemePlani.Durum.TAMAMLANDI:
-                        plan.durum = CihazOdemePlani.Durum.TAMAMLANDI
-                        plan.save(update_fields=["durum"])
-                    continue
-                kalemler.append(dict(
-                    tip=FaturaKalemi.KalemTip.CIHAZ_TAKSIT,
-                    cihaz_plani=plan, taksit_no=1,
-                    tutar=plan.odeme_tutari,
-                    aciklama=f"{donem} cihaz satışı peşin ({plan.adet} adet)",
-                ))
-                toplam += plan.odeme_tutari
-                if plan.durum != CihazOdemePlani.Durum.TAMAMLANDI:
-                    plan.durum = CihazOdemePlani.Durum.TAMAMLANDI
-                    plan.save(update_fields=["durum"])
-                continue
-
-            kesilmis = FaturaKalemi.objects.filter(
-                cihaz_plani=plan, tip=FaturaKalemi.KalemTip.CIHAZ_TAKSIT,
-            ).count()
-            if kesilmis >= plan.taksit_sayisi:
-                if plan.durum != CihazOdemePlani.Durum.TAMAMLANDI:
-                    plan.durum = CihazOdemePlani.Durum.TAMAMLANDI
-                    plan.save(update_fields=["durum"])
-                continue
-            taksit_no = kesilmis + 1
-            kalemler.append(dict(
-                tip=FaturaKalemi.KalemTip.CIHAZ_TAKSIT,
-                cihaz_plani=plan, taksit_no=taksit_no,
-                tutar=plan.taksit_tutari,
-                aciklama=f"Cihaz taksit {taksit_no}/{plan.taksit_sayisi}",
-            ))
-            toplam += plan.taksit_tutari
-
-        if not kalemler or toplam <= 0:
-            continue
-
-        try:
-            with transaction.atomic():
-                fatura = Fatura(
-                    eczane_id=sozlesme.eczane_id,
-                    sozlesme=sozlesme,
-                    tip=Fatura.Tip.BIRLESIK,
-                    donem=donem,
-                    taksit_no=None,
-                    tutar=toplam,
-                    vade_tarihi=vade,
-                    durum=Fatura.Durum.BEKLIYOR,
-                    aciklama="; ".join(k["aciklama"] for k in kalemler),
+        offset = 0
+        period = sozlesme.kullanim_bedeli_baslangic
+        while period <= bugun and period < sozlesme.bitis_tarihi:
+            donem = donem_str(period)
+            if not _kalem_faturalanmis(
+                sozlesme, donem, FaturaKalemi.KalemTip.ABONELIK,
+            ):
+                kalem = _vergi_kalemi(
+                    tip=FaturaKalemi.KalemTip.ABONELIK,
+                    matrah=sozlesme.aylik_kullanim_bedeli,
+                    kdv_orani=sozlesme.kdv_orani,
+                    tevkifat_orani=sozlesme.tevkifat_orani,
+                    cihaz_plani=None, taksit_no=None,
+                    aciklama=f"{donem} abonelik bedeli",
                 )
-                fatura.save()
-                FaturaKalemi.objects.bulk_create([
-                    FaturaKalemi(
-                        fatura=fatura,
-                        tip=k["tip"],
-                        cihaz_plani=k["cihaz_plani"],
-                        taksit_no=k["taksit_no"],
-                        tutar=k["tutar"],
-                        aciklama=k["aciklama"],
-                    ) for k in kalemler
-                ])
-            olusturulan += 1
-        except IntegrityError:
-            continue
+                olusturulan += int(_ayri_fatura_olustur(
+                    sozlesme, period, Fatura.Tip.KULLANIM_BEDELI, kalem,
+                    kesim_tarihi=bugun,
+                    hizmet_bitis=min(add_months(sozlesme.baslangic_tarihi, sozlesme.oteleme_ay + offset + 1), sozlesme.bitis_tarihi),
+                ))
+            offset += 1
+            period = add_months(sozlesme.baslangic_tarihi, sozlesme.oteleme_ay + offset)
+
+        for plan in sozlesme.cihaz_planlari.all():
+            if plan.durum != CihazOdemePlani.Durum.AKTIF:
+                continue
+            if plan.tip == CihazOdemePlani.Tip.TAHSIS:
+                continue
+            offset = 0
+            period = plan.baslangic_tarihi
+            while period <= bugun and period < sozlesme.bitis_tarihi:
+                donem = donem_str(period)
+                if plan.tip == CihazOdemePlani.Tip.KIRALIK:
+                    if plan.aylik_kira_bedeli and not _kalem_faturalanmis(
+                        sozlesme, donem, FaturaKalemi.KalemTip.CIHAZ_KIRA,
+                        cihaz_plani=plan,
+                    ):
+                        kalem = _vergi_kalemi(
+                            tip=FaturaKalemi.KalemTip.CIHAZ_KIRA,
+                            matrah=plan.toplam_tutar,
+                            kdv_orani=plan.cihaz_kdv_orani,
+                            tevkifat_orani=plan.tevkifat_orani,
+                            cihaz_plani=plan, taksit_no=None,
+                            aciklama=f"{donem} cihaz kira ({plan.adet} adet)",
+                        )
+                        olusturulan += int(_ayri_fatura_olustur(
+                            sozlesme, period, Fatura.Tip.CIHAZ_KIRA,
+                            kalem, plan=plan, kesim_tarihi=bugun,
+                            hizmet_bitis=min(cihaz_donem_tarihi(plan, offset + 1), sozlesme.bitis_tarihi),
+                        ))
+                    offset += 1
+                    period = cihaz_donem_tarihi(plan, offset)
+                    continue
+
+                if plan.tip != CihazOdemePlani.Tip.SATILIK or not plan.pesin_fiyat:
+                    break
+                taksit_no = offset + 1
+                if taksit_no > int(plan.taksit_sayisi or 1):
+                    break
+                if not _kalem_faturalanmis(
+                    sozlesme, donem, FaturaKalemi.KalemTip.CIHAZ_TAKSIT,
+                    cihaz_plani=plan, taksit_no=taksit_no,
+                ):
+                    matrah = cihaz_taksit_matrahi(plan, taksit_no)
+                    kalem = _vergi_kalemi(
+                        tip=FaturaKalemi.KalemTip.CIHAZ_TAKSIT,
+                        matrah=matrah, kdv_orani=plan.cihaz_kdv_orani,
+                        tevkifat_orani=plan.tevkifat_orani,
+                        cihaz_plani=plan, taksit_no=taksit_no,
+                        aciklama=(f"Cihaz satışı peşin ({plan.adet} adet)" if plan.taksit_sayisi == 1
+                                  else f"Cihaz taksit {taksit_no}/{plan.taksit_sayisi}"),
+                    )
+                    olusturulan += int(_ayri_fatura_olustur(
+                        sozlesme, period, Fatura.Tip.CIHAZ_TAKSIT,
+                        kalem, plan=plan, taksit_no=taksit_no, kesim_tarihi=bugun,
+                        hizmet_bitis=min(cihaz_donem_tarihi(plan, offset + 1), sozlesme.bitis_tarihi),
+                    ))
+                offset += 1
+                period = cihaz_donem_tarihi(plan, offset)
+
+            if plan.tip == CihazOdemePlani.Tip.SATILIK:
+                taksit_sayisi = int(plan.taksit_sayisi or 1)
+                tum_taksitler_faturalandi = all(
+                    _kalem_faturalanmis(
+                        sozlesme,
+                        donem_str(cihaz_donem_tarihi(plan, sira - 1)),
+                        FaturaKalemi.KalemTip.CIHAZ_TAKSIT,
+                        cihaz_plani=plan,
+                        taksit_no=sira,
+                    )
+                    for sira in range(1, taksit_sayisi + 1)
+                )
+                if tum_taksitler_faturalandi:
+                    _tamamla_plan(plan)
 
     if olusturulan:
-        logger.info("faturala_aylik_birlesik: %d fatura üretildi (dönem=%s)", olusturulan, donem)
+        logger.info("faturala_ayri: %d fatura üretildi", olusturulan)
     return olusturulan
+
+
+def _kalem_faturalanmis(sozlesme, donem, kalem_tipi, *,
+                        cihaz_plani=None, taksit_no=None) -> bool:
+    from .models import FaturaKalemi
+
+    direct_type = {
+        FaturaKalemi.KalemTip.ABONELIK: Fatura.Tip.KULLANIM_BEDELI,
+        FaturaKalemi.KalemTip.CIHAZ_TAKSIT: Fatura.Tip.CIHAZ_TAKSIT,
+        FaturaKalemi.KalemTip.CIHAZ_KIRA: Fatura.Tip.CIHAZ_KIRA,
+    }.get(kalem_tipi)
+    direct = Fatura.objects.filter(
+        sozlesme=sozlesme, donem=donem, tip=direct_type,
+        cihaz_plani=cihaz_plani,
+    )
+    if taksit_no is not None:
+        direct = direct.filter(taksit_no=taksit_no)
+    if direct_type and direct.exists():
+        return True
+
+    qs = FaturaKalemi.objects.filter(
+        fatura__sozlesme=sozlesme, fatura__donem=donem, tip=kalem_tipi,
+    )
+    qs = qs.filter(cihaz_plani=cihaz_plani)
+    if taksit_no is not None:
+        qs = qs.filter(taksit_no=taksit_no)
+    return qs.exists()
+
+
+def _ayri_fatura_olustur(sozlesme, period, fatura_tipi, kalem, *,
+                         plan=None, taksit_no=None, kesim_tarihi=None,
+                         hizmet_bitis=None) -> bool:
+    from .models import FaturaKalemi
+
+    kesim_tarihi = kesim_tarihi or period
+    try:
+        with transaction.atomic():
+            fatura = Fatura.objects.create(
+                eczane_id=sozlesme.eczane_id, sozlesme=sozlesme,
+                cihaz_plani=plan, tip=fatura_tipi, donem=donem_str(period),
+                taksit_no=taksit_no, tutar=kalem["tutar"],
+                matrah=kalem["matrah"], kdv_tutari=kalem["kdv_tutari"],
+                tevkifat_tutari=kalem["tevkifat_tutari"], kesim_tarihi=kesim_tarihi,
+                hizmet_baslangic=period, hizmet_bitis=hizmet_bitis or add_months(period, 1),
+                vade_tarihi=add_business_days(kesim_tarihi, 7),
+                durum=Fatura.Durum.BEKLIYOR, aciklama=kalem["aciklama"],
+            )
+            FaturaKalemi.objects.create(fatura=fatura, **kalem)
+        return True
+    except IntegrityError:
+        if Fatura.objects.filter(eczane_id=sozlesme.eczane_id, tip=fatura_tipi,
+                                 donem=donem_str(period), cihaz_plani=plan).exists():
+            return False
+        raise
+
+
+def faturala_aylik_birlesik(*, bugun: _dt.date | None = None,
+                            sozlesme_id: int | None = None) -> int:
+    """Eski entegrasyon adı; yeni birleşik fatura üretmez."""
+    return faturala_ayri(bugun=bugun, sozlesme_id=sozlesme_id)
+
+
+def _ay_farki(start: _dt.date, current: _dt.date) -> int:
+    return (current.year - start.year) * 12 + current.month - start.month
+
+
+def cihaz_donem_tarihi(plan, offset: int) -> _dt.date:
+    """Kısa aydan sonra sözleşmenin asıl gününe dönen cihaz dönem tarihi."""
+    s = plan.sozlesme
+    if plan.baslangic_tarihi == add_months(s.baslangic_tarihi, plan.oteleme_ay):
+        return add_months(s.baslangic_tarihi, plan.oteleme_ay + offset)
+    return add_months(plan.baslangic_tarihi, offset)
+
+
+def cihaz_taksit_matrahi(plan, taksit_no: int) -> Decimal:
+    """Son taksit kuruş farkını kapatarak plan toplamını korur."""
+    sayi = int(plan.taksit_sayisi or 1)
+    if taksit_no == sayi:
+        return plan.toplam_tutar - plan.taksit_tutari * (sayi - 1)
+    return plan.taksit_tutari
+
+
+def _vergi_kalemi(*, tip, matrah, kdv_orani, tevkifat_orani, cihaz_plani,
+                  taksit_no, aciklama):
+    matrah = Decimal(matrah).quantize(Decimal("0.01"))
+    kdv = (matrah * Decimal(kdv_orani or 0) / Decimal("100")).quantize(Decimal("0.01"))
+    kesir = Decimal("0")
+    if tevkifat_orani:
+        pay, payda = tevkifat_orani.split("/", 1)
+        kesir = Decimal(pay) / Decimal(payda)
+    tevkifat = (kdv * kesir).quantize(Decimal("0.01"))
+    return {
+        "tip": tip, "cihaz_plani": cihaz_plani, "taksit_no": taksit_no,
+        "matrah": matrah, "kdv_orani": int(kdv_orani or 0), "kdv_tutari": kdv,
+        "tevkifat_orani": tevkifat_orani or "", "tevkifat_tutari": tevkifat,
+        "tutar": matrah + kdv - tevkifat, "aciklama": aciklama,
+    }
 
 
 # ── Sözleşme uzatma (tarihçe) ────────────────────────────────────────────────
@@ -643,6 +850,8 @@ def sozlesme_onayla(sozlesme: Sozlesme, *, ip_address: str = "", user=None) -> S
 
     if not sozlesme.onay_gerekli:
         return sozlesme
+    if sozlesme.sozlesme_surumu == "2026-EK1":
+        raise ValueError("Yeni belge setinde dijital imza entegrasyonu henüz devrede değildir.")
     with UnitOfWork(user=user) as uow:
         sozlesme.eczaci_onay_tarihi = timezone.now()
         sozlesme.eczaci_onay_ip = ip_address or None
@@ -790,106 +999,32 @@ def _talepten_sozlesme_olustur(uow, talep, user, data=None):
     (başlangıç, öteleme, bedeller, cihaz durumu/planı). Eksik alanlar talebin
     istenen değerlerinden veya aktif fiyat tanımından tamamlanır.
     """
-    from .models import CihazOdemePlani, Sozlesme
+    from .serializers import SozlesmeSerializer
 
     data = data or {}
-    bugun = timezone.localdate()
-    baslangic = data.get("baslangic_tarihi") or bugun
-    fiyat = aktif_fiyat(bugun=baslangic)
-
-    tur = data.get("istenen_tur") or talep.istenen_tur or Sozlesme.Tur.STANDART
-    cihaz_durumu = data.get("cihaz_durumu") or Sozlesme.CihazDurum.SATILIK
-    kira = data.get("cihaz_kira_bedeli")
-    if kira in (None, ""):
-        kira = (fiyat.cihaz_kira_bedeli if fiyat else Decimal("0.00"))
-    if cihaz_durumu != Sozlesme.CihazDurum.KIRALIK:
-        kira = Decimal("0.00")
-
-    ortak = dict(
-        eczane_id=talep.eczane_id,
-        baslangic_tarihi=baslangic,
-        durum=Sozlesme.Durum.AKTIF,
-        cihaz_durumu=cihaz_durumu,
-        cihaz_kira_bedeli=kira,
-        notlar=data.get("notlar", "") or "",
-    )
-
-    if tur == Sozlesme.Tur.DEMO:
-        s = Sozlesme(
-            tur=Sozlesme.Tur.DEMO,
-            demo_gun=data.get("istenen_demo_gun") or talep.istenen_demo_gun or 30,
-            **ortak,
-        )
-    else:
-        aylik = data.get("aylik_kullanim_bedeli")
-        if aylik in (None, ""):
-            aylik = (fiyat.abonelik_bedeli if fiyat else Decimal("3900.00"))
-        s = Sozlesme(
-            tur=Sozlesme.Tur.STANDART,
-            sozlesme_tipi_ay=data.get("istenen_tip_ay") or talep.istenen_tip_ay or 24,
-            oteleme_ay=int(data.get("oteleme_ay") or 0),
-            aylik_kullanim_bedeli=aylik,
-            **ortak,
-        )
-    kdv = data.get("kdv_orani")
-    s.kdv_orani = int(kdv if kdv is not None else (fiyat.abonelik_kdv_orani if fiyat else 0))
-    s.tevkifat_orani = data.get("tevkifat_orani") or ""
-    ceza_katsayisi = data.get("iptal_ceza_orani")
-    if ceza_katsayisi in (None, ""):
-        ceza_katsayisi = (fiyat.iptal_ceza_orani if fiyat else Decimal("2.00"))
-    s.iptal_ceza_orani = Decimal(str(ceza_katsayisi))
-
-    cakisan = cakisan_aktif_sozlesme(
-        eczane_id=talep.eczane_id,
-        tur=s.tur,
-        baslangic_tarihi=s.baslangic_tarihi,
-        sozlesme_tipi_ay=s.sozlesme_tipi_ay,
-        demo_gun=s.demo_gun,
-        oteleme_ay=s.oteleme_ay,
-        ek_ay_toplam=s.ek_ay_toplam,
-        ek_gun_toplam=s.ek_gun_toplam,
-    )
-    if cakisan is not None:
-        raise ValueError(
-            "Bu eczane için seçilen tarih aralığında aktif sözleşme zaten var "
-            f"(#{cakisan.pk}: {cakisan.baslangic_tarihi} - {cakisan.bitis_tarihi})."
-        )
-
-    uow.add(s)
-
-    # Cihaz satın alma planları (yeni format: cihaz_planlari listesi)
-    for plan_data in data.get("cihaz_planlari") or []:
-        pf = plan_data.get("pesin_fiyat")
-        if not pf or not Decimal(str(pf)) > 0:
-            continue
-        uow.add(CihazOdemePlani(
-            sozlesme=s,
-            adet=int(plan_data.get("adet") or 1),
-            pesin_fiyat=Decimal(str(pf)),
-            vade_farki_orani=Decimal(str(plan_data.get("vade_farki_orani") or "0.00")),
-            taksit_sayisi=int(plan_data.get("taksit_sayisi") or 1),
-            cihaz_kdv_orani=int(plan_data.get("cihaz_kdv_orani") if plan_data.get("cihaz_kdv_orani") is not None else (fiyat.cihaz_kdv_orani if fiyat else 0)),
-            baslangic_tarihi=plan_data.get("baslangic_tarihi") or bugun,
-        ))
-
-    # Eski format geriye dönük uyumluluk: tek cihaz planı
-    if not data.get("cihaz_planlari"):
-        pesin = data.get("pesin_fiyat")
-        if (
-            tur != Sozlesme.Tur.DEMO
-            and cihaz_durumu == Sozlesme.CihazDurum.SATILIK
-            and pesin not in (None, "")
-            and Decimal(str(pesin)) > 0
-        ):
-            uow.add(CihazOdemePlani(
-                sozlesme=s,
-                pesin_fiyat=Decimal(str(pesin)),
-                vade_farki_orani=Decimal(str(data.get("vade_farki_orani") or "0.00")),
-                taksit_sayisi=int(data.get("taksit_sayisi") or 1),
-                baslangic_tarihi=data.get("cihaz_baslangic_tarihi") or bugun,
-            ))
-    return s
-
+    payload = {
+        "eczane": talep.eczane_id,
+        "tur": data.get("istenen_tur") or talep.istenen_tur or Sozlesme.Tur.STANDART,
+        "sozlesme_tipi_ay": data.get("istenen_tip_ay") or talep.istenen_tip_ay or 24,
+        "demo_gun": data.get("istenen_demo_gun") or talep.istenen_demo_gun or 30,
+        "baslangic_tarihi": data.get("baslangic_tarihi") or timezone.localdate(),
+        "cihaz_durumu": data.get("cihaz_durumu") or Sozlesme.CihazDurum.TAHSIS,
+        "oteleme_ay": data.get("oteleme_ay") or 0,
+        "notlar": data.get("notlar") or "",
+    }
+    for field in ("aylik_kullanim_bedeli", "kdv_orani", "tevkifat_orani", "iptal_ceza_orani"):
+        if data.get(field) not in (None, ""):
+            payload[field] = data[field]
+    planlar = data.get("cihaz_planlari") or []
+    if not planlar and payload["cihaz_durumu"] == Sozlesme.CihazDurum.SATILIK and data.get("pesin_fiyat"):
+        planlar = [{
+            "tip": CihazOdemePlani.Tip.SATILIK, "pesin_fiyat": data["pesin_fiyat"],
+            "vade_farki_orani": data.get("vade_farki_orani") or "0.00",
+            "taksit_sayisi": data.get("taksit_sayisi") or 1,
+        }]
+    serializer = SozlesmeSerializer(data=payload)
+    serializer.is_valid(raise_exception=True)
+    return sozlesme_olustur(serializer.validated_data, planlar=planlar, user=user)
 
 def sozlesme_hareketleri(eczane_id: int) -> list[dict]:
     """Eczanenin sözleşme hareketleri: sözleşmeler, uzatmalar, talepler, ödemeler (tarih sıralı)."""
